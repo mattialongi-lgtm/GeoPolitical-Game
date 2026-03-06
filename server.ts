@@ -8,19 +8,41 @@ import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
+import * as admin from "firebase-admin";
 import { GAME_CONFIG } from "./src/types";
 
 const app = express();
 const PORT = 3000;
-const SECRET_KEY = "territorial-secret-key"; // In production, use env variable
+const SECRET_KEY = "territorial-secret-key"; 
+
+// Initialize Firebase Admin
+if (process.env.FIREBASE_PROJECT_ID) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
+  });
+}
 
 // Database initialization
 const db = new Database("game.db");
+
+// Migration: Add email and firebase_uid if they don't exist
+try {
+  db.exec("ALTER TABLE users ADD COLUMN email TEXT UNIQUE");
+} catch (e) {}
+try {
+  db.exec("ALTER TABLE users ADD COLUMN firebase_uid TEXT UNIQUE");
+} catch (e) {}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     username TEXT UNIQUE,
+    email TEXT UNIQUE,
+    firebase_uid TEXT UNIQUE,
     password TEXT,
     money INTEGER DEFAULT 1000,
     energy INTEGER DEFAULT 100,
@@ -134,6 +156,44 @@ app.post("/api/login", (req, res) => {
 app.post("/api/logout", (req, res) => {
   res.clearCookie("token");
   res.json({ success: true });
+});
+
+// Firebase Auth Route
+app.post("/api/auth/firebase", async (req, res) => {
+  const { idToken, username } = req.body;
+  if (!idToken) return res.status(400).json({ error: "Missing ID token" });
+
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const { uid, email, name } = decodedToken;
+
+    let user = db.prepare("SELECT * FROM users WHERE firebase_uid = ?").get(uid) as any;
+
+    if (!user) {
+      // Create new user
+      const id = Math.random().toString(36).substring(2, 9);
+      const finalUsername = username || name || email?.split('@')[0] || `user_${id}`;
+      
+      try {
+        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate) VALUES (?, ?, ?, ?, ?)")
+          .run(id, finalUsername, email, uid, Date.now());
+        user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      } catch (err) {
+        // If username exists, try with suffix
+        const altUsername = `${finalUsername}_${id}`;
+        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate) VALUES (?, ?, ?, ?, ?)")
+          .run(id, altUsername, email, uid, Date.now());
+        user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
+      }
+    }
+
+    const token = jwt.sign({ id: user.id }, SECRET_KEY);
+    res.cookie("token", token, { httpOnly: true, secure: true, sameSite: "none" });
+    res.json({ success: true });
+  } catch (err) {
+    console.error("Firebase auth error:", err);
+    res.status(401).json({ error: "Invalid Firebase token" });
+  }
 });
 
 // Game Routes

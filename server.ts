@@ -47,20 +47,77 @@ db.exec(`
     money INTEGER DEFAULT 1000,
     energy INTEGER DEFAULT 100,
     influence INTEGER DEFAULT 0,
-    reputation INTEGER DEFAULT 0,
-    regionId INTEGER DEFAULT 1,
-    lastEnergyUpdate INTEGER
+    regionId TEXT DEFAULT 'IT',
+    lastEnergyUpdate INTEGER,
+    xp INTEGER DEFAULT 0,
+    level INTEGER DEFAULT 1,
+    perkPoints INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS perks (
+    userId TEXT,
+    perkId TEXT,
+    level INTEGER DEFAULT 0,
+    PRIMARY KEY(userId, perkId),
+    FOREIGN KEY(userId) REFERENCES users(id)
   );
 
   CREATE TABLE IF NOT EXISTS regions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT PRIMARY KEY, -- ISO Code
     name TEXT UNIQUE,
-    population INTEGER DEFAULT 100000,
+    population INTEGER DEFAULT 1000000,
     resources INTEGER DEFAULT 50,
     stability INTEGER DEFAULT 100,
     taxes INTEGER DEFAULT 10,
     ownerId TEXT,
     FOREIGN KEY(ownerId) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS factories (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    type TEXT,
+    payoutMoney INTEGER,
+    energyCost INTEGER,
+    cooldownSec INTEGER,
+    minLevel INTEGER DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS user_factory_cooldowns (
+    userId TEXT,
+    factoryId TEXT,
+    lastUsed INTEGER,
+    PRIMARY KEY(userId, factoryId),
+    FOREIGN KEY(userId) REFERENCES users(id),
+    FOREIGN KEY(factoryId) REFERENCES factories(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS articles (
+    id TEXT PRIMARY KEY,
+    authorId TEXT,
+    authorName TEXT,
+    title TEXT,
+    content TEXT,
+    createdAt INTEGER,
+    updatedAt INTEGER,
+    likeCount INTEGER DEFAULT 0,
+    FOREIGN KEY(authorId) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS wars (
+    id TEXT PRIMARY KEY,
+    attackerCountryIso2 TEXT,
+    defenderCountryIso2 TEXT,
+    attackerUserId TEXT,
+    defenderUserId TEXT,
+    status TEXT, -- 'active' | 'ended'
+    startedAt INTEGER,
+    endsAt INTEGER,
+    attackerScore INTEGER DEFAULT 0,
+    defenderScore INTEGER DEFAULT 0,
+    lastEventAt INTEGER,
+    FOREIGN KEY(attackerUserId) REFERENCES users(id),
+    FOREIGN KEY(defenderUserId) REFERENCES users(id)
   );
 
   CREATE TABLE IF NOT EXISTS action_logs (
@@ -84,19 +141,77 @@ db.exec(`
 // Seed initial regions if empty
 const regionCount = db.prepare("SELECT COUNT(*) as count FROM regions").get() as { count: number };
 if (regionCount.count === 0) {
-  const regions = [
-    { name: "Nordia", population: 120000, resources: 60 },
-    { name: "Sudoria", population: 90000, resources: 40 },
-    { name: "Estia", population: 150000, resources: 70 },
-    { name: "Vestia", population: 110000, resources: 55 },
-    { name: "Centria", population: 200000, resources: 80 },
+  const countries = [
+    { id: 'IT', name: "Italy", population: 60000000 },
+    { id: 'FR', name: "France", population: 67000000 },
+    { id: 'DE', name: "Germany", population: 83000000 },
+    { id: 'ES', name: "Spain", population: 47000000 },
+    { id: 'UK', name: "United Kingdom", population: 67000000 },
+    { id: 'US', name: "United States", population: 331000000 },
+    { id: 'CA', name: "Canada", population: 38000000 },
+    { id: 'BR', name: "Brazil", population: 212000000 },
+    { id: 'JP', name: "Japan", population: 126000000 },
+    { id: 'CN', name: "China", population: 1400000000 },
+    { id: 'IN', name: "India", population: 1380000000 },
+    { id: 'RU', name: "Russia", population: 1440000000 },
+    { id: 'AU', name: "Australia", population: 25000000 },
+    { id: 'ZA', name: "South Africa", population: 59000000 },
+    { id: 'MX', name: "Mexico", population: 128000000 },
+    { id: 'AR', name: "Argentina", population: 45000000 },
+    { id: 'EG', name: "Egypt", population: 102000000 },
+    { id: 'NG', name: "Nigeria", population: 206000000 },
+    { id: 'TR', name: "Turkey", population: 84000000 },
+    { id: 'KR', name: "South Korea", population: 51000000 },
   ];
-  const insertRegion = db.prepare("INSERT INTO regions (name, population, resources) VALUES (?, ?, ?)");
-  regions.forEach(r => insertRegion.run(r.name, r.population, r.resources));
+  const insertRegion = db.prepare("INSERT INTO regions (id, name, population, resources) VALUES (?, ?, ?, ?)");
+  countries.forEach(c => insertRegion.run(c.id, c.name, c.population, 50));
+}
+
+// Seed factories if empty
+const factoryCount = db.prepare("SELECT COUNT(*) as count FROM factories").get() as { count: number };
+if (factoryCount.count === 0) {
+  const initialFactories = [
+    { id: 'f1', name: "Piccola Officina", type: "Manifattura", payoutMoney: 120, energyCost: 10, cooldownSec: 60, minLevel: 1 },
+    { id: 'f2', name: "Fattoria Locale", type: "Agricoltura", payoutMoney: 150, energyCost: 12, cooldownSec: 120, minLevel: 2 },
+    { id: 'f3', name: "Miniera di Ferro", type: "Estrazione", payoutMoney: 300, energyCost: 20, cooldownSec: 300, minLevel: 5 },
+    { id: 'f4', name: "Fabbrica di Munizioni", type: "Militare", payoutMoney: 500, energyCost: 30, cooldownSec: 600, minLevel: 10 },
+  ];
+  const insertFactory = db.prepare("INSERT INTO factories (id, name, type, payoutMoney, energyCost, cooldownSec, minLevel) VALUES (?, ?, ?, ?, ?, ?, ?)");
+  initialFactories.forEach(f => insertFactory.run(f.id, f.name, f.type, f.payoutMoney, f.energyCost, f.cooldownSec, f.minLevel));
 }
 
 app.use(express.json());
 app.use(cookieParser());
+
+// Helper to get user perks
+const getUserPerks = (userId: string) => {
+  const perks = db.prepare("SELECT perkId, level FROM perks WHERE userId = ?").all(userId) as { perkId: string, level: number }[];
+  const perkMap: Record<string, number> = {};
+  perks.forEach(p => perkMap[p.perkId] = p.level);
+  return perkMap;
+};
+
+// Helper to calculate XP and Level Up
+const addXP = (userId: string, amount: number) => {
+  const user = db.prepare("SELECT xp, level, perkPoints FROM users WHERE id = ?").get(userId) as any;
+  let newXP = user.xp + amount;
+  let newLevel = user.level;
+  let newPerkPoints = user.perkPoints;
+
+  let xpNeeded = Math.floor(GAME_CONFIG.LEVEL_UP_BASE_XP * Math.pow(GAME_CONFIG.LEVEL_UP_FACTOR, newLevel - 1));
+  
+  while (newXP >= xpNeeded) {
+    newXP -= xpNeeded;
+    newLevel++;
+    newPerkPoints += 2; // 2 points per level
+    xpNeeded = Math.floor(GAME_CONFIG.LEVEL_UP_BASE_XP * Math.pow(GAME_CONFIG.LEVEL_UP_FACTOR, newLevel - 1));
+  }
+
+  db.prepare("UPDATE users SET xp = ?, level = ?, perkPoints = ? WHERE id = ?")
+    .run(newXP, newLevel, newPerkPoints, userId);
+  
+  return { newXP, newLevel, newPerkPoints };
+};
 
 // Middleware to verify JWT and update energy
 const authenticate = (req: any, res: any, next: any) => {
@@ -109,18 +224,25 @@ const authenticate = (req: any, res: any, next: any) => {
     if (!user) return res.status(401).json({ error: "User not found" });
 
     // Energy regeneration logic
+    const perks = getUserPerks(user.id);
+    const regenBonus = (perks['regen_boost'] || 0) * 5;
+    const maxEnergy = GAME_CONFIG.ENERGY_MAX; // Fixed max energy for now
+    const regenRate = GAME_CONFIG.ENERGY_REGEN_RATE + regenBonus;
+
     const now = Date.now();
     const hoursPassed = (now - user.lastEnergyUpdate) / (1000 * 60 * 60);
-    const regen = Math.floor(hoursPassed * GAME_CONFIG.ENERGY_REGEN_RATE);
+    const regen = Math.floor(hoursPassed * regenRate);
     
     if (regen > 0) {
-      const newEnergy = Math.min(GAME_CONFIG.ENERGY_MAX, user.energy + regen);
+      const newEnergy = Math.min(maxEnergy, user.energy + regen);
       db.prepare("UPDATE users SET energy = ?, lastEnergyUpdate = ? WHERE id = ?")
         .run(newEnergy, now, user.id);
       user.energy = newEnergy;
       user.lastEnergyUpdate = now;
     }
 
+    user.perks = perks;
+    user.maxEnergy = maxEnergy;
     req.user = user;
     next();
   } catch (err) {
@@ -237,32 +359,70 @@ const updateCooldown = (userId: string, actionType: string) => {
 
 app.post("/api/actions/work", authenticate, (req: any, res) => {
   const user = req.user;
-  if (user.energy < GAME_CONFIG.WORK_ENERGY_COST) return res.status(400).json({ error: "Not enough energy" });
-  if (!checkCooldown(user.id, "work", GAME_CONFIG.WORK_COOLDOWN)) return res.status(400).json({ error: "Action on cooldown" });
-
-  const earnings = 100 + Math.floor(Math.random() * 50);
-  db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?")
-    .run(earnings, GAME_CONFIG.WORK_ENERGY_COST, user.id);
+  const { factoryId } = req.body;
+  const perks = user.perks;
   
-  updateCooldown(user.id, "work");
-  db.prepare("INSERT INTO action_logs (userId, action, details, timestamp) VALUES (?, ?, ?, ?)")
-    .run(user.id, "Work", `Earned $${earnings}`, Date.now());
+  const factory = db.prepare("SELECT * FROM factories WHERE id = ?").get(factoryId) as any;
+  if (!factory) return res.status(404).json({ error: "Factory not found" });
+  if (user.level < factory.minLevel) return res.status(400).json({ error: "Level too low" });
 
+  const lastWork = db.prepare("SELECT lastUsed FROM user_factory_cooldowns WHERE userId = ? AND factoryId = ?")
+    .get(user.id, factoryId) as { lastUsed: number } | undefined;
+  
+  if (lastWork && Date.now() - lastWork.lastUsed < factory.cooldownSec * 1000) {
+    return res.status(400).json({ error: "Factory on cooldown" });
+  }
+
+  const energyEfficiency = (perks['energy_efficiency'] || 0) * 0.05;
+  const energyCost = Math.ceil(factory.energyCost * (1 - energyEfficiency));
+  
+  if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
+
+  const workBoost = (perks['work_boost'] || 0) * 0.1;
+  const earnings = Math.floor(factory.payoutMoney * (1 + workBoost));
+
+  db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?")
+    .run(earnings, energyCost, user.id);
+  
+  db.prepare("INSERT OR REPLACE INTO user_factory_cooldowns (userId, factoryId, lastUsed) VALUES (?, ?, ?)")
+    .run(user.id, factoryId, Date.now());
+
+  addXP(user.id, GAME_CONFIG.XP_PER_WORK);
+  
   res.json({ success: true, earnings });
+});
+
+app.get("/api/factories", authenticate, (req: any, res) => {
+  const factories = db.prepare("SELECT * FROM factories").all() as any[];
+  const cooldowns = db.prepare("SELECT factoryId, lastUsed FROM user_factory_cooldowns WHERE userId = ?").all(req.user.id) as any[];
+  
+  const factoriesWithCooldown = factories.map(f => {
+    const cd = cooldowns.find(c => c.factoryId === f.id);
+    const remaining = cd ? Math.max(0, (f.cooldownSec * 1000) - (Date.now() - cd.lastUsed)) : 0;
+    return { ...f, remainingCooldown: remaining };
+  });
+
+  res.json(factoriesWithCooldown);
 });
 
 app.post("/api/actions/propaganda", authenticate, (req: any, res) => {
   const user = req.user;
-  if (user.energy < GAME_CONFIG.PROPAGANDA_ENERGY_COST) return res.status(400).json({ error: "Not enough energy" });
+  const perks = user.perks;
+
+  const energyEfficiency = (perks['energy_efficiency'] || 0) * 0.05;
+  const energyCost = Math.ceil(GAME_CONFIG.PROPAGANDA_ENERGY_COST * (1 - energyEfficiency));
+
+  if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
   if (!checkCooldown(user.id, "propaganda", GAME_CONFIG.PROPAGANDA_COOLDOWN)) return res.status(400).json({ error: "Action on cooldown" });
 
-  const influenceGain = 5 + Math.floor(Math.random() * 5);
+  const baseInfluence = 5 + Math.floor(Math.random() * 5);
+  const influenceGain = baseInfluence; // Removed propaganda_boost perk
+
   db.prepare("UPDATE users SET influence = influence + ?, energy = energy - ? WHERE id = ?")
-    .run(influenceGain, GAME_CONFIG.PROPAGANDA_ENERGY_COST, user.id);
+    .run(influenceGain, energyCost, user.id);
   
+  addXP(user.id, GAME_CONFIG.XP_PER_PROPAGANDA);
   updateCooldown(user.id, "propaganda");
-  db.prepare("INSERT INTO action_logs (userId, action, details, timestamp) VALUES (?, ?, ?, ?)")
-    .run(user.id, "Propaganda", `Gained ${influenceGain} influence`, Date.now());
 
   res.json({ success: true, influenceGain });
 });
@@ -270,17 +430,21 @@ app.post("/api/actions/propaganda", authenticate, (req: any, res) => {
 app.post("/api/actions/invest", authenticate, (req: any, res) => {
   const user = req.user;
   const { regionId } = req.body;
-  if (user.money < GAME_CONFIG.INVEST_MONEY_COST) return res.status(400).json({ error: "Not enough money" });
-  if (user.energy < GAME_CONFIG.INVEST_ENERGY_COST) return res.status(400).json({ error: "Not enough energy" });
+  const perks = user.perks;
+
+  const moneyCost = GAME_CONFIG.INVEST_MONEY_COST;
+  
+  const energyEfficiency = (perks['energy_efficiency'] || 0) * 0.05;
+  const energyCost = Math.ceil(GAME_CONFIG.INVEST_ENERGY_COST * (1 - energyEfficiency));
+
+  if (user.money < moneyCost) return res.status(400).json({ error: "Not enough money" });
+  if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
   db.prepare("UPDATE users SET money = money - ?, energy = energy - ? WHERE id = ?")
-    .run(GAME_CONFIG.INVEST_MONEY_COST, GAME_CONFIG.INVEST_ENERGY_COST, user.id);
+    .run(moneyCost, energyCost, user.id);
   
   db.prepare("UPDATE regions SET stability = MIN(100, stability + 5), population = population + 1000 WHERE id = ?")
     .run(regionId);
-
-  db.prepare("INSERT INTO action_logs (userId, action, details, timestamp) VALUES (?, ?, ?, ?)")
-    .run(user.id, "Invest", `Invested in region ${regionId}`, Date.now());
 
   res.json({ success: true });
 });
@@ -288,39 +452,132 @@ app.post("/api/actions/invest", authenticate, (req: any, res) => {
 app.post("/api/actions/attack", authenticate, (req: any, res) => {
   const user = req.user;
   const { regionId } = req.body;
-  if (user.energy < GAME_CONFIG.ATTACK_ENERGY_COST) return res.status(400).json({ error: "Not enough energy" });
+  const perks = user.perks;
+
+  const energyEfficiency = (perks['energy_efficiency'] || 0) * 0.05;
+  const energyCost = Math.ceil(GAME_CONFIG.ATTACK_ENERGY_COST * (1 - energyEfficiency));
+
+  if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
   if (!checkCooldown(user.id, "attack", GAME_CONFIG.ATTACK_COOLDOWN)) return res.status(400).json({ error: "Action on cooldown" });
 
   const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(regionId) as any;
   if (!region) return res.status(404).json({ error: "Region not found" });
 
-  // Simple deterministic attack logic
-  const winProbability = 0.3 + (user.influence / 1000);
+  const warTactics = (perks['war_tactics'] || 0) * 0.05;
+  const winProbability = Math.min(0.9, 0.3 + (user.influence / 1000) + warTactics);
   const success = Math.random() < winProbability;
 
   db.prepare("UPDATE users SET energy = energy - ? WHERE id = ?")
-    .run(GAME_CONFIG.ATTACK_ENERGY_COST, user.id);
+    .run(energyCost, user.id);
 
-  let details = "";
   if (success) {
     db.prepare("UPDATE regions SET ownerId = ?, stability = stability - 20 WHERE id = ?")
       .run(user.id, regionId);
-    db.prepare("UPDATE users SET reputation = reputation + 10 WHERE id = ?").run(user.id);
-    details = `Successful attack on ${region.name}. Region captured!`;
+    
+    // Create a war entry
+    const warId = Math.random().toString(36).substring(2, 9);
+    db.prepare(`
+      INSERT INTO wars (id, attackerCountryIso2, defenderCountryIso2, attackerUserId, defenderUserId, status, startedAt, endsAt, attackerScore, defenderScore, lastEventAt)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(warId, user.regionId, regionId, user.id, region.ownerId, 'ended', Date.now(), Date.now(), 100, 0, Date.now());
+
+    addXP(user.id, GAME_CONFIG.XP_PER_ATTACK);
   } else {
-    db.prepare("UPDATE users SET reputation = reputation - 5 WHERE id = ?").run(user.id);
-    details = `Failed attack on ${region.name}.`;
+    addXP(user.id, Math.floor(GAME_CONFIG.XP_PER_ATTACK / 2));
   }
 
   updateCooldown(user.id, "attack");
-  db.prepare("INSERT INTO action_logs (userId, action, details, timestamp) VALUES (?, ?, ?, ?)")
-    .run(user.id, "Attack", details, Date.now());
+  res.json({ success });
+});
 
-  res.json({ success, details });
+// Articles API
+app.get("/api/articles", authenticate, (req, res) => {
+  const articles = db.prepare("SELECT * FROM articles ORDER BY createdAt DESC LIMIT 50").all();
+  res.json(articles);
+});
+
+app.get("/api/articles/:id", authenticate, (req, res) => {
+  const article = db.prepare("SELECT * FROM articles WHERE id = ?").get(req.params.id);
+  if (!article) return res.status(404).json({ error: "Article not found" });
+  res.json(article);
+});
+
+app.post("/api/articles", authenticate, (req: any, res) => {
+  const { title, content } = req.body;
+  if (!title || !content) return res.status(400).json({ error: "Title and content required" });
+
+  // Rate limit: max 5 per hour
+  const oneHourAgo = Date.now() - (60 * 60 * 1000);
+  const count = db.prepare("SELECT COUNT(*) as count FROM articles WHERE authorId = ? AND createdAt > ?")
+    .get(req.user.id, oneHourAgo) as { count: number };
+  
+  if (count.count >= 5) return res.status(429).json({ error: "Rate limit exceeded (max 5 articles per hour)" });
+
+  const id = Math.random().toString(36).substring(2, 9);
+  const now = Date.now();
+  db.prepare("INSERT INTO articles (id, authorId, authorName, title, content, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(id, req.user.id, req.user.username, title, content, now, now);
+  
+  res.json({ success: true, id });
+});
+
+app.put("/api/articles/:id", authenticate, (req: any, res) => {
+  const { title, content } = req.body;
+  const article = db.prepare("SELECT authorId FROM articles WHERE id = ?").get(req.params.id) as any;
+  if (!article) return res.status(404).json({ error: "Article not found" });
+  if (article.authorId !== req.user.id) return res.status(403).json({ error: "Forbidden" });
+
+  db.prepare("UPDATE articles SET title = ?, content = ?, updatedAt = ? WHERE id = ?")
+    .run(title, content, Date.now(), req.params.id);
+  
+  res.json({ success: true });
+});
+
+app.delete("/api/articles/:id", authenticate, (req: any, res) => {
+  const article = db.prepare("SELECT authorId FROM articles WHERE id = ?").get(req.params.id) as any;
+  if (!article) return res.status(404).json({ error: "Article not found" });
+  if (article.authorId !== req.user.id) return res.status(403).json({ error: "Forbidden" });
+
+  db.prepare("DELETE FROM articles WHERE id = ?").run(req.params.id);
+  res.json({ success: true });
+});
+
+// Wars API
+app.get("/api/wars", authenticate, (req, res) => {
+  const active = db.prepare("SELECT * FROM wars WHERE status = 'active' ORDER BY startedAt DESC").all();
+  const ended = db.prepare("SELECT * FROM wars WHERE status = 'ended' ORDER BY endsAt DESC LIMIT 20").all();
+  res.json({ active, ended });
+});
+
+app.get("/api/wars/:id", authenticate, (req, res) => {
+  const war = db.prepare("SELECT * FROM wars WHERE id = ?").get(req.params.id);
+  if (!war) return res.status(404).json({ error: "War not found" });
+  res.json(war);
+});
+
+app.post("/api/profile/upgrade-perk", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { perkId } = req.body;
+
+  const currentLevel = user.perks[perkId] || 0;
+  // Progressive cost: 1 + currentLevel
+  const cost = 1 + currentLevel;
+
+  if (user.perkPoints < cost) {
+    return res.status(400).json({ error: `Punti perk insufficienti. Necessari: ${cost}` });
+  }
+
+  db.prepare("INSERT OR REPLACE INTO perks (userId, perkId, level) VALUES (?, ?, ?)")
+    .run(user.id, perkId, currentLevel + 1);
+  
+  db.prepare("UPDATE users SET perkPoints = perkPoints - ? WHERE id = ?")
+    .run(cost, user.id);
+
+  res.json({ success: true, newLevel: currentLevel + 1, cost });
 });
 
 app.get("/api/leaderboard", authenticate, (req, res) => {
-  const leaders = db.prepare("SELECT username, influence, reputation, money FROM users ORDER BY influence DESC LIMIT 10").all();
+  const leaders = db.prepare("SELECT username, influence, money FROM users ORDER BY influence DESC LIMIT 10").all();
   res.json(leaders);
 });
 

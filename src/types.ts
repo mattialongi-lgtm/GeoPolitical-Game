@@ -6,7 +6,8 @@
 export interface User {
   id: string;
   username: string;
-  money: number;
+  money: number; // Acts as Cash
+  gold: number;  // Premium currency
   energy: number;
   influence: number;
   regionId: string; // ISO code
@@ -14,6 +15,8 @@ export interface User {
   xp: number;
   level: number;
   perkPoints: number;
+  perks?: Record<string, number>;
+  perkUpgrades?: Record<string, { startedAt: number, willCompleteAt: number, targetLevel: number }>;
 }
 
 export interface Perk {
@@ -28,11 +31,20 @@ export interface Region {
   id: string; // ISO Code
   name: string;
   population: number;
-  resources: number;
-  stability: number;
-  taxes: number;
-  ownerId: string | null;
+  stability: number; // 1-10
+  treasury: number;
+  economyLevel: number; // 1-10
+  health: number; // 1-10
+  education: number; // 1-10
+  military: number; // 1-10
+  ownerUserId: string | null;
   ownerName: string | null;
+  factoriesCount: number;
+  // Game Stats (legacy or from Firestore)
+  power?: number;
+  economy?: number;
+  resources?: { type: string, amount: number }[] | any;
+  taxRate?: number;
 }
 
 export interface Factory {
@@ -89,8 +101,8 @@ export const GAME_CONFIG = {
 };
 
 export const PERKS_DEFS = [
-  { id: "work_boost", name: "Work Boost", description: "Increases money earned from work by 10% per level.", baseEffect: 0.1 },
-  { id: "energy_efficiency", name: "Energy Efficiency", description: "Reduces energy cost of actions by 5% per level.", baseEffect: 0.05 },
-  { id: "regen_boost", name: "Regen Boost", description: "Increases energy regeneration by 5 per hour per level.", baseEffect: 5 },
-  { id: "war_tactics", name: "War Tactics", description: "Increases war score and attack chance by 5% per level.", baseEffect: 0.05 },
+  { id: "FORZA", name: "FORZA", description: "Aumenta efficacia in guerra (+5% war score per livello)", baseEffect: 0.05, baseCost: 500, baseGoldCost: 10, timeBaseSeconds: 60 },
+  { id: "EDUCAZIONE", name: "EDUCAZIONE", description: "Aumenta guadagni da lavoro (+10% money per livello)", baseEffect: 0.1, baseCost: 500, baseGoldCost: 10, timeBaseSeconds: 60 },
+  { id: "INDUSTRIA", name: "INDUSTRIA", description: "Riduce costo energia delle azioni (-5% energy cost)", baseEffect: 0.05, baseCost: 500, baseGoldCost: 10, timeBaseSeconds: 60 },
+  { id: "LOGISTICA", name: "LOGISTICA", description: "Aumenta rigenerazione energia (+5 energia/ora per livello)", baseEffect: 5, baseCost: 500, baseGoldCost: 10, timeBaseSeconds: 60 },
 ];

@@ -3,13 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+console.log("Starting server.ts...");
+
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import * as admin from "firebase-admin";
-import { GAME_CONFIG, PERKS_DEFS } from "./src/types";
+import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG } from "./src/types";
 import { getFirestore } from "firebase-admin/firestore";
 
 const app = express();
@@ -74,24 +76,75 @@ if (process.env.FIREBASE_PROJECT_ID) {
 }
 
 // Database initialization
-const db = new Database("game.db");
+let db: Database.Database;
+try {
+  db = new Database("game.db");
+  console.log("Database connection successful.");
+
+  // Handle graceful shutdown to release database locks
+  const shutdown = () => {
+    console.log("Shutting down safely...");
+    if (db) {
+      try { db.close(); } catch (e) { }
+    }
+    process.exit(0);
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+} catch (err) {
+  console.error("FATAL ERROR: Failed to open database 'game.db'. Is it locked by another process?", err);
+  process.exit(1);
+}
 
 // Migration: Add email and firebase_uid if they don't exist
+const addColumnIfMissing = (table: string, column: string, type: string) => {
+  try {
+    const info = db.pragma(`table_info(${table})`) as any[];
+    if (!info.find(c => c.name === column)) {
+      db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`);
+      console.log(`Migration SUCCESS: Added ${column} to ${table}`);
+    }
+  } catch (e: any) {
+    console.error(`Migration ERROR [${table}.${column}]:`, e.message);
+  }
+};
+
+addColumnIfMissing("users", "email", "TEXT UNIQUE");
+addColumnIfMissing("users", "firebase_uid", "TEXT UNIQUE");
+addColumnIfMissing("users", "gold", "INTEGER DEFAULT 0");
+addColumnIfMissing("users", "avatarData", "TEXT");
+addColumnIfMissing("users", "perkUpgradesJson", "TEXT DEFAULT '{}'");
+addColumnIfMissing("users", "boostersJson", "TEXT DEFAULT '{}'");
+addColumnIfMissing("player_factories", "regionId", "TEXT");
+
+// Regions migrations
+addColumnIfMissing("regions", "treasury", "INTEGER DEFAULT 0");
+addColumnIfMissing("regions", "economyLevel", "INTEGER DEFAULT 1");
+addColumnIfMissing("regions", "health", "INTEGER DEFAULT 1");
+addColumnIfMissing("regions", "education", "INTEGER DEFAULT 1");
+addColumnIfMissing("regions", "military", "INTEGER DEFAULT 1");
+
+// Rename ownerId to ownerUserId if needed
 try {
-  db.exec("ALTER TABLE users ADD COLUMN email TEXT UNIQUE");
-} catch (e) { }
-try {
-  db.exec("ALTER TABLE users ADD COLUMN firebase_uid TEXT UNIQUE");
+  const info = db.pragma("table_info(regions)") as any[];
+  if (info.find(c => c.name === "ownerId") && !info.find(c => c.name === "ownerUserId")) {
+    db.exec("ALTER TABLE regions RENAME COLUMN ownerId TO ownerUserId");
+    console.log("Migration SUCCESS: renamed regions.ownerId to ownerUserId");
+  }
 } catch (e) { }
 
 // Perks Migration: Rename old IDs to new ones
 try {
   db.prepare("UPDATE perks SET perkId = 'FORZA' WHERE perkId = 'war_tactics'").run();
-  db.prepare("UPDATE perks SET perkId = 'EDUCAZIONE' WHERE perkId = 'work_boost'").run();
-  db.prepare("UPDATE perks SET perkId = 'INDUSTRIA' WHERE perkId = 'energy_efficiency'").run();
-  db.prepare("UPDATE perks SET perkId = 'LOGISTICA' WHERE perkId = 'regen_boost'").run();
+  db.prepare("UPDATE perks SET perkId = 'ISTRUZIONE' WHERE perkId = 'work_boost'").run();
+  db.prepare("UPDATE perks SET perkId = 'RESISTENZA' WHERE perkId = 'regen_boost'").run();
+  // Rename from intermediate IDs
+  db.prepare("UPDATE perks SET perkId = 'ISTRUZIONE' WHERE perkId = 'EDUCAZIONE'").run();
+  db.prepare("UPDATE perks SET perkId = 'RESISTENZA' WHERE perkId = 'LOGISTICA'").run();
+  // Remove obsolete INDUSTRIA perk (now incorporated or deleted)
+  db.prepare("DELETE FROM perks WHERE perkId = 'INDUSTRIA' OR perkId = 'energy_efficiency'").run();
 } catch (e) {
-  console.error("Migration error:", e);
+  console.error("Migration error (perks rename):", e);
 }
 
 // Gold currency migration
@@ -103,6 +156,17 @@ try {
 try {
   db.exec("ALTER TABLE users ADD COLUMN avatarData TEXT");
 } catch (e) { }
+
+// perkUpgradesJson migration — stores active upgrade timers locally
+try {
+  db.exec("ALTER TABLE users ADD COLUMN perkUpgradesJson TEXT DEFAULT '{}'");
+} catch (e) { }
+
+// boostersJson migration — stores active boosters and cooldowns
+try {
+  db.exec("ALTER TABLE users ADD COLUMN boostersJson TEXT DEFAULT '{}'");
+} catch (e) { }
+
 
 // Fix user_factory_cooldowns FK issue by recreating if needed or just ignoring if already fixed
 try {
@@ -140,29 +204,6 @@ try {
 try {
   db.exec("ALTER TABLE player_factories ADD COLUMN regionId TEXT");
 } catch (e) { }
-
-// Regions refactor migrations
-const runMigration = (cmd: string, label: string) => {
-  try {
-    db.exec(cmd);
-    console.log(`Migration SUCCESS: ${label}`);
-  } catch (e: any) {
-    if (e.message.includes("duplicate column name") || e.message.includes("already exists")) {
-      console.log(`Migration SKIPPED (already exists): ${label}`);
-    } else {
-      console.error(`Migration ERROR [${label}]:`, e.message);
-    }
-  }
-};
-
-runMigration("ALTER TABLE regions ADD COLUMN treasury INTEGER DEFAULT 0", "regions.treasury");
-runMigration("ALTER TABLE regions ADD COLUMN economyLevel INTEGER DEFAULT 1", "regions.economyLevel");
-runMigration("ALTER TABLE regions ADD COLUMN health INTEGER DEFAULT 1", "regions.health");
-runMigration("ALTER TABLE regions ADD COLUMN education INTEGER DEFAULT 1", "regions.education");
-runMigration("ALTER TABLE regions ADD COLUMN military INTEGER DEFAULT 1", "regions.military");
-runMigration("ALTER TABLE regions RENAME COLUMN ownerId TO ownerUserId", "regions.ownerId -> ownerUserId");
-runMigration("UPDATE regions SET stability = 10 WHERE stability > 10", "normalize stability");
-runMigration("ALTER TABLE player_factories ADD COLUMN regionId TEXT", "player_factories.regionId");
 
 // User requests: 10000 cash and 10000 gold
 try {
@@ -333,11 +374,22 @@ if (factoryCount.count === 0) {
 app.use(express.json());
 app.use(cookieParser());
 
-// Helper to get user perks
-const getUserPerks = (userId: string) => {
+// Helper to get user perks, including active boosters
+const getUserPerks = (userId: string, boosterInfo?: Record<string, any>) => {
   const perks = db.prepare("SELECT perkId, level FROM perks WHERE userId = ?").all(userId) as { perkId: string, level: number }[];
   const perkMap: Record<string, number> = {};
   perks.forEach(p => perkMap[p.perkId] = p.level);
+
+  // Apply booster bonus (+100) if active
+  if (boosterInfo) {
+    const now = Date.now();
+    for (const [pId, booster] of Object.entries(boosterInfo)) {
+      if (booster.expiresAt > now) {
+        perkMap[pId] = (perkMap[pId] || 0) + BOOSTER_CONFIG.BONUS_POINTS;
+      }
+    }
+  }
+
   return perkMap;
 };
 
@@ -373,13 +425,30 @@ const authenticate = async (req: any, res: any, next: any) => {
     const user = db.prepare("SELECT * FROM users WHERE id = ?").get(decoded.id) as any;
     if (!user) return res.status(401).json({ error: "User not found" });
 
+    // Booster logic
+    let activeBoosters: Record<string, any> = {};
+    try {
+      activeBoosters = JSON.parse(user.boostersJson || '{}');
+    } catch { activeBoosters = {}; }
+
+    // Clean up expired boosters
+    let boostersChanged = false;
+    const now = Date.now();
+    for (const pId in activeBoosters) {
+      if (activeBoosters[pId].expiresAt <= now) {
+        // We don't necessarily delete them as they might still be in cooldown phase
+        // but they are no longer "active" for perk calculation. 
+        // For now, let's just keep them for cooldown tracking.
+      }
+    }
+
     // Energy regeneration logic
-    const perks = getUserPerks(user.id);
-    const regenBonus = (perks['LOGISTICA'] || 0) * 5;
+    const perks = getUserPerks(user.id, activeBoosters);
+    // RESISTENZA bonus for energy regen
+    const regenBonus = (perks['RESISTENZA'] || 0) * 5;
     const maxEnergy = GAME_CONFIG.ENERGY_MAX; // Fixed max energy for now
     const regenRate = GAME_CONFIG.ENERGY_REGEN_RATE + regenBonus;
 
-    const now = Date.now();
     const hoursPassed = (now - user.lastEnergyUpdate) / (1000 * 60 * 60);
     const regen = Math.floor(hoursPassed * regenRate);
 
@@ -392,43 +461,61 @@ const authenticate = async (req: any, res: any, next: any) => {
     }
 
     user.perks = perks;
+    user.boosters = activeBoosters;
     user.maxEnergy = maxEnergy;
 
-    // Check Perk completion-on-read in Firestore
+    // ----- Perk Upgrade Timers (SQLite-based, Firestore optional sync) -----
+    let perkUpgrades: Record<string, any> = {};
+    try {
+      perkUpgrades = JSON.parse(user.perkUpgradesJson || '{}');
+    } catch { perkUpgrades = {}; }
+
+    // Check for completed upgrades
+    let upgradesChanged = false;
+    for (const [pId, upg] of Object.entries(perkUpgrades)) {
+      const upgrade = upg as any;
+      const finishTime = typeof upgrade.willCompleteAt === 'number' ? upgrade.willCompleteAt : 0;
+      if (finishTime > 0 && finishTime <= now) {
+        db.prepare("INSERT OR REPLACE INTO perks (userId, perkId, level) VALUES (?, ?, ?)")
+          .run(user.id, pId, upgrade.targetLevel);
+        user.perks[pId] = upgrade.targetLevel;
+        delete perkUpgrades[pId];
+        upgradesChanged = true;
+      }
+    }
+
+    if (upgradesChanged) {
+      db.prepare("UPDATE users SET perkUpgradesJson = ? WHERE id = ?")
+        .run(JSON.stringify(perkUpgrades), user.id);
+    }
+
+    user.perkUpgrades = perkUpgrades;
+
+    // Optional: also sync to Firestore (best-effort, non-blocking)
     if (process.env.FIREBASE_PROJECT_ID) {
-      const fs = getFirestore();
-      const userRef = fs.collection("users").doc(user.id);
-      const doc = await userRef.get();
-      if (doc.exists) {
-        const data = doc.data();
-        let upgrades = data?.perkUpgrades || {};
-        let needsUpdate = false;
-
-        for (const [pId, upg] of Object.entries(upgrades)) {
-          const upgrade = upg as any;
-          if (upgrade.willCompleteAt <= now) {
-            // Upgrade finished! Apply locally and to DB
-            db.prepare("INSERT OR REPLACE INTO perks (userId, perkId, level) VALUES (?, ?, ?)")
-              .run(user.id, pId, upgrade.targetLevel);
-            user.perks[pId] = upgrade.targetLevel;
-
-            // It's safer to use transactions to avoid double applying, but since we update SQLite,
-            // we will handle it via optimistic UI/simple update for this assignment.
-            delete upgrades[pId];
-            needsUpdate = true;
+      try {
+        const fs = getFirestore();
+        const doc = await fs.collection("users").doc(user.id).get();
+        if (doc.exists) {
+          const fsUpgrades = doc.data()?.perkUpgrades || {};
+          // Merge any Firestore upgrades not already in SQLite
+          for (const [pId, fsUpg] of Object.entries(fsUpgrades)) {
+            if (!perkUpgrades[pId]) {
+              perkUpgrades[pId] = fsUpg;
+              upgradesChanged = true;
+            }
+          }
+          if (upgradesChanged) {
+            db.prepare("UPDATE users SET perkUpgradesJson = ? WHERE id = ?")
+              .run(JSON.stringify(perkUpgrades), user.id);
+            user.perkUpgrades = perkUpgrades;
           }
         }
-
-        if (needsUpdate) {
-          await userRef.update({ perkUpgrades: upgrades });
-        }
-        user.perkUpgrades = upgrades;
-      } else {
-        user.perkUpgrades = {};
+      } catch (fsErr) {
+        // Firestore read failure is non-critical — SQLite is the source of truth
       }
-    } else {
-      user.perkUpgrades = {};
     }
+    // ------ end perk upgrades ------
 
     req.user = user;
     next();
@@ -532,19 +619,32 @@ app.get("/api/regions/:id", authenticate, (req, res) => {
   res.json(region);
 });
 
-app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
+app.get("/api/countries/:iso2", async (req: any, res) => {
   const { iso2 } = req.params;
   if (!iso2 || iso2 === "-99") return res.status(400).json({ error: "Regione non disponibile" });
 
   try {
     // 1. Get base data from SQLite
-    const region = db.prepare(`
+    let region = db.prepare(`
       SELECT r.*, u.username as ownerName,
              (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
       FROM regions r 
       LEFT JOIN users u ON r.ownerUserId = u.id
       WHERE r.id = ?
     `).get(iso2.toUpperCase()) as any;
+
+    if (!region) {
+      // Auto-create the country with default values so any map click works
+      db.prepare("INSERT OR IGNORE INTO regions (id, name, population, resources, stability, health, education, military) VALUES (?, ?, ?, ?, 5, 1, 1, 1)")
+        .run(iso2.toUpperCase(), iso2.toUpperCase(), 1000000, 50);
+      region = db.prepare(`
+        SELECT r.*, u.username as ownerName,
+               (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
+        FROM regions r 
+        LEFT JOIN users u ON r.ownerUserId = u.id
+        WHERE r.id = ?
+      `).get(iso2.toUpperCase()) as any;
+    }
 
     if (!region) return res.status(404).json({ error: "Regione non trovata" });
 
@@ -676,13 +776,19 @@ app.post("/api/actions/work", authenticate, (req: any, res) => {
     return res.status(400).json({ error: "Factory on cooldown" });
   }
 
-  const energyEfficiency = (perks['INDUSTRIA'] || 0) * 0.05;
-  const energyCost = Math.ceil(factory.energyCost * (1 - energyEfficiency));
+  // RESISTENZA reduces energy cost — capped at level 50 for max -50% reduction
+  const resistenza = perks['RESISTENZA'] || 0;
+  const energyReduction = Math.min(0.5, resistenza / 100); // 0% at lv0, 50% at lv50+
+  const energyCost = Math.ceil(factory.energyCost * (1 - energyReduction));
 
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
-  const workBoost = (perks['EDUCAZIONE'] || 0) * 0.1;
-  const earnings = Math.floor(factory.payoutMoney * (1 + workBoost));
+  // FORZA boosts public factory productivity (+3% per level)
+  const forzaBoost = (perks['FORZA'] || 0) * 0.03;
+  const earnings = Math.floor(factory.payoutMoney * (1 + forzaBoost));
+
+  // ISTRUZIONE increases XP cap (each level adds 10 to XP per work)
+  const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
 
   db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?")
     .run(earnings, energyCost, user.id);
@@ -690,9 +796,9 @@ app.post("/api/actions/work", authenticate, (req: any, res) => {
   db.prepare("INSERT OR REPLACE INTO user_factory_cooldowns (userId, factoryId, lastUsed) VALUES (?, ?, ?)")
     .run(user.id, factoryId, Date.now());
 
-  addXP(user.id, GAME_CONFIG.XP_PER_WORK);
+  addXP(user.id, xpGain);
 
-  res.json({ success: true, earnings });
+  res.json({ success: true, earnings, energyCost, xpGain });
 });
 
 app.get("/api/factories", authenticate, (req: any, res) => {
@@ -715,7 +821,7 @@ app.post("/api/actions/propaganda", authenticate, (req: any, res) => {
 
   if (!regionId) return res.status(400).json({ error: "Region ID required" });
 
-  const energyEfficiency = (perks['INDUSTRIA'] || 0) * 0.05;
+  const energyEfficiency = (perks['RESISTENZA'] || 0) * 0.005; // 0.5% reduction per level
   const energyCost = Math.ceil(GAME_CONFIG.PROPAGANDA_ENERGY_COST * (1 - energyEfficiency));
 
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
@@ -743,7 +849,7 @@ app.post("/api/actions/invest", authenticate, async (req: any, res) => {
 
   const moneyCost = GAME_CONFIG.INVEST_MONEY_COST;
 
-  const energyEfficiency = (perks['INDUSTRIA'] || 0) * 0.05;
+  const energyEfficiency = (perks['RESISTENZA'] || 0) * 0.005;
   const energyCost = Math.ceil(GAME_CONFIG.INVEST_ENERGY_COST * (1 - energyEfficiency));
 
   if (user.money < moneyCost) return res.status(400).json({ error: "Not enough money" });
@@ -778,8 +884,10 @@ app.post("/api/actions/attack", authenticate, (req: any, res) => {
   const { regionId } = req.body;
   const perks = user.perks;
 
-  const energyEfficiency = (perks['INDUSTRIA'] || 0) * 0.05;
-  const energyCost = Math.ceil(GAME_CONFIG.ATTACK_ENERGY_COST * (1 - energyEfficiency));
+  // RESISTENZA reduces energy in war too (same formula as work, capped at lv50)
+  const resistenza = perks['RESISTENZA'] || 0;
+  const energyReduction = Math.min(0.5, resistenza / 100);
+  const energyCost = Math.ceil(GAME_CONFIG.ATTACK_ENERGY_COST * (1 - energyReduction));
 
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
   if (!checkCooldown(user.id, "attack", GAME_CONFIG.ATTACK_COOLDOWN)) return res.status(400).json({ error: "Action on cooldown" });
@@ -787,23 +895,33 @@ app.post("/api/actions/attack", authenticate, (req: any, res) => {
   const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(regionId) as any;
   if (!region) return res.status(404).json({ error: "Region not found" });
 
-  const warTactics = (perks['FORZA'] || 0) * 0.05;
-  const winProbability = Math.min(0.9, 0.3 + (user.influence / 1000) + warTactics);
+  // Combined damage formula: FORZA (+5%/lv) + ISTRUZIONE (+2%/lv) + RESISTENZA (+3%/lv)
+  const forzaBonus = (perks['FORZA'] || 0) * 0.05;
+  const istruzBonus = (perks['ISTRUZIONE'] || 0) * 0.02;
+  const resistBonus = (perks['RESISTENZA'] || 0) * 0.03;
+  const totalDmgBonus = forzaBonus + istruzBonus + resistBonus;
+
+  // Alpha-damage milestone bonuses for RESISTENZA (lv 50, 75, 100)
+  let alphaBonus = 0;
+  if (resistenza >= 50) alphaBonus += 0.10;
+  if (resistenza >= 75) alphaBonus += 0.10;
+  if (resistenza >= 100) alphaBonus += 0.15;
+
+  const winProbability = Math.min(0.9, 0.3 + (user.influence / 1000) + totalDmgBonus + alphaBonus);
   const success = Math.random() < winProbability;
 
   db.prepare("UPDATE users SET energy = energy - ? WHERE id = ?")
     .run(energyCost, user.id);
 
   if (success) {
-    db.prepare("UPDATE regions SET ownerId = ?, stability = stability - 20 WHERE id = ?")
+    db.prepare("UPDATE regions SET ownerUserId = ?, stability = stability - 20 WHERE id = ?")
       .run(user.id, regionId);
 
-    // Create a war entry
     const warId = Math.random().toString(36).substring(2, 9);
     db.prepare(`
       INSERT INTO wars (id, attackerCountryIso2, defenderCountryIso2, attackerUserId, defenderUserId, status, startedAt, endsAt, attackerScore, defenderScore, lastEventAt)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(warId, user.regionId, regionId, user.id, region.ownerId, 'ended', Date.now(), Date.now(), 100, 0, Date.now());
+    `).run(warId, user.regionId, regionId, user.id, region.ownerUserId, 'ended', Date.now(), Date.now(), 100, 0, Date.now());
 
     addXP(user.id, GAME_CONFIG.XP_PER_ATTACK);
   } else {
@@ -811,7 +929,7 @@ app.post("/api/actions/attack", authenticate, (req: any, res) => {
   }
 
   updateCooldown(user.id, "attack");
-  res.json({ success });
+  res.json({ success, winProbability: Math.round(winProbability * 100) });
 });
 
 // Articles API
@@ -1022,11 +1140,11 @@ app.post("/api/actions/work-factory", authenticate, (req: any, res) => {
   }
 
   const perks = user.perks;
-  const energyEfficiency = (perks['INDUSTRIA'] || 0) * 0.05;
+  const energyEfficiency = (perks['RESISTENZA'] || 0) * 0.005;
   const energyCost = Math.ceil(factory.energyCost * (1 - energyEfficiency));
   if (user.energy < energyCost) return res.status(400).json({ error: "Energia insufficiente" });
 
-  const workBoost = (perks['EDUCAZIONE'] || 0) * 0.1;
+  const workBoost = (perks['ISTRUZIONE'] || 0) * 0.01; // 1% boost per education level
   const payout = Math.floor(factoryPayout(factory.payoutBase, factory.level) * (1 + workBoost));
 
   db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?")
@@ -1055,66 +1173,148 @@ app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {
   const { perkId, useGold } = req.body;
 
   const perkDef = PERKS_DEFS.find(p => p.id === perkId);
-  if (!perkDef) return res.status(404).json({ error: "Perk not found" });
+  if (!perkDef) return res.status(404).json({ error: "Perk non trovato" });
 
   const currentLevel = user.perks[perkId] || 0;
+
   const targetLevel = currentLevel + 1;
-  const baseCost = perkDef.baseCost || 500;
-  const baseGoldCost = perkDef.baseGoldCost || 10;
-  const timeBaseSeconds = perkDef.timeBaseSeconds || 60;
+  const baseCashCost = (perkDef as any).baseCashCost || 2000;
+  const baseGoldCost = (perkDef as any).baseGoldCost || 20;
+  const baseTimeCashSec = (perkDef as any).baseTimeCashSec || 3600;
+  const baseTimeGoldSec = (perkDef as any).baseTimeGoldSec || 1200;
 
-  // Formule come da richiesta
-  const costCash = Math.round(baseCost * Math.pow(1.5, currentLevel));
-  const buildTimeSec = Math.round(timeBaseSeconds * Math.pow(1.25, currentLevel));
+  const cashCost = Math.round(baseCashCost * Math.pow(1.5, currentLevel));
   const goldCost = Math.ceil(baseGoldCost * Math.pow(1.4, currentLevel));
+  const cashTimeSec = Math.round(baseTimeCashSec * Math.pow(1.3, currentLevel));
+  const goldTimeSec = Math.round(baseTimeGoldSec * Math.pow(1.3, currentLevel));
 
-  if (useGold) {
-    if (user.money < costCash) return res.status(400).json({ error: "Fondi in cash insufficienti per supportare il buyout" });
-    if (user.gold < goldCost) return res.status(400).json({ error: `Oro insufficiente. Ti servono ${goldCost} Gold.` });
+  // --- Enforce ONE upgrade at a time (globally across all perks) ---
+  let existingUpgrades: Record<string, any> = {};
+  try {
+    const row = db.prepare("SELECT perkUpgradesJson FROM users WHERE id = ?").get(user.id) as any;
+    existingUpgrades = JSON.parse(row?.perkUpgradesJson || '{}');
+  } catch { }
 
-    // Instant completion via Gold buyout
-    db.prepare("UPDATE users SET money = money - ?, gold = gold - ? WHERE id = ?")
-      .run(costCash, goldCost, user.id);
-    db.prepare("INSERT OR REPLACE INTO perks (userId, perkId, level) VALUES (?, ?, ?)")
-      .run(user.id, perkId, targetLevel);
-
-    return res.json({ success: true, newLevel: targetLevel, instant: true });
-  } else {
-    // Normal queued progression
-    if (user.money < costCash) return res.status(400).json({ error: `Fondi insufficienti. Costo: $${costCash}` });
-
-    // Check if already upgrading
-    if (user.perkUpgrades?.[perkId]) {
-      return res.status(400).json({ error: "Questo perk è già in fase di potenziamento." });
-    }
-
-    const now = Date.now();
-    const willCompleteAt = now + (buildTimeSec * 1000);
-
-    // Dedicate the money immediately
-    db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(costCash, user.id);
-
-    // Write the upgrade job to Firestore
-    if (process.env.FIREBASE_PROJECT_ID) {
-      const fs = getFirestore();
-      const userRef = fs.collection("users").doc(user.id);
-
-      const setDoc = {
-        perkUpgrades: {
-          [perkId]: {
-            startedAt: now,
-            willCompleteAt,
-            targetLevel,
-            costPaid: costCash
-          }
-        }
-      };
-
-      await userRef.set(setDoc, { merge: true });
-    }
-
-    return res.json({ success: true, queued: true, willCompleteAt });
+  const nowTs = Date.now();
+  const anyActive = Object.entries(existingUpgrades).some(([id, upg]: [string, any]) =>
+    upg.willCompleteAt > nowTs
+  );
+  if (anyActive) {
+    return res.status(400).json({ error: "Hai già un potenziamento in corso. Puoi imparare solo una abilità alla volta." });
   }
+
+  // Check if this specific perk already queued
+  if (existingUpgrades[perkId]?.willCompleteAt > nowTs) {
+    return res.status(400).json({ error: "Questo perk è già in fase di potenziamento." });
+  }
+
+  // Cash is always required as a base cost
+  if (user.money < cashCost) {
+    return res.status(400).json({ error: `Cash insufficiente. Costo: $${cashCost.toLocaleString()}` });
+  }
+
+  if (useGold && user.gold < goldCost) {
+    return res.status(400).json({ error: `Gold insufficiente. Servono 🏅 ${goldCost}` });
+  }
+
+  const timeSec = useGold ? goldTimeSec : cashTimeSec;
+  const willCompleteAt = nowTs + (timeSec * 1000);
+
+  // Deduct currency
+  if (useGold) {
+    db.prepare("UPDATE users SET money = money - ?, gold = gold - ? WHERE id = ?")
+      .run(cashCost, goldCost, user.id);
+  } else {
+    db.prepare("UPDATE users SET money = money - ? WHERE id = ?")
+      .run(cashCost, user.id);
+  }
+
+  // Store upgrade timer
+  existingUpgrades[perkId] = {
+    startedAt: nowTs,
+    willCompleteAt,
+    targetLevel,
+    usedGold: !!useGold,
+  };
+
+  db.prepare("UPDATE users SET perkUpgradesJson = ? WHERE id = ?")
+    .run(JSON.stringify(existingUpgrades), user.id);
+
+  // Optional Firestore sync
+  if (process.env.FIREBASE_PROJECT_ID) {
+    try {
+      const fs = getFirestore();
+      await fs.collection("users").doc(user.id).set({
+        perkUpgrades: { [perkId]: existingUpgrades[perkId] }
+      }, { merge: true });
+    } catch (fsErr) {
+      console.error("Firestore perk sync failed (non-critical):", fsErr);
+    }
+  }
+
+  return res.json({ success: true, queued: true, willCompleteAt, timeSec });
+});
+
+app.post("/api/perks/booster", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { perkId, useGold } = req.body;
+
+  const perkDef = PERKS_DEFS.find(p => p.id === perkId);
+  if (!perkDef) return res.status(404).json({ error: "Perk non trovato" });
+
+  const currentLevel = user.perks[perkId] || 0;
+
+  // Check cooldown (only if there was a previous activation)
+  let activeBoosters: Record<string, any> = {};
+  try {
+    activeBoosters = JSON.parse(user.boostersJson || '{}');
+  } catch { activeBoosters = {}; }
+
+  const nowTs = Date.now();
+  const booster = activeBoosters[perkId];
+
+  if (booster && nowTs < booster.lastActivatedAt + BOOSTER_CONFIG.COOLDOWN_MS) {
+    const remainingCooldown = booster.lastActivatedAt + BOOSTER_CONFIG.COOLDOWN_MS - nowTs;
+    const days = Math.floor(remainingCooldown / (24 * 60 * 60 * 1000));
+    const hours = Math.floor((remainingCooldown % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+    return res.status(400).json({ error: `Booster in ricarica. Riprova fra ${days}g ${hours}h.` });
+  }
+
+  const price = useGold ? BOOSTER_CONFIG.GOLD_PRICE : BOOSTER_CONFIG.CASH_PRICE;
+  if (useGold) {
+    if (user.gold < price) return res.status(400).json({ error: `Oro insufficiente. Servono 🏅 ${price} Gold.` });
+  } else {
+    if (user.money < price) return res.status(400).json({ error: `Cash insufficiente. Costo: $${price.toLocaleString()}` });
+  }
+
+  // Duration decay formula: base / (1 + perkLevel * decay)
+  const baseDuration = useGold ? BOOSTER_CONFIG.BASE_DURATION_GOLD_MS : BOOSTER_CONFIG.BASE_DURATION_CASH_MS;
+  const duration = Math.round(baseDuration / (1 + currentLevel * BOOSTER_CONFIG.DURATION_DECAY));
+  const expiresAt = nowTs + duration;
+
+  // Deduct currency
+  if (useGold) {
+    db.prepare("UPDATE users SET gold = gold - ? WHERE id = ?").run(price, user.id);
+  } else {
+    db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(price, user.id);
+  }
+
+  // Save booster
+  activeBoosters[perkId] = {
+    expiresAt,
+    lastActivatedAt: nowTs,
+    isGold: !!useGold
+  };
+
+  db.prepare("UPDATE users SET boostersJson = ? WHERE id = ?")
+    .run(JSON.stringify(activeBoosters), user.id);
+
+  return res.json({
+    success: true,
+    expiresAt,
+    duration,
+    perkId
+  });
 });
 
 // ==============================================================
@@ -1254,6 +1454,13 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  }).on('error', (err: any) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`FATAL ERROR: Port ${PORT} is already in use.`);
+    } else {
+      console.error("FATAL ERROR: Server failed to start:", err);
+    }
+    process.exit(1);
   });
 
   // Global Economy Tick (every 10 minutes)

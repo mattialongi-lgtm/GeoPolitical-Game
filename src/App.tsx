@@ -39,7 +39,9 @@ import {
   Timer,
   Send,
   Camera,
-  BookOpen
+  BookOpen,
+  Check,
+  AlertCircle
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -810,6 +812,15 @@ const WorkView = ({ user, factories, actionLoading, handleAction }: { user: any,
       </div>
     </div>
 
+    {user.regionId !== user.residenceId && user.workPermitId !== user.regionId && (
+      <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center gap-3">
+        <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+        <p className="text-xs font-bold text-amber-800 leading-tight">
+          Sei all'estero come Turista in <span className="font-black">{user.regionId}</span>. Se questa nazione ha attivato le restrizioni, i tuoi turni di lavoro verranno bloccati senza un Visto.
+        </p>
+      </div>
+    )}
+
     <div className="grid grid-cols-1 gap-4">
       {factories.map(factory => {
         const isLocked = user.level < factory.minLevel;
@@ -856,73 +867,113 @@ const WorkView = ({ user, factories, actionLoading, handleAction }: { user: any,
   </motion.div>
 );
 
-const WarsView = ({ wars }: { wars: any }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    className="space-y-8"
-  >
-    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 text-center">
-      <div className="w-20 h-20 bg-rose-100 rounded-3xl mx-auto flex items-center justify-center mb-4">
-        <Swords className="w-10 h-10 text-rose-600" />
-      </div>
-      <h2 className="text-2xl font-black text-slate-900">Ministero della Guerra</h2>
-      <p className="text-slate-400 text-sm font-medium mt-1">Conflitti globali e conquiste territoriali.</p>
-    </div>
+const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: any, fetchData: () => void, actionLoading: boolean }) => {
+  const [claiming, setClaiming] = useState(false);
+  const handleClaimMedal = async () => {
+    setClaiming(true);
+    try {
+      const res = await fetch("/api/actions/claim-medal", { method: "POST" });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else fetchData();
+    } catch { alert("Errore nella riscossione della medaglia"); }
+    finally { setClaiming(false); }
+  };
 
-    {wars.active.length > 0 && (
-      <div className="space-y-4">
-        <h3 className="text-lg font-black uppercase tracking-tight">Guerre in Corso</h3>
-        <div className="grid grid-cols-1 gap-4">
-          {wars.active.map((war: any) => (
-            <div key={war.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-rose-100">
-              <div className="flex justify-between items-center mb-4">
-                <div className="text-center flex-1">
-                  <p className="text-2xl font-black">{war.attackerCountryIso2}</p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Attaccante</p>
+  const now = Date.now();
+  const medalCooldown = GAME_CONFIG.MEDAL_CLAIM_COOLDOWN || 3600000;
+  const canClaimMedal = now - (user?.lastMedalClaim || 0) >= medalCooldown;
+  const remainingMins = Math.ceil((medalCooldown - (now - (user?.lastMedalClaim || 0))) / 60000);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="space-y-8"
+    >
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 text-center">
+        <div className="w-20 h-20 bg-rose-100 rounded-3xl mx-auto flex items-center justify-center mb-4">
+          <Swords className="w-10 h-10 text-rose-600" />
+        </div>
+        <h2 className="text-2xl font-black text-slate-900">Ministero della Guerra</h2>
+        <p className="text-slate-400 text-sm font-medium mt-1">Conflitti globali e conquiste territoriali.</p>
+      </div>
+
+      {/* Section Medaglie */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shadow-sm shrink-0 border border-amber-100">
+            <span className="text-2xl">🎖️</span>
+          </div>
+          <div className="text-left">
+            <h4 className="font-black text-amber-900 text-lg leading-tight">Medaglie di Guerra</h4>
+            <p className="text-xs font-bold text-amber-600 mt-0.5">Una Medaglia annulla il costo in Energia del prossimo attacco.</p>
+            <p className="text-[10px] font-black uppercase text-amber-500 mt-1">Possedute: {user.warMedals || 0}</p>
+          </div>
+        </div>
+        <button
+          disabled={actionLoading || claiming || !canClaimMedal}
+          onClick={handleClaimMedal}
+          className="px-6 py-4 bg-amber-500 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-amber-200 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 shrink-0 w-full sm:w-auto"
+        >
+          {claiming ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : canClaimMedal ? "Riscatta (Oraria)" : `Tra ${remainingMins} min`}
+        </button>
+      </div>
+
+      {wars.active.length > 0 && (
+        <div className="space-y-4">
+          <h3 className="text-lg font-black uppercase tracking-tight">Guerre in Corso</h3>
+          <div className="grid grid-cols-1 gap-4">
+            {wars.active.map((war: any) => (
+              <div key={war.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-rose-100">
+                <div className="flex justify-between items-center mb-4">
+                  <div className="text-center flex-1">
+                    <p className="text-2xl font-black">{war.attackerCountryIso2}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Attaccante</p>
+                  </div>
+                  <div className="px-4 font-black text-rose-600">VS</div>
+                  <div className="text-center flex-1">
+                    <p className="text-2xl font-black">{war.defenderCountryIso2}</p>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase">Difensore</p>
+                  </div>
                 </div>
-                <div className="px-4 font-black text-rose-600">VS</div>
-                <div className="text-center flex-1">
-                  <p className="text-2xl font-black">{war.defenderCountryIso2}</p>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">Difensore</p>
+                <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden flex">
+                  <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${(war.attackerScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
+                  <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${(war.defenderScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
                 </div>
               </div>
-              <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden flex">
-                <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${(war.attackerScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
-                <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${(war.defenderScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        <h3 className="text-lg font-black uppercase tracking-tight">Storico Recente</h3>
+        <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+          {wars.ended.map((war: any, i: number) => (
+            <div key={war.id} className={`p-4 flex justify-between items-center ${i !== wars.ended.length - 1 ? "border-b border-slate-50" : ""}`}>
+              <div className="flex items-center gap-3">
+                <span className="font-black text-slate-900">{war.attackerCountryIso2}</span>
+                <ArrowRight className="w-3 h-3 text-slate-300" />
+                <span className="font-black text-slate-900">{war.defenderCountryIso2}</span>
+              </div>
+              <div className="text-right">
+                <p className={`text-xs font-black uppercase ${war.attackerScore > war.defenderScore ? "text-emerald-600" : "text-rose-600"}`}>
+                  {war.attackerScore > war.defenderScore ? "Vittoria" : "Sconfitta"}
+                </p>
+                <p className="text-[10px] text-slate-400 font-bold">{new Date(war.endsAt).toLocaleDateString()}</p>
               </div>
             </div>
           ))}
+          {wars.ended.length === 0 && (
+            <div className="p-8 text-center text-slate-400 font-medium">Nessuna guerra terminata di recente.</div>
+          )}
         </div>
       </div>
-    )}
-
-    <div className="space-y-4">
-      <h3 className="text-lg font-black uppercase tracking-tight">Storico Recente</h3>
-      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-        {wars.ended.map((war: any, i: number) => (
-          <div key={war.id} className={`p-4 flex justify-between items-center ${i !== wars.ended.length - 1 ? "border-b border-slate-50" : ""}`}>
-            <div className="flex items-center gap-3">
-              <span className="font-black text-slate-900">{war.attackerCountryIso2}</span>
-              <ArrowRight className="w-3 h-3 text-slate-300" />
-              <span className="font-black text-slate-900">{war.defenderCountryIso2}</span>
-            </div>
-            <div className="text-right">
-              <p className={`text-xs font-black uppercase ${war.attackerScore > war.defenderScore ? "text-emerald-600" : "text-rose-600"}`}>
-                {war.attackerScore > war.defenderScore ? "Vittoria" : "Sconfitta"}
-              </p>
-              <p className="text-[10px] text-slate-400 font-bold">{new Date(war.endsAt).toLocaleDateString()}</p>
-            </div>
-          </div>
-        ))}
-        {wars.ended.length === 0 && (
-          <div className="p-8 text-center text-slate-400 font-medium">Nessuna guerra terminata di recente.</div>
-        )}
-      </div>
-    </div>
-  </motion.div>
-);
+    </motion.div>
+  );
+};
 
 const PERK_ICONS: Record<string, string> = {
   FORZA: "⚔️",
@@ -1358,7 +1409,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mt-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
             <div className="p-4 bg-emerald-50 rounded-3xl">
               <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Cash</p>
               <p className="text-xl font-black text-emerald-700">${(user.money || 0).toLocaleString()}</p>
@@ -1367,9 +1418,23 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
               <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Gold</p>
               <p className="text-xl font-black text-amber-700">🏅{user.gold || 0}</p>
             </div>
-            <div className="p-4 bg-slate-50 rounded-3xl">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Regione</p>
-              <p className="text-xl font-black text-slate-900">{user.regionId}</p>
+            <div className="p-4 bg-slate-50 rounded-3xl col-span-1 border border-indigo-100 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-indigo-100 to-transparent rounded-bl-full opacity-50 pointer-events-none" />
+              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1 relative z-10 flex items-center gap-1">
+                <MapPin className="w-3 h-3" /> In Viaggio a...
+              </p>
+              <p className="text-xl font-black text-slate-900 relative z-10">{user.regionId}</p>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-3xl col-span-1 border border-emerald-100 relative overflow-hidden">
+              <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-emerald-100 to-transparent rounded-bl-full opacity-50 pointer-events-none" />
+              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1 relative z-10 flex items-center gap-1">
+                <Home className="w-3 h-3" /> Residenza in...
+              </p>
+              <p className="text-xl font-black text-slate-900 relative z-10">{user.residenceId || 'ST'}</p>
+              {user.workPermitId && (
+                <p className="text-[9px] font-bold text-slate-400 mt-1">➕ Visto: {user.workPermitId}</p>
+              )}
             </div>
           </div>
 
@@ -1384,6 +1449,37 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
           <h3 className="text-xl font-black tracking-tight uppercase mb-6">Classifica Mondiale</h3>
           <Leaderboard />
+        </div>
+
+        {/* Magazzino & Crafting */}
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+          <h3 className="text-xl font-black tracking-tight uppercase">Magazzino & Crafting</h3>
+          <div className="bg-sky-50 border border-sky-100 rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm shrink-0">
+                <span className="text-2xl">🥤</span>
+              </div>
+              <div className="text-left">
+                <h4 className="font-black text-sky-900 text-lg leading-tight">Energy Drink</h4>
+                <p className="text-xs font-bold text-sky-600 mt-0.5">Ricarica 100⚡. Cooldown: 10m.</p>
+                <p className="text-[10px] font-black uppercase text-sky-400 mt-1">Posseduti: {user.energyDrinks || 0}</p>
+              </div>
+            </div>
+            <button
+              disabled={actionLoading || (user.gold || 0) < GAME_CONFIG.ENERGY_DRINK_COST_GOLD}
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/actions/craft-drink", { method: "POST" });
+                  const data = await res.json();
+                  if (data.error) alert(data.error);
+                  else fetchData();
+                } catch { alert("Errore nel crafting"); }
+              }}
+              className="px-6 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-indigo-100 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 shrink-0 w-full sm:w-auto"
+            >
+              Crea (10 🏅)
+            </button>
+          </div>
         </div>
 
         <PlayerFactoriesView user={user} fetchData={fetchData} />
@@ -1761,6 +1857,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
   const navigate = useNavigate();
   const [region, setRegion] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
+  const [apps, setApps] = useState<any[]>([]);
 
   const fetchCountryDetail = async () => {
     try {
@@ -1768,6 +1865,10 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
       if (!res.ok) throw new Error("Country not found");
       const data = await res.json();
       setRegion(data);
+      if (data.ownerUserId === user?.id) {
+        const appsRes = await fetch(`/api/applications/${data.id}`);
+        if (appsRes.ok) setApps(await appsRes.json());
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -1807,6 +1908,25 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
   const handleActionWithRefresh = async (action: string, body: any) => {
     await handleAction(action, body);
     fetchCountryDetail();
+  };
+
+  const handleImmigrationAction = async (endpoint: string, body: any) => {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        if (data.autoAccepted) alert("Richiesta accettata automaticamente (Regione Neutrale)!");
+        else if (endpoint.includes("apply")) alert("Richiesta inviata con successo all'ufficio immigrazione.");
+        fetchCountryDetail();
+      }
+    } catch (err) {
+      alert("Errore nell'operazione.");
+    }
   };
 
   const flag = COUNTRY_FLAGS[iso2?.toUpperCase() || ""] || "🌍";
@@ -1897,6 +2017,89 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
         </div>
       </div>
 
+      {/* Ufficio Immigrazione */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+        <h3 className="text-lg font-black uppercase tracking-tight text-indigo-900 border-b border-indigo-50 pb-2">Ufficio Immigrazione</h3>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <button
+            disabled={user.regionId === region.id}
+            onClick={() => handleImmigrationAction("/api/actions/travel", { regionId: region.id })}
+            className="flex flex-col items-center justify-center p-4 bg-sky-50 rounded-2xl hover:bg-sky-100 transition-colors disabled:opacity-50 border border-sky-100"
+          >
+            <span className="text-2xl mb-2">✈️</span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-sky-700">Viaggia Qui</span>
+            <span className="text-[9px] font-bold text-sky-500 mt-1">Sposta la tua pedina fisica</span>
+          </button>
+
+          <button
+            disabled={user.residenceId === region.id}
+            onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "residence" })}
+            className="flex flex-col items-center justify-center p-4 bg-emerald-50 rounded-2xl hover:bg-emerald-100 transition-colors disabled:opacity-50 border border-emerald-100"
+          >
+            <span className="text-2xl mb-2">🏠</span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-emerald-700">Residenza</span>
+            <span className="text-[9px] font-bold text-emerald-500 mt-1">Diventa cittadino</span>
+          </button>
+
+          <button
+            disabled={user.workPermitId === region.id || user.residenceId === region.id}
+            onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "work_permit" })}
+            className="flex flex-col items-center justify-center p-4 bg-amber-50 rounded-2xl hover:bg-amber-100 transition-colors disabled:opacity-50 border border-amber-100"
+          >
+            <span className="text-2xl mb-2">📄</span>
+            <span className="text-[11px] font-black uppercase tracking-widest text-amber-700">Visto Lavorativo</span>
+            <span className="text-[9px] font-bold text-amber-500 mt-1">Permesso di lavoro estero</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Amministrazione (Solo per il Leader) */}
+      {region.ownerUserId === user.id && (
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+          <h3 className="text-lg font-black uppercase tracking-tight text-rose-900 border-b border-rose-50 pb-2">Amministrazione Doganale</h3>
+
+          <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <div>
+              <p className="text-sm font-black text-slate-800">Protezionismo / Visti</p>
+              <p className="text-[10px] font-bold text-slate-400 mt-0.5">Richiedi un permesso per lavorare in questa regione</p>
+            </div>
+            <button
+              onClick={() => handleImmigrationAction("/api/actions/toggle-borders", { regionId: region.id, state: !region.workRestrictions })}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${region.workRestrictions ? "bg-rose-500 text-white" : "bg-emerald-500 text-white"}`}
+            >
+              {region.workRestrictions ? "Rimuovi Limitazioni" : "Attiva Limitazioni"}
+            </button>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-sm font-black text-slate-700">Richieste in Sospeso ({apps.length})</h4>
+            {apps.length === 0 ? (
+              <p className="text-xs text-slate-400 font-medium">Nessuna pratica da smaltire.</p>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                {apps.map(app => (
+                  <div key={app.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
+                    <div>
+                      <p className="text-xs font-black text-slate-800">{app.username}</p>
+                      <p className="text-[10px] uppercase font-bold text-indigo-500">{app.type === 'residence' ? 'Residenza' : 'Permesso Lavoro'}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleImmigrationAction("/api/actions/resolve-application", { applicationId: app.id, action: 'accept' })} className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100">
+                        <Check className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => handleImmigrationAction("/api/actions/resolve-application", { applicationId: app.id, action: 'reject' })} className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center hover:bg-rose-100">
+                        <AlertCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Factories */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
         <h3 className="text-lg font-black uppercase tracking-tight">Strutture Presenti</h3>
@@ -1984,6 +2187,7 @@ export default function App() {
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [energyTimer, setEnergyTimer] = useState("");
 
   const fetchData = async () => {
     try {
@@ -2016,6 +2220,40 @@ export default function App() {
     const interval = setInterval(fetchData, 10000); // Polling every 10s
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const updateTimer = () => {
+      // Assuming MAX energy is 100 for now. Can be retrieved from user.maxEnergy
+      const maxE = user.maxEnergy || 100;
+      if (user.energy >= maxE) {
+        setEnergyTimer("MAX");
+        return;
+      }
+      const now = Date.now();
+      const passed = now - user.lastEnergyUpdate;
+      // 10 minutes ticks
+      const TICK_MS = 10 * 60 * 1000;
+      const msToNext = TICK_MS - (passed % TICK_MS);
+      const m = Math.floor(msToNext / 60000);
+      const s = Math.floor((msToNext % 60000) / 1000);
+      setEnergyTimer(`${m}:${s.toString().padStart(2, '0')}`);
+    };
+    updateTimer();
+    const iv = setInterval(updateTimer, 1000);
+    return () => clearInterval(iv);
+  }, [user]);
+
+  const handleUseDrink = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/actions/use-drink", { method: "POST" });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else fetchData();
+    } catch { alert("Errore nell'uso del drink"); }
+    finally { setActionLoading(false); }
+  };
 
   const navigateToCountry = (iso2: string) => {
     if (!iso2 || iso2 === "-99") return alert("Regione non disponibile");
@@ -2129,7 +2367,17 @@ export default function App() {
           <div className="bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100 flex items-center gap-1 shrink-0">
             <Zap className="w-3 h-3 text-indigo-500" />
             <span className="text-[10px] font-black text-slate-600">{user.energy}</span>
+            <span className="text-[8px] font-bold text-slate-400 ml-1">{energyTimer}</span>
           </div>
+          <button
+            onClick={handleUseDrink}
+            disabled={actionLoading}
+            title="Usa Drink Energetico"
+            className="bg-sky-50 px-2.5 py-1.5 rounded-xl border border-sky-100 flex items-center gap-1 shrink-0 hover:bg-sky-100 transition-colors disabled:opacity-50"
+          >
+            <span className="text-xs leading-none mt-0.5">🥤</span>
+            <span className="text-[10px] font-black text-sky-600">{user.energyDrinks || 0}</span>
+          </button>
           <button
             onClick={() => navigate("/profile")}
             className="w-8 h-8 rounded-xl overflow-hidden bg-indigo-100 flex items-center justify-center shrink-0 border border-indigo-100"
@@ -2193,7 +2441,7 @@ export default function App() {
           <Route path="/articles/:id" element={<ArticleDetailView articles={articles} user={user} fetchData={fetchData} />} />
           <Route path="/articles/new" element={<NewArticleView actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/work" element={<WorkView user={user} factories={factories} actionLoading={actionLoading} handleAction={handleAction} />} />
-          <Route path="/wars" element={<WarsView wars={wars} />} />
+          <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
         </Routes>

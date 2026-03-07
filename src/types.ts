@@ -10,15 +10,17 @@ export interface User {
   gold: number;  // Premium currency
   energy: number;
   influence: number;
-  regionId: string; // ISO code
+  regionId: string; // ISO code (Physical location)
+  residenceId: string; // ISO code (Legal residence)
+  workPermitId: string | null; // ISO code (Work permit for a single foreign region)
   lastEnergyUpdate: number;
   xp: number;
   level: number;
-  perkPoints: number;
-  perks?: Record<string, number>;
-  perkUpgrades?: Record<string, { startedAt: number, willCompleteAt: number, targetLevel: number }>;
-  // Active boosters: perkId -> { expiresAt, lastActivatedAt, isGold }
   boosters?: Record<string, { expiresAt: number; lastActivatedAt: number; isGold: boolean }>;
+  energyDrinks: number;
+  lastEnergyDrink: number;
+  warMedals: number;
+  lastMedalClaim: number;
 }
 
 export interface Perk {
@@ -42,6 +44,7 @@ export interface Region {
   ownerUserId: string | null;
   ownerName: string | null;
   factoriesCount: number;
+  workRestrictions: boolean;
   // Game Stats (legacy or from Firestore)
   power?: number;
   economy?: number;
@@ -57,6 +60,16 @@ export interface Factory {
   energyCost: number;
   cooldownSec: number;
   minLevel: number;
+}
+
+export interface Application {
+  id: string;
+  userId: string;
+  username: string;
+  regionId: string;
+  type: 'residence' | 'work_permit';
+  status: 'pending' | 'accepted' | 'rejected';
+  createdAt: number;
 }
 
 export interface Article {
@@ -100,6 +113,9 @@ export const GAME_CONFIG = {
   XP_PER_ATTACK: 50,
   LEVEL_UP_BASE_XP: 100,
   LEVEL_UP_FACTOR: 1.5,
+  ENERGY_DRINK_COST_GOLD: 10,
+  ENERGY_DRINK_COOLDOWN: 10 * 60 * 1000, // 10 minutes
+  MEDAL_CLAIM_COOLDOWN: 60 * 60 * 1000,  // 1 hour
 };
 
 // Booster config

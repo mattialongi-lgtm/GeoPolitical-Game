@@ -124,6 +124,17 @@ addColumnIfMissing("regions", "health", "INTEGER DEFAULT 1");
 addColumnIfMissing("regions", "education", "INTEGER DEFAULT 1");
 addColumnIfMissing("regions", "military", "INTEGER DEFAULT 1");
 
+// Energy Drinks and War Medals migrations
+addColumnIfMissing("users", "energyDrinks", "INTEGER DEFAULT 0");
+addColumnIfMissing("users", "lastEnergyDrink", "INTEGER DEFAULT 0");
+addColumnIfMissing("users", "warMedals", "INTEGER DEFAULT 0");
+addColumnIfMissing("users", "lastMedalClaim", "INTEGER DEFAULT 0");
+
+// Residence and Permits migrations
+addColumnIfMissing("users", "residenceId", "TEXT DEFAULT 'ST'");
+addColumnIfMissing("users", "workPermitId", "TEXT");
+addColumnIfMissing("regions", "workRestrictions", "INTEGER DEFAULT 0");
+
 // Rename ownerId to ownerUserId if needed
 try {
   const info = db.pragma("table_info(regions)") as any[];
@@ -226,7 +237,13 @@ db.exec(`
     lastEnergyUpdate INTEGER,
     xp INTEGER DEFAULT 0,
     level INTEGER DEFAULT 1,
-    perkPoints INTEGER DEFAULT 0
+    perkPoints INTEGER DEFAULT 0,
+    energyDrinks INTEGER DEFAULT 0,
+    lastEnergyDrink INTEGER DEFAULT 0,
+    warMedals INTEGER DEFAULT 0,
+    lastMedalClaim INTEGER DEFAULT 0,
+    residenceId TEXT DEFAULT 'ST',
+    workPermitId TEXT
   );
 
   CREATE TABLE IF NOT EXISTS perks (
@@ -275,12 +292,41 @@ db.exec(`
     id TEXT PRIMARY KEY,
     authorId TEXT,
     authorName TEXT,
+    regionId TEXT,
     title TEXT,
     content TEXT,
     createdAt INTEGER,
-    updatedAt INTEGER,
-    likeCount INTEGER DEFAULT 0,
-    FOREIGN KEY(authorId) REFERENCES users(id)
+    likes INTEGER DEFAULT 0,
+    FOREIGN KEY(authorId) REFERENCES users(id),
+    FOREIGN KEY(regionId) REFERENCES regions(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS applications (
+    id TEXT PRIMARY KEY,
+    userId TEXT,
+    username TEXT,
+    regionId TEXT,
+    type TEXT,       -- 'residence' or 'work_permit'
+    status TEXT,     -- 'pending' or 'accepted' or 'rejected'
+    createdAt INTEGER,
+    FOREIGN KEY(userId) REFERENCES users(id),
+    FOREIGN KEY(regionId) REFERENCES regions(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS player_factories (
+    id TEXT PRIMARY KEY,
+    ownerId TEXT,
+    ownerName TEXT,
+    name TEXT,
+    icon TEXT DEFAULT '🏭',
+    level INTEGER DEFAULT 1,
+    payoutBase INTEGER DEFAULT 80,
+    energyCost INTEGER DEFAULT 8,
+    cooldownSec INTEGER DEFAULT 90,
+    regionId TEXT,
+    createdAt INTEGER,
+    FOREIGN KEY(ownerId) REFERENCES users(id),
+    FOREIGN KEY(regionId) REFERENCES regions(id)
   );
 
   CREATE TABLE IF NOT EXISTS wars (
@@ -442,22 +488,34 @@ const authenticate = async (req: any, res: any, next: any) => {
       }
     }
 
-    // Energy regeneration logic
+    // Get perks for general modifiers (re-adding this!)
     const perks = getUserPerks(user.id, activeBoosters);
-    // RESISTENZA bonus for energy regen
-    const regenBonus = (perks['RESISTENZA'] || 0) * 5;
-    const maxEnergy = GAME_CONFIG.ENERGY_MAX; // Fixed max energy for now
-    const regenRate = GAME_CONFIG.ENERGY_REGEN_RATE + regenBonus;
 
-    const hoursPassed = (now - user.lastEnergyUpdate) / (1000 * 60 * 60);
-    const regen = Math.floor(hoursPassed * regenRate);
+    // Energy regeneration logic (Health-based, 10 min ticks)
+    const userRegion = db.prepare("SELECT health FROM regions WHERE id = ?").get(user.regionId || 'IT') as { health: number } | undefined;
+    const regionHealth = userRegion?.health || 1;
 
-    if (regen > 0) {
+    let tickEnergy = 7;
+    if (regionHealth >= 11) tickEnergy = 16;
+    else if (regionHealth === 10) tickEnergy = 12;
+    else if (regionHealth === 9) tickEnergy = 11;
+    else if (regionHealth === 8) tickEnergy = 10;
+    else if (regionHealth === 7) tickEnergy = 9;
+    else if (regionHealth === 6) tickEnergy = 8;
+    else tickEnergy = 7;
+
+    const maxEnergy = GAME_CONFIG.ENERGY_MAX;
+    const millisPassed = now - user.lastEnergyUpdate;
+    const ticksPassed = Math.floor(millisPassed / (10 * 60 * 1000));
+
+    if (ticksPassed > 0) {
+      const regen = ticksPassed * tickEnergy;
       const newEnergy = Math.min(maxEnergy, user.energy + regen);
-      db.prepare("UPDATE users SET energy = ?, lastEnergyUpdate = ? WHERE id = ?")
-        .run(newEnergy, now, user.id);
+      const timeAdvanced = ticksPassed * (10 * 60 * 1000); // Advance exactly X ticks
+      db.prepare("UPDATE users SET energy = ?, lastEnergyUpdate = lastEnergyUpdate + ? WHERE id = ?")
+        .run(newEnergy, timeAdvanced, user.id);
       user.energy = newEnergy;
-      user.lastEnergyUpdate = now;
+      user.lastEnergyUpdate += timeAdvanced;
     }
 
     user.perks = perks;
@@ -572,13 +630,13 @@ app.post("/api/auth/firebase", async (req, res) => {
       const finalUsername = username || name || email?.split('@')[0] || `user_${id}`;
 
       try {
-        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate) VALUES (?, ?, ?, ?, ?)")
+        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate, residenceId) VALUES (?, ?, ?, ?, ?, 'ST')")
           .run(id, finalUsername, email, uid, Date.now());
         user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
       } catch (err) {
         // If username exists, try with suffix
         const altUsername = `${finalUsername}_${id}`;
-        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate) VALUES (?, ?, ?, ?, ?)")
+        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate, residenceId) VALUES (?, ?, ?, ?, ?, 'ST')")
           .run(id, altUsername, email, uid, Date.now());
         user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
       }
@@ -762,13 +820,26 @@ const updateCooldown = (userId: string, actionType: string) => {
 
 app.post("/api/actions/work", authenticate, (req: any, res) => {
   const user = req.user;
+  // Require player to be in the SAME region physically
+  const userRegion = user.regionId || 'IT';
+
   const { factoryId } = req.body;
-  const perks = user.perks;
-
   const factory = db.prepare("SELECT * FROM factories WHERE id = ?").get(factoryId) as any;
-  if (!factory) return res.status(404).json({ error: "Factory not found" });
-  if (user.level < factory.minLevel) return res.status(400).json({ error: "Level too low" });
+  if (!factory) return res.status(404).json({ error: "Nessuna fabbrica trovata" });
+  if (user.level < factory.minLevel) return res.status(400).json({ error: `Richiede livello ${factory.minLevel}` });
 
+  // Controllo immigrazione
+  const currentRegion = db.prepare("SELECT workRestrictions FROM regions WHERE id = ?").get(userRegion) as any;
+  const restrictionsActive = currentRegion?.workRestrictions === 1;
+  const isResident = user.residenceId === userRegion;
+  const hasWorkPermit = user.workPermitId === userRegion;
+
+  if (restrictionsActive && !isResident && !hasWorkPermit) {
+    return res.status(403).json({ error: "Questa nazione richiede un Permesso di Lavoro per operare fabbriche statali." });
+  }
+
+  // Calculate perks
+  const pIstruzione = user.perks?.['ISTRUZIONE'] || 0;
   const lastWork = db.prepare("SELECT lastUsed FROM user_factory_cooldowns WHERE userId = ? AND factoryId = ?")
     .get(user.id, factoryId) as { lastUsed: number } | undefined;
 
@@ -777,18 +848,18 @@ app.post("/api/actions/work", authenticate, (req: any, res) => {
   }
 
   // RESISTENZA reduces energy cost — capped at level 50 for max -50% reduction
-  const resistenza = perks['RESISTENZA'] || 0;
+  const resistenza = user.perks['RESISTENZA'] || 0;
   const energyReduction = Math.min(0.5, resistenza / 100); // 0% at lv0, 50% at lv50+
   const energyCost = Math.ceil(factory.energyCost * (1 - energyReduction));
 
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
   // FORZA boosts public factory productivity (+3% per level)
-  const forzaBoost = (perks['FORZA'] || 0) * 0.03;
+  const forzaBoost = (user.perks['FORZA'] || 0) * 0.03;
   const earnings = Math.floor(factory.payoutMoney * (1 + forzaBoost));
 
   // ISTRUZIONE increases XP cap (each level adds 10 to XP per work)
-  const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
+  const xpGain = GAME_CONFIG.XP_PER_WORK + pIstruzione * 2;
 
   db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?")
     .run(earnings, energyCost, user.id);
@@ -879,6 +950,145 @@ app.post("/api/actions/invest", authenticate, async (req: any, res) => {
   res.json({ success: true });
 });
 
+app.post("/api/actions/craft-drink", authenticate, (req: any, res) => {
+  const user = req.user;
+  const cost = GAME_CONFIG.ENERGY_DRINK_COST_GOLD;
+  if (user.gold < cost) return res.status(400).json({ error: `Oro insufficiente. Ti servono 🏅 ${cost}.` });
+
+  db.prepare("UPDATE users SET gold = gold - ?, energyDrinks = energyDrinks + 1 WHERE id = ?").run(cost, user.id);
+  res.json({ success: true, energyDrinks: user.energyDrinks + 1 });
+});
+
+app.post("/api/actions/use-drink", authenticate, (req: any, res) => {
+  const user = req.user;
+  if (user.energyDrinks <= 0) return res.status(400).json({ error: "Non hai Energy Drinks disponibili nell'inventario." });
+
+  const now = Date.now();
+  if (now - user.lastEnergyDrink < GAME_CONFIG.ENERGY_DRINK_COOLDOWN) {
+    const remainingMin = Math.ceil((GAME_CONFIG.ENERGY_DRINK_COOLDOWN - (now - user.lastEnergyDrink)) / 60000);
+    return res.status(400).json({ error: `Drink in cooldown. Attendi altri ${remainingMin} minuti.` });
+  }
+
+  db.prepare("UPDATE users SET energyDrinks = energyDrinks - 1, energy = ?, lastEnergyDrink = ? WHERE id = ?")
+    .run(GAME_CONFIG.ENERGY_MAX, now, user.id);
+  res.json({ success: true, newEnergy: GAME_CONFIG.ENERGY_MAX });
+});
+
+app.post("/api/actions/claim-medal", authenticate, (req: any, res) => {
+  const user = req.user;
+  const now = Date.now();
+
+  if (now - user.lastMedalClaim < GAME_CONFIG.MEDAL_CLAIM_COOLDOWN) {
+    const remainingMin = Math.ceil((GAME_CONFIG.MEDAL_CLAIM_COOLDOWN - (now - user.lastMedalClaim)) / 60000);
+    return res.status(400).json({ error: `La prossima medaglia sarà disponibile tra ${remainingMin} minuti.` });
+  }
+
+  db.prepare("UPDATE users SET warMedals = warMedals + 1, lastMedalClaim = ? WHERE id = ?").run(now, user.id);
+  res.json({ success: true, warMedals: user.warMedals + 1 });
+});
+
+// --- Residence and Permits API ---
+
+app.post("/api/actions/travel", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId } = req.body;
+  if (!regionId) return res.status(400).json({ error: "Nessuna destinazione specificata." });
+  if (user.regionId === regionId) return res.status(400).json({ error: "Sei già in questa regione." });
+
+  db.prepare("UPDATE users SET regionId = ? WHERE id = ?").run(regionId, user.id);
+  res.json({ success: true, regionId });
+});
+
+app.post("/api/actions/apply", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId, type } = req.body;
+
+  if (!["residence", "work_permit"].includes(type)) return res.status(400).json({ error: "Tipo di richiesta non valido." });
+  if (type === "residence" && user.residenceId === regionId) return res.status(400).json({ error: "Siedi già in questa regione." });
+  if (type === "work_permit" && user.workPermitId === regionId) return res.status(400).json({ error: "Hai già un permesso di lavoro qui." });
+
+  // Controlla se c'è già una richiesta in sospeso
+  const existing = db.prepare("SELECT id FROM applications WHERE userId = ? AND regionId = ? AND type = ? AND status = 'pending'").get(user.id, regionId, type);
+  if (existing) return res.status(400).json({ error: "Hai già inviato una richiesta in attesa di approvazione." });
+
+  const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region) return res.status(404).json({ error: "Regione inesistente." });
+
+  const id = Math.random().toString(36).substring(2, 9);
+
+  // Se la regione è neutrale, approvazione automatica
+  if (!region.ownerUserId) {
+    if (type === 'residence') {
+      db.prepare("UPDATE users SET residenceId = ? WHERE id = ?").run(regionId, user.id);
+    } else {
+      db.prepare("UPDATE users SET workPermitId = ? WHERE id = ?").run(regionId, user.id);
+    }
+    db.prepare("INSERT INTO applications (id, userId, username, regionId, type, status, createdAt) VALUES (?, ?, ?, ?, ?, 'accepted', ?)")
+      .run(id, user.id, user.username, regionId, type, Date.now());
+    return res.json({ success: true, autoAccepted: true });
+  }
+
+  // Altrimenti, metti in coda
+  db.prepare("INSERT INTO applications (id, userId, username, regionId, type, status, createdAt) VALUES (?, ?, ?, ?, ?, 'pending', ?)")
+    .run(id, user.id, user.username, regionId, type, Date.now());
+
+  res.json({ success: true, autoAccepted: false });
+});
+
+app.get("/api/applications/:regionId", authenticate, (req: any, res) => {
+  const user = req.user;
+  const regionId = req.params.regionId;
+  const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(regionId) as any;
+
+  if (!region || region.ownerUserId !== user.id) {
+    return res.status(403).json({ error: "Non sei il Governatore di questa regione." });
+  }
+
+  const apps = db.prepare("SELECT * FROM applications WHERE regionId = ? AND status = 'pending' ORDER BY createdAt DESC").all(regionId);
+  res.json(apps);
+});
+
+app.post("/api/actions/resolve-application", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { applicationId, action } = req.body; // action = 'accept' | 'reject'
+
+  const application = db.prepare("SELECT * FROM applications WHERE id = ?").get(applicationId) as any;
+  if (!application) return res.status(404).json({ error: "Richiesta non trovata." });
+
+  const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(application.regionId) as any;
+  if (!region || region.ownerUserId !== user.id) {
+    return res.status(403).json({ error: "Non sei il Governatore di questa regione." });
+  }
+
+  if (action === 'accept') {
+    if (application.type === 'residence') {
+      db.prepare("UPDATE users SET residenceId = ? WHERE id = ?").run(application.regionId, application.userId);
+      // Remove any previously held work permit for the same region as it's redundant
+      db.prepare("UPDATE users SET workPermitId = NULL WHERE id = ? AND workPermitId = ?").run(application.userId, application.regionId);
+    } else if (application.type === 'work_permit') {
+      db.prepare("UPDATE users SET workPermitId = ? WHERE id = ?").run(application.regionId, application.userId);
+    }
+    db.prepare("UPDATE applications SET status = 'accepted' WHERE id = ?").run(applicationId);
+  } else {
+    db.prepare("UPDATE applications SET status = 'rejected' WHERE id = ?").run(applicationId);
+  }
+
+  res.json({ success: true });
+});
+
+app.post("/api/actions/toggle-borders", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId, state } = req.body;
+  const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(regionId) as any;
+
+  if (!region || region.ownerUserId !== user.id) {
+    return res.status(403).json({ error: "Non sei il Governatore di questa regione." });
+  }
+
+  db.prepare("UPDATE regions SET workRestrictions = ? WHERE id = ?").run(state ? 1 : 0, regionId);
+  res.json({ success: true });
+});
+
 app.post("/api/actions/attack", authenticate, (req: any, res) => {
   const user = req.user;
   const { regionId } = req.body;
@@ -889,7 +1099,17 @@ app.post("/api/actions/attack", authenticate, (req: any, res) => {
   const energyReduction = Math.min(0.5, resistenza / 100);
   const energyCost = Math.ceil(GAME_CONFIG.ATTACK_ENERGY_COST * (1 - energyReduction));
 
-  if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
+  // Use medal if available to nullify energy cost
+  let finalEnergyCost = energyCost;
+  let usedMedal = false;
+
+  if (user.warMedals > 0) {
+    finalEnergyCost = 0;
+    usedMedal = true;
+  } else {
+    if (user.energy < finalEnergyCost) return res.status(400).json({ error: "Not enough energy" });
+  }
+
   if (!checkCooldown(user.id, "attack", GAME_CONFIG.ATTACK_COOLDOWN)) return res.status(400).json({ error: "Action on cooldown" });
 
   const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(regionId) as any;
@@ -910,8 +1130,11 @@ app.post("/api/actions/attack", authenticate, (req: any, res) => {
   const winProbability = Math.min(0.9, 0.3 + (user.influence / 1000) + totalDmgBonus + alphaBonus);
   const success = Math.random() < winProbability;
 
-  db.prepare("UPDATE users SET energy = energy - ? WHERE id = ?")
-    .run(energyCost, user.id);
+  if (usedMedal) {
+    db.prepare("UPDATE users SET warMedals = warMedals - 1 WHERE id = ?").run(user.id);
+  } else {
+    db.prepare("UPDATE users SET energy = energy - ? WHERE id = ?").run(finalEnergyCost, user.id);
+  }
 
   if (success) {
     db.prepare("UPDATE regions SET ownerUserId = ?, stability = stability - 20 WHERE id = ?")
@@ -1127,12 +1350,28 @@ app.post("/api/player-factories/:id/upgrade", authenticate, (req: any, res) => {
   res.json({ success: true, newLevel: factory.level + 1, goldSpent: cost });
 });
 
-app.post("/api/actions/work-factory", authenticate, (req: any, res) => {
+app.post("/api/actions/work-player", authenticate, (req: any, res) => {
   const user = req.user;
+  const userRegion = user.regionId || 'IT';
+
   const { factoryId } = req.body;
   const factory = db.prepare("SELECT * FROM player_factories WHERE id = ?").get(factoryId) as any;
-  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata" });
+  if (!factory) return res.status(404).json({ error: "Fabbrica privata non trovata" });
 
+  // Require player to be in the same region physically
+  if (factory.regionId !== userRegion) return res.status(400).json({ error: "Devi viaggiare in questa regione per lavorare qui." });
+
+  // Controllo immigrazione
+  const currentRegion = db.prepare("SELECT workRestrictions FROM regions WHERE id = ?").get(factory.regionId) as any;
+  const restrictionsActive = currentRegion?.workRestrictions === 1;
+  const isResident = user.residenceId === factory.regionId;
+  const hasWorkPermit = user.workPermitId === factory.regionId;
+
+  if (restrictionsActive && !isResident && !hasWorkPermit && user.id !== factory.ownerId) {
+    return res.status(403).json({ error: "Questa regione chiusa richiede un Permesso di Lavoro." });
+  }
+
+  const pIstruzione = user.perks?.['ISTRUZIONE'] || 0;
   const lastWork = db.prepare("SELECT lastUsed FROM user_factory_cooldowns WHERE userId = ? AND factoryId = ?")
     .get(user.id, factoryId) as { lastUsed: number } | undefined;
   if (lastWork && Date.now() - lastWork.lastUsed < factory.cooldownSec * 1000) {

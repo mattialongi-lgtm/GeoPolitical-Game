@@ -2719,9 +2719,9 @@ export default function App() {
                     <button onClick={() => { navigate("/nation"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Shield className="w-4 h-4 text-rose-500" /> NAZIONE
                     </button>
-                    {/* <button onClick={() => { navigate("/parliament"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                    <button onClick={() => { navigate("/parliament"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Landmark className="w-4 h-4 text-blue-500" /> PARLAMENTO
-                    </button> */}
+                    </button>
                     <button onClick={() => { navigate("/party"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Users className="w-4 h-4 text-purple-500" /> PARTITO
                     </button>
@@ -2778,7 +2778,7 @@ export default function App() {
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
           <Route path="/nation" element={<NationView user={user} fetchData={fetchData} />} />
-          {/* <Route path="/parliament" element={<ParliamentView user={user} />} /> */}
+          <Route path="/parliament" element={<ParliamentView user={user} />} />
         </Routes>
       </main>
 
@@ -3464,5 +3464,299 @@ const PartyHub = ({ user, fetchData }: any) => {
         </div>
       </div>
     </motion.div>
+  );
+};
+
+const ParliamentView = ({ user }: { user: any }) => {
+  const [activeTab, setActiveTab] = useState<'elections' | 'parliament' | 'laws'>('elections');
+  const [loading, setLoading] = useState(true);
+
+  // Data
+  const [electionData, setElectionData] = useState<any>(null);
+  const [parliamentData, setParliamentData] = useState<any[]>([]);
+  const [lawsData, setLawsData] = useState<any[]>([]);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const pRes = await fetch("/api/parliament");
+      if (pRes.ok) setParliamentData(await pRes.json());
+
+      if (activeTab === 'elections') {
+        const res = await fetch("/api/elections");
+        if (res.ok) setElectionData(await res.json());
+      } else if (activeTab === 'laws') {
+        const res = await fetch("/api/parliament/laws");
+        if (res.ok) setLawsData(await res.json());
+      }
+    } catch { }
+    setLoading(false);
+  };
+
+  useEffect(() => { loadData(); }, [activeTab]);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <div className="bg-white rounded-[2.5rem] p-2 flex gap-2 shadow-sm border border-slate-100 overflow-x-auto hide-scrollbar">
+        {['elections', 'parliament', 'laws'].map(tab => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab as any)}
+            className={`flex-1 min-w-[120px] py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"}`}
+          >
+            {tab === 'elections' ? 'Elezioni' : tab === 'parliament' ? 'Parlamento' : 'Leggi'}
+          </button>
+        ))}
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
+      ) : (
+        <>
+          {activeTab === 'elections' && <ElectionsTab data={electionData} user={user} reload={loadData} />}
+          {activeTab === 'parliament' && <ParliamentTab members={parliamentData} />}
+          {activeTab === 'laws' && <LawsTab laws={lawsData} user={user} reload={loadData} isMp={parliamentData.some(m => m.userId === user.id)} />}
+        </>
+      )}
+    </motion.div>
+  );
+};
+
+const ElectionsTab = ({ data, user, reload }: any) => {
+  const [voting, setVoting] = useState(false);
+  if (!data?.election) return (
+    <div className="bg-white p-12 rounded-[2.5rem] border border-slate-100 text-center shadow-sm">
+      <Trophy className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+      <h3 className="text-xl font-black text-slate-900">Nessuna Elezione</h3>
+      <p className="text-slate-500 font-bold mt-2">Non ci sono elezioni attive al momento in {user.residenceId}.</p>
+    </div>
+  );
+
+  const totalVotes = data.parties.reduce((sum: number, p: any) => sum + p.votes, 0);
+
+  const handleVote = async (partyId: string) => {
+    if (!window.confirm("Confermi il tuo voto? Non potrai cambiarlo!")) return;
+    setVoting(true);
+    try {
+      const res = await fetch("/api/elections/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ electionId: data.election.id, partyId })
+      });
+      const json = await res.json();
+      if (json.error) alert(json.error);
+      else reload();
+    } catch { alert("Errore di connessione"); }
+    setVoting(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
+        <div className="absolute -right-8 -top-8 opacity-5 pointer-events-none"><Landmark className="w-48 h-48" /></div>
+        <div className="relative z-10">
+          <h3 className="text-2xl font-black text-slate-900 leading-tight">Elezioni Parlamentari ({user.residenceId})</h3>
+          <p className="text-slate-500 font-bold mt-2">Si chiudono il: {new Date(data.election.closesAt).toLocaleString()}</p>
+        </div>
+      </div>
+
+      <div className="grid gap-4">
+        {data.parties.sort((a: any, b: any) => b.votes - a.votes).map((p: any) => {
+          const perc = totalVotes > 0 ? ((p.votes / totalVotes) * 100).toFixed(1) : 0;
+          return (
+            <div key={p.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row items-start md:items-center gap-6">
+              <div className="flex items-center gap-4 flex-1 w-full">
+                {p.logo ? <img src={p.logo} alt="logo" className="w-16 h-16 rounded-2xl object-cover shadow-sm bg-white shrink-0" /> : <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center font-black text-xl text-indigo-300 border border-indigo-100 shrink-0">{p.tag || "P"}</div>}
+                <div className="flex-1 w-full">
+                  <p className="font-black text-slate-900 text-lg">{p.name} {p.tag && <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-md ml-2 align-middle">{p.tag}</span>}</p>
+                  <div className="mt-2 w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                    <div className="bg-indigo-500 h-full transition-all duration-1000" style={{ width: `${perc}%` }} />
+                  </div>
+                  <p className="text-xs font-bold text-slate-500 mt-1">{p.votes} voti ({perc}%)</p>
+                </div>
+              </div>
+              <button
+                disabled={voting || data.myVote}
+                onClick={() => handleVote(p.id)}
+                className={`w-full md:w-auto px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all shrink-0 ${data.myVote === p.id ? "bg-emerald-500 text-white shadow-emerald-200 shadow-lg" : data.myVote ? "bg-slate-100 text-slate-400" : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 shadow-lg"}`}
+              >
+                {data.myVote === p.id ? "Hai Votato" : data.myVote ? "Già Votato" : "Vota"}
+              </button>
+            </div>
+          );
+        })}
+        {data.parties.length === 0 && (
+          <div className="text-center p-8 bg-slate-50 rounded-3xl border border-dashed border-slate-200 text-slate-400 font-bold">
+            Nessun partito registrato in questa nazione.
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const ParliamentTab = ({ members }: { members: any[] }) => {
+  const parties = members.reduce((acc: any, m: any) => {
+    if (!acc[m.partyName]) acc[m.partyName] = { count: 0, tag: m.partyTag, members: [] };
+    acc[m.partyName].count++;
+    acc[m.partyName].members.push(m);
+    return acc;
+  }, {});
+
+  const total = members.length;
+
+  return (
+    <div className="space-y-6">
+      {total === 0 ? (
+        <div className="bg-white p-12 rounded-[2.5rem] border border-slate-100 text-center shadow-sm">
+          <Landmark className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-xl font-black text-slate-900">Parlamento Vuoto</h3>
+          <p className="text-slate-500 font-bold mt-2">Nessun membro eletto ancora.</p>
+        </div>
+      ) : (
+        <>
+          <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+            <h3 className="text-xl font-black text-slate-900 mb-6">Composizione Parlamentare ({total} Seggi)</h3>
+            <div className="flex h-6 rounded-full overflow-hidden gap-0.5">
+              {Object.entries(parties).map(([name, data]: any, i) => {
+                const colors = ['bg-indigo-500', 'bg-rose-500', 'bg-emerald-500', 'bg-amber-500', 'bg-cyan-500', 'bg-purple-500'];
+                return (
+                  <div key={name} className={`${colors[i % colors.length]} h-full transition-all`} style={{ width: `${(data.count / total) * 100}%` }} title={`${name}: ${data.count} seggi`} />
+                );
+              })}
+            </div>
+            <div className="flex flex-wrap gap-4 mt-4">
+              {Object.entries(parties).map(([name, data]: any, i) => {
+                const colorsText = ['text-indigo-500', 'text-rose-500', 'text-emerald-500', 'text-amber-500', 'text-cyan-500', 'text-purple-500'];
+                return (
+                  <div key={name} className="flex items-center gap-2">
+                    <span className={`w-3 h-3 rounded-full ${colorsText[i % colorsText.length].replace('text-', 'bg-')}`} />
+                    <span className="text-xs font-bold text-slate-700">{data.tag || name} ({data.count})</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
+            <h3 className="text-xl font-black text-slate-900">Membri Eletti</h3>
+            <div className="grid gap-3">
+              {members.map(m => (
+                <div key={m.userId} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center text-indigo-600 font-black">{m.username.charAt(0).toUpperCase()}</div>
+                    <div>
+                      <p className="font-black text-slate-900 text-sm">{m.username} <span className="text-[10px] font-bold text-slate-400 ml-1">Lv {m.level}</span></p>
+                      <p className="text-[10px] font-bold text-indigo-500 uppercase mt-0.5">{m.partyName}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+const LawsTab = ({ laws, user, reload, isMp }: any) => {
+  const [showPropose, setShowPropose] = useState(false);
+  const [taxValue, setTaxValue] = useState("");
+  const [acting, setActing] = useState(false);
+
+  const handlePropose = async () => {
+    if (!taxValue || isNaN(Number(taxValue)) || Number(taxValue) < 0 || Number(taxValue) > 100) return alert("Inserisci una tassa valida (0-100)");
+    setActing(true);
+    try {
+      const res = await fetch("/api/parliament/laws/propose", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: 'market_tax_change', newValue: taxValue })
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { setShowPropose(false); reload(); }
+    } catch { alert("Errore"); }
+    setActing(false);
+  };
+
+  const handleVote = async (lawId: string, vote: 'yes' | 'no') => {
+    setActing(true);
+    try {
+      const res = await fetch("/api/parliament/laws/vote", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lawId, vote })
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else reload();
+    } catch { alert("Errore"); }
+    setActing(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      {isMp && (
+        <div className="flex justify-end">
+          <button onClick={() => setShowPropose(true)} className="bg-indigo-600 text-white px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Proponi Legge
+          </button>
+        </div>
+      )}
+
+      {showPropose && (
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
+          <h3 className="text-xl font-black text-slate-900">Nuova Proposta: Modifica Tassa Mercato</h3>
+          <p className="text-sm text-slate-500 font-bold">Imposta la nuova tassa sulle transazioni del mercato per la tua nazione.</p>
+          <input type="number" placeholder="Es: 10 (%)" value={taxValue} onChange={e => setTaxValue(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
+          <div className="flex gap-3">
+            <button onClick={() => setShowPropose(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-black rounded-xl text-xs uppercase tracking-widest">Annulla</button>
+            <button disabled={acting} onClick={handlePropose} className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-indigo-200">Deposita Proposta</button>
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-4">
+        <h3 className="text-xl font-black text-slate-900 ml-2">Leggi Recenti</h3>
+        {laws.length === 0 && (
+          <div className="text-center p-8 bg-white rounded-3xl border border-slate-100 text-slate-400 font-bold">
+            Non ci sono leggi in archivio.
+          </div>
+        )}
+        {laws.map((l: any) => (
+          <div key={l.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row gap-6">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-2">
+                <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-wider ${l.status === 'pending' ? 'bg-amber-100 text-amber-700' : l.status === 'passed' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                  {l.status === 'pending' ? 'In Votazione' : l.status === 'passed' ? 'Approvata' : 'Respinta'}
+                </span>
+                <span className="text-[10px] font-bold text-slate-400">{new Date(l.createdAt).toLocaleDateString()}</span>
+              </div>
+              <h4 className="text-lg font-black text-slate-900">Modifica Tassa Mercato: {l.newValue}%</h4>
+              <p className="text-sm font-bold text-slate-500 mt-1">Proposta da: <span className="text-indigo-500">{l.proposerName}</span></p>
+
+              <div className="flex items-center gap-4 mt-4 text-xs font-black">
+                <span className="text-emerald-500 bg-emerald-50 px-3 py-1.5 rounded-lg flex items-center gap-1"><CheckCircle2 className="w-4 h-4" /> {l.yesVotes}</span>
+                <span className="text-rose-500 bg-rose-50 px-3 py-1.5 rounded-lg flex items-center gap-1"><Trash2 className="w-4 h-4" /> {l.noVotes}</span>
+              </div>
+            </div>
+
+            {l.status === 'pending' && isMp && !l.myVote && (
+              <div className="flex flex-col gap-2 shrink-0 md:justify-center">
+                <button disabled={acting} onClick={() => handleVote(l.id, 'yes')} className="bg-emerald-500 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition-all">SÌ</button>
+                <button disabled={acting} onClick={() => handleVote(l.id, 'no')} className="bg-rose-500 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-rose-200 hover:bg-rose-600 transition-all">NO</button>
+              </div>
+            )}
+            {l.status === 'pending' && l.myVote && (
+              <div className="flex items-center justify-center shrink-0">
+                <span className="text-sm font-black text-slate-400 bg-slate-50 px-4 py-2 border border-slate-100 rounded-xl">Hai votato '{l.myVote.vote}'</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
   );
 };

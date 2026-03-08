@@ -43,7 +43,8 @@ import {
   Check,
   AlertCircle,
   Users,
-  Crown
+  Crown,
+  Landmark
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -2718,6 +2719,9 @@ export default function App() {
                     <button onClick={() => { navigate("/nation"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Shield className="w-4 h-4 text-rose-500" /> NAZIONE
                     </button>
+                    {/* <button onClick={() => { navigate("/parliament"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                      <Landmark className="w-4 h-4 text-blue-500" /> PARLAMENTO
+                    </button> */}
                     <button onClick={() => { navigate("/party"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Users className="w-4 h-4 text-purple-500" /> PARTITO
                     </button>
@@ -2774,6 +2778,7 @@ export default function App() {
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
           <Route path="/nation" element={<NationView user={user} fetchData={fetchData} />} />
+          {/* <Route path="/parliament" element={<ParliamentView user={user} />} /> */}
         </Routes>
       </main>
 

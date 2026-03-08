@@ -492,6 +492,58 @@ db.exec(`
     details TEXT,
     timestamp INTEGER
   );
+
+  CREATE TABLE IF NOT EXISTS elections (
+    id TEXT PRIMARY KEY,
+    regionId TEXT,
+    status TEXT, -- 'active', 'closed'
+    createdAt INTEGER,
+    closesAt INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS election_votes (
+    id TEXT PRIMARY KEY,
+    electionId TEXT,
+    voterId TEXT,
+    partyId TEXT,
+    timestamp INTEGER,
+    FOREIGN KEY(electionId) REFERENCES elections(id),
+    FOREIGN KEY(voterId) REFERENCES users(id),
+    FOREIGN KEY(partyId) REFERENCES parties(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS parliament_members (
+    userId TEXT PRIMARY KEY,
+    regionId TEXT,
+    partyId TEXT,
+    electedAt INTEGER,
+    FOREIGN KEY(userId) REFERENCES users(id),
+    FOREIGN KEY(regionId) REFERENCES regions(id),
+    FOREIGN KEY(partyId) REFERENCES parties(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS laws (
+    id TEXT PRIMARY KEY,
+    regionId TEXT,
+    proposerId TEXT,
+    type TEXT, -- e.g. 'change_market_tax'
+    newValue TEXT,
+    status TEXT, -- 'pending', 'passed', 'rejected'
+    createdAt INTEGER,
+    expiresAt INTEGER,
+    FOREIGN KEY(regionId) REFERENCES regions(id),
+    FOREIGN KEY(proposerId) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS law_votes (
+    id TEXT PRIMARY KEY,
+    lawId TEXT,
+    voterId TEXT,
+    vote TEXT, -- 'yes', 'no'
+    timestamp INTEGER,
+    FOREIGN KEY(lawId) REFERENCES laws(id),
+    FOREIGN KEY(voterId) REFERENCES users(id)
+  );
 `);
 
 // Seed initial regions if empty
@@ -2515,14 +2567,234 @@ app.post("/api/parties/primaries-vote", authenticate, (req: any, res) => {
 
   res.json({ success: true });
 });
+// ==========================================
+// PARLIAMENT & ELECTIONS API
+// ==========================================
+
+app.get("/api/elections", authenticate, (req: any, res) => {
+  const user = req.user;
+  // Get active election for user's nationality (residenceId)
+  const election = db.prepare("SELECT * FROM elections WHERE regionId = ? AND status = 'active' ORDER BY createdAt DESC LIMIT 1").get(user.residenceId) as any;
+  if (!election) {
+    return res.json({ election: null, parties: [], myVote: null });
+  }
+
+  // Get parties in that region
+  const parties = db.prepare("SELECT id, name, tag, logo, ideology FROM parties WHERE regionId = ?").all(user.residenceId);
+
+  // Get vote counts
+  const votes = db.prepare("SELECT partyId, COUNT(*) as count FROM election_votes WHERE electionId = ? GROUP BY partyId").all(election.id) as any[];
+  const partiesWithVotes = parties.map((p: any) => ({
+    ...p,
+    votes: votes.find((v: any) => v.partyId === p.id)?.count || 0
+  }));
+
+  const myVote = db.prepare("SELECT partyId FROM election_votes WHERE electionId = ? AND voterId = ?").get(election.id, user.id) as any;
+
+  res.json({ election, parties: partiesWithVotes, myVote: myVote?.partyId });
+});
+
+app.post("/api/elections/vote", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { electionId, partyId } = req.body;
+
+  const election = db.prepare("SELECT regionId, status FROM elections WHERE id = ?").get(electionId) as any;
+  if (!election || election.status !== 'active') return res.status(400).json({ error: "Elezione non attiva o inesistente." });
+  if (election.regionId !== user.residenceId) return res.status(403).json({ error: "Puoi votare solo nella tua nazione di residenza." });
+
+  const party = db.prepare("SELECT id FROM parties WHERE id = ? AND regionId = ?").get(partyId, user.residenceId);
+  if (!party) return res.status(400).json({ error: "Partito non valido." });
+
+  const existingVote = db.prepare("SELECT id FROM election_votes WHERE electionId = ? AND voterId = ?").get(electionId, user.id);
+  if (existingVote) return res.status(400).json({ error: "Hai già votato in questa elezione." });
+
+  db.prepare("INSERT INTO election_votes (id, electionId, voterId, partyId, timestamp) VALUES (?, ?, ?, ?, ?)")
+    .run(Math.random().toString(36).substring(2, 11), electionId, user.id, partyId, Date.now());
+
+  res.json({ success: true });
+});
+
+app.get("/api/parliament", authenticate, (req: any, res) => {
+  const user = req.user;
+  const members = db.prepare(`
+    SELECT pm.userId, u.username, u.level, p.name as partyName, p.tag as partyTag, pm.electedAt
+    FROM parliament_members pm
+    JOIN users u ON pm.userId = u.id
+    JOIN parties p ON pm.partyId = p.id
+    WHERE pm.regionId = ?
+    ORDER BY p.name ASC, u.level DESC
+  `).all(user.residenceId);
+
+  res.json(members);
+});
+
+app.get("/api/parliament/laws", authenticate, (req: any, res) => {
+  const laws = db.prepare(`
+    SELECT l.*, u.username as proposerName 
+    FROM laws l 
+    JOIN users u ON l.proposerId = u.id 
+    WHERE l.regionId = ? 
+    ORDER BY l.createdAt DESC
+  `).all(req.user.residenceId);
+
+  const lawsWithVotes = laws.map((l: any) => {
+    const votes = db.prepare("SELECT vote, COUNT(*) as count FROM law_votes WHERE lawId = ? GROUP BY vote").all(l.id) as any[];
+    return {
+      ...l,
+      yesVotes: votes.find((v: any) => v.vote === 'yes')?.count || 0,
+      noVotes: votes.find((v: any) => v.vote === 'no')?.count || 0,
+      myVote: db.prepare("SELECT vote FROM law_votes WHERE lawId = ? AND voterId = ?").get(l.id, req.user.id)
+    };
+  });
+
+  res.json(lawsWithVotes);
+});
+
+app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { type, newValue } = req.body;
+
+  const isMp = db.prepare("SELECT userId FROM parliament_members WHERE userId = ? AND regionId = ?").get(user.id, user.residenceId);
+  if (!isMp) return res.status(403).json({ error: "Solo i Parlamentari possono proporre leggi." });
+
+  const activeLaw = db.prepare("SELECT id FROM laws WHERE regionId = ? AND status = 'pending'").get(user.residenceId);
+  if (activeLaw) return res.status(400).json({ error: "C'è già una legge in votazione in questa nazione." });
+
+  const lawId = Math.random().toString(36).substring(2, 11);
+  const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
+
+  db.prepare("INSERT INTO laws (id, regionId, proposerId, type, newValue, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)")
+    .run(lawId, user.residenceId, user.id, type, newValue, Date.now(), expiresAt);
+
+  res.json({ success: true, lawId });
+});
+
+app.post("/api/parliament/laws/vote", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { lawId, vote } = req.body; // vote: 'yes' or 'no'
+
+  const isMp = db.prepare("SELECT userId FROM parliament_members WHERE userId = ? AND regionId = ?").get(user.id, user.residenceId);
+  if (!isMp) return res.status(403).json({ error: "Solo i Parlamentari possono votare le leggi." });
+
+  const law = db.prepare("SELECT status FROM laws WHERE id = ? AND regionId = ?").get(lawId, user.residenceId) as any;
+  if (!law || law.status !== 'pending') return res.status(400).json({ error: "Legge non trovata o votazione chiusa." });
+
+  const existingVote = db.prepare("SELECT id FROM law_votes WHERE lawId = ? AND voterId = ?").get(lawId, user.id);
+  if (existingVote) return res.status(400).json({ error: "Hai già votato per questa legge." });
+
+  db.prepare("INSERT INTO law_votes (id, lawId, voterId, vote, timestamp) VALUES (?, ?, ?, ?, ?)")
+    .run(Math.random().toString(36).substring(2, 11), lawId, user.id, vote, Date.now());
+
+  res.json({ success: true });
+});
 
 app.get("/api/leaderboard", authenticate, (req, res) => {
   const leaders = db.prepare("SELECT username, influence, money FROM users ORDER BY influence DESC LIMIT 10").all();
   res.json(leaders);
 });
 
+// Election Cronjob Simulation
+function checkAndResolveElections() {
+  const regions = db.prepare("SELECT id FROM regions").all() as any[];
+  const now = Date.now();
+  const electionDuration = 3 * 24 * 60 * 60 * 1000; // 3 days
+
+  for (const r of regions) {
+    const activeElection = db.prepare("SELECT * FROM elections WHERE regionId = ? AND status = 'active'").get(r.id) as any;
+
+    if (!activeElection) {
+      // Start a new election
+      db.prepare("INSERT INTO elections (id, regionId, status, createdAt, closesAt) VALUES (?, ?, 'active', ?, ?)")
+        .run(Math.random().toString(36).substring(2, 11), r.id, now, now + electionDuration);
+    } else if (activeElection.closesAt <= now) {
+      // Resolve election
+      db.transaction(() => {
+        db.prepare("UPDATE elections SET status = 'closed' WHERE id = ?").run(activeElection.id);
+
+        const partyVotes = db.prepare("SELECT partyId, COUNT(*) as count FROM election_votes WHERE electionId = ? GROUP BY partyId").all(activeElection.id) as any[];
+        const totalVotes = partyVotes.reduce((sum, pv) => sum + pv.count, 0);
+
+        db.prepare("DELETE FROM parliament_members WHERE regionId = ?").run(r.id);
+
+        if (totalVotes > 0) {
+          const totalSeats = 20;
+          for (const pv of partyVotes) {
+            const wonSeats = Math.round((pv.count / totalVotes) * totalSeats);
+            if (wonSeats > 0) {
+              // Get top candidates from primaries for this party
+              const cyclePeriodMs = 5 * 24 * 60 * 60 * 1000;
+              const currentCycleStart = Math.floor(now / cyclePeriodMs) * cyclePeriodMs;
+
+              const candidates = db.prepare(`
+                SELECT candidateId, COUNT(*) as votes 
+                FROM party_primaries 
+                WHERE partyId = ? AND createdAt >= ?
+                GROUP BY candidateId
+                ORDER BY votes DESC
+                LIMIT ?
+              `).all(pv.partyId, currentCycleStart, wonSeats) as any[];
+
+              // If party didn't have enough candidates in primaries, fallback to joining members by seniority/level
+              let finalCandidates = candidates.map(c => c.candidateId);
+              if (finalCandidates.length < wonSeats) {
+                const fallback = db.prepare(`
+                  SELECT pm.userId 
+                  FROM party_members pm 
+                  JOIN users u ON pm.userId = u.id 
+                  WHERE pm.partyId = ? AND pm.userId NOT IN (${finalCandidates.map(id => `'${id}'`).join(',') || "''"})
+                  ORDER BY u.level DESC, pm.joinedAt ASC
+                  LIMIT ?
+                `).all(pv.partyId, wonSeats - finalCandidates.length) as any[];
+                finalCandidates = [...finalCandidates, ...fallback.map(f => f.userId)];
+              }
+
+              for (const mpId of finalCandidates) {
+                db.prepare("INSERT INTO parliament_members (userId, regionId, partyId, electedAt) VALUES (?, ?, ?, ?)").run(mpId, r.id, pv.partyId, now);
+              }
+            }
+          }
+        }
+
+        // Start next election
+        db.prepare("INSERT INTO elections (id, regionId, status, createdAt, closesAt) VALUES (?, ?, 'active', ?, ?)")
+          .run(Math.random().toString(36).substring(2, 11), r.id, now, now + electionDuration);
+      })();
+    }
+  }
+}
+
+// Law Cronjob Simulation
+function checkAndResolveLaws() {
+  const now = Date.now();
+  const pendingLaws = db.prepare("SELECT * FROM laws WHERE status = 'pending' AND expiresAt <= ?").all(now) as any[];
+
+  db.transaction(() => {
+    for (const law of pendingLaws) {
+      const votes = db.prepare("SELECT vote, COUNT(*) as count FROM law_votes WHERE lawId = ? GROUP BY vote").all(law.id) as any[];
+      const yes = votes.find((v: any) => v.vote === 'yes')?.count || 0;
+      const no = votes.find((v: any) => v.vote === 'no')?.count || 0;
+
+      if (yes > no) {
+        db.prepare("UPDATE laws SET status = 'passed' WHERE id = ?").run(law.id);
+
+        // Execute law
+        if (law.type === 'market_tax_change') {
+          const newTax = parseInt(law.newValue);
+          if (!isNaN(newTax) && newTax >= 0 && newTax <= 100) {
+            db.prepare("UPDATE regions SET marketTaxRate = ? WHERE id = ?").run(newTax, law.regionId);
+          }
+        }
+      } else {
+        db.prepare("UPDATE laws SET status = 'rejected' WHERE id = ?").run(law.id);
+      }
+    }
+  })();
+}
+
 // Vite middleware for development
 async function startServer() {
+  checkAndResolveElections();
+  checkAndResolveLaws();
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },

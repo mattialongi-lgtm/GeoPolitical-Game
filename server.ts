@@ -287,6 +287,11 @@ db.exec(`
     uraniumBonus REAL DEFAULT 1.0,
     diamondsBonus REAL DEFAULT 1.0,
     ownerUserId TEXT,
+    dictatorship INTEGER DEFAULT 0,
+    foundationDate INTEGER DEFAULT 0,
+    parliamentSize INTEGER DEFAULT 20,
+    parliamentDuration INTEGER DEFAULT 5,
+    residencePolicy TEXT DEFAULT 'open',
     FOREIGN KEY(ownerUserId) REFERENCES users(id)
   );
 
@@ -528,6 +533,7 @@ db.exec(`
     proposerId TEXT,
     type TEXT, -- e.g. 'change_market_tax'
     newValue TEXT,
+    params TEXT, -- JSON representation of law arguments
     status TEXT, -- 'pending', 'passed', 'rejected'
     createdAt INTEGER,
     expiresAt INTEGER,
@@ -2650,23 +2656,215 @@ app.get("/api/parliament/laws", authenticate, (req: any, res) => {
   res.json(lawsWithVotes);
 });
 
+// ==========================================
+// STATE LAWS REGISTRY
+// ==========================================
+
+export const LawRegistry: Record<string, {
+  category: string;
+  icon: string;
+  title: string;
+  description: string;
+  threshold: number; // e.g. 0.5 for >50%, 0.8 for >=80%
+  delayDays: number; // how long it stays in pending (e.g. 1)
+  validate: (region: any, params: any, proposer: any) => string | null; // returns error string or null
+  execute: (region: any, params: any) => void;
+}> = {
+  change_market_tax: {
+    category: "Economia e Tasse",
+    icon: "BadgeDollarSign",
+    title: "Modifica tassa di mercato",
+    description: "Imposta la tassa sulle transazioni di mercato nella regione.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      const tax = parseInt(params.tax);
+      if (isNaN(tax) || tax < 0 || tax > 100) return "Tassa non valida (deve essere tra 0 e 100)";
+      return null;
+    },
+    execute: (region, params) => {
+      db.prepare("UPDATE regions SET marketTaxRate = ? WHERE id = ?").run(parseInt(params.tax), region.id);
+    }
+  },
+  change_salary_tax: {
+    category: "Economia e Tasse",
+    icon: "Briefcase",
+    title: "Modifica tassa sui salari",
+    description: "Imposta la percentuale di tassazione sugli stipendi guadagnati nelle fabbriche.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      const tax = parseInt(params.tax);
+      if (isNaN(tax) || tax < 0 || tax > 100) return "Tassa non valida (deve essere tra 0 e 100)";
+      return null;
+    },
+    execute: (region, params) => {
+      db.prepare("UPDATE regions SET taxes = ? WHERE id = ?").run(parseInt(params.tax), region.id);
+    }
+  },
+  transfer_budget: {
+    category: "Economia e Tasse",
+    icon: "ArrowRightLeft",
+    title: "Trasferimento Budget",
+    description: "Trasferisce denaro dal budget statale a un'altra nazione.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      const amount = parseInt(params.amount);
+      if (isNaN(amount) || amount <= 0) return "Importo non valido.";
+      if (amount > region.treasury) return "Spesa superiore al tesoro attuale.";
+
+      const target = db.prepare("SELECT id FROM regions WHERE id = ?").get(params.targetRegionId);
+      if (!target) return "Nazione destinataria inesistente.";
+      if (params.targetRegionId === region.id) return "Non puoi trasferire budget a te stesso.";
+
+      return null;
+    },
+    execute: (region, params) => {
+      const amount = parseInt(params.amount);
+
+      // Ensure we still have the money at execution time
+      const currentRegion = db.prepare("SELECT treasury FROM regions WHERE id = ?").get(region.id) as any;
+      if (currentRegion.treasury >= amount) {
+        db.transaction(() => {
+          db.prepare("UPDATE regions SET treasury = treasury - ? WHERE id = ?").run(amount, region.id);
+          db.prepare("UPDATE regions SET treasury = treasury + ? WHERE id = ?").run(amount, params.targetRegionId);
+        })();
+      }
+    }
+  },
+  proclaim_dictatorship: {
+    category: "Politica Interna",
+    icon: "Crown",
+    title: "Proclamazione Dittatura",
+    description: "Il Leader diventa dittatore assoluto. Le leggi passano senza voto.",
+    threshold: 0.8,
+    delayDays: 1,
+    validate: (region, params, proposer) => {
+      const now = Date.now();
+      const THIRTY_ONE_DAYS = 31 * 24 * 60 * 60 * 1000;
+      if (now - region.foundationDate < THIRTY_ONE_DAYS && region.foundationDate !== 0) {
+        return "Devono passare almeno 31 giorni dalla fondazione dello Stato.";
+      }
+      if (region.ownerUserId !== proposer.id) {
+        return "Solo il Leader attuale può proclamare la dittatura.";
+      }
+      return null;
+    },
+    execute: (region, params) => {
+      db.prepare("UPDATE regions SET dictatorship = 1 WHERE id = ?").run(region.id);
+    }
+  },
+  revoke_dictatorship: {
+    category: "Politica Interna",
+    icon: "Scale",
+    title: "Ritorno alla Democrazia",
+    description: "Revoca lo stato di Dittatura. Il parlamento torna ad avere potere.",
+    threshold: 0.8,
+    delayDays: 1,
+    validate: (region) => {
+      if (!region.dictatorship) return "Lo stato non è in dittatura.";
+      return null;
+    },
+    execute: (region) => {
+      db.prepare("UPDATE regions SET dictatorship = 0 WHERE id = ?").run(region.id);
+    }
+  },
+  change_state_name: {
+    category: "Politica Interna",
+    icon: "Flag",
+    title: "Cambio nome dello Stato",
+    description: "Modifica il nome ufficiale della nazione.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      if (!params.name || params.name.length > 22) return "Nome non valido (max 22 caratteri).";
+      const existing = db.prepare("SELECT id FROM regions WHERE name = ? AND id != ?").get(params.name, region.id);
+      if (existing) return "Nome già in uso da un'altra nazione.";
+      return null;
+    },
+    execute: (region, params) => {
+      db.prepare("UPDATE regions SET name = ? WHERE id = ?").run(params.name, region.id);
+    }
+  }
+};
+
+app.get("/api/parliament/laws", authenticate, (req: any, res) => {
+  const laws = db.prepare(`
+    SELECT l.*, u.username as proposerName 
+    FROM laws l 
+    JOIN users u ON l.proposerId = u.id 
+    WHERE l.regionId = ? 
+    ORDER BY l.createdAt DESC
+  `).all(req.user.residenceId);
+
+  const lawsWithVotes = laws.map((l: any) => {
+    const votes = db.prepare("SELECT vote, COUNT(*) as count FROM law_votes WHERE lawId = ? GROUP BY vote").all(l.id) as any[];
+    return {
+      ...l,
+      yesVotes: votes.find((v: any) => v.vote === 'yes')?.count || 0,
+      noVotes: votes.find((v: any) => v.vote === 'no')?.count || 0,
+      myVote: db.prepare("SELECT vote FROM law_votes WHERE lawId = ? AND voterId = ?").get(l.id, req.user.id)
+    };
+  });
+
+  res.json({ laws: lawsWithVotes, registry: LawRegistry });
+});
+
 app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
   const user = req.user;
-  const { type, newValue } = req.body;
+  const { type, params } = req.body; // params is an object
+
+  const lawDef = LawRegistry[type];
+  if (!lawDef) return res.status(400).json({ error: "Tipo di legge sconosciuto." });
+
+  // Verify permission
+  const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(user.residenceId) as any;
+  if (!region) return res.status(404).json({ error: "Regione non trovata." });
 
   const isMp = db.prepare("SELECT userId FROM parliament_members WHERE userId = ? AND regionId = ?").get(user.id, user.residenceId);
-  if (!isMp) return res.status(403).json({ error: "Solo i Parlamentari possono proporre leggi." });
+  const isLeader = region.ownerUserId === user.id;
 
-  const activeLaw = db.prepare("SELECT id FROM laws WHERE regionId = ? AND status = 'pending'").get(user.residenceId);
-  if (activeLaw) return res.status(400).json({ error: "C'è già una legge in votazione in questa nazione." });
+  if (!isMp && !isLeader) {
+    return res.status(403).json({ error: "Solo i Parlamentari o il Leader possono proporre leggi." });
+  }
 
+  // Validate params
+  const validationError = lawDef.validate(region, params, user);
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  // Prevent multiple active laws of the SAME TYPE to avoid conflicts
+  const activeLaw = db.prepare("SELECT id FROM laws WHERE regionId = ? AND type = ? AND status = 'pending'").get(region.id, type);
+  if (activeLaw) return res.status(400).json({ error: "Una proposta simile è già in votazione." });
+
+  // Format params
+  const paramsStr = JSON.stringify(params || {});
   const lawId = Math.random().toString(36).substring(2, 11);
-  const expiresAt = Date.now() + (24 * 60 * 60 * 1000); // 24 hours
 
-  db.prepare("INSERT INTO laws (id, regionId, proposerId, type, newValue, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)")
-    .run(lawId, user.residenceId, user.id, type, newValue, Date.now(), expiresAt);
+  // Check Dictatorship
+  if (region.dictatorship) {
+    // Law passes immediately without parliament vote if dictator dictates it
+    // Or if MP proposes it, perhaps dictator still overrides or it passes instantly
+    // We'll let it pass instantly for now
+    db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'passed', ?, ?)")
+      .run(lawId, region.id, user.id, type, paramsStr, Date.now(), Date.now());
 
-  res.json({ success: true, lawId });
+    // Execute immediately
+    try {
+      lawDef.execute(region, params);
+      return res.json({ success: true, lawId, immediate: true });
+    } catch (e) {
+      console.error(e);
+      return res.status(500).json({ error: "Errore durante l'esecuzione della legge." });
+    }
+  }
+
+  // Normal Democracy
+  const expiresAt = Date.now() + (lawDef.delayDays * 24 * 60 * 60 * 1000);
+  db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)")
+    .run(lawId, region.id, user.id, type, paramsStr, Date.now(), expiresAt);
+
+  res.json({ success: true, lawId, immediate: false });
 });
 
 app.post("/api/parliament/laws/vote", authenticate, (req: any, res) => {
@@ -2773,16 +2971,36 @@ function checkAndResolveLaws() {
       const votes = db.prepare("SELECT vote, COUNT(*) as count FROM law_votes WHERE lawId = ? GROUP BY vote").all(law.id) as any[];
       const yes = votes.find((v: any) => v.vote === 'yes')?.count || 0;
       const no = votes.find((v: any) => v.vote === 'no')?.count || 0;
+      const totalVotes = yes + no;
 
-      if (yes > no) {
+      const lawDef = LawRegistry[law.type];
+      if (!lawDef) {
+        // Obsolete law type
+        db.prepare("UPDATE laws SET status = 'rejected' WHERE id = ?").run(law.id);
+        continue;
+      }
+
+      // Check threshold (e.g. >50% means yes/total > 0.5)
+      // Note: threshold usually means >= so if threshold is 0.5, >0.5 or >=0.5? Usually >50% for simple majority.
+      // If 0.8, requires >= 80%. Let's use strict > for 0.5, >= for others to be safe, or just >= for all with adjusted values.
+      const passRatio = totalVotes > 0 ? (yes / totalVotes) : 0;
+
+      let passed = false;
+      if (lawDef.threshold === 0.5) {
+        passed = yes > no; // Simple majority
+      } else {
+        passed = totalVotes > 0 && passRatio >= lawDef.threshold; // Supermajority
+      }
+
+      if (passed) {
         db.prepare("UPDATE laws SET status = 'passed' WHERE id = ?").run(law.id);
 
-        // Execute law
-        if (law.type === 'market_tax_change') {
-          const newTax = parseInt(law.newValue);
-          if (!isNaN(newTax) && newTax >= 0 && newTax <= 100) {
-            db.prepare("UPDATE regions SET marketTaxRate = ? WHERE id = ?").run(newTax, law.regionId);
-          }
+        try {
+          const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(law.regionId);
+          const params = law.params ? JSON.parse(law.params) : { newValue: law.newValue }; // fallback for old laws
+          lawDef.execute(region, params);
+        } catch (e) {
+          console.error(`Error executing law ${law.type} (${law.id}):`, e);
         }
       } else {
         db.prepare("UPDATE laws SET status = 'rejected' WHERE id = ?").run(law.id);

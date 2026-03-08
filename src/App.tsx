@@ -41,7 +41,9 @@ import {
   Camera,
   BookOpen,
   Check,
-  AlertCircle
+  AlertCircle,
+  Users,
+  Crown
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -2716,6 +2718,9 @@ export default function App() {
                     <button onClick={() => { navigate("/nation"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Shield className="w-4 h-4 text-rose-500" /> NAZIONE
                     </button>
+                    <button onClick={() => { navigate("/party"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                      <Users className="w-4 h-4 text-purple-500" /> PARTITO
+                    </button>
                     <button onClick={() => { navigate("/produce"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Hammer className="w-4 h-4 text-orange-500" /> PRODUCI ARMI
                     </button>
@@ -2765,6 +2770,7 @@ export default function App() {
             ) : <Navigate to="/" />
           } />
           <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
+          <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
           <Route path="/nation" element={<NationView user={user} fetchData={fetchData} />} />
@@ -2955,5 +2961,503 @@ const Leaderboard = () => {
         </tbody>
       </table>
     </div>
+  );
+};
+
+// ==========================================
+// POLITICAL PARTIES COMPONENTS
+// ==========================================
+
+const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, reload, fetchData }: any) => {
+  const [activeTab, setActiveTab] = useState('info');
+  const [loading, setLoading] = useState(false);
+  const [targetUser, setTargetUser] = useState<any>(null);
+
+  // Modals
+  const [showEdit, setShowEdit] = useState(false);
+  const [editForm, setEditForm] = useState({ name: party.name, ideology: party.ideology, tag: party.tag, description: party.description, logo: party.logo });
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteId, setInviteId] = useState("");
+
+  // Economy
+  const [wageForm, setWageForm] = useState({ targetUserId: '', salaryCash: 0, salaryGold: 0 });
+  const [contributeForm, setContributeForm] = useState({ targetUserId: '', itemType: 'cash', amount: 0 });
+
+  const maxGoldTotal = Math.min(5000, activeMembersCount * 100);
+  const maxGoldPerUser = Math.min(200, 50 + (activeMembersCount * 5));
+
+  const isLeader = myRole === 'leader';
+  const isSecretary = myRole === 'secretary' || isLeader;
+
+  const handleEdit = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/parties/edit", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partyId: party.id, ...editForm }) });
+      if ((await res.json()).error) alert("Errore modifica");
+      else { setShowEdit(false); reload(); }
+    } finally { setLoading(false); }
+  };
+
+  const handleInvite = async () => {
+    if (!inviteId) return;
+    setLoading(true);
+    try {
+      const res = await fetch("/api/parties/invite", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ targetUserId: inviteId }) });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert("Invito inviato!"); setShowInvite(false); setInviteId(""); }
+    } finally { setLoading(false); }
+  };
+
+  const handleRole = async (targetUserId: string, newRole: string) => {
+    try {
+      const res = await fetch("/api/parties/roles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partyId: party.id, targetUserId, newRole }) });
+      if (!(await res.json()).error) reload();
+    } catch { alert("Errore"); }
+  };
+
+  const handleKick = async (targetUserId: string) => {
+    if (!window.confirm("Sei sicuro di voler espellere questo membro?")) return;
+    try {
+      const res = await fetch("/api/parties/kick", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partyId: party.id, targetUserId }) });
+      if (!(await res.json()).error) reload();
+    } catch { alert("Errore"); }
+  };
+
+  const handleSetWage = async () => {
+    try {
+      const res = await fetch("/api/parties/set-wage", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partyId: party.id, ...wageForm }) });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else reload();
+    } catch { alert("Errore"); }
+  };
+
+  const handlePayWages = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/parties/pay-wages", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ partyId: party.id }) });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert(`Pagati ${data.totalCash}$ e ${data.totalGold}G a ${data.paidMembers} membri.`); fetchData(); }
+    } catch { alert("Errore"); }
+    finally { setLoading(false); }
+  };
+
+  const handleContribute = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/parties/contribute", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(contributeForm) });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert("Inviato!"); setTargetUser(null); fetchData(); }
+    } catch { alert("Errore"); }
+    finally { setLoading(false); }
+  };
+
+  const handleVote = async (candidateId: string) => {
+    try {
+      const res = await fetch("/api/parties/primaries-vote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidateId }) });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else alert("Voto registrato!");
+    } catch { alert("Errore"); }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+          {party.logo ? <img src={party.logo} className="w-32 h-32 rounded-3xl" /> : <Users className="w-32 h-32" />}
+        </div>
+
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-6">
+          {party.logo ? <img src={party.logo} className="w-24 h-24 rounded-2xl shadow-md object-cover" /> : <div className="w-24 h-24 bg-indigo-100 rounded-2xl flex items-center justify-center"><Users className="w-10 h-10 text-indigo-500" /></div>}
+          <div className="flex-1">
+            <h1 className="text-3xl font-black text-slate-900 leading-tight">{party.name} {party.tag && <span className="text-indigo-600">[{party.tag}]</span>}</h1>
+            <p className="text-slate-500 font-bold mt-1 max-w-xl">{party.description || "Nessuna descrizione."}</p>
+            <div className="flex flex-wrap gap-2 mt-4">
+              <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg text-xs font-bold uppercase">Ideologia: {party.ideology || "Non definita"}</span>
+              <span className="bg-slate-100 text-slate-600 px-3 py-1 rounded-lg text-xs font-bold uppercase">Regione: {party.regionId}</span>
+              <span className="bg-indigo-50 text-indigo-600 px-3 py-1 rounded-lg text-xs font-black uppercase">Membri Attivi: {activeMembersCount}</span>
+            </div>
+          </div>
+          {isLeader && (
+            <button onClick={() => setShowEdit(true)} className="bg-slate-100 hover:bg-slate-200 text-slate-700 p-3 rounded-xl transition-colors shrink-0">
+              <Edit2 className="w-5 h-5" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="flex overflow-x-auto gap-2 pb-2">
+        <button onClick={() => setActiveTab('info')} className={`px-5 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider whitespace-nowrap transition-colors ${activeTab === 'info' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>Membri</button>
+        <button onClick={() => setActiveTab('economy')} className={`px-5 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider whitespace-nowrap transition-colors ${activeTab === 'economy' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>Economia & Salari</button>
+        <button onClick={() => setActiveTab('primaries')} className={`px-5 py-2.5 rounded-xl font-black text-sm uppercase tracking-wider whitespace-nowrap transition-colors ${activeTab === 'primaries' ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>Primarie</button>
+      </div>
+
+      {activeTab === 'info' && (
+        <div className="bg-white rounded-[2rem] border border-slate-100 shadow-sm p-6 overflow-hidden">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-xl font-black text-slate-800">Iscritti ({members.length})</h3>
+            {isSecretary && (
+              <button onClick={() => setShowInvite(true)} className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-4 py-2 font-black text-xs uppercase tracking-widest rounded-xl transition-colors shrink-0">
+                + Invita Membro
+              </button>
+            )}
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="pb-3 px-2 text-xs font-black text-slate-400 uppercase tracking-widest">Player</th>
+                  <th className="pb-3 px-2 text-xs font-black text-slate-400 uppercase tracking-widest">Ruolo</th>
+                  <th className="pb-3 px-2 text-xs font-black text-slate-400 uppercase tracking-widest">Attività</th>
+                  <th className="pb-3 px-2 text-xs font-black text-slate-400 uppercase tracking-widest">Azioni</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {members.map((m: any) => {
+                  const isActive = m.level >= 60 && Date.now() - (m.lastLogin || 0) <= 24 * 60 * 60 * 1000 && Date.now() - m.joinedAt >= 72 * 60 * 60 * 1000;
+                  return (
+                    <tr key={m.userId} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-4 px-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center font-bold text-slate-400">{m.level}</div>
+                          <span className="font-bold text-slate-900">{m.username}</span>
+                          {m.userId === party.leaderUserId && <Crown className="w-4 h-4 text-amber-500" />}
+                        </div>
+                      </td>
+                      <td className="py-4 px-2 font-bold text-slate-600 capitalize">
+                        {m.role === 'leader' ? <span className="text-amber-600">Leader</span> : m.role === 'secretary' ? <span className="text-indigo-600">Segretario</span> : "Membro"}
+                      </td>
+                      <td className="py-4 px-2">
+                        {isActive ? <span className="bg-emerald-50 text-emerald-600 px-2 py-1 rounded border border-emerald-100 text-[10px] font-black uppercase">Attivo</span> : <span className="bg-slate-100 text-slate-500 px-2 py-1 rounded border border-slate-200 text-[10px] font-black uppercase">Inattivo</span>}
+                      </td>
+                      <td className="py-4 px-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {m.userId !== user.id && (
+                            <button onClick={() => setTargetUser(m)} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 p-2 rounded-lg" title="Invia Contributo"><ArrowRight className="w-4 h-4" /></button>
+                          )}
+                          {isLeader && m.userId !== user.id && m.role !== 'leader' && (
+                            <>
+                              {m.role === 'secretary' ?
+                                <button onClick={() => handleRole(m.userId, 'member')} className="bg-slate-100 text-slate-600 p-2 rounded-lg text-[10px] uppercase font-black tracking-wider" title="Rimuovi Segretario">Demansiona</button>
+                                :
+                                <button onClick={() => handleRole(m.userId, 'secretary')} className="bg-emerald-50 text-emerald-600 p-2 rounded-lg text-[10px] uppercase font-black tracking-wider" title="Promuovi a Segretario">Promuovi</button>
+                              }
+                            </>
+                          )}
+                          {isSecretary && m.role !== 'leader' && m.userId !== user.id && (
+                            <button onClick={() => handleKick(m.userId)} className="bg-rose-50 hover:bg-rose-100 text-rose-600 p-2 rounded-lg" title="Espelli"><Trash2 className="w-4 h-4" /></button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'economy' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm border-l-4 border-l-amber-400">
+              <h4 className="text-slate-500 font-bold uppercase tracking-widest text-xs mb-1">Cap. Gold Distribuibile</h4>
+              <p className="text-3xl font-black text-slate-900">{maxGoldTotal} <span className="text-sm text-slate-400">/ ciclo</span></p>
+              <p className="text-xs text-slate-400 mt-2">Corrisponde a {activeMembersCount} membri attivi x 100 G.</p>
+            </div>
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm border-l-4 border-l-sky-400">
+              <h4 className="text-slate-500 font-bold uppercase tracking-widest text-xs mb-1">Max Gold per Utente</h4>
+              <p className="text-3xl font-black text-slate-900">{maxGoldPerUser}</p>
+              <p className="text-xs text-slate-400 mt-2">Limite personale per busta paga.</p>
+            </div>
+          </div>
+
+          {isLeader && (
+            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm space-y-4 overflow-x-auto min-w-full">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-black text-slate-800">Impostazione Salari</h3>
+                <button onClick={handlePayWages} disabled={loading} className="bg-emerald-500 text-white px-6 py-3 font-black text-sm uppercase rounded-xl hover:bg-emerald-600 shadow-lg shadow-emerald-200 transition-all focus:ring-4 focus:ring-emerald-100 flex items-center gap-2 shrink-0">
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <DollarSign className="w-4 h-4 text-emerald-100" />} Paga
+                </button>
+              </div>
+
+              <table className="w-full text-left border-collapse min-w-[500px]">
+                <thead>
+                  <tr className="border-b border-slate-100 text-xs font-black text-slate-400 uppercase tracking-widest">
+                    <th className="pb-3 px-2">Player</th>
+                    <th className="pb-3 px-2 text-center">Cash ($)</th>
+                    <th className="pb-3 px-2 text-center">Gold</th>
+                    <th className="pb-3 px-2"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {members.map((m: any) => (
+                    <tr key={m.userId} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 px-2 font-bold text-slate-800">{m.username} {m.userId === wageForm.targetUserId && <span className="ml-2 w-2 h-2 rounded-full bg-indigo-500 inline-block animate-pulse"></span>}</td>
+                      <td className="py-3 px-2 text-center">
+                        <input type="number" min={0} defaultValue={m.salaryCash} onChange={e => { setWageForm({ targetUserId: m.userId, salaryCash: parseInt(e.target.value) || 0, salaryGold: wageForm.targetUserId === m.userId ? wageForm.salaryGold : m.salaryGold }) }} className="w-20 md:w-24 bg-white border border-slate-200 rounded p-1 text-sm font-bold text-slate-700 focus:border-indigo-400 outline-none text-center" />
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <input type="number" min={0} max={maxGoldPerUser} defaultValue={m.salaryGold} onChange={e => { setWageForm({ targetUserId: m.userId, salaryGold: parseInt(e.target.value) || 0, salaryCash: wageForm.targetUserId === m.userId ? wageForm.salaryCash : m.salaryCash }) }} className="w-16 md:w-20 bg-amber-50 border border-amber-200 rounded p-1 text-sm font-bold text-amber-700 outline-none text-center focus:border-amber-400" />
+                      </td>
+                      <td className="py-3 px-2 text-right">
+                        <button onClick={handleSetWage} className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-4 py-2 rounded-lg text-[10px] font-black uppercase disabled:opacity-50" disabled={wageForm.targetUserId !== m.userId}>Salva</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'primaries' && (
+        <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm text-center">
+          <Trophy className="w-16 h-16 text-indigo-200 mx-auto mb-4" />
+          <h3 className="text-2xl font-black text-slate-800 mb-2">Elezioni Primarie</h3>
+          <p className="text-slate-500 font-bold mb-8 max-w-md mx-auto">Vota un membro del tuo partito! I vincitori avranno la possibilità di candidarsi al Parlamento per le Elezioni Nazionali. Ciclo ogni 5 giorni.</p>
+
+          <div className="grid gap-3 max-w-lg mx-auto text-left">
+            {members.map((m: any) => (
+              <div key={m.userId} className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-indigo-100 rounded-xl flex items-center justify-center font-black text-indigo-500">{m.level}</div>
+                  <div>
+                    <p className="font-black text-slate-900 leading-tight">{m.username}</p>
+                    <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">{m.role}</p>
+                  </div>
+                </div>
+                <button onClick={() => handleVote(m.userId)} className="bg-indigo-600 text-white hover:bg-indigo-700 px-5 py-2 font-black tracking-widest uppercase text-xs rounded-xl shadow-md transition-all">
+                  Vota
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Target User Contribute Modal */}
+      <AnimatePresence>
+        {targetUser && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setTargetUser(null)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white p-8 rounded-[2.5rem] shadow-2xl overflow-hidden relative z-10 w-full max-w-md border border-slate-100 space-y-6">
+              <h3 className="text-2xl font-black text-slate-900 leading-tight">Invia a {targetUser.username}</h3>
+              <p className="text-sm text-slate-500 font-bold px-4 py-2 bg-slate-50 border border-slate-100 rounded-xl mt-2 line-clamp-3">I trasferimenti di fondi di partito sono tracciati nel log.</p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Risorsa</label>
+                  <select value={contributeForm.itemType} onChange={e => setContributeForm({ ...contributeForm, targetUserId: targetUser.userId, itemType: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold outline-none text-slate-700 focus:border-indigo-300">
+                    <option value="cash">💵 Cash ($)</option>
+                    <option value="gold">🏅 Gold</option>
+                    <option value="oil">🛢️ Petrolio</option>
+                    <option value="minerals">🪨 Minerali</option>
+                    <option value="uranium">☢️ Uranio</option>
+                    <option value="diamonds">💎 Diamanti</option>
+                    <option value="rifle">🔫 Fucili</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Quantità</label>
+                  <input type="number" min={1} value={contributeForm.amount || ''} onChange={e => setContributeForm({ ...contributeForm, targetUserId: targetUser.userId, amount: parseInt(e.target.value) || 0 })} className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold outline-none focus:border-indigo-300 focus:ring-4 ring-indigo-50" placeholder="0" />
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button onClick={() => setTargetUser(null)} className="flex-1 px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 font-black rounded-xl uppercase tracking-widest text-xs transition-colors">Annulla</button>
+                <button onClick={handleContribute} disabled={loading || !contributeForm.amount} className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 shadow-lg shadow-indigo-200 text-white font-black rounded-xl uppercase tracking-widest text-xs transition-colors disabled:opacity-50">Invia</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showEdit && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowEdit(false)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white p-8 rounded-[2.5rem] shadow-2xl overflow-hidden relative z-10 w-full max-w-md border border-slate-100 space-y-6">
+              <h3 className="text-2xl font-black text-slate-900 leading-tight">Modifica Partito</h3>
+              <div className="space-y-3">
+                <input placeholder="Nome" value={editForm.name} onChange={e => setEditForm({ ...editForm, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 focus:border-indigo-300 outline-none" />
+                <input placeholder="Tag" value={editForm.tag} onChange={e => setEditForm({ ...editForm, tag: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 focus:border-indigo-300 outline-none" />
+                <input placeholder="Ideologia" value={editForm.ideology} onChange={e => setEditForm({ ...editForm, ideology: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 focus:border-indigo-300 outline-none" />
+                <textarea placeholder="Descrizione" value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 focus:border-indigo-300 outline-none resize-none h-24" />
+                <input placeholder="URL Logo" value={editForm.logo} onChange={e => setEditForm({ ...editForm, logo: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 focus:border-indigo-300 outline-none" />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowEdit(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 font-black rounded-xl uppercase tracking-widest text-xs transition-colors">Annulla</button>
+                <button onClick={handleEdit} disabled={loading} className="flex-1 px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black rounded-xl uppercase tracking-widest text-xs transition-colors shadow-lg">Salva</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showInvite && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowInvite(false)} />
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-white p-8 rounded-[2.5rem] shadow-2xl relative z-10 w-full max-w-sm border border-slate-100 space-y-4">
+              <h3 className="text-xl font-black text-slate-900 leading-tight">Invita Membro</h3>
+              <p className="text-sm font-bold text-slate-500">Inserisci l'ID dell'utente da invitare:</p>
+              <input placeholder="User ID" value={inviteId} onChange={e => setInviteId(e.target.value)} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold text-slate-700 focus:border-indigo-300 outline-none" />
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowInvite(false)} className="flex-1 px-4 py-3 bg-slate-100 text-slate-600 font-black rounded-xl uppercase tracking-widest text-xs">Annulla</button>
+                <button onClick={handleInvite} className="flex-1 px-4 py-3 bg-indigo-600 text-white font-black rounded-xl uppercase tracking-widest text-xs shadow-md">Invia</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const PartyHub = ({ user, fetchData }: any) => {
+  const navigate = useNavigate();
+  const [partyData, setPartyData] = useState<any>(null);
+  const [globalParties, setGlobalParties] = useState<any[]>([]);
+  const [myInvites, setMyInvites] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ name: '', ideology: '', tag: '', description: '', logo: '' });
+
+  const loadContent = async () => {
+    setLoading(true);
+    try {
+      const myRes = await fetch("/api/parties/my");
+      if (myRes.ok) {
+        setPartyData(await myRes.json());
+      } else {
+        const gp = await fetch("/api/parties");
+        if (gp.ok) setGlobalParties(await gp.json());
+
+        const inv = await fetch("/api/parties/my-invites");
+        if (inv.ok) setMyInvites(await inv.json());
+      }
+    } catch {
+      // no party
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadContent(); }, []);
+
+  const handleCreate = async () => {
+    if (!createForm.name) return alert("Nome obbligatorio");
+    if (!window.confirm("Costicchia 100 Gold. Sei sicuro?")) return;
+    try {
+      const res = await fetch("/api/parties/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(createForm) });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert("Partito creato!"); setShowCreate(false); fetchData(); loadContent(); }
+    } catch { alert("Errore creazione"); }
+  };
+
+  const handleAcceptInvite = async (inviteId: string) => {
+    try {
+      const res = await fetch("/api/parties/join", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ inviteId }) });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { fetchData(); loadContent(); }
+    } catch { alert("Errore"); }
+  };
+
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
+
+  if (partyData && partyData.party) {
+    const { party, members, activeMembersCount } = partyData;
+    const myRole = members.find((m: any) => m.userId === user.id)?.role;
+    return <PartyDashboard party={party} members={members} activeMembersCount={activeMembersCount} myRole={myRole} user={user} reload={loadContent} fetchData={fetchData} />;
+  }
+
+  if (showCreate) {
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-black">Fonda un Partito</h2>
+          <button onClick={() => setShowCreate(false)} className="text-slate-400 font-bold hover:text-slate-600 transition-colors bg-slate-50 px-3 py-1.5 rounded-lg text-sm">Annulla</button>
+        </div>
+        <p className="text-sm font-bold text-amber-600 bg-amber-50 p-4 rounded-xl border border-amber-100 leading-tight">Costo fondazione: 100 Gold. Sede Ufficiale: <span className="font-black">{user.residenceId || 'IT'}</span></p>
+
+        <div className="grid gap-3">
+          <input placeholder="Nome Partito *" value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all" />
+          <div className="grid grid-cols-2 gap-3">
+            <input placeholder="Tag (es. PLI)" value={createForm.tag} onChange={e => setCreateForm({ ...createForm, tag: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all" />
+            <input placeholder="Ideologia" value={createForm.ideology} onChange={e => setCreateForm({ ...createForm, ideology: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all" />
+          </div>
+          <textarea placeholder="Descrizione del partito..." value={createForm.description} onChange={e => setCreateForm({ ...createForm, description: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all h-24 resize-none" />
+          <input placeholder="URL Logo (Opzionale)" value={createForm.logo} onChange={e => setCreateForm({ ...createForm, logo: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all" />
+        </div>
+
+        <button onClick={handleCreate} disabled={user.gold < 100} className="w-full py-4 text-white font-black tracking-widest uppercase rounded-2xl shadow-xl hover:scale-105 transition-all bg-indigo-600 shadow-indigo-200 disabled:opacity-50 disabled:hover:scale-100 mt-2">
+          Fonda il Partito
+        </button>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <div className="bg-gradient-to-br from-indigo-500 to-purple-600 border border-indigo-400 p-8 rounded-[2.5rem] shadow-xl text-white flex flex-col md:flex-row justify-between items-start md:items-center gap-6 overflow-hidden relative">
+        <div className="absolute -right-8 -top-8 opacity-20 pointer-events-none"><Trophy className="w-48 h-48" /></div>
+        <div className="relative z-10">
+          <h2 className="text-3xl font-black tracking-tight leading-none mb-2">Politica Nazionale</h2>
+          <p className="text-white/80 font-bold text-sm max-w-sm">Unisciti a un partito per partecipare alle elezioni parlamentari o fondane uno nuovo per guidare il tuo paese.</p>
+        </div>
+        <button onClick={() => setShowCreate(true)} className="relative z-10 bg-white text-indigo-600 px-8 py-4 rounded-2xl font-black shadow-2xl hover:scale-105 transition-all w-full md:w-auto uppercase tracking-widest text-[10px] shrink-0">Fonda Partito</button>
+      </div>
+
+      {myInvites.length > 0 && (
+        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-50 rounded-full blur-3xl pointer-events-none" />
+          <h3 className="text-xl font-black tracking-tight text-slate-800 relative z-10">Inviti Pendenti</h3>
+          <div className="grid gap-3 relative z-10">
+            {myInvites.map(inv => (
+              <div key={inv.id} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <div>
+                  <p className="font-black text-slate-900 leading-tight">{inv.partyName}</p>
+                  <p className="text-xs font-bold text-slate-400 mt-0.5">Invitato da <span className="text-indigo-500">{inv.inviterName}</span></p>
+                </div>
+                <button onClick={() => handleAcceptInvite(inv.id)} className="w-full md:w-auto bg-emerald-500 text-white px-5 py-2.5 font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md hover:bg-emerald-600 hover:scale-105 transition-all shrink-0">Accetta</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+        <h3 className="text-xl font-black tracking-tight text-slate-800">Partiti Esistenti ({globalParties.length})</h3>
+        <div className="grid gap-3">
+          {globalParties.map((p, i) => (
+            <div key={p.id} className="flex flex-col md:flex-row md:items-center gap-4 p-4 border border-slate-100 hover:border-indigo-100 bg-white hover:bg-indigo-50/30 rounded-2xl transition-all shadow-sm hover:shadow-md cursor-pointer group">
+              <div className="flex items-center gap-4 flex-1">
+                <span className="text-xl font-black text-slate-300 w-8 text-center group-hover:text-indigo-300 transition-colors">#{i + 1}</span>
+                {p.logo ? <img src={p.logo} alt="logo" className="w-14 h-14 rounded-xl object-cover shadow-sm bg-white shrink-0" /> : <div className="w-14 h-14 bg-indigo-50 rounded-xl flex items-center justify-center font-black text-indigo-200 border border-indigo-100 shrink-0">{p.tag || "P"}</div>}
+                <div>
+                  <p className="font-black text-slate-900 text-[15px] leading-tight transition-colors group-hover:text-indigo-900">{p.name} {p.tag && <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] ml-1.5 align-middle select-none">{p.tag}</span>}</p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-wider"><span className="text-indigo-600">{p.memberCount} Membri</span> <span className="mx-1.5 text-slate-300">•</span> Leader: <span className="text-slate-700">{p.leaderName}</span></p>
+                </div>
+              </div>
+              <div className="hidden md:flex shrink-0">
+                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+              </div>
+            </div>
+          ))}
+          {globalParties.length === 0 && (
+            <div className="p-10 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50">
+              <p className="text-slate-400 font-bold mb-1">Nessun partito fondato finora.</p>
+              <p className="text-sm text-slate-400 font-bold">Sii il primo a scendere in politica!</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </motion.div>
   );
 };

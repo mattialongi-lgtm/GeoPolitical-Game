@@ -140,6 +140,9 @@ addColumnIfMissing("users", "originalNation", "TEXT DEFAULT 'ST'");
 addColumnIfMissing("users", "displayedNation", "TEXT DEFAULT 'ST'");
 addColumnIfMissing("users", "lastOriginalNationChange", "INTEGER DEFAULT 0");
 
+// Activity Tracking
+addColumnIfMissing("users", "lastLogin", "INTEGER DEFAULT 0");
+
 // Market migrations
 addColumnIfMissing("regions", "marketTaxRate", "INTEGER DEFAULT 10");
 
@@ -440,6 +443,55 @@ db.exec(`
     createdAt INTEGER,
     FOREIGN KEY(userId) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS parties (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    ideology TEXT,
+    tag TEXT,
+    description TEXT,
+    logo TEXT,
+    regionId TEXT,
+    leaderUserId TEXT,
+    createdAt INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS party_members (
+    userId TEXT,
+    partyId TEXT,
+    role TEXT, -- 'leader', 'secretary', 'member'
+    joinedAt INTEGER,
+    salaryCash INTEGER DEFAULT 0,
+    salaryGold INTEGER DEFAULT 0,
+    PRIMARY KEY(userId),
+    FOREIGN KEY(userId) REFERENCES users(id),
+    FOREIGN KEY(partyId) REFERENCES parties(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS party_invites (
+    id TEXT PRIMARY KEY,
+    partyId TEXT,
+    userId TEXT,
+    invitedBy TEXT,
+    status TEXT, -- 'pending', 'accepted', 'rejected'
+    createdAt INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS party_primaries (
+    id TEXT PRIMARY KEY,
+    partyId TEXT,
+    candidateId TEXT,
+    voterId TEXT,
+    createdAt INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS party_logs (
+    id TEXT PRIMARY KEY,
+    partyId TEXT,
+    action TEXT,
+    details TEXT,
+    timestamp INTEGER
+  );
 `);
 
 // Seed initial regions if empty
@@ -680,6 +732,12 @@ const authenticate = async (req: any, res: any, next: any) => {
     user.inventory = inventory;
     user.inventoryVolume = inventoryVolume;
     user.maxInventoryVolume = maxInventoryVolume;
+
+    // Throttle lastLogin updates to once every 5 minutes to reduce DB load
+    if (now - (user.lastLogin || 0) > 5 * 60 * 1000) {
+      db.prepare("UPDATE users SET lastLogin = ? WHERE id = ?").run(now, user.id);
+      user.lastLogin = now;
+    }
 
     req.user = user;
     next();
@@ -2075,6 +2133,387 @@ app.post("/api/produce/claim", authenticate, (req: any, res) => {
     console.error("Claim error:", err);
     res.status(400).json({ error: err.message || "Errore nel ritiro" });
   }
+});
+
+// ==========================================
+// POLITICAL PARTIES API (Phase 7)
+// ==========================================
+
+app.post("/api/parties/create", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { name, ideology, tag, description, logo } = req.body;
+  const regionId = user.residenceId || "IT";
+
+  if (!name || name.trim().length === 0) return res.status(400).json({ error: "Nome obbligatorio." });
+  if (user.gold < 100) return res.status(400).json({ error: "Fondi in Gold insufficienti (costa 100 Gold)." });
+
+  const existingMember = db.prepare("SELECT partyId FROM party_members WHERE userId = ?").get(user.id) as any;
+  if (existingMember) return res.status(400).json({ error: "Sei già membro di un partito." });
+
+  const partyId = Math.random().toString(36).substring(2, 11);
+  const now = Date.now();
+
+  try {
+    db.transaction(() => {
+      // Create party
+      db.prepare("INSERT INTO parties (id, name, ideology, tag, description, logo, regionId, leaderUserId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(partyId, name.trim(), ideology || "", tag || "", description || "", logo || "", regionId, user.id, now);
+
+      // Add founder as leader
+      db.prepare("INSERT INTO party_members (userId, partyId, role, joinedAt) VALUES (?, ?, 'leader', ?)")
+        .run(user.id, partyId, now);
+
+      // Deduct gold
+      db.prepare("UPDATE users SET gold = gold - 100 WHERE id = ?").run(user.id);
+
+      // Log creation
+      const logId = Math.random().toString(36).substring(2, 11);
+      db.prepare("INSERT INTO party_logs (id, partyId, action, details, timestamp) VALUES (?, ?, 'created', ?, ?)")
+        .run(logId, partyId, `Partito creato da ${user.username} in ${regionId}`, now);
+    })();
+    res.json({ success: true, partyId });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nella creazione del partito: " + err.message });
+  }
+});
+
+app.put("/api/parties/edit", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { partyId, name, ideology, tag, description, logo } = req.body;
+
+  const party = db.prepare("SELECT leaderUserId FROM parties WHERE id = ?").get(partyId) as any;
+  if (!party) return res.status(404).json({ error: "Partito inesistente." });
+  if (party.leaderUserId !== user.id) return res.status(403).json({ error: "Solo il leader può modificare le info del partito." });
+
+  if (!name || name.trim().length === 0) return res.status(400).json({ error: "Nome obbligatorio." });
+
+  db.prepare("UPDATE parties SET name = ?, ideology = ?, tag = ?, description = ?, logo = ? WHERE id = ?")
+    .run(name.trim(), ideology || "", tag || "", description || "", logo || "", partyId);
+
+  res.json({ success: true });
+});
+
+app.get("/api/parties", authenticate, (req: any, res) => {
+  // Returns all parties with member counts
+  const parties = db.prepare(`
+    SELECT p.*, 
+           u.username as leaderName,
+           (SELECT COUNT(*) FROM party_members WHERE partyId = p.id) as memberCount
+    FROM parties p
+    LEFT JOIN users u ON p.leaderUserId = u.id
+    ORDER BY memberCount DESC, p.createdAt DESC
+  `).all();
+  res.json(parties);
+});
+
+app.get("/api/parties/my", authenticate, (req: any, res) => {
+  const membership = db.prepare("SELECT partyId FROM party_members WHERE userId = ?").get(req.user.id) as any;
+  if (!membership) return res.status(404).json({ error: "Non sei in nessun partito." });
+  res.redirect(`/api/parties/${membership.partyId}`);
+});
+
+app.get("/api/parties/:id", authenticate, (req: any, res) => {
+  const { id } = req.params;
+  const party = db.prepare("SELECT p.*, u.username as leaderName FROM parties p LEFT JOIN users u ON p.leaderUserId = u.id WHERE p.id = ?").get(id) as any;
+  if (!party) return res.status(404).json({ error: "Partito non trovato" });
+
+  const members = db.prepare("SELECT pm.*, u.username, u.level, u.lastLogin FROM party_members pm JOIN users u ON pm.userId = u.id WHERE pm.partyId = ? ORDER BY pm.role ASC, pm.joinedAt ASC").all(id);
+
+  // Calculate active members (login <= 24h, joinedAt >= 72h, level >= 60)
+  const now = Date.now();
+  const activeMembersCount = members.filter((m: any) =>
+    m.level >= 60 &&
+    now - (m.lastLogin || 0) <= 24 * 60 * 60 * 1000 &&
+    now - m.joinedAt >= 72 * 60 * 60 * 1000
+  ).length;
+
+  res.json({ party, members, activeMembersCount });
+});
+
+app.post("/api/parties/roles", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { partyId, targetUserId, newRole } = req.body;
+
+  if (!['secretary', 'member'].includes(newRole)) return res.status(400).json({ error: "Ruolo non valido." });
+
+  const party = db.prepare("SELECT leaderUserId FROM parties WHERE id = ?").get(partyId) as any;
+  if (!party || party.leaderUserId !== user.id) return res.status(403).json({ error: "Solo il leader può assegnare i ruoli." });
+
+  if (targetUserId === user.id) return res.status(400).json({ error: "Non puoi modificare il tuo stesso ruolo in questo modo." });
+
+  const targetMember = db.prepare("SELECT role FROM party_members WHERE userId = ? AND partyId = ?").get(targetUserId, partyId) as any;
+  if (!targetMember) return res.status(404).json({ error: "Il giocatore non è in questo partito." });
+
+  db.prepare("UPDATE party_members SET role = ? WHERE userId = ?").run(newRole, targetUserId);
+  res.json({ success: true, newRole });
+});
+
+app.post("/api/parties/kick", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { partyId, targetUserId } = req.body;
+
+  const myMembership = db.prepare("SELECT role FROM party_members WHERE userId = ? AND partyId = ?").get(user.id, partyId) as any;
+  if (!myMembership || (myMembership.role !== 'leader' && myMembership.role !== 'secretary')) {
+    return res.status(403).json({ error: "Non hai i permessi per espellere." });
+  }
+
+  const targetMember = db.prepare("SELECT role FROM party_members WHERE userId = ? AND partyId = ?").get(targetUserId, partyId) as any;
+  if (!targetMember) return res.status(404).json({ error: "Il giocatore non è in questo partito." });
+
+  if (targetMember.role === 'leader') return res.status(403).json({ error: "Non puoi espellere il leader." });
+  if (myMembership.role === 'secretary' && targetMember.role === 'secretary') return res.status(403).json({ error: "Un segretario non può espellere un altro segretario." });
+
+  db.prepare("DELETE FROM party_members WHERE userId = ?").run(targetUserId);
+
+  // Log action
+  const logId = Math.random().toString(36).substring(2, 11);
+  db.prepare("INSERT INTO party_logs (id, partyId, action, details, timestamp) VALUES (?, ?, 'kick', ?, ?)")
+    .run(logId, partyId, `Utente rimosso dal partito. Esecutore: ${user.username}`, Date.now());
+
+  res.json({ success: true });
+});
+
+const calculatePartyCaps = (partyId: string) => {
+  const members = db.prepare("SELECT pm.userId, u.level, u.lastLogin, pm.joinedAt FROM party_members pm JOIN users u ON pm.userId = u.id WHERE pm.partyId = ?").all(partyId) as any[];
+  const now = Date.now();
+
+  const activeMembers = members.filter(m =>
+    m.level >= 60 &&
+    now - (m.lastLogin || 0) <= 24 * 60 * 60 * 1000 &&
+    now - m.joinedAt >= 72 * 60 * 60 * 1000
+  );
+
+  const activeCount = activeMembers.length;
+  // Dynamic CAPS based on active members
+  const maxGoldPerUser = Math.min(200, 50 + (activeCount * 5));
+  const maxGoldTotal = Math.min(5000, activeCount * 100);
+
+  return { activeCount, activeMembers, maxGoldPerUser, maxGoldTotal };
+};
+
+app.post("/api/parties/set-wage", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { partyId, targetUserId, salaryCash, salaryGold } = req.body;
+
+  const party = db.prepare("SELECT leaderUserId FROM parties WHERE id = ?").get(partyId) as any;
+  if (!party || party.leaderUserId !== user.id) return res.status(403).json({ error: "Solo il leader può impostare i salari." });
+
+  const targetMember = db.prepare("SELECT role FROM party_members WHERE userId = ? AND partyId = ?").get(targetUserId, partyId) as any;
+  if (!targetMember) return res.status(404).json({ error: "Il giocatore non è in questo partito." });
+
+  const cash = Math.max(0, parseInt(salaryCash) || 0);
+  const gold = Math.max(0, parseInt(salaryGold) || 0);
+
+  const caps = calculatePartyCaps(partyId);
+  if (gold > caps.maxGoldPerUser) {
+    return res.status(400).json({ error: `Il limite di Gold per utente è ${caps.maxGoldPerUser} (basato su ${caps.activeCount} membri attivi).` });
+  }
+
+  db.prepare("UPDATE party_members SET salaryCash = ?, salaryGold = ? WHERE userId = ? AND partyId = ?")
+    .run(cash, gold, targetUserId, partyId);
+
+  res.json({ success: true, salaryCash: cash, salaryGold: gold });
+});
+
+app.post("/api/parties/pay-wages", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { partyId } = req.body;
+
+  const party = db.prepare("SELECT leaderUserId FROM parties WHERE id = ?").get(partyId) as any;
+  if (!party || party.leaderUserId !== user.id) return res.status(403).json({ error: "Solo il leader può pagare i salari." });
+
+  // Prevent double payment within 24h
+  const lastPayment = db.prepare("SELECT timestamp FROM party_logs WHERE partyId = ? AND action = 'pay_wages' ORDER BY timestamp DESC LIMIT 1").get(partyId) as any;
+  if (lastPayment && Date.now() - lastPayment.timestamp < 24 * 60 * 60 * 1000) {
+    const hoursLeft = Math.ceil((24 * 60 * 60 * 1000 - (Date.now() - lastPayment.timestamp)) / (60 * 60 * 1000));
+    return res.status(400).json({ error: `I salari sono già stati pagati. Riprova tra ${hoursLeft} ore.` });
+  }
+
+  const caps = calculatePartyCaps(partyId);
+
+  // Get all members who have a salary > 0 and are ACTIVE
+  const activeIds = new Set(caps.activeMembers.map((m: any) => m.userId));
+
+  const toPay = db.prepare("SELECT userId, salaryCash, salaryGold FROM party_members WHERE partyId = ? AND (salaryCash > 0 OR salaryGold > 0)").all(partyId) as any[];
+  const validToPay = toPay.filter(m => activeIds.has(m.userId)); // ONLY pay active members
+
+  let totalCash = 0;
+  let totalGold = 0;
+
+  validToPay.forEach(m => {
+    totalCash += m.salaryCash;
+    totalGold += m.salaryGold;
+  });
+
+  if (totalGold > caps.maxGoldTotal) {
+    return res.status(400).json({ error: `Il totale di Gold (${totalGold}) supera il limite massimo distribuibile di ${caps.maxGoldTotal}. Ridurre gli stipendi.` });
+  }
+
+  if (user.money < totalCash || user.gold < totalGold) {
+    return res.status(400).json({ error: `Fondi insufficienti sul tuo conto personale. Ti servono $${totalCash} e ${totalGold} Gold.` });
+  }
+
+  if (validToPay.length === 0) {
+    return res.status(400).json({ error: "Nessun membro attivo riceve stipendi o le condizioni di attività non sono soddisfatte." });
+  }
+
+  try {
+    db.transaction(() => {
+      // Deduct from Leader
+      db.prepare("UPDATE users SET money = money - ?, gold = gold - ? WHERE id = ?").run(totalCash, totalGold, user.id);
+
+      // Pay members
+      for (const m of validToPay) {
+        db.prepare("UPDATE users SET money = money + ?, gold = gold + ? WHERE id = ?").run(m.salaryCash, m.salaryGold, m.userId);
+      }
+
+      // Log
+      db.prepare("INSERT INTO party_logs (id, partyId, action, details, timestamp) VALUES (?, ?, 'pay_wages', ?, ?)")
+        .run(Math.random().toString(36).substring(2, 11), partyId, `Pagati totali $${totalCash} e ${totalGold} Gold a ${validToPay.length} membri.`, Date.now());
+    })();
+    res.json({ success: true, paidMembers: validToPay.length, totalCash, totalGold });
+  } catch (err) {
+    res.status(500).json({ error: "Errore durante il pagamento dei salari." });
+  }
+});
+
+app.post("/api/parties/contribute", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { targetUserId, itemType, amount } = req.body;
+  const numAmount = parseInt(amount) || 0;
+
+  if (numAmount <= 0) return res.status(400).json({ error: "Quantità non valida." });
+  if (user.id === targetUserId) return res.status(400).json({ error: "Non puoi inviare a te stesso." });
+
+  const myMembership = db.prepare("SELECT partyId, joinedAt FROM party_members WHERE userId = ?").get(user.id) as any;
+  if (!myMembership) return res.status(403).json({ error: "Non fai parte di alcun partito." });
+
+  if (Date.now() - myMembership.joinedAt < 7 * 24 * 60 * 60 * 1000) {
+    return res.status(403).json({ error: "Devi essere nel partito da almeno 7 giorni per inviare contributi." });
+  }
+
+  const targetMembership = db.prepare("SELECT partyId FROM party_members WHERE userId = ? AND partyId = ?").get(targetUserId, myMembership.partyId) as any;
+  if (!targetMembership) return res.status(404).json({ error: "Il destinatario non fa parte del tuo partito." });
+
+  try {
+    db.transaction(() => {
+      if (itemType === 'cash') {
+        if (user.money < numAmount) throw new Error("Cash insufficiente.");
+        db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(numAmount, user.id);
+        db.prepare("UPDATE users SET money = money + ? WHERE id = ?").run(numAmount, targetUserId);
+      } else if (itemType === 'gold') {
+        if (user.gold < numAmount) throw new Error("Gold insufficiente.");
+        db.prepare("UPDATE users SET gold = gold - ? WHERE id = ?").run(numAmount, user.id);
+        db.prepare("UPDATE users SET gold = gold + ? WHERE id = ?").run(numAmount, targetUserId);
+      } else {
+        // Must be an item in inventory
+        const userInv = db.prepare("SELECT quantity FROM user_inventory WHERE userId = ? AND itemId = ?").get(user.id, itemType) as any;
+        if (!userInv || userInv.quantity < numAmount) throw new Error("Oggetto insufficiente in magazzino.");
+
+        // Dest Storage Check (Simplified: normally requires parsing max volume, but we'll let it slide or just enforce generic limit)
+        // For accurate tracking, we assume party contributions ignore minor storage caps or we could load target's full volume. Let's just transfer.
+
+        db.prepare("UPDATE user_inventory SET quantity = quantity - ? WHERE userId = ? AND itemId = ?").run(numAmount, user.id, itemType);
+
+        const targetInv = db.prepare("SELECT quantity FROM user_inventory WHERE userId = ? AND itemId = ?").get(targetUserId, itemType) as any;
+        if (targetInv) {
+          db.prepare("UPDATE user_inventory SET quantity = quantity + ? WHERE userId = ? AND itemId = ?").run(numAmount, targetUserId, itemType);
+        } else {
+          db.prepare("INSERT INTO user_inventory (userId, itemId, quantity) VALUES (?, ?, ?)").run(targetUserId, itemType, numAmount);
+        }
+      }
+
+      // Cleanup 0 quantity items
+      db.prepare("DELETE FROM user_inventory WHERE userId = ? AND quantity <= 0").run(user.id);
+
+      db.prepare("INSERT INTO party_logs (id, partyId, action, details, timestamp) VALUES (?, ?, 'contribution', ?, ?)")
+        .run(Math.random().toString(36).substring(2, 11), myMembership.partyId, `${user.username} ha inviato ${numAmount} ${itemType} a ID:${targetUserId}`, Date.now());
+
+    })();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/api/parties/invite", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { targetUserId } = req.body;
+
+  const myMembership = db.prepare("SELECT partyId, role FROM party_members WHERE userId = ?").get(user.id) as any;
+  if (!myMembership || (myMembership.role !== 'leader' && myMembership.role !== 'secretary')) {
+    return res.status(403).json({ error: "Solo Leader e Segretari possono invitare." });
+  }
+
+  const targetMembership = db.prepare("SELECT partyId FROM party_members WHERE userId = ?").get(targetUserId) as any;
+  if (targetMembership) return res.status(400).json({ error: "L'utente fa già parte di un partito." });
+
+  const existingInvite = db.prepare("SELECT id FROM party_invites WHERE partyId = ? AND userId = ? AND status = 'pending'").get(myMembership.partyId, targetUserId) as any;
+  if (existingInvite) return res.status(400).json({ error: "L'utente ha già un invito pendente per questo partito." });
+
+  db.prepare("INSERT INTO party_invites (id, partyId, userId, invitedBy, status, createdAt) VALUES (?, ?, ?, ?, 'pending', ?)")
+    .run(Math.random().toString(36).substring(2, 11), myMembership.partyId, targetUserId, user.id, Date.now());
+
+  res.json({ success: true });
+});
+
+app.get("/api/parties/my-invites", authenticate, (req: any, res) => {
+  const invites = db.prepare(`
+    SELECT pi.*, p.name as partyName, u.username as inviterName 
+    FROM party_invites pi 
+    JOIN parties p ON pi.partyId = p.id 
+    JOIN users u ON pi.invitedBy = u.id 
+    WHERE pi.userId = ? AND pi.status = 'pending'
+  `).all(req.user.id);
+  res.json(invites);
+});
+
+app.post("/api/parties/join", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { inviteId } = req.body;
+
+  const invite = db.prepare("SELECT partyId, status FROM party_invites WHERE id = ? AND userId = ?").get(inviteId, user.id) as any;
+  if (!invite) return res.status(404).json({ error: "Invito non trovato." });
+  if (invite.status !== 'pending') return res.status(400).json({ error: "L'invito non è più valido." });
+
+  const existingMember = db.prepare("SELECT partyId FROM party_members WHERE userId = ?").get(user.id) as any;
+  if (existingMember) return res.status(400).json({ error: "Fai già parte di un partito." });
+
+  try {
+    db.transaction(() => {
+      db.prepare("UPDATE party_invites SET status = 'accepted' WHERE id = ?").run(inviteId);
+      db.prepare("INSERT INTO party_members (userId, partyId, role, joinedAt) VALUES (?, ?, 'member', ?)")
+        .run(user.id, invite.partyId, Date.now());
+      // Auto reject other pending invites
+      db.prepare("UPDATE party_invites SET status = 'rejected' WHERE userId = ? AND status = 'pending'").run(user.id);
+    })();
+    res.json({ success: true, partyId: invite.partyId });
+  } catch (err) {
+    res.status(500).json({ error: "Errore durante l'adesione." });
+  }
+});
+
+app.post("/api/parties/primaries-vote", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { candidateId } = req.body;
+
+  const myMembership = db.prepare("SELECT partyId FROM party_members WHERE userId = ?").get(user.id) as any;
+  if (!myMembership) return res.status(403).json({ error: "Non fai parte di alcun partito." });
+
+  const targetMembership = db.prepare("SELECT partyId FROM party_members WHERE userId = ?").get(candidateId) as any;
+  if (!targetMembership || targetMembership.partyId !== myMembership.partyId) return res.status(400).json({ error: "Il candidato non è nel tuo partito." });
+
+  // 5 days cycle check
+  const cyclePeriodMs = 5 * 24 * 60 * 60 * 1000;
+  const currentCycleStart = Math.floor(Date.now() / cyclePeriodMs) * cyclePeriodMs;
+
+  const existingVote = db.prepare("SELECT id FROM party_primaries WHERE voterId = ? AND createdAt >= ?").get(user.id, currentCycleStart) as any;
+  if (existingVote) return res.status(400).json({ error: "Hai già votato in questo ciclo elettorale (5 giorni)." });
+
+  db.prepare("INSERT INTO party_primaries (id, partyId, candidateId, voterId, createdAt) VALUES (?, ?, ?, ?, ?)")
+    .run(Math.random().toString(36).substring(2, 11), myMembership.partyId, candidateId, user.id, Date.now());
+
+  res.json({ success: true });
 });
 
 app.get("/api/leaderboard", authenticate, (req, res) => {

@@ -287,9 +287,6 @@ db.exec(`
     FOREIGN KEY(ownerUserId) REFERENCES users(id)
   );
 
-  DROP TABLE IF EXISTS user_factory_cooldowns;
-  DROP TABLE IF EXISTS factories;
-
   CREATE TABLE IF NOT EXISTS factories (
     id TEXT PRIMARY KEY,
     name TEXT,

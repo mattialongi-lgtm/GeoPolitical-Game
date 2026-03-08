@@ -13,6 +13,9 @@ export interface User {
   regionId: string; // ISO code (Physical location)
   residenceId: string; // ISO code (Legal residence)
   workPermitId: string | null; // ISO code (Work permit for a single foreign region)
+  originalNation: string; // ISO code (Functional, +10% dmg bonus)
+  displayedNation: string; // ISO code (Cosmetic, free rename)
+  lastOriginalNationChange: number; // Timestamp
   lastEnergyUpdate: number;
   xp: number;
   level: number;
@@ -50,6 +53,7 @@ export interface Region {
   economy?: number;
   resources?: { type: string, amount: number }[] | any;
   taxRate?: number;
+  marketTaxRate?: number;
 }
 
 export interface Factory {
@@ -94,7 +98,25 @@ export interface War {
   endsAt: number;
   attackerScore: number;
   defenderScore: number;
-  lastEventAt: number;
+}
+
+export interface MarketOffer {
+  id: string;
+  sellerId: string;
+  sellerName: string;
+  itemId: string;
+  quantity: number;
+  price: number;
+  regionId: string;
+  taxRate: number;
+  createdAt: number;
+}
+
+export interface InventoryItem {
+  id?: string;
+  ownerId: string; // userId or regionId
+  itemId: string;
+  quantity: number;
 }
 
 export const GAME_CONFIG = {
@@ -116,6 +138,9 @@ export const GAME_CONFIG = {
   ENERGY_DRINK_COST_GOLD: 10,
   ENERGY_DRINK_COOLDOWN: 10 * 60 * 1000, // 10 minutes
   MEDAL_CLAIM_COOLDOWN: 60 * 60 * 1000,  // 1 hour
+  STORAGE_BASE_CAPACITY: 10000,
+  MARKET_OFFER_COOLDOWN_MS: 5 * 60 * 1000, // 5 minutes
+  MARKET_ANTI_ABUSE_PERCENTAGE: 1.10, // 110%
 };
 
 // Booster config

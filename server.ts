@@ -135,6 +135,14 @@ addColumnIfMissing("users", "residenceId", "TEXT DEFAULT 'ST'");
 addColumnIfMissing("users", "workPermitId", "TEXT");
 addColumnIfMissing("regions", "workRestrictions", "INTEGER DEFAULT 0");
 
+// Nations migrations (Rival Regions style)
+addColumnIfMissing("users", "originalNation", "TEXT DEFAULT 'ST'");
+addColumnIfMissing("users", "displayedNation", "TEXT DEFAULT 'ST'");
+addColumnIfMissing("users", "lastOriginalNationChange", "INTEGER DEFAULT 0");
+
+// Market migrations
+addColumnIfMissing("regions", "marketTaxRate", "INTEGER DEFAULT 10");
+
 // Rename ownerId to ownerUserId if needed
 try {
   const info = db.pragma("table_info(regions)") as any[];
@@ -239,11 +247,15 @@ db.exec(`
     level INTEGER DEFAULT 1,
     perkPoints INTEGER DEFAULT 0,
     energyDrinks INTEGER DEFAULT 0,
+    inventory TEXT DEFAULT '{}',
     lastEnergyDrink INTEGER DEFAULT 0,
     warMedals INTEGER DEFAULT 0,
     lastMedalClaim INTEGER DEFAULT 0,
     residenceId TEXT DEFAULT 'ST',
-    workPermitId TEXT
+    workPermitId TEXT,
+    originalNation TEXT DEFAULT 'ST',
+    displayedNation TEXT DEFAULT 'ST',
+    lastOriginalNationChange INTEGER DEFAULT 0
   );
 
   CREATE TABLE IF NOT EXISTS perks (
@@ -266,18 +278,29 @@ db.exec(`
     health INTEGER DEFAULT 1,
     education INTEGER DEFAULT 1,
     military INTEGER DEFAULT 1,
+    marketTaxRate INTEGER DEFAULT 10,
+    oilBonus REAL DEFAULT 1.0,
+    mineralsBonus REAL DEFAULT 1.0,
+    uraniumBonus REAL DEFAULT 1.0,
+    diamondsBonus REAL DEFAULT 1.0,
     ownerUserId TEXT,
     FOREIGN KEY(ownerUserId) REFERENCES users(id)
   );
 
+  DROP TABLE IF EXISTS user_factory_cooldowns;
+  DROP TABLE IF EXISTS factories;
+
   CREATE TABLE IF NOT EXISTS factories (
     id TEXT PRIMARY KEY,
     name TEXT,
-    type TEXT,
-    payoutMoney INTEGER,
-    energyCost INTEGER,
-    cooldownSec INTEGER,
-    minLevel INTEGER DEFAULT 1
+    type TEXT, -- 'oil', 'minerals', 'uranium', 'diamonds'
+    regionId TEXT,
+    ownerUserId TEXT,
+    level INTEGER DEFAULT 1,
+    exp INTEGER DEFAULT 0,
+    wage INTEGER DEFAULT 10,
+    budget INTEGER DEFAULT 0,
+    createdAt INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS user_factory_cooldowns (
@@ -286,6 +309,44 @@ db.exec(`
     lastUsed INTEGER,
     PRIMARY KEY(userId, factoryId),
     FOREIGN KEY(userId) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS user_inventory (
+    userId TEXT,
+    itemId TEXT,
+    quantity INTEGER DEFAULT 0,
+    PRIMARY KEY (userId, itemId)
+  );
+
+  CREATE TABLE IF NOT EXISTS state_inventory (
+    regionId TEXT,
+    itemId TEXT,
+    quantity INTEGER DEFAULT 0,
+    PRIMARY KEY (regionId, itemId)
+  );
+
+  CREATE TABLE IF NOT EXISTS market_offers (
+    id TEXT PRIMARY KEY,
+    sellerId TEXT,
+    sellerName TEXT,
+    itemId TEXT,
+    quantity INTEGER,
+    price INTEGER,
+    regionId TEXT,
+    taxRate INTEGER,
+    createdAt INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS market_transactions_log (
+    id TEXT PRIMARY KEY,
+    buyerId TEXT,
+    isStateBuy INTEGER,
+    sellerId TEXT,
+    itemId TEXT,
+    quantity INTEGER,
+    price INTEGER,
+    taxPaid INTEGER,
+    timestamp INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS articles (
@@ -299,6 +360,17 @@ db.exec(`
     likes INTEGER DEFAULT 0,
     FOREIGN KEY(authorId) REFERENCES users(id),
     FOREIGN KEY(regionId) REFERENCES regions(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS production_queue (
+    id TEXT PRIMARY KEY,
+    userId TEXT,
+    weaponType TEXT,
+    qty INTEGER,
+    status TEXT,
+    startedAt INTEGER,
+    willCompleteAt INTEGER,
+    createdAt INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS applications (
@@ -376,6 +448,7 @@ db.exec(`
 // Seed initial regions if empty
 const regionCount = db.prepare("SELECT COUNT(*) as count FROM regions").get() as { count: number };
 if (regionCount.count === 0) {
+  console.log("Seeding initial regions...");
   const countries = [
     { id: 'IT', name: "Italy", population: 60000000 },
     { id: 'FR', name: "France", population: 67000000 },
@@ -398,24 +471,29 @@ if (regionCount.count === 0) {
     { id: 'TR', name: "Turkey", population: 84000000 },
     { id: 'KR', name: "South Korea", population: 51000000 },
   ];
-  const insertRegion = db.prepare("INSERT INTO regions (id, name, population, resources, health, education, military) VALUES (?, ?, ?, ?, 1, 1, 1)");
-  countries.forEach(c => insertRegion.run(c.id, c.name, c.population, 50));
+
+  const insertRegion = db.prepare(`
+    INSERT INTO regions 
+    (id, name, population, resources, health, education, military, marketTaxRate, oilBonus, mineralsBonus, uraniumBonus, diamondsBonus) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  db.transaction(() => {
+    countries.forEach(c => {
+      const oil = 1.0 + Math.random() * 0.5;
+      const min = 1.0 + Math.random() * 0.5;
+      const ura = 1.0 + Math.random() * 0.5;
+      const dia = 1.0 + Math.random() * 0.5;
+
+      insertRegion.run(
+        c.id, c.name, c.population, 50, 1, 1, 1, 10,
+        parseFloat(oil.toFixed(2)), parseFloat(min.toFixed(2)), parseFloat(ura.toFixed(2)), parseFloat(dia.toFixed(2))
+      );
+    });
+  })();
 }
 
-// Seed factories if empty
-/*
-const factoryCount = db.prepare("SELECT COUNT(*) as count FROM factories").get() as { count: number };
-if (factoryCount.count === 0) {
-  const initialFactories = [
-    { id: 'f1', name: "Piccola Officina", type: "Manifattura", payoutMoney: 120, energyCost: 10, cooldownSec: 60, minLevel: 1 },
-    { id: 'f2', name: "Fattoria Locale", type: "Agricoltura", payoutMoney: 150, energyCost: 12, cooldownSec: 120, minLevel: 2 },
-    { id: 'f3', name: "Miniera di Ferro", type: "Estrazione", payoutMoney: 300, energyCost: 20, cooldownSec: 300, minLevel: 5 },
-    { id: 'f4', name: "Fabbrica di Munizioni", type: "Militare", payoutMoney: 500, energyCost: 30, cooldownSec: 600, minLevel: 10 },
-  ];
-  const insertFactory = db.prepare("INSERT INTO factories (id, name, type, payoutMoney, energyCost, cooldownSec, minLevel) VALUES (?, ?, ?, ?, ?, ?, ?)");
-  initialFactories.forEach(f => insertFactory.run(f.id, f.name, f.type, f.payoutMoney, f.energyCost, f.cooldownSec, f.minLevel));
-}
-*/
+// Seed factories if empty (REMOVED: Now completely Player-Driven)
 
 app.use(express.json());
 app.use(cookieParser());
@@ -575,6 +653,37 @@ const authenticate = async (req: any, res: any, next: any) => {
     }
     // ------ end perk upgrades ------
 
+    // ------ Inventory & Storage ------
+    // Auto-claim completed production items
+    const completedProd = db.prepare("SELECT * FROM production_queue WHERE userId = ? AND status != 'claimed' AND willCompleteAt <= ?").all(user.id, Date.now()) as any[];
+    if (completedProd.length > 0) {
+      db.transaction(() => {
+        for (const item of completedProd) {
+          db.prepare("UPDATE production_queue SET status = 'claimed' WHERE id = ?").run(item.id);
+          const qty = item.qty || 1;
+          const userInv = db.prepare("SELECT quantity FROM user_inventory WHERE userId = ? AND itemId = ?").get(user.id, item.weaponType) as any;
+          if (userInv) {
+            db.prepare("UPDATE user_inventory SET quantity = quantity + ? WHERE userId = ? AND itemId = ?").run(qty, user.id, item.weaponType);
+          } else {
+            db.prepare("INSERT INTO user_inventory (userId, itemId, quantity) VALUES (?, ?, ?)").run(user.id, item.weaponType, qty);
+          }
+        }
+      })();
+    }
+
+    const inventoryResult = db.prepare("SELECT itemId, quantity FROM user_inventory WHERE userId = ?").all(user.id) as any[];
+    const inventory = inventoryResult.reduce((acc, row) => {
+      acc[row.itemId] = row.quantity;
+      return acc;
+    }, {} as Record<string, number>);
+
+    const inventoryVolume = inventoryResult.reduce((sum, row) => sum + row.quantity, 0);
+    const maxInventoryVolume = Math.floor(GAME_CONFIG.STORAGE_BASE_CAPACITY * (1 + ((perks['RESISTENZA'] || 0) * 0.01)));
+
+    user.inventory = inventory;
+    user.inventoryVolume = inventoryVolume;
+    user.maxInventoryVolume = maxInventoryVolume;
+
     req.user = user;
     next();
   } catch (err) {
@@ -630,13 +739,13 @@ app.post("/api/auth/firebase", async (req, res) => {
       const finalUsername = username || name || email?.split('@')[0] || `user_${id}`;
 
       try {
-        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate, residenceId) VALUES (?, ?, ?, ?, ?, 'ST')")
+        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate, residenceId, originalNation, displayedNation, lastOriginalNationChange) VALUES (?, ?, ?, ?, ?, 'ST', 'ST', 'ST', 0)")
           .run(id, finalUsername, email, uid, Date.now());
         user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
       } catch (err) {
         // If username exists, try with suffix
         const altUsername = `${finalUsername}_${id}`;
-        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate, residenceId) VALUES (?, ?, ?, ?, ?, 'ST')")
+        db.prepare("INSERT INTO users (id, username, email, firebase_uid, lastEnergyUpdate, residenceId, originalNation, displayedNation, lastOriginalNationChange) VALUES (?, ?, ?, ?, ?, 'ST', 'ST', 'ST', 0)")
           .run(id, altUsername, email, uid, Date.now());
         user = db.prepare("SELECT * FROM users WHERE id = ?").get(id);
       }
@@ -1089,6 +1198,33 @@ app.post("/api/actions/toggle-borders", authenticate, (req: any, res) => {
   res.json({ success: true });
 });
 
+// --- Nation Management API ---
+
+app.post("/api/actions/change-displayed-nation", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { nationId } = req.body;
+  if (!nationId) return res.status(400).json({ error: "Nessuna nazione specificata." });
+
+  db.prepare("UPDATE users SET displayedNation = ? WHERE id = ?").run(nationId, user.id);
+  res.json({ success: true, displayedNation: nationId });
+});
+
+app.post("/api/actions/change-original-nation", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { nationId } = req.body;
+  if (!nationId) return res.status(400).json({ error: "Nessuna nazione specificata." });
+
+  const now = Date.now();
+  const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+  if (now - user.lastOriginalNationChange < THIRTY_DAYS && user.lastOriginalNationChange !== 0) {
+    const nextAvail = new Date(user.lastOriginalNationChange + THIRTY_DAYS).toLocaleDateString();
+    return res.status(400).json({ error: `Puoi cambiare di nuovo la Nazione Originale il ${nextAvail}.` });
+  }
+
+  db.prepare("UPDATE users SET originalNation = ?, lastOriginalNationChange = ? WHERE id = ?").run(nationId, now, user.id);
+  res.json({ success: true, originalNation: nationId, lastOriginalNationChange: now });
+});
+
 app.post("/api/actions/attack", authenticate, (req: any, res) => {
   const user = req.user;
   const { regionId } = req.body;
@@ -1264,8 +1400,131 @@ app.post("/api/dev/add-currency", authenticate, (req: any, res) => {
   const { cash = 10000, gold = 10000 } = req.body;
   db.prepare("UPDATE users SET money = money + ?, gold = gold + ? WHERE id = ?")
     .run(Number(cash), Number(gold), req.user.id);
-  res.json({ success: true });
+  res.json({ success: true, cash, gold });
 });
+
+// ==========================================
+// PLAYER-DRIVEN FACTORIES API
+// ==========================================
+
+const FACTORY_TYPES = ['oil', 'minerals', 'uranium', 'diamonds'];
+const FACTORY_CREATE_COST = {
+  oil: 5000,
+  minerals: 5000,
+  uranium: 15000,
+  diamonds: 25000
+};
+
+app.get("/api/factories", authenticate, (req: any, res) => {
+  const { regionId, ownerId } = req.query;
+  let query = "SELECT f.*, u.username as ownerName FROM factories f JOIN users u ON f.ownerUserId = u.id WHERE 1=1";
+  const params: any[] = [];
+
+  if (regionId) {
+    query += " AND f.regionId = ?";
+    params.push(regionId);
+  }
+  if (ownerId) {
+    query += " AND f.ownerUserId = ?";
+    params.push(ownerId);
+  }
+  query += " ORDER BY f.level DESC, f.createdAt DESC";
+
+  const factories = db.prepare(query).all(...params);
+  res.json(factories);
+});
+
+app.post("/api/factories/create", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { name, type, regionId } = req.body;
+
+  if (!name || name.trim().length === 0) return res.status(400).json({ error: "Nome obbligatorio." });
+  if (!FACTORY_TYPES.includes(type)) return res.status(400).json({ error: "Tipo di risorsa non valido." });
+
+  const cost = FACTORY_CREATE_COST[type as keyof typeof FACTORY_CREATE_COST] || 5000;
+  if (user.money < cost) return res.status(400).json({ error: `Fondi insufficienti. Costa $${cost.toLocaleString()}` });
+
+  // Must be in the region (or have permit)
+  if (user.regionId !== regionId && user.residenceId !== regionId && user.workPermitId !== regionId) {
+    return res.status(403).json({ error: "Devi viaggiare in questa regione o averne la residenza/permesso." });
+  }
+
+  const region = db.prepare("SELECT id FROM regions WHERE id = ?").get(regionId);
+  if (!region) return res.status(404).json({ error: "Regione inesistente." });
+
+  try {
+    db.transaction(() => {
+      const id = Math.random().toString(36).substring(2, 11);
+      db.prepare("INSERT INTO factories (id, name, type, regionId, ownerUserId, level, exp, wage, budget, createdAt) VALUES (?, ?, ?, ?, ?, 1, 0, 10, 0, ?)")
+        .run(id, name.trim(), type, regionId, user.id, Date.now());
+      db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(cost, user.id);
+    })();
+    res.json({ success: true, cost });
+  } catch (err) {
+    res.status(500).json({ error: "Errore nella creazione della fabbrica." });
+  }
+});
+
+app.post("/api/factories/deposit", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { factoryId, amount } = req.body;
+  const numAmount = parseInt(amount, 10);
+
+  if (isNaN(numAmount) || numAmount <= 0) return res.status(400).json({ error: "Importo non valido." });
+  if (user.money < numAmount) return res.status(400).json({ error: "Fondi insufficienti." });
+
+  const factory = db.prepare("SELECT ownerUserId FROM factories WHERE id = ?").get(factoryId) as any;
+  if (!factory) return res.status(404).json({ error: "Fabbrica inesistente." });
+  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
+
+  try {
+    db.transaction(() => {
+      db.prepare("UPDATE factories SET budget = budget + ? WHERE id = ?").run(numAmount, factoryId);
+      db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(numAmount, user.id);
+    })();
+    res.json({ success: true, deposited: numAmount });
+  } catch (err) {
+    res.status(500).json({ error: "Errore nel deposito." });
+  }
+});
+
+app.post("/api/factories/update-wage", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { factoryId, wage } = req.body;
+  const numWage = parseInt(wage, 10);
+
+  if (isNaN(numWage) || numWage <= 0) return res.status(400).json({ error: "Salario non valido." });
+
+  const factory = db.prepare("SELECT ownerUserId FROM factories WHERE id = ?").get(factoryId) as any;
+  if (!factory) return res.status(404).json({ error: "Fabbrica inesistente." });
+  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
+
+  db.prepare("UPDATE factories SET wage = ? WHERE id = ?").run(numWage, factoryId);
+  res.json({ success: true, wage: numWage });
+});
+
+app.post("/api/factories/upgrade", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { factoryId } = req.body;
+
+  const factory = db.prepare("SELECT ownerUserId, level FROM factories WHERE id = ?").get(factoryId) as any;
+  if (!factory) return res.status(404).json({ error: "Fabbrica inesistente." });
+  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
+
+  const costCash = 10000 * Math.pow(1.5, factory.level);
+  if (user.money < costCash) return res.status(400).json({ error: `Fondi insufficienti per l'upgrade al lv ${factory.level + 1}. Costo: $${costCash.toLocaleString()}` });
+
+  try {
+    db.transaction(() => {
+      db.prepare("UPDATE factories SET level = level + 1 WHERE id = ?").run(factoryId);
+      db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(costCash, user.id);
+    })();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Errore nell'upgrade." });
+  }
+});
+
 
 // Change username
 app.put("/api/profile/username", authenticate, (req: any, res) => {
@@ -1285,113 +1544,107 @@ app.put("/api/profile/username", authenticate, (req: any, res) => {
   }
 });
 
-// Player Factories API
-const FACTORY_ICONS = ["🏭", "⚙️", "🔧", "🏗️", "🔩", "💎", "🚀", "⚡", "🌐", "🛡️"];
-const FACTORY_CREATE_GOLD_COST = 50;
-const factoryUpgradeCost = (level: number) => Math.round(30 * Math.pow(1.8, level)); // gold cost to upgrade from level to level+1
-const factoryPayout = (base: number, level: number) => Math.round(base * Math.pow(1.3, level - 1));
-
-app.get("/api/player-factories", authenticate, (req: any, res) => {
-  const factories = db.prepare(`
-    SELECT pf.*, u.username as ownerName
-    FROM player_factories pf
-    LEFT JOIN users u ON pf.ownerId = u.id
-    ORDER BY pf.level DESC, pf.createdAt DESC
-  `).all() as any[];
-
-  // Add cooldown info for current user
-  const cooldowns = db.prepare(
-    "SELECT factoryId, lastUsed FROM user_factory_cooldowns WHERE userId = ?"
-  ).all(req.user.id) as any[];
-
-  const result = factories.map(f => {
-    const cd = cooldowns.find(c => c.factoryId === f.id);
-    const remaining = cd ? Math.max(0, (f.cooldownSec * 1000) - (Date.now() - cd.lastUsed)) : 0;
-    return {
-      ...f,
-      payout: factoryPayout(f.payoutBase, f.level),
-      upgradeCost: factoryUpgradeCost(f.level),
-      remainingCooldown: remaining,
-      isOwner: f.ownerId === req.user.id,
-    };
-  });
-  res.json(result);
-});
-
-app.post("/api/player-factories", authenticate, (req: any, res) => {
-  const user = req.user;
-  const { name, icon } = req.body;
-  if (!name || typeof name !== "string" || name.trim().length < 2) {
-    return res.status(400).json({ error: "Nome fabbrica obbligatorio (min 2 caratteri)" });
-  }
-  if (user.gold < FACTORY_CREATE_GOLD_COST) {
-    return res.status(400).json({ error: `Servono ${FACTORY_CREATE_GOLD_COST} 🏅 Gold per creare una fabbrica` });
-  }
-  const id = Math.random().toString(36).substring(2, 9);
-  const safeIcon = FACTORY_ICONS.includes(icon) ? icon : "🏭";
-  const regionId = user.regionId || "IT"; // Default if not set
-
-  db.prepare("UPDATE users SET gold = gold - ? WHERE id = ?").run(FACTORY_CREATE_GOLD_COST, user.id);
-  db.prepare(`INSERT INTO player_factories (id, ownerId, ownerName, name, icon, level, payoutBase, energyCost, cooldownSec, regionId, createdAt)
-    VALUES (?, ?, ?, ?, ?, 1, 80, 8, 90, ?, ?)`
-  ).run(id, user.id, user.username, name.trim(), safeIcon, regionId, Date.now());
-  res.json({ success: true, id, goldSpent: FACTORY_CREATE_GOLD_COST });
-});
-
-app.post("/api/player-factories/:id/upgrade", authenticate, (req: any, res) => {
-  const user = req.user;
-  const factory = db.prepare("SELECT * FROM player_factories WHERE id = ?").get(req.params.id) as any;
-  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata" });
-  if (factory.ownerId !== user.id) return res.status(403).json({ error: "Non sei il proprietario" });
-  const cost = factoryUpgradeCost(factory.level);
-  if (user.gold < cost) return res.status(400).json({ error: `Servono ${cost} 🏅 Gold per l'upgrade` });
-  db.prepare("UPDATE users SET gold = gold - ? WHERE id = ?").run(cost, user.id);
-  db.prepare("UPDATE player_factories SET level = level + 1 WHERE id = ?").run(factory.id);
-  res.json({ success: true, newLevel: factory.level + 1, goldSpent: cost });
-});
-
-app.post("/api/actions/work-player", authenticate, (req: any, res) => {
+app.post("/api/work", authenticate, (req: any, res) => {
   const user = req.user;
   const userRegion = user.regionId || 'IT';
-
   const { factoryId } = req.body;
-  const factory = db.prepare("SELECT * FROM player_factories WHERE id = ?").get(factoryId) as any;
-  if (!factory) return res.status(404).json({ error: "Fabbrica privata non trovata" });
+
+  const factory = db.prepare("SELECT * FROM factories WHERE id = ?").get(factoryId) as any;
+  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
 
   // Require player to be in the same region physically
   if (factory.regionId !== userRegion) return res.status(400).json({ error: "Devi viaggiare in questa regione per lavorare qui." });
 
   // Controllo immigrazione
-  const currentRegion = db.prepare("SELECT workRestrictions FROM regions WHERE id = ?").get(factory.regionId) as any;
+  const currentRegion = db.prepare("SELECT * FROM regions WHERE id = ?").get(factory.regionId) as any;
   const restrictionsActive = currentRegion?.workRestrictions === 1;
   const isResident = user.residenceId === factory.regionId;
   const hasWorkPermit = user.workPermitId === factory.regionId;
 
-  if (restrictionsActive && !isResident && !hasWorkPermit && user.id !== factory.ownerId) {
-    return res.status(403).json({ error: "Questa regione chiusa richiede un Permesso di Lavoro." });
+  if (restrictionsActive && !isResident && !hasWorkPermit && user.id !== factory.ownerUserId) {
+    return res.status(403).json({ error: "Questa regione richiede un Permesso di Lavoro." });
   }
 
-  const pIstruzione = user.perks?.['ISTRUZIONE'] || 0;
+  // Cooldown
   const lastWork = db.prepare("SELECT lastUsed FROM user_factory_cooldowns WHERE userId = ? AND factoryId = ?")
     .get(user.id, factoryId) as { lastUsed: number } | undefined;
-  if (lastWork && Date.now() - lastWork.lastUsed < factory.cooldownSec * 1000) {
-    return res.status(400).json({ error: "Fabbrica in cooldown" });
+
+  // Base cooldown: 10 minutes (600s)
+  if (lastWork && Date.now() - lastWork.lastUsed < 600 * 1000) {
+    return res.status(400).json({ error: "Fabbrica in cooldown (10 min)." });
   }
 
+  // Energy
   const perks = user.perks;
   const energyEfficiency = (perks['RESISTENZA'] || 0) * 0.005;
-  const energyCost = Math.ceil(factory.energyCost * (1 - energyEfficiency));
-  if (user.energy < energyCost) return res.status(400).json({ error: "Energia insufficiente" });
+  const energyCost = Math.ceil(10 * (1 - energyEfficiency)); // Base 10 energy
+  if (user.energy < energyCost) return res.status(400).json({ error: "Energia insufficiente." });
 
-  const workBoost = (perks['ISTRUZIONE'] || 0) * 0.01; // 1% boost per education level
-  const payout = Math.floor(factoryPayout(factory.payoutBase, factory.level) * (1 + workBoost));
+  // Check budget
+  if (factory.budget < factory.wage) {
+    return res.status(400).json({ error: "L'azienda non ha abbastanza fondi per pagarti il salario." });
+  }
 
-  db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?")
-    .run(payout, energyCost, user.id);
-  db.prepare("INSERT OR REPLACE INTO user_factory_cooldowns (userId, factoryId, lastUsed) VALUES (?, ?, ?)")
-    .run(user.id, factoryId, Date.now());
-  addXP(user.id, GAME_CONFIG.XP_PER_WORK);
-  res.json({ success: true, earnings: payout });
+  // Check Owner Storage Space
+  const owner = db.prepare("SELECT id FROM users WHERE id = ?").get(factory.ownerUserId) as any;
+  if (!owner) return res.status(404).json({ error: "Proprietario inesistente." });
+
+  const ownerInv = db.prepare("SELECT SUM(quantity) as vol FROM user_inventory WHERE userId = ?").get(owner.id) as { vol: number };
+  const ownerPerksRaw = db.prepare("SELECT level FROM perks WHERE userId = ? AND perkId = 'RESISTENZA'").get(owner.id) as any;
+  const ownerResistenza = ownerPerksRaw ? ownerPerksRaw.level : 0;
+
+  const maxStorage = Math.floor(GAME_CONFIG.STORAGE_BASE_CAPACITY * (1 + (ownerResistenza * 0.01)));
+  const currentVol = ownerInv?.vol || 0;
+
+  // Calculate Output Amount
+  // Base output: level * 2. 
+  let outputBase = factory.level * 2;
+
+  // Apply region multiplier
+  let bonusMult = 1.0;
+  if (factory.type === 'oil') bonusMult = currentRegion.oilBonus || 1.0;
+  else if (factory.type === 'minerals') bonusMult = currentRegion.mineralsBonus || 1.0;
+  else if (factory.type === 'uranium') bonusMult = currentRegion.uraniumBonus || 1.0;
+  else if (factory.type === 'diamonds') bonusMult = currentRegion.diamondsBonus || 1.0;
+
+  const finalOutput = Math.max(1, Math.floor(outputBase * bonusMult));
+
+  if (currentVol + finalOutput > maxStorage) {
+    return res.status(400).json({ error: "Il magazzino dell'azienda è pieno." });
+  }
+
+  // Execute Work Transaction
+  try {
+    db.transaction(() => {
+      // Deduct budget, add xp to factory
+      db.prepare("UPDATE factories SET budget = budget - ?, exp = exp + 1 WHERE id = ?").run(factory.wage, factory.id);
+
+      // Pay worker, deduct energy
+      db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?").run(factory.wage, energyCost, user.id);
+
+      // Cooldown
+      db.prepare("INSERT OR REPLACE INTO user_factory_cooldowns (userId, factoryId, lastUsed) VALUES (?, ?, ?)").run(user.id, factoryId, Date.now());
+
+      // Give item to owner
+      const existItem = db.prepare("SELECT quantity FROM user_inventory WHERE userId = ? AND itemId = ?").get(owner.id, factory.type) as any;
+      if (existItem) {
+        db.prepare("UPDATE user_inventory SET quantity = quantity + ? WHERE userId = ? AND itemId = ?").run(finalOutput, owner.id, factory.type);
+      } else {
+        db.prepare("INSERT INTO user_inventory (userId, itemId, quantity) VALUES (?, ?, ?)").run(owner.id, factory.type, finalOutput);
+      }
+
+      // 1% chance to drop 1 Gold for the worker
+      if (Math.random() < 0.01) {
+        db.prepare("UPDATE users SET gold = gold + 1 WHERE id = ?").run(user.id);
+      }
+    })();
+
+    addXP(user.id, GAME_CONFIG.XP_PER_WORK);
+    res.json({ success: true, earnings: factory.wage, output: finalOutput });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Errore durante il lavoro." });
+  }
 });
 
 // Wars API
@@ -1557,17 +1810,156 @@ app.post("/api/perks/booster", authenticate, async (req: any, res) => {
 });
 
 // ==============================================================
-// WEAPON PRODUCTION API (Firestore subcollection productionQueue)
+// MARKET API (Player-Driven)
 // ==============================================================
-const WEAPONS_DEF: Record<string, { timeMin: number, costCash: number, power: number }> = {
-  rifle: { timeMin: 1, costCash: 100, power: 2 },
-  drone: { timeMin: 8, costCash: 800, power: 20 },
-  artillery: { timeMin: 5, costCash: 500, power: 12 },
-  tank: { timeMin: 15, costCash: 1500, power: 40 },
-  missile: { timeMin: 30, costCash: 5000, power: 150 },
+
+app.get("/api/market/offers", authenticate, (req: any, res) => {
+  try {
+    const offers = db.prepare(`
+      SELECT o.*, 
+        (SELECT MIN(price) FROM market_offers WHERE itemId = o.itemId) as minPrice
+      FROM market_offers o 
+      ORDER BY o.createdAt DESC LIMIT 100
+    `).all();
+    res.json(offers);
+  } catch (err) {
+    res.status(500).json({ error: "Errore nel caricamento del mercato." });
+  }
+});
+
+app.post("/api/market/offer", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { itemId, quantity, price } = req.body;
+
+  if (!itemId || !quantity || !price || quantity <= 0 || price <= 0) {
+    return res.status(400).json({ error: "Parametri non validi." });
+  }
+
+  try {
+    // Check Cooldown
+    const lastOffer = db.prepare("SELECT createdAt FROM market_offers WHERE sellerId = ? AND itemId = ? ORDER BY createdAt DESC LIMIT 1").get(user.id, itemId) as any;
+    if (lastOffer && Date.now() - lastOffer.createdAt < GAME_CONFIG.MARKET_OFFER_COOLDOWN_MS) {
+      return res.status(400).json({ error: "Devi attendere 5 minuti prima di pubblicare un'altra offerta per questo oggetto." });
+    }
+
+    // Check Inventory
+    const userInv = db.prepare("SELECT quantity FROM user_inventory WHERE userId = ? AND itemId = ?").get(user.id, itemId) as any;
+    if (!userInv || userInv.quantity < quantity) {
+      return res.status(400).json({ error: "Non hai abbastanza risorse nell'inventario per creare questa offerta." });
+    }
+
+    // Get Tax Rate
+    const region = db.prepare("SELECT marketTaxRate FROM regions WHERE id = ?").get(user.regionId) as any;
+    const taxRate = region?.marketTaxRate !== undefined ? region.marketTaxRate : 10;
+
+    // Transaction
+    db.transaction(() => {
+      // Deduct inventory
+      db.prepare("UPDATE user_inventory SET quantity = quantity - ? WHERE userId = ? AND itemId = ?").run(quantity, user.id, itemId);
+      db.prepare("DELETE FROM user_inventory WHERE userId = ? AND itemId = ? AND quantity <= 0").run(user.id, itemId);
+
+      const offerId = Math.random().toString(36).substring(2, 11);
+      db.prepare("INSERT INTO market_offers (id, sellerId, sellerName, itemId, quantity, price, regionId, taxRate, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(offerId, user.id, user.username, itemId, quantity, price, user.regionId, taxRate, Date.now());
+    })();
+
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("Market offer error:", err);
+    res.status(500).json({ error: "Errore durante la creazione dell'offerta." });
+  }
+});
+
+app.post("/api/market/buy", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { offerId, quantity, isStateBuy } = req.body;
+
+  if (!offerId || !quantity || quantity <= 0) {
+    return res.status(400).json({ error: "Parametri non validi." });
+  }
+
+  try {
+    const result = db.transaction(() => {
+      const offer = db.prepare("SELECT * FROM market_offers WHERE id = ?").get(offerId) as any;
+      if (!offer || offer.quantity < quantity) {
+        throw new Error("L'offerta non esiste o la quantità richiesta non è disponibile.");
+      }
+
+      if (offer.sellerId === user.id && !isStateBuy) {
+        throw new Error("Non puoi comprare la tua stessa offerta a meno che non sia per lo Stato.");
+      }
+
+      const totalPrice = offer.price * quantity;
+
+      // Anti-abuse: check min price
+      const minPriceOffer = db.prepare("SELECT MIN(price) as minPrice FROM market_offers WHERE itemId = ?").get(offer.itemId) as any;
+      if (minPriceOffer && minPriceOffer.minPrice > 0) {
+        const abusiveLimit = minPriceOffer.minPrice * GAME_CONFIG.MARKET_ANTI_ABUSE_PERCENTAGE;
+        if (offer.price > abusiveLimit) {
+          throw new Error(`Limite Anti-Abuso superato. Il prezzo massimo consentito per acquisti è $${Math.round(abusiveLimit)} (${Math.round(GAME_CONFIG.MARKET_ANTI_ABUSE_PERCENTAGE * 100)}% min).`);
+        }
+      }
+
+      // Process Buy
+      if (isStateBuy) {
+        const region = db.prepare("SELECT ownerUserId, treasury FROM regions WHERE id = ?").get(user.residenceId || 'IT') as any;
+        if (!region || region.ownerUserId !== user.id) throw new Error("Non sei autorizzato a usare i fondi del tuo Stato.");
+        if (region.treasury < totalPrice) throw new Error("Lo Stato non ha abbastanza fondi.");
+
+        db.prepare("UPDATE regions SET treasury = treasury - ? WHERE id = ?").run(totalPrice, user.residenceId || 'IT');
+
+        const stateInv = db.prepare("SELECT quantity FROM state_inventory WHERE regionId = ? AND itemId = ?").get(user.residenceId || 'IT', offer.itemId) as any;
+        if (stateInv) db.prepare("UPDATE state_inventory SET quantity = quantity + ? WHERE regionId = ? AND itemId = ?").run(quantity, user.residenceId || 'IT', offer.itemId);
+        else db.prepare("INSERT INTO state_inventory (regionId, itemId, quantity) VALUES (?, ?, ?)").run(user.residenceId || 'IT', offer.itemId, quantity);
+      } else {
+        if (user.money < totalPrice) throw new Error("Non hai abbastanza contanti.");
+        if (user.inventoryVolume + quantity > user.maxInventoryVolume) throw new Error("Non hai abbastanza spazio nel tuo Magazzino Privato.");
+
+        db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(totalPrice, user.id);
+
+        const userInv = db.prepare("SELECT quantity FROM user_inventory WHERE userId = ? AND itemId = ?").get(user.id, offer.itemId) as any;
+        if (userInv) db.prepare("UPDATE user_inventory SET quantity = quantity + ? WHERE userId = ? AND itemId = ?").run(quantity, user.id, offer.itemId);
+        else db.prepare("INSERT INTO user_inventory (userId, itemId, quantity) VALUES (?, ?, ?)").run(user.id, offer.itemId, quantity);
+      }
+
+      // Update Offer
+      if (offer.quantity === quantity) db.prepare("DELETE FROM market_offers WHERE id = ?").run(offer.id);
+      else db.prepare("UPDATE market_offers SET quantity = quantity - ? WHERE id = ?").run(quantity, offer.id);
+
+      // Distribute taxes to destination region treasury and net to seller
+      const taxRate = offer.taxRate !== null && offer.taxRate !== undefined ? offer.taxRate : 10;
+      const taxAmount = Math.floor(totalPrice * (taxRate / 100));
+      const netToSeller = totalPrice - taxAmount;
+
+      db.prepare("UPDATE users SET money = money + ? WHERE id = ?").run(netToSeller, offer.sellerId);
+      db.prepare("UPDATE regions SET treasury = treasury + ? WHERE id = ?").run(taxAmount, offer.regionId);
+
+      // Log transaction
+      const txnId = Math.random().toString(36).substring(2, 11);
+      db.prepare("INSERT INTO market_transactions_log (id, buyerId, isStateBuy, sellerId, itemId, quantity, price, taxPaid, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(txnId, user.id, isStateBuy ? 1 : 0, offer.sellerId, offer.itemId, quantity, offer.price, taxAmount, Date.now());
+
+      return { totalPrice, netToSeller, taxAmount };
+    })();
+
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ==============================================================
+// WEAPON PRODUCTION API (SQLite)
+// ==============================================================
+const WEAPONS_DEF: Record<string, { timeMin: number, costCash: number, power: number, reqOil?: number, reqMinerals?: number, reqUranium?: number, reqDiamonds?: number }> = {
+  rifle: { timeMin: 1, costCash: 100, power: 2, reqMinerals: 2 },
+  drone: { timeMin: 8, costCash: 800, power: 20, reqMinerals: 10, reqOil: 5 },
+  artillery: { timeMin: 5, costCash: 500, power: 12, reqMinerals: 15, reqOil: 2 },
+  tank: { timeMin: 15, costCash: 1500, power: 40, reqMinerals: 30, reqOil: 15, reqUranium: 1 },
+  missile: { timeMin: 30, costCash: 5000, power: 150, reqMinerals: 50, reqOil: 40, reqUranium: 10, reqDiamonds: 2 },
 };
 
-app.post("/api/produce", authenticate, async (req: any, res) => {
+app.post("/api/produce", authenticate, (req: any, res) => {
   const user = req.user;
   const { weaponType, qty } = req.body;
 
@@ -1581,39 +1973,59 @@ app.post("/api/produce", authenticate, async (req: any, res) => {
     return res.status(400).json({ error: `Fondi insufficienti. Costo totale: $${totalCost.toLocaleString()}` });
   }
 
+  // Check required resources
+  const reqOil = (weapon.reqOil || 0) * amount;
+  const reqMinerals = (weapon.reqMinerals || 0) * amount;
+  const reqUranium = (weapon.reqUranium || 0) * amount;
+  const reqDiamonds = (weapon.reqDiamonds || 0) * amount;
+
+  const hasOil = (user.inventory['oil'] || 0) >= reqOil;
+  const hasMinerals = (user.inventory['minerals'] || 0) >= reqMinerals;
+  const hasUranium = (user.inventory['uranium'] || 0) >= reqUranium;
+  const hasDiamonds = (user.inventory['diamonds'] || 0) >= reqDiamonds;
+
+  if (!hasOil || !hasMinerals || !hasUranium || !hasDiamonds) {
+    return res.status(400).json({ error: "Non hai abbastanza risorse nel Magazzino Privato per produrre queste armi." });
+  }
+
+  // Calculate required vs freed space
+  // We consume resources (freeing space) and output weapons (consuming space)
+  const spaceFreed = reqOil + reqMinerals + reqUranium + reqDiamonds;
+  const spaceConsumed = amount; // Each weapon takes 1 volume
+
+  if (user.inventoryVolume - spaceFreed + spaceConsumed > user.maxInventoryVolume) {
+    return res.status(400).json({ error: `Spazio nel Magazzino Privato insufficiente.` });
+  }
+
   try {
-    const now = Date.now();
-    let startOffset = 0;
+    db.transaction(() => {
+      const now = Date.now();
+      let startOffset = 0;
 
-    if (process.env.FIREBASE_PROJECT_ID) {
-      const fs = getFirestore();
-      const queueRef = fs.collection("users").doc(user.id).collection("productionQueue");
-
-      // Find the latest willCompleteAt to queue after it
-      const existingSnap = await queueRef.where("status", "in", ["queued", "producing"]).orderBy("willCompleteAt", "desc").limit(1).get();
-      if (!existingSnap.empty) {
-        const lastItem = existingSnap.docs[0].data();
-        const lastComplete = lastItem.willCompleteAt || now;
+      const lastQueue = db.prepare("SELECT willCompleteAt FROM production_queue WHERE userId = ? AND status IN ('queued', 'producing') ORDER BY willCompleteAt DESC LIMIT 1").get(user.id) as any;
+      if (lastQueue) {
+        const lastComplete = lastQueue.willCompleteAt || now;
         if (lastComplete > now) startOffset = lastComplete - now;
       }
 
       const startedAt = now + startOffset;
       const willCompleteAt = startedAt + weapon.timeMin * 60 * 1000 * amount;
+      const prodId = Math.random().toString(36).substring(2, 11);
 
-      await queueRef.add({
-        weaponType,
-        qty: amount,
-        status: "queued",
-        startedAt,
-        willCompleteAt,
-        power: weapon.power * amount,
-        costsPaid: { cashUsed: totalCost },
-        createdAt: admin.firestore.FieldValue.serverTimestamp()
-      });
-    }
+      db.prepare("INSERT INTO production_queue (id, userId, weaponType, qty, status, startedAt, willCompleteAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(prodId, user.id, weaponType, amount, 'queued', startedAt, willCompleteAt, Date.now());
 
-    // Deduct cash immediately
-    db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(totalCost, user.id);
+      db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(totalCost, user.id);
+
+      // Deduct resources
+      if (reqOil > 0) db.prepare("UPDATE user_inventory SET quantity = quantity - ? WHERE userId = ? AND itemId = 'oil'").run(reqOil, user.id);
+      if (reqMinerals > 0) db.prepare("UPDATE user_inventory SET quantity = quantity - ? WHERE userId = ? AND itemId = 'minerals'").run(reqMinerals, user.id);
+      if (reqUranium > 0) db.prepare("UPDATE user_inventory SET quantity = quantity - ? WHERE userId = ? AND itemId = 'uranium'").run(reqUranium, user.id);
+      if (reqDiamonds > 0) db.prepare("UPDATE user_inventory SET quantity = quantity - ? WHERE userId = ? AND itemId = 'diamonds'").run(reqDiamonds, user.id);
+
+      // Cleanup 0 quantity items
+      db.prepare("DELETE FROM user_inventory WHERE userId = ? AND quantity <= 0").run(user.id);
+    })();
 
     res.json({ success: true, totalCost });
   } catch (err) {
@@ -1622,20 +2034,12 @@ app.post("/api/produce", authenticate, async (req: any, res) => {
   }
 });
 
-app.get("/api/produce/list", authenticate, async (req: any, res) => {
-  if (!process.env.FIREBASE_PROJECT_ID) return res.json([]);
+app.get("/api/produce/list", authenticate, (req: any, res) => {
   try {
-    const fs = getFirestore();
-    const snap = await fs.collection("users").doc(req.user.id).collection("productionQueue")
-      .orderBy("createdAt", "desc")
-      .limit(20)
-      .get();
-
-    const items = snap.docs.map(doc => {
-      const d = doc.data();
+    const queue = db.prepare("SELECT * FROM production_queue WHERE userId = ? ORDER BY createdAt DESC LIMIT 20").all(req.user.id) as any[];
+    const items = queue.map(d => {
       const isReady = d.willCompleteAt <= Date.now() && d.status !== "claimed";
       return {
-        id: doc.id,
         ...d,
         status: isReady && d.status !== "claimed" ? "ready" : d.status,
       };
@@ -1647,25 +2051,27 @@ app.get("/api/produce/list", authenticate, async (req: any, res) => {
   }
 });
 
-app.post("/api/produce/claim", authenticate, async (req: any, res) => {
-  if (!process.env.FIREBASE_PROJECT_ID) return res.status(501).json({ error: "Firestore not configured" });
+app.post("/api/produce/claim", authenticate, (req: any, res) => {
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: "Item ID required" });
 
   try {
-    const fs = getFirestore();
-    const docRef = fs.collection("users").doc(req.user.id).collection("productionQueue").doc(id);
-
-    await fs.runTransaction(async txn => {
-      const doc = await txn.get(docRef);
-      if (!doc.exists) throw new Error("Item not found");
-
-      const d = doc.data()!;
+    db.transaction(() => {
+      const d = db.prepare("SELECT * FROM production_queue WHERE id = ? AND userId = ?").get(id, req.user.id) as any;
+      if (!d) throw new Error("Item not found");
       if (d.status === "claimed") throw new Error("Già ritirato");
       if (d.willCompleteAt > Date.now()) throw new Error("Produzione non ancora completata");
 
-      txn.update(docRef, { status: "claimed", claimedAt: Date.now() });
-    });
+      db.prepare("UPDATE production_queue SET status = 'claimed' WHERE id = ?").run(id);
+
+      const qty = d.qty || 1;
+      const userInv = db.prepare("SELECT quantity FROM user_inventory WHERE userId = ? AND itemId = ?").get(req.user.id, d.weaponType) as any;
+      if (userInv) {
+        db.prepare("UPDATE user_inventory SET quantity = quantity + ? WHERE userId = ? AND itemId = ?").run(qty, req.user.id, d.weaponType);
+      } else {
+        db.prepare("INSERT INTO user_inventory (userId, itemId, quantity) VALUES (?, ?, ?)").run(req.user.id, d.weaponType, qty);
+      }
+    })();
 
     res.json({ success: true });
   } catch (err: any) {

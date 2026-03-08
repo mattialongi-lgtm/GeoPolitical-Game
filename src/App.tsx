@@ -52,8 +52,8 @@ import {
 import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG } from "./types";
 import { auth, googleProvider, isFirebaseConfigured } from "./lib/firebase";
 import { signInWithPopup } from "firebase/auth";
-import { useNavigate, useLocation, Routes, Route, Link, useParams } from "react-router-dom";
-import { MoreVertical, Settings } from "lucide-react";
+import { useNavigate, useLocation, Routes, Route, Link, useParams, Navigate } from "react-router-dom";
+import { MoreVertical, Settings, Box, Archive, Filter, ShoppingCart, RefreshCcw } from "lucide-react";
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -797,75 +797,7 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
   );
 };
 
-const WorkView = ({ user, factories, actionLoading, handleAction }: { user: any, factories: any[], actionLoading: boolean, handleAction: (a: string, b: any) => void }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    className="space-y-6"
-  >
-    <div className="flex justify-between items-center">
-      <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Mercato del Lavoro</h2>
-      <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-2">
-        <Zap className="w-4 h-4 text-amber-500" />
-        <span className="font-black text-slate-700">{user.energy}</span>
-      </div>
-    </div>
 
-    {user.regionId !== user.residenceId && user.workPermitId !== user.regionId && (
-      <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center gap-3">
-        <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
-        <p className="text-xs font-bold text-amber-800 leading-tight">
-          Sei all'estero come Turista in <span className="font-black">{user.regionId}</span>. Se questa nazione ha attivato le restrizioni, i tuoi turni di lavoro verranno bloccati senza un Visto.
-        </p>
-      </div>
-    )}
-
-    <div className="grid grid-cols-1 gap-4">
-      {factories.map(factory => {
-        const isLocked = user.level < factory.minLevel;
-        const onCooldown = factory.remainingCooldown > 0;
-        const energyEfficiency = (user.perks['INDUSTRIA'] || 0) * 0.05;
-        const actualEnergyCost = Math.ceil(factory.energyCost * (1 - energyEfficiency));
-
-        return (
-          <div key={factory.id} className={`bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-6 ${isLocked ? "opacity-60 grayscale" : ""}`}>
-            <div className="flex items-center gap-4 flex-1">
-              <div className="w-16 h-16 bg-slate-50 rounded-3xl flex items-center justify-center">
-                <Briefcase className="w-8 h-8 text-slate-400" />
-              </div>
-              <div className="text-left">
-                <h3 className="text-lg font-black text-slate-900">{factory.name}</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{factory.type} • Livello Min: {factory.minLevel}</p>
-                <div className="flex gap-3 mt-2">
-                  <span className="text-xs font-black text-emerald-600">+${factory.payoutMoney}</span>
-                  <span className="text-xs font-black text-amber-600">-{actualEnergyCost}⚡</span>
-                </div>
-              </div>
-            </div>
-
-            <button
-              onClick={() => !isLocked && !onCooldown && handleAction("work", { factoryId: factory.id })}
-              disabled={actionLoading || isLocked || onCooldown || user.energy < actualEnergyCost}
-              className={`w-full sm:w-auto px-8 py-4 rounded-2xl font-black text-sm transition-all active:scale-95 disabled:opacity-50 ${onCooldown ? "bg-slate-100 text-slate-400" : "bg-indigo-600 text-white shadow-xl shadow-indigo-100 hover:bg-indigo-700"}`}
-            >
-              {onCooldown ? (
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  {Math.ceil(factory.remainingCooldown / 1000)}s
-                </div>
-              ) : isLocked ? (
-                "Bloccato"
-              ) : (
-                "Lavora"
-              )}
-            </button>
-          </div>
-        );
-      })}
-    </div>
-  </motion.div>
-);
 
 const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: any, fetchData: () => void, actionLoading: boolean }) => {
   const [claiming, setClaiming] = useState(false);
@@ -925,25 +857,36 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         <div className="space-y-4">
           <h3 className="text-lg font-black uppercase tracking-tight">Guerre in Corso</h3>
           <div className="grid grid-cols-1 gap-4">
-            {wars.active.map((war: any) => (
-              <div key={war.id} className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-rose-100">
-                <div className="flex justify-between items-center mb-4">
-                  <div className="text-center flex-1">
-                    <p className="text-2xl font-black">{war.attackerCountryIso2}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Attaccante</p>
+            {wars.active.map((war: any) => {
+              const isAttackerPatriot = war.attackerCountryIso2 === user.originalNation;
+              const isDefenderPatriot = war.defenderCountryIso2 === user.originalNation;
+              return (
+                <div key={war.id} className={`bg-white p-6 rounded-[2.5rem] shadow-sm border ${isAttackerPatriot || isDefenderPatriot ? 'border-rose-400 shadow-rose-100/50' : 'border-rose-100'}`}>
+                  {(isAttackerPatriot || isDefenderPatriot) && (
+                    <div className="flex justify-center mb-4">
+                      <span className="bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-xl flex items-center gap-1">
+                        <Swords className="w-3 h-3" /> Bonus Patriota Attivo (+10% Danni)
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between items-center mb-4">
+                    <div className="text-center flex-1">
+                      <p className={`text-2xl font-black ${isAttackerPatriot ? 'text-rose-600' : ''}`}>{war.attackerCountryIso2}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Attaccante</p>
+                    </div>
+                    <div className="px-4 font-black text-slate-300">VS</div>
+                    <div className="text-center flex-1">
+                      <p className={`text-2xl font-black ${isDefenderPatriot ? 'text-emerald-600' : ''}`}>{war.defenderCountryIso2}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">Difensore</p>
+                    </div>
                   </div>
-                  <div className="px-4 font-black text-rose-600">VS</div>
-                  <div className="text-center flex-1">
-                    <p className="text-2xl font-black">{war.defenderCountryIso2}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">Difensore</p>
+                  <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden flex">
+                    <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${(war.attackerScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
+                    <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${(war.defenderScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
                   </div>
                 </div>
-                <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden flex">
-                  <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${(war.attackerScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
-                  <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${(war.defenderScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       )}
@@ -993,9 +936,6 @@ const formatTime = (ms: number) => {
 };
 
 // Helper for live perk countdowns (mm:ss or hh:mm:ss)
-
-// Self-contained perk countdown — converts willCompleteAt to number explicitly
-// to handle both plain numbers and Firestore-returned values
 const PerkTimer = ({ willCompleteAt, onComplete }: { willCompleteAt: number | any; onComplete?: () => void }) => {
   const ts = getTs(willCompleteAt);
   const [remaining, setRemaining] = useState(() => Math.max(0, ts - Date.now()));
@@ -1091,34 +1031,56 @@ const UsernameEditor = ({ username, fetchData }: { username: string; fetchData: 
   );
 };
 
-// Player Factories View
-const FACTORY_ICON_LIST = ["🏭", "⚙️", "🔧", "🏗️", "🔩", "💎", "🚀", "⚡", "🌐", "🛡️"];
-const CREATE_COST_GOLD = 50;
+// Player Factories View (New Resource System)
+const RESOURCE_ICONS: Record<string, string> = {
+  oil: "🛢️",
+  minerals: "🪨",
+  uranium: "☢️",
+  diamonds: "💎",
+};
+
+const RESOURCE_NAMES: Record<string, string> = {
+  oil: "Petrolio",
+  minerals: "Minerali",
+  uranium: "Uranio",
+  diamonds: "Diamanti",
+};
+
+const FACTORY_CREATE_COST = {
+  oil: 5000,
+  minerals: 5000,
+  uranium: 15000,
+  diamonds: 25000
+};
 
 const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => void }) => {
+  const { iso2 } = useParams();
   const [factories, setFactories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
-  const [newIcon, setNewIcon] = useState("🏭");
+  const [newType, setNewType] = useState("oil");
   const [actionLoading, setActionLoading] = useState(false);
+  const [depositAmounts, setDepositAmounts] = useState<Record<string, string>>({});
+
+  const regionId = iso2 ? iso2.toUpperCase() : "IT";
 
   const load = async () => {
     try {
-      const res = await fetch("/api/player-factories");
+      const res = await fetch(`/api/factories?regionId=${regionId}`);
       if (res.ok) setFactories(await res.json());
     } catch { } finally { setLoading(false); }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [regionId]);
 
   const handleCreate = async () => {
     if (!newName.trim()) return;
     setActionLoading(true);
     try {
-      const res = await fetch("/api/player-factories", {
+      const res = await fetch("/api/factories/create", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName, icon: newIcon }),
+        body: JSON.stringify({ name: newName, type: newType, regionId }),
       });
       const data = await res.json();
       if (data.error) alert(data.error);
@@ -1126,124 +1088,160 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
     } catch { alert("Errore"); } finally { setActionLoading(false); }
   };
 
-  const handleUpgrade = async (id: string) => {
+  const handleDeposit = async (id: string) => {
+    const amount = depositAmounts[id];
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) return;
     setActionLoading(true);
     try {
-      const res = await fetch(`/api/player-factories/${id}/upgrade`, { method: "POST" });
+      const res = await fetch("/api/factories/deposit", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factoryId: id, amount: Number(amount) }),
+      });
       const data = await res.json();
       if (data.error) alert(data.error);
-      else { fetchData(); load(); }
+      else {
+        setDepositAmounts(prev => ({ ...prev, [id]: "" }));
+        fetchData(); load();
+      }
     } catch { alert("Errore"); } finally { setActionLoading(false); }
   };
 
   const handleWork = async (id: string) => {
     setActionLoading(true);
     try {
-      const res = await fetch("/api/actions/work-factory", {
+      const res = await fetch("/api/work", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ factoryId: id }),
       });
       const data = await res.json();
       if (data.error) alert(data.error);
-      else { alert(`+$${data.earnings} guadagnati!`); fetchData(); load(); }
+      else {
+        alert(`Hai lavorato! +$${data.earnings} salario.${data.output ? ` L'azienda ha prodotto ${data.output} risorse.` : ''}`);
+        fetchData(); load();
+      }
     } catch { alert("Errore"); } finally { setActionLoading(false); }
   };
 
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-xl font-black tracking-tight uppercase">Fabbriche del Giocatore</h3>
+        <h3 className="text-xl font-black tracking-tight uppercase">Fabbriche Locali</h3>
         <button
-          onClick={() => setCreating(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-amber-500 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-amber-100 hover:scale-105 transition-all"
+          onClick={() => setCreating(!creating)}
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-indigo-100 hover:scale-105 transition-all"
         >
-          <Plus className="w-4 h-4" /> Crea ({CREATE_COST_GOLD}🏅)
+          {creating ? "Annulla" : <><Plus className="w-4 h-4" /> Fonda Azienda</>}
         </button>
       </div>
 
       {creating && (
-        <div className="bg-white p-6 rounded-[2rem] border border-amber-100 shadow-sm space-y-4">
-          <h4 className="font-black text-slate-900">Nuova Fabbrica</h4>
-          <div className="flex gap-2 flex-wrap">
-            {FACTORY_ICON_LIST.map(icon => (
-              <button key={icon} onClick={() => setNewIcon(icon)}
-                className={`w-10 h-10 text-xl rounded-xl transition-all ${newIcon === icon ? "bg-indigo-100 ring-2 ring-indigo-400" : "bg-slate-50 hover:bg-slate-100"}`}>
-                {icon}
+        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-6 rounded-[2rem] shadow-lg text-white space-y-4">
+          <h4 className="font-black">Nuova Azienda in {regionId}</h4>
+          <div className="grid grid-cols-2 gap-2">
+            {Object.keys(FACTORY_CREATE_COST).map(type => (
+              <button key={type} onClick={() => setNewType(type)}
+                className={`p-3 rounded-xl border-2 transition-all flex flex-col items-center justify-center gap-1 ${newType === type ? "bg-white text-indigo-900 border-white shadow-md" : "border-indigo-400 bg-indigo-600/50 hover:bg-indigo-500 text-indigo-100"}`}>
+                <span className="text-2xl mb-1">{RESOURCE_ICONS[type]}</span>
+                <span className="text-[10px] font-black uppercase">{RESOURCE_NAMES[type]}</span>
+                <span className="text-[9px] font-bold opacity-80">${FACTORY_CREATE_COST[type as keyof typeof FACTORY_CREATE_COST].toLocaleString()}</span>
               </button>
             ))}
           </div>
           <input
             value={newName} onChange={e => setNewName(e.target.value)}
-            placeholder="Nome della fabbrica..."
-            className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl font-bold text-slate-900 outline-none focus:ring-2 focus:ring-amber-200 transition-all"
+            placeholder="Nome dell'azienda..."
+            className="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-2xl font-bold text-white placeholder-indigo-200 outline-none focus:ring-2 focus:ring-white transition-all"
             maxLength={30}
           />
-          <div className="flex gap-2">
-            <button onClick={handleCreate} disabled={actionLoading || !newName.trim()}
-              className="flex-1 py-3 bg-amber-500 text-white rounded-2xl font-black text-sm hover:bg-amber-600 transition-all disabled:opacity-50">
-              {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : `Crea per ${CREATE_COST_GOLD}🏅`}
-            </button>
-            <button onClick={() => setCreating(false)}
-              className="px-4 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all">
-              Annulla
-            </button>
-          </div>
+          <button onClick={handleCreate} disabled={actionLoading || !newName.trim()}
+            className="w-full py-3 bg-white text-indigo-900 rounded-2xl font-black text-sm hover:bg-indigo-50 transition-all shadow-md disabled:opacity-50">
+            {actionLoading ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : `Fonda per $${FACTORY_CREATE_COST[newType as keyof typeof FACTORY_CREATE_COST].toLocaleString()}`}
+          </button>
         </div>
       )}
 
       {loading ? (
         <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-600 w-8 h-8" /></div>
       ) : factories.length === 0 ? (
-        <div className="bg-white p-10 rounded-[2rem] text-center border border-slate-100">
-          <span className="text-4xl">🏭</span>
-          <p className="text-slate-400 font-bold text-sm mt-3">Nessuna fabbrica ancora. Sii il primo!</p>
+        <div className="bg-white p-10 rounded-[2rem] text-center border border-slate-100 shadow-sm">
+          <span className="text-4xl">🏗️</span>
+          <p className="text-slate-400 font-bold text-sm mt-3">Nessuna fabbrica in questa regione. Sii il primo ad investire qui!</p>
         </div>
       ) : (
-        factories.map(f => (
-          <div key={f.id} className={`bg-white p-5 rounded-[2rem] shadow-sm border ${f.isOwner ? "border-amber-100" : "border-slate-100"} space-y-4`}>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-2xl ${f.isOwner ? "bg-amber-50" : "bg-slate-50"}`}>{f.icon}</div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-black text-slate-900">{f.name}</h4>
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${f.isOwner ? "bg-amber-100 text-amber-600" : "bg-slate-100 text-slate-500"}`}>Lv {f.level}</span>
-                  </div>
-                  <p className="text-[10px] font-bold text-slate-400 uppercase">di {f.ownerName}</p>
-                </div>
-              </div>
-              <div className="text-right">
-                <p className="text-sm font-black text-emerald-600">+${f.payout}</p>
-                <p className="text-[10px] font-bold text-slate-400">{f.energyCost}⚡ • {Math.ceil(f.cooldownSec / 60)}m</p>
-              </div>
-            </div>
+        <div className="grid gap-4">
+          {factories.map(f => {
+            const isOwner = f.ownerUserId === user?.id;
+            const needsBudget = f.budget < f.wage;
 
-            <div className="flex gap-2">
-              {f.isOwner && (
-                <button
-                  onClick={() => handleUpgrade(f.id)}
-                  disabled={actionLoading || user.gold < f.upgradeCost}
-                  className={`flex-1 py-2.5 rounded-2xl text-[10px] font-black uppercase transition-all ${user.gold >= f.upgradeCost ? "bg-amber-100 text-amber-700 hover:bg-amber-200" : "bg-slate-100 text-slate-400"
-                    }`}
-                >
-                  ⬆️ Upgrade ({f.upgradeCost}🏅)
-                </button>
-              )}
-              <button
-                onClick={() => handleWork(f.id)}
-                disabled={actionLoading || f.remainingCooldown > 0 || user.energy < f.energyCost}
-                className={`flex-1 py-2.5 rounded-2xl text-[10px] font-black uppercase transition-all ${f.remainingCooldown > 0 ? "bg-slate-100 text-slate-400" :
-                  user.energy < f.energyCost ? "bg-slate-100 text-slate-400" :
-                    "bg-indigo-600 text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700"
-                  }`}
-              >
-                {f.remainingCooldown > 0 ? (
-                  <span className="flex items-center justify-center gap-1"><Clock className="w-3 h-3" />{Math.ceil(f.remainingCooldown / 1000)}s</span>
-                ) : "💼 Lavora"}
-              </button>
-            </div>
-          </div>
-        ))
+            return (
+              <div key={f.id} className={`bg-white p-5 rounded-[2.5rem] shadow-sm border ${isOwner ? "border-indigo-200" : "border-slate-100"} space-y-4`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-14 h-14 rounded-3xl flex items-center justify-center text-3xl shadow-inner ${isOwner ? "bg-indigo-50 text-indigo-600" : "bg-slate-50"}`}>
+                      {RESOURCE_ICONS[f.type] || "🏭"}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-black text-slate-900 text-lg leading-none tracking-tight">{f.name}</h4>
+                        {isOwner && <span className="text-[9px] font-black uppercase text-white bg-indigo-500 px-2 py-0.5 rounded-lg shadow-sm">La Tua Azienda</span>}
+                      </div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">
+                        Estrazione <span className="text-slate-600">{RESOURCE_NAMES[f.type]}</span> • CEO <span className="text-indigo-500">{f.ownerName}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-2xl font-black text-slate-900">Lv {f.level}</span>
+                    <span className="text-[9px] font-black uppercase text-indigo-500 tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{f.exp} XP</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-50">
+                  <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100/50">
+                    <span className="text-[10px] font-black uppercase text-emerald-700/70">Salario Offerto</span>
+                    <span className="text-sm font-black text-emerald-700">${f.wage}</span>
+                  </div>
+                  <div className={`${needsBudget ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl flex items-center justify-between border`}>
+                    <span className={`text-[10px] font-black uppercase ${needsBudget ? 'text-rose-700/70' : 'text-slate-500'}`}>Budget Aziendale</span>
+                    <span className={`text-sm font-black ${needsBudget ? 'text-rose-600' : 'text-slate-700'}`}>${f.budget}</span>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleWork(f.id)}
+                    disabled={actionLoading || needsBudget}
+                    className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:shadow-none"
+                  >
+                    💼 Lavora Qui (-10⚡)
+                  </button>
+                </div>
+
+                {isOwner && (
+                  <div className="pt-3 flex gap-2">
+                    <div className="flex-[2] flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="Importo..."
+                        value={depositAmounts[f.id] || ""}
+                        onChange={e => setDepositAmounts(prev => ({ ...prev, [f.id]: e.target.value }))}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <button
+                        onClick={() => handleDeposit(f.id)}
+                        disabled={actionLoading || !depositAmounts[f.id]}
+                        className="px-4 py-2 bg-emerald-500 text-white font-black text-[10px] uppercase rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50 whitespace-nowrap"
+                      >
+                        Versa Budget
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -1318,6 +1316,13 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
       console.error("Cheat failed", err);
     }
   };
+
+  // Dummy WEAPONS_CATALOG for compilation, assuming it's defined elsewhere
+  const WEAPONS_CATALOG = [
+    { id: 'rifle', name: 'Fucile', limit: 100, emoji: '🔫' },
+    { id: 'tank', name: 'Carro Armato', limit: 10, emoji: '🪖' },
+    { id: 'plane', name: 'Aereo', limit: 5, emoji: '✈️' },
+  ];
 
   return (
     <>
@@ -1394,7 +1399,13 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
             />
           </div>
           <UsernameEditor username={user.username} fetchData={fetchData} />
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-1">Comandante di Livello {user.level}</p>
+
+          <div className="flex justify-center items-center gap-2 mt-2">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Comandante di Livello {user.level}</p>
+            <span className="text-[10px] font-black uppercase bg-rose-100 text-rose-600 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <Shield className="w-3 h-3" /> {user.displayedNation || 'ST'}
+            </span>
+          </div>
 
           <div className="mt-6 space-y-2">
             <div className="flex justify-between text-[10px] font-black uppercase text-slate-400 px-1">
@@ -1483,6 +1494,30 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
         </div>
 
         <PlayerFactoriesView user={user} fetchData={fetchData} />
+
+        {/* Private Storage (Mio Magazzino) */}
+        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex-1 min-w-[300px]">
+          <h3 className="text-lg font-black uppercase tracking-tight mb-4 flex justify-between items-center text-indigo-900 border-b border-indigo-50 pb-2">
+            <span>Mio Magazzino</span>
+            <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-lg">Capacità: {user.storageCapacity}</span>
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {[
+              { id: 'oil', label: 'Petrolio', limit: Infinity, emoji: '🛢️', val: user.oil || 0 },
+              { id: 'minerals', label: 'Minerali', limit: Infinity, emoji: '🪨', val: user.minerals || 0 },
+              { id: 'uranium', label: 'Uranio', limit: Infinity, emoji: '☢️', val: user.uranium || 0 },
+              { id: 'diamonds', label: 'Diamanti', limit: Infinity, emoji: '💎', val: user.diamonds || 0 },
+              ...WEAPONS_CATALOG.map(w => ({ id: w.id, label: w.name, limit: w.limit, emoji: w.emoji, val: user.inventory?.[w.id] || 0 }))
+            ].map(item => (
+              <div key={item.id} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex flex-col items-center justify-center text-center">
+                <span className="text-2xl mb-1">{item.emoji}</span>
+                <span className="text-[9px] font-black text-slate-400 tracking-widest uppercase">{item.label}</span>
+                <span className={`text-base font-black ${item.val > 0 ? "text-indigo-600" : "text-slate-300"}`}>{item.val}</span>
+                {item.limit !== Infinity && <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Max {item.limit}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
 
         {/* Perks Section */}
         <div className="space-y-4">
@@ -1698,159 +1733,6 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
   );
 };
 
-const MarketView = () => {
-  const [activeTab, setActiveTab] = useState<"buy" | "sell">("buy");
-  const [listings, setListings] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [itemName, setItemName] = useState("Fucili");
-  const [quantity, setQuantity] = useState("");
-  const [price, setPrice] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  const fetchListings = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/market/listings");
-      if (res.ok) setListings(await res.json());
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (activeTab === "buy") fetchListings();
-  }, [activeTab]);
-
-  const handleSell = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!quantity || !price) return alert("Inserisci tutti i campi");
-    setSubmitting(true);
-    try {
-      const res = await fetch("/api/market/listings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ itemName, quantity: Number(quantity), price: Number(price) })
-      });
-      if (res.ok) {
-        alert("Annuncio pubblicato!");
-        setQuantity("");
-        setPrice("");
-        setActiveTab("buy");
-      }
-    } catch (err) {
-      alert("Errore nella pubblicazione");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className="space-y-6"
-    >
-      <div className="flex justify-between items-center bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
-        <button
-          onClick={() => setActiveTab("buy")}
-          className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === "buy" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" : "text-slate-400"}`}
-        >
-          Compra
-        </button>
-        <button
-          onClick={() => setActiveTab("sell")}
-          className={`flex-1 py-3 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${activeTab === "sell" ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" : "text-slate-400"}`}
-        >
-          Vendi
-        </button>
-      </div>
-
-      {activeTab === "buy" ? (
-        <div className="space-y-4">
-          <h3 className="text-xl font-black tracking-tight uppercase">Annunci Recenti</h3>
-          {loading ? (
-            <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-600" /></div>
-          ) : listings.length === 0 ? (
-            <div className="bg-white p-12 rounded-[2rem] text-center border border-slate-100">
-              <Activity className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-              <p className="text-slate-400 font-bold">Nessun annuncio disponibile</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-4">
-              {listings.map((l: any) => (
-                <div key={l.id} className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[10px] font-black uppercase bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-lg">{l.itemName}</span>
-                      <span className="text-[10px] font-bold text-slate-400">{new Date(l.createdAt).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-lg font-black text-slate-900">{l.quantity} Unità</p>
-                    <p className="text-xs text-slate-400 font-bold">Venditore: <span className="text-indigo-600">{l.sellerName}</span></p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-black text-emerald-600">${l.price}</p>
-                    <button className="mt-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-600 transition-colors">Compra</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
-          <h3 className="text-xl font-black tracking-tight uppercase">Pubblica Annuncio</h3>
-          <form onSubmit={handleSell} className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Cosa vuoi vendere?</label>
-              <select
-                value={itemName}
-                onChange={(e) => setItemName(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
-              >
-                <option>Fucili</option>
-                <option>Munizioni</option>
-                <option>Carri</option>
-                <option>Droni</option>
-                <option>Uranio</option>
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Quantità</label>
-                <input
-                  type="number"
-                  value={quantity}
-                  onChange={(e) => setQuantity(e.target.value)}
-                  placeholder="Es: 100"
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Prezzo Totale</label>
-                <input
-                  type="number"
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="Es: 500"
-                  className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full py-5 bg-indigo-600 text-white rounded-[2rem] font-black uppercase tracking-widest shadow-xl shadow-indigo-100 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50"
-            >
-              {submitting ? "Pubblicazione..." : "Pubblica Annuncio"}
-            </button>
-          </form>
-        </div>
-      )}
-    </motion.div>
-  );
-};
 
 const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, handleAction: (a: string, b: any) => void, actionLoading: boolean }) => {
   const { iso2 } = useParams();
@@ -1958,6 +1840,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
                 <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg ${region.ownerUserId ? "bg-indigo-50 text-indigo-600" : "bg-emerald-50 text-emerald-600"}`}>
                   {region.ownerName ? `🟣 ${region.ownerName}` : "🟢 Territorio Neutrale"}
                 </span>
+                <span className="text-[10px] font-black uppercase bg-amber-50 text-amber-600 px-2 py-1 rounded-lg ml-auto">
+                  Tassa Mercato: {region.marketTaxRate || 10}%
+                </span>
               </div>
             </div>
           </div>
@@ -1980,6 +1865,33 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
               <p className="text-xl font-black text-amber-700">{region.economyLevel || 1}/10</p>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Region Production Bonuses */}
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-5">
+        <div className="flex justify-between items-end">
+          <h3 className="text-lg font-black uppercase tracking-tight">Bonus Produzione Regionale</h3>
+          <span className="text-[10px] font-bold text-slate-400 uppercase">Moltiplicatore di Fabbrica</span>
+        </div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { id: 'oil', label: 'Petrolio', icon: '🛢️', val: region.oilBonus || 1.0, color: 'text-slate-800', bg: 'bg-slate-50' },
+            { id: 'minerals', label: 'Minerali', icon: '🪨', val: region.mineralsBonus || 1.0, color: 'text-stone-700', bg: 'bg-stone-50' },
+            { id: 'uranium', label: 'Uranio', icon: '☢️', val: region.uraniumBonus || 1.0, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+            { id: 'diamonds', label: 'Diamanti', icon: '💎', val: region.diamondsBonus || 1.0, color: 'text-sky-700', bg: 'bg-sky-50' },
+          ].map(res => {
+            const percentage = Math.round((res.val - 1) * 100);
+            return (
+              <div key={res.id} className={`${res.bg} p-4 rounded-3xl flex flex-col items-center justify-center border border-white/50 text-center`}>
+                <span className="text-2xl mb-2 drop-shadow-sm">{res.icon}</span>
+                <span className={`text-[10px] font-black uppercase tracking-widest ${res.color}`}>{res.label}</span>
+                <span className={`text-base font-black mt-1 ${percentage > 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                  {percentage > 0 ? `+${percentage}%` : "Base"}
+                </span>
+              </div>
+            );
+          })}
         </div>
       </div>
 
@@ -2172,6 +2084,391 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
   );
 };
 
+const NationView = ({ user, fetchData }: { user: any, fetchData: () => void }) => {
+  const [displayedNation, setDisplayedNation] = useState(user.displayedNation || 'ST');
+  const [originalNation, setOriginalNation] = useState(user.originalNation || 'ST');
+  const [submitting, setSubmitting] = useState(false);
+
+  const NATION_OPTS = [
+    { id: "ST", name: "São Tomé" },
+    { id: "IT", name: "Italy" }, { id: "FR", name: "France" }, { id: "DE", name: "Germany" },
+    { id: "ES", name: "Spain" }, { id: "GB", name: "UK" }, { id: "US", name: "USA" },
+    { id: "CA", name: "Canada" }, { id: "BR", name: "Brazil" }, { id: "JP", name: "Japan" },
+    { id: "CN", name: "China" }, { id: "IN", name: "India" }, { id: "RU", name: "Russia" },
+  ];
+
+  const handleUpdateDisplayed = async () => {
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/actions/change-displayed-nation", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nationId: displayedNation })
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert("Nazione mostrata aggiornata!"); fetchData(); }
+    } catch { alert("Errore"); }
+    finally { setSubmitting(false); }
+  };
+
+  const handleUpdateOriginal = async () => {
+    if (!confirm("Sei sicuro? Potrai cambiarla di nuovo solo tra 30 giorni!")) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch("/api/actions/change-original-nation", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nationId: originalNation })
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert("Nazione Originale aggiornata con successo! +10% Danni applicato nelle guerre patriottiche."); fetchData(); }
+    } catch { alert("Errore"); }
+    finally { setSubmitting(false); }
+  };
+
+  const now = Date.now();
+  const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+  const canChangeOriginal = now - (user.lastOriginalNationChange || 0) >= THIRTY_DAYS || (user.lastOriginalNationChange === 0);
+  const nextAvailDate = new Date((user.lastOriginalNationChange || 0) + THIRTY_DAYS).toLocaleDateString();
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+          <Shield className="w-6 h-6 text-indigo-600" />
+        </div>
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Gestione Nazione</h2>
+          <p className="text-sm font-bold text-slate-400">Personalizza la tua identità e i tuoi bonus di guerra</p>
+        </div>
+      </div>
+
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col gap-6">
+        <div>
+          <h3 className="text-lg font-black text-slate-900 uppercase">Nazione Mostrata (Estetica)</h3>
+          <p className="text-xs text-slate-400 font-bold mb-4">Questa nazione viene mostrata nel tuo profilo per scopi di Roleplay. Puoi cambiarla in qualsiasi momento senza limiti.</p>
+          <div className="flex gap-4">
+            <select value={displayedNation} onChange={e => setDisplayedNation(e.target.value)} className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 font-bold focus:ring-2 focus:ring-indigo-500">
+              {NATION_OPTS.map(n => <option key={n.id} value={n.id}>{n.id} - {n.name}</option>)}
+            </select>
+            <button onClick={handleUpdateDisplayed} disabled={submitting || displayedNation === user.displayedNation} className="px-6 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-indigo-100 disabled:opacity-50">
+              Aggiorna
+            </button>
+          </div>
+        </div>
+
+        <div className="border-t border-slate-100 pt-6">
+          <h3 className="text-lg font-black text-rose-900 uppercase flex items-center gap-2">
+            <Swords className="w-5 h-5" /> Nazione Originale (Bonus +10% Danni)
+          </h3>
+          <p className="text-xs text-rose-500 font-bold mb-4">La tua vera fedeltà. Riceverai un bonus del +10% ai danni se combatti a favore di questa nazione. Puoi cambiarla solo <b className="font-black">una volta ogni 30 giorni</b>.</p>
+
+          <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl mb-4 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
+            <p className="text-xs font-bold text-rose-900">
+              {canChangeOriginal ? "Puoi cambiare la tua Nazione Originale ora." : `Hai già cambiato nazione di recente. Prossimo cambio disponibile il: ${nextAvailDate}`}
+            </p>
+          </div>
+
+          <div className="flex gap-4">
+            <select disabled={!canChangeOriginal} value={originalNation} onChange={e => setOriginalNation(e.target.value)} className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 font-bold focus:ring-2 focus:ring-rose-500 disabled:opacity-50">
+              {NATION_OPTS.map(n => <option key={n.id} value={n.id}>{n.id} - {n.name}</option>)}
+            </select>
+            <button onClick={handleUpdateOriginal} disabled={submitting || !canChangeOriginal || originalNation === user.originalNation} className="px-6 py-3 bg-rose-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-rose-100 disabled:opacity-50">
+              Giura Fedeltà
+            </button>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
+// --- Storage & Market Views ---
+
+const StorageView = ({ user }: { user: any }) => {
+  const [activeTab, setActiveTab] = useState<"private" | "state">("private");
+  const [stateInventory, setStateInventory] = useState<any[]>([]);
+  const [loadingState, setLoadingState] = useState(false);
+
+  const isLeader = user?.residenceId && user?.originalNation && user?.originalNation === user?.residenceId; // Simplified check for demonstration, ideally pass regions and check `region.ownerUserId === user.id`
+
+  useEffect(() => {
+    if (activeTab === "state") {
+      setLoadingState(true);
+      fetch("/api/market/state-inventory")
+        .then(r => r.json())
+        .then(data => setStateInventory(data))
+        .finally(() => setLoadingState(false));
+    }
+  }, [activeTab]);
+
+  const privateVolume = user?.inventoryVolume || 0;
+  const privateMax = user?.maxInventoryVolume || GAME_CONFIG.STORAGE_BASE_CAPACITY;
+  const pct = Math.min(100, (privateVolume / privateMax) * 100);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+          <Archive className="w-6 h-6 text-indigo-600" />
+        </div>
+        <div>
+          <h2 className="text-xl flex flex-col font-black text-slate-900 tracking-tight uppercase leading-none mt-1">
+            Magazzini
+          </h2>
+          <p className="text-sm font-bold text-slate-400">Gestisci le tue scorte personali o statali</p>
+        </div>
+      </div>
+
+      <div className="flex gap-2">
+        <button onClick={() => setActiveTab("private")} className={`px-4 py-2 font-black uppercase tracking-wider text-xs rounded-xl transition-all ${activeTab === 'private' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>Privato</button>
+        {isLeader && <button onClick={() => setActiveTab("state")} className={`px-4 py-2 font-black uppercase tracking-wider text-xs rounded-xl transition-all ${activeTab === 'state' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>Stato</button>}
+      </div>
+
+      {activeTab === "private" && (
+        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+          <div>
+            <div className="flex justify-between items-end mb-2">
+              <h3 className="font-black text-slate-800 uppercase">Spazio Occupato</h3>
+              <span className="text-xs font-bold text-slate-500">{privateVolume} / {privateMax} unità</span>
+            </div>
+            <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden">
+              <div className={`h-full transition-all duration-500 ${pct > 90 ? 'bg-rose-500' : 'bg-indigo-500'}`} style={{ width: `${pct}%` }} />
+            </div>
+            {pct > 90 && <p className="text-[10px] text-rose-500 font-bold mt-2">Attenzione: magazzino quasi pieno!</p>}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            {Object.entries(user.inventory || {}).filter(([_, qty]) => (qty as number) > 0).map(([itemId, qty]) => {
+              const weapon = WEAPONS_CATALOG.find(w => w.id === itemId);
+              return (
+                <div key={itemId} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{weapon?.emoji || "📦"}</span>
+                    <span className="font-black text-slate-800 capitalize">{weapon?.name || itemId}</span>
+                  </div>
+                  <span className="font-bold text-indigo-600">x{qty as number}</span>
+                </div>
+              )
+            })}
+            {Object.values(user.inventory || {}).filter(q => (q as number) > 0).length === 0 && (
+              <div className="col-span-2 text-center p-6 text-slate-400 font-bold">Magazzino vuoto</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === "state" && (
+        <div className="bg-emerald-50 p-8 rounded-[2.5rem] shadow-sm border border-emerald-100 space-y-6">
+          <h3 className="font-black text-emerald-900 uppercase">Magazzino di Stato ({user.residenceId})</h3>
+          <p className="text-xs font-bold text-emerald-700">Questo magazzino non ha limiti di volume. I beni sono acquistati con fondi statali.</p>
+          {loadingState ? <Loader2 className="animate-spin w-6 h-6 text-emerald-600 mx-auto" /> : (
+            <div className="grid grid-cols-2 gap-4">
+              {stateInventory.map((item: any) => {
+                const weapon = WEAPONS_CATALOG.find(w => w.id === item.itemId);
+                return (
+                  <div key={item.id} className="p-4 bg-white rounded-2xl border border-emerald-200 flex justify-between items-center shadow-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{weapon?.emoji || "📦"}</span>
+                      <span className="font-black text-emerald-900 capitalize">{weapon?.name || item.itemId}</span>
+                    </div>
+                    <span className="font-bold text-emerald-600">x{item.quantity}</span>
+                  </div>
+                )
+              })}
+              {stateInventory.length === 0 && (
+                <div className="col-span-2 text-center p-6 text-emerald-600/50 font-bold">Magazzino Statale vuoto</div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
+};
+
+const MarketView = () => {
+  const [offers, setOffers] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterType, setFilterType] = useState<string>("all");
+  const [purchasingId, setPurchasingId] = useState<string | null>(null);
+  const [buyQty, setBuyQty] = useState<Record<string, number>>({});
+  const [isStateBuy, setIsStateBuy] = useState(false);
+
+  // Publish state
+  const ITEMS_CATALOG = [
+    { id: 'oil', name: 'Petrolio', emoji: '🛢️' },
+    { id: 'minerals', name: 'Minerali', emoji: '🪨' },
+    { id: 'uranium', name: 'Uranio', emoji: '☢️' },
+    { id: 'diamonds', name: 'Diamanti', emoji: '💎' },
+    ...WEAPONS_CATALOG
+  ];
+
+  const [selectedItem, setSelectedItem] = useState("oil");
+  const [postQty, setPostQty] = useState(1);
+  const [postPrice, setPostPrice] = useState(10);
+  const [posting, setPosting] = useState(false);
+
+  const fetchOffers = () => {
+    setLoading(true);
+    fetch("/api/market/offers").then(r => r.json()).then(setOffers).finally(() => setLoading(false));
+  };
+  useEffect(() => { fetchOffers(); }, []);
+
+  const handleBuy = async (offer: any) => {
+    const q = buyQty[offer.id] || 1;
+    if (q <= 0 || q > offer.quantity) return alert("Quantità non valida");
+    setPurchasingId(offer.id);
+    try {
+      const res = await fetch("/api/market/buy", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offerId: offer.id, quantity: q, isStateBuy })
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        alert(`Acquisto completato! Pagato: $${data.totalPrice}`);
+        fetchOffers();
+      }
+    } catch { alert("Errore del server"); }
+    finally { setPurchasingId(null); }
+  };
+
+  const handlePostOffer = async () => {
+    setPosting(true);
+    try {
+      const res = await fetch("/api/market/offer", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ itemId: selectedItem, quantity: postQty, price: postPrice })
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        alert("Offerta pubblicata sul mercato!");
+        fetchOffers();
+      }
+    } catch { alert("Errore"); }
+    finally { setPosting(false); }
+  };
+
+  const filtered = filterType === "all" ? offers : offers.filter(o => o.itemId === filterType);
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
+          <ShoppingCart className="w-6 h-6 text-indigo-600" />
+        </div>
+        <div>
+          <h2 className="text-2xl flex flex-col font-black text-slate-900 tracking-tight uppercase leading-none">
+            Mercato Globale
+          </h2>
+          <p className="text-sm font-bold text-slate-400">Scambia beni con altri giocatori</p>
+        </div>
+      </div>
+
+      {/* Pubblica Offerta */}
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
+        <h3 className="text-md font-black uppercase text-slate-800 mb-4 flex items-center gap-2">
+          <DollarSign className="w-5 h-5 text-emerald-500" /> Vendi sul Mercato
+        </h3>
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="flex-1 min-w-[120px]">
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Oggetto</label>
+            <select value={selectedItem} onChange={e => setSelectedItem(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold focus:ring-2 focus:ring-indigo-500">
+              {ITEMS_CATALOG.map(w => <option key={w.id} value={w.id}>{w.emoji} {w.name}</option>)}
+            </select>
+          </div>
+          <div className="w-24">
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Quantità</label>
+            <input type="number" min="1" value={postQty} onChange={e => setPostQty(parseInt(e.target.value) || 1)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold" />
+          </div>
+          <div className="w-24">
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Prezzo/Unità</label>
+            <input type="number" min="1" value={postPrice} onChange={e => setPostPrice(parseInt(e.target.value) || 1)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold" />
+          </div>
+          <button onClick={handlePostOffer} disabled={posting} className="px-6 py-2.5 bg-indigo-600 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg shadow-indigo-100 hover:scale-105 transition-all h-full">
+            {posting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pubblica"}
+          </button>
+        </div>
+      </div>
+
+      {/* Lista Offerte */}
+      <div className="space-y-4">
+        <div className="flex justify-between items-center">
+          <select value={filterType} onChange={e => setFilterType(e.target.value)} className="bg-white border border-slate-100 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm outline-none">
+            <option value="all">Filtra per Oggetto (Tutti)</option>
+            {ITEMS_CATALOG.map(w => <option key={w.id} value={w.id}>{w.emoji} {w.name}</option>)}
+          </select>
+
+          <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
+            <input type="checkbox" checked={isStateBuy} onChange={(e) => setIsStateBuy(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 bg-slate-100 border-slate-300" />
+            <span className="text-sm font-black text-slate-700 uppercase">Acquista come Stato</span>
+          </label>
+        </div>
+
+        {loading ? (
+          <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-600 w-8 h-8" /></div>
+        ) : filtered.length === 0 ? (
+          <div className="text-center bg-white p-12 rounded-[2.5rem] border border-slate-100 shadow-sm">
+            <span className="text-4xl mb-3 block">🏜️</span>
+            <p className="text-slate-400 font-bold">Nessuna offerta trovata sul mercato per questo filtro.</p>
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {filtered.map(offer => {
+              const item = ITEMS_CATALOG.find(w => w.id === offer.itemId);
+              const isAbusive = offer.minPrice && offer.price > offer.minPrice * GAME_CONFIG.MARKET_ANTI_ABUSE_PERCENTAGE;
+
+              return (
+                <div key={offer.id} className={`bg-white p-5 rounded-3xl shadow-sm border ${isAbusive ? 'border-rose-200 bg-rose-50/30' : 'border-slate-100'} flex flex-wrap gap-4 items-center justify-between`}>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-slate-50 flex flex-col items-center justify-center rounded-xl font-bold text-lg shadow-inner">
+                      {item?.emoji || "📦"}
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-slate-800 capitalize leading-none tracking-tight">{item?.name || offer.itemId}</p>
+                      <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">Venditore: <span className="text-indigo-500 font-black">{offer.sellerName}</span></p>
+                    </div>
+                  </div>
+
+                  <div className="text-center px-4 border-l border-r border-slate-100">
+                    <p className="text-xs font-black text-slate-400 uppercase">Prezzo Unit.</p>
+                    <p className="text-lg font-black text-emerald-600">${offer.price}</p>
+                  </div>
+
+                  <div className="text-center px-2">
+                    <p className="text-xs font-black text-slate-400 uppercase">Disponibili</p>
+                    <p className="text-md font-bold text-slate-700">{offer.quantity}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number" min="1" max={offer.quantity}
+                      value={buyQty[offer.id] || 1}
+                      onChange={e => setBuyQty(prev => ({ ...prev, [offer.id]: parseInt(e.target.value) || 1 }))}
+                      className="w-16 px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold outline-none"
+                    />
+                    <button
+                      disabled={purchasingId === offer.id || isAbusive}
+                      onClick={() => handleBuy(offer)}
+                      className="px-6 py-2 bg-emerald-500 hover:bg-emerald-600 text-white font-black uppercase tracking-widest text-[10px] rounded-xl shadow-md transition-all disabled:opacity-50"
+                    >
+                      {purchasingId === offer.id ? <Loader2 className="w-4 h-4 animate-spin" /> : "Acquista"}
+                    </button>
+                    {isAbusive && <span className="text-[10px] text-rose-500 font-bold block ml-1 absolute right-2 -bottom-2">+110% Anti-Abuso</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
 // --- Main App ---
 
 export default function App() {
@@ -2179,7 +2476,6 @@ export default function App() {
   const [user, setUser] = useState<(User & { perks: Record<string, number>, maxEnergy: number }) | null>(null);
   const [regions, setRegions] = useState<Region[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
-  const [factories, setFactories] = useState<(Factory & { remainingCooldown: number })[]>([]);
   const [wars, setWars] = useState<{ active: War[], ended: War[] }>({ active: [], ended: [] });
   const [currentView, setCurrentView] = useState<"home" | "articles" | "work" | "wars" | "profile" | "article-new" | "article-detail" | "country-detail">("home");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -2191,11 +2487,10 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const [userRes, regionsRes, articlesRes, factoriesRes, warsRes] = await Promise.all([
+      const [userRes, regionsRes, articlesRes, warsRes] = await Promise.all([
         fetch("/api/me"),
         fetch("/api/regions"),
         fetch("/api/articles"),
-        fetch("/api/factories"),
         fetch("/api/wars")
       ]);
       if (userRes.ok) {
@@ -2206,7 +2501,6 @@ export default function App() {
       }
       if (regionsRes.ok) setRegions(await regionsRes.json());
       if (articlesRes.ok) setArticles(await articlesRes.json());
-      if (factoriesRes.ok) setFactories(await factoriesRes.json());
       if (warsRes.ok) setWars(await warsRes.json());
     } catch (err) {
       console.error(err);
@@ -2414,7 +2708,13 @@ export default function App() {
                       <Globe className="w-4 h-4 text-indigo-500" /> MAPPA
                     </button>
                     <button onClick={() => { navigate("/market"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                      <TrendingUp className="w-4 h-4 text-emerald-500" /> MERCATO
+                      <ShoppingCart className="w-4 h-4 text-emerald-500" /> MERCATO
+                    </button>
+                    <button onClick={() => { navigate("/storage"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                      <Archive className="w-4 h-4 text-indigo-500" /> MAGAZZINO
+                    </button>
+                    <button onClick={() => { navigate("/nation"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                      <Shield className="w-4 h-4 text-rose-500" /> NAZIONE
                     </button>
                     <button onClick={() => { navigate("/produce"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Hammer className="w-4 h-4 text-orange-500" /> PRODUCI ARMI
@@ -2436,14 +2736,38 @@ export default function App() {
         <Routes>
           <Route path="/" element={<HomeView user={user} regions={regions} navigateToCountry={navigateToCountry} />} />
           <Route path="/market" element={<MarketView />} />
+          <Route path="/storage" element={<StorageView user={user} />} />
           <Route path="/produce" element={<ProduceView user={user} />} />
           <Route path="/articles" element={<ArticlesView articles={articles} setSelectedArticleId={setSelectedArticleId} />} />
           <Route path="/articles/:id" element={<ArticleDetailView articles={articles} user={user} fetchData={fetchData} />} />
           <Route path="/articles/new" element={<NewArticleView actionLoading={actionLoading} fetchData={fetchData} />} />
-          <Route path="/work" element={<WorkView user={user} factories={factories} actionLoading={actionLoading} handleAction={handleAction} />} />
+          <Route path="/work" element={
+            user ? (
+              <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
+                <div className="flex justify-between items-center">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Mercato del Lavoro</h2>
+                  <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-2">
+                    <Zap className="w-4 h-4 text-amber-500" />
+                    <span className="font-black text-slate-700">{user.energy}</span>
+                  </div>
+                </div>
+
+                {user.regionId !== user.residenceId && user.workPermitId !== user.regionId && (
+                  <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 flex items-center gap-3">
+                    <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                    <p className="text-xs font-bold text-amber-800 leading-tight">
+                      Sei all'estero come Turista in <span className="font-black">{user.regionId}</span>. Se questa nazione ha attivato le restrizioni, i tuoi turni di lavoro potrebbero essere bloccati senza Visto.
+                    </p>
+                  </div>
+                )}
+                <PlayerFactoriesView user={user} fetchData={fetchData} />
+              </motion.div>
+            ) : <Navigate to="/" />
+          } />
           <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
+          <Route path="/nation" element={<NationView user={user} fetchData={fetchData} />} />
         </Routes>
       </main>
 
@@ -2454,11 +2778,11 @@ export default function App() {
 }
 
 const WEAPONS_CATALOG = [
-  { id: "rifle", name: "Fucile", emoji: "🔫", timeMin: 1, costCash: 100, power: 2 },
-  { id: "drone", name: "Drone", emoji: "🚁", timeMin: 8, costCash: 800, power: 20 },
-  { id: "artillery", name: "Artiglieria", emoji: "💣", timeMin: 5, costCash: 500, power: 12 },
-  { id: "tank", name: "Carro Armato", emoji: "🛡️", timeMin: 15, costCash: 1500, power: 40 },
-  { id: "missile", name: "Missile", emoji: "🚀", timeMin: 30, costCash: 5000, power: 150 },
+  { id: "rifle", name: "Fucile", emoji: "🔫", timeMin: 1, costCash: 100, reqOil: 2, reqMinerals: 5, reqUranium: 0, reqDiamonds: 0, power: 2 },
+  { id: "drone", name: "Drone", emoji: "🚁", timeMin: 8, costCash: 800, reqOil: 10, reqMinerals: 20, reqUranium: 2, reqDiamonds: 1, power: 20 },
+  { id: "artillery", name: "Artiglieria", emoji: "💣", timeMin: 5, costCash: 500, reqOil: 15, reqMinerals: 30, reqUranium: 0, reqDiamonds: 0, power: 12 },
+  { id: "tank", name: "Carro Armato", emoji: "🛡️", timeMin: 15, costCash: 1500, reqOil: 50, reqMinerals: 100, reqUranium: 5, reqDiamonds: 2, power: 40 },
+  { id: "missile", name: "Missile", emoji: "🚀", timeMin: 30, costCash: 5000, reqOil: 100, reqMinerals: 50, reqUranium: 50, reqDiamonds: 10, power: 150 },
 ];
 
 const ProduceView = ({ user }: { user: any }) => {
@@ -2499,16 +2823,7 @@ const ProduceView = ({ user }: { user: any }) => {
     finally { setSubmitting(false); }
   };
 
-  const handleClaim = async (id: string) => {
-    const res = await fetch("/api/produce/claim", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    const data = await res.json();
-    if (data.error) alert(data.error);
-    else fetchQueue();
-  };
+  // Remove handleClaim as it's now automated the backend
 
   return (
     <motion.div
@@ -2524,18 +2839,29 @@ const ProduceView = ({ user }: { user: any }) => {
         <h2 className="text-2xl font-black tracking-tight">🔨 Produci Armi</h2>
         <div className="grid grid-cols-1 gap-4">
           {WEAPONS_CATALOG.map(w => {
-            const totalCost = (qty[w.id] || 1) * w.costCash;
-            const canAfford = (user?.money || 0) >= totalCost;
+            const amount = qty[w.id] || 1;
+            const totalCost = amount * w.costCash;
+            const canAfford =
+              (user?.money || 0) >= totalCost &&
+              (user?.oil || 0) >= amount * w.reqOil &&
+              (user?.minerals || 0) >= amount * w.reqMinerals &&
+              (user?.uranium || 0) >= amount * w.reqUranium &&
+              (user?.diamonds || 0) >= amount * w.reqDiamonds;
+
             return (
-              <div key={w.id} className="flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-3xl border border-slate-100">
-                <div className="flex items-center gap-3">
-                  <span className="text-3xl">{w.emoji}</span>
+              <div key={w.id} className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5 bg-slate-50 rounded-3xl border border-slate-100">
+                <div className="flex items-center gap-4">
+                  <span className="text-4xl">{w.emoji}</span>
                   <div>
-                    <p className="font-black text-slate-900">{w.name}</p>
-                    <div className="flex gap-2 mt-1">
-                      <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-lg border border-slate-100">💵 ${w.costCash.toLocaleString()}/u</span>
-                      <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-0.5 rounded-lg border border-slate-100">⏱ {w.timeMin}m</span>
-                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100">+{w.power} pw</span>
+                    <p className="font-black text-slate-900 text-lg leading-tight">{w.name}</p>
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">💵 ${w.costCash.toLocaleString()}/u</span>
+                      {w.reqOil > 0 && <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">🛢️ {w.reqOil}</span>}
+                      {w.reqMinerals > 0 && <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">🪨 {w.reqMinerals}</span>}
+                      {w.reqUranium > 0 && <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">☢️ {w.reqUranium}</span>}
+                      {w.reqDiamonds > 0 && <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">💎 {w.reqDiamonds}</span>}
+                      <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded-lg border border-slate-100 italic">⏱ {w.timeMin}m</span>
+                      <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">+{w.power} pw</span>
                     </div>
                   </div>
                 </div>
@@ -2572,7 +2898,7 @@ const ProduceView = ({ user }: { user: any }) => {
           </div>
         ) : (
           queue.map((item: any) => {
-            const isReady = item.status === "ready" || (item.willCompleteAt && item.willCompleteAt <= Date.now());
+            const isReady = item.status === "claimed" || item.status === "ready" || (item.willCompleteAt && item.willCompleteAt <= Date.now());
             return (
               <div key={item.id} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center justify-between gap-4">
                 <div>
@@ -2580,7 +2906,7 @@ const ProduceView = ({ user }: { user: any }) => {
                     <span className="font-black text-slate-900 capitalize">{item.weaponType}</span>
                     <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded-lg">x{item.qty}</span>
                     <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${isReady ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>
-                      {isReady ? "✅ Pronto" : "🔄 In coda"}
+                      {isReady ? "✅ Pronto in magazzino" : "🔄 In coda"}
                     </span>
                   </div>
                   {!isReady && item.willCompleteAt && (
@@ -2590,14 +2916,6 @@ const ProduceView = ({ user }: { user: any }) => {
                     </div>
                   )}
                 </div>
-                {isReady && (
-                  <button
-                    onClick={() => handleClaim(item.id)}
-                    className="px-4 py-2 bg-emerald-600 text-white text-[10px] font-black uppercase rounded-2xl hover:scale-105 transition-all shadow-lg shadow-emerald-100"
-                  >
-                    Ritira
-                  </button>
-                )}
               </div>
             );
           })

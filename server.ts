@@ -166,6 +166,10 @@ addColumnIfMissing("users", "lastLogin", "INTEGER DEFAULT 0");
 
 // Market migrations
 addColumnIfMissing("regions", "marketTaxRate", "INTEGER DEFAULT 10");
+addColumnIfMissing("regions", "sanctionsActive", "INTEGER DEFAULT 0");
+addColumnIfMissing("regions", "sanctionsScope", "TEXT DEFAULT '{}'");
+addColumnIfMissing("market_offers", "originStateId", "TEXT");
+addColumnIfMissing("bloc_regulations", "migrationOpen", "INTEGER DEFAULT 0");
 
 // Rename ownerId to ownerUserId if needed
 try {
@@ -208,6 +212,20 @@ try {
 // boostersJson migration — stores active boosters and cooldowns
 try {
   db.exec("ALTER TABLE users ADD COLUMN boostersJson TEXT DEFAULT '{}'");
+} catch (e) { }
+
+// Migration for Migration Agreements
+try {
+  db.exec(`CREATE TABLE IF NOT EXISTS migration_agreements (
+    id TEXT PRIMARY KEY,
+    fromStateId TEXT,
+    toStateId TEXT,
+    status TEXT DEFAULT 'ACTIVE', -- 'ACTIVE', 'REVOKED'
+    type TEXT,   -- 'UNILATERAL', 'BILATERAL'
+    createdAt INTEGER,
+    updatedAt INTEGER,
+    UNIQUE(fromStateId, toStateId)
+  )`);
 } catch (e) { }
 
 
@@ -660,8 +678,20 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS bloc_regulations (
     blocId TEXT PRIMARY KEY,
     openBorders INTEGER DEFAULT 0,
+    migrationOpen INTEGER DEFAULT 0,
     defaultMilitaryAgreement INTEGER DEFAULT 0,
     FOREIGN KEY(blocId) REFERENCES blocs(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS migration_agreements (
+    id TEXT PRIMARY KEY,
+    fromStateId TEXT,
+    toStateId TEXT,
+    status TEXT DEFAULT 'ACTIVE',
+    type TEXT,
+    createdAt INTEGER,
+    updatedAt INTEGER,
+    UNIQUE(fromStateId, toStateId)
   );
 
   CREATE TABLE IF NOT EXISTS bloc_regulation_proposals (
@@ -672,6 +702,30 @@ db.exec(`
     createdAt INTEGER,
     status TEXT,
     FOREIGN KEY(blocId) REFERENCES blocs(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS ministers (
+    id TEXT PRIMARY KEY,
+    stateId TEXT,
+    userId TEXT,
+    role TEXT, -- 'economics', 'foreign'
+    title TEXT,
+    assignedByUserId TEXT,
+    assignedAt INTEGER,
+    status TEXT DEFAULT 'ACTIVE',
+    FOREIGN KEY(stateId) REFERENCES regions(id),
+    FOREIGN KEY(userId) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS minister_wage_logs (
+    id TEXT PRIMARY KEY,
+    userId TEXT,
+    stateId TEXT,
+    role TEXT,
+    amountGold INTEGER,
+    paidAt INTEGER,
+    FOREIGN KEY(userId) REFERENCES users(id),
+    FOREIGN KEY(stateId) REFERENCES regions(id)
   );
 `);
 
@@ -788,6 +842,27 @@ const addXP = (userId: string, amount: number) => {
     .run(newXP, newLevel, newPerkPoints, userId);
 
   return { newXP, newLevel, newPerkPoints };
+};
+
+const calculateMinisterWage = (stateId: string, role: string) => {
+  const region = db.prepare("SELECT governmentForm, education, health, economyLevel FROM regions WHERE id = ?").get(stateId) as any;
+  if (!region) return 0;
+
+  // 1. Base from Development Index (Avg of Edu, Health, Economy)
+  const devIndex = (region.education + region.health + region.economyLevel) / 3;
+
+  // 2. Multiplier from Government Form
+  let govMult = 1.0;
+  if (region.governmentForm === 'PRESIDENTIAL_REPUBLIC') govMult = 1.5;
+  if (region.governmentForm === 'DICTATORSHIP') govMult = 2.0;
+  if (region.governmentForm === 'ONE_PARTY_SYSTEM') govMult = 1.8;
+
+  // 3. Multiplier from Region Count (representing state size/complexity)
+  const statesInNation = db.prepare("SELECT COUNT(*) as count FROM regions WHERE ownerUserId = (SELECT ownerUserId FROM regions WHERE id = ?)").get(stateId) as any;
+  const sizeMult = 1 + (statesInNation.count * 0.1);
+
+  const baseWage = 10; // 10 Gold base
+  return Math.floor(baseWage * devIndex * govMult * sizeMult);
 };
 
 // Middleware to verify JWT and update energy
@@ -1114,6 +1189,24 @@ app.get("/api/countries/:iso2", async (req: any, res) => {
   } catch (err) {
     console.error("Error fetching country detail:", err);
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/api/countries/:iso2/agreements", authenticate, (req: any, res) => {
+  const { iso2 } = req.params;
+  try {
+    const agreements = db.prepare(`
+      SELECT m.*, r.name as partnerName 
+      FROM migration_agreements m
+      JOIN regions r ON (m.fromStateId = r.id OR m.toStateId = r.id)
+      WHERE (m.fromStateId = ? OR m.toStateId = ?) 
+        AND m.status = 'ACTIVE'
+        AND r.id != ?
+    `).all(iso2.toUpperCase(), iso2.toUpperCase(), iso2.toUpperCase());
+    res.json(agreements);
+  } catch (err) {
+    console.error("Error fetching agreements:", err);
+    res.status(500).json({ error: "Errore caricamento accordi." });
   }
 });
 
@@ -1445,12 +1538,21 @@ app.post("/api/actions/travel", authenticate, (req: any, res) => {
   let isRestricted = region.workRestrictions === 1;
   let travelFee = region.travelFee || 0;
 
-  // Bloc Open Borders Check
+  // Bloc Open Borders & Migration Check
   const userBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(user.regionId) as any;
   const targetBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(regionId) as any;
   if (userBloc && targetBloc && userBloc.blocId === targetBloc.blocId) {
-    const blocReg = db.prepare("SELECT openBorders FROM bloc_regulations WHERE blocId = ?").get(userBloc.blocId) as any;
-    if (blocReg && blocReg.openBorders) {
+    const blocReg = db.prepare("SELECT openBorders, migrationOpen FROM bloc_regulations WHERE blocId = ?").get(userBloc.blocId) as any;
+    if (blocReg && (blocReg.openBorders || blocReg.migrationOpen)) {
+      isRestricted = false;
+      travelFee = 0;
+    }
+  }
+
+  // State-to-State Migration Agreement Check (if not already opened by bloc)
+  if (isRestricted || travelFee > 0) {
+    const agreement = db.prepare("SELECT type FROM migration_agreements WHERE fromStateId = ? AND toStateId = ? AND status = 'ACTIVE'").get(regionId, user.regionId) as any;
+    if (agreement) {
       isRestricted = false;
       travelFee = 0;
     }
@@ -1571,14 +1673,146 @@ app.get("/api/budget/:ownerType/:ownerId", authenticate, (req: any, res) => {
 
   const transactions = db.prepare(`
     SELECT t.*, u.username as createdBy 
-    FROM budget_transactions t 
-    LEFT JOIN users u ON t.createdByUserId = u.id 
-    WHERE t.budgetId = ? 
-    ORDER BY t.createdAt DESC 
+    FROM budget_transactions t
+    LEFT JOIN users u ON t.createdByUserId = u.id
+    WHERE t.budgetId = (SELECT id FROM budgets WHERE ownerType = ? AND ownerId = ?)
+    ORDER BY t.createdAt DESC
     LIMIT 50
-  `).all(budget.id);
+  `).all(ownerType, ownerId);
 
   res.json({ budget, transactions });
+});
+
+// --- MINISTERS API ---
+
+app.post("/api/ministers/assign", authenticate, (req: any, res) => {
+  const leader = req.user;
+  const { userId, role, iso2 } = req.body; // iso2 is the state ID
+
+  if (!userId || !role || !iso2) return res.status(400).json({ error: "Dati mancanti." });
+
+  const region = db.prepare("SELECT ownerUserId, governmentForm FROM regions WHERE id = ?").get(iso2) as any;
+  if (!region || region.ownerUserId !== leader.id) {
+    return res.status(403).json({ error: "Solo il Leader può nominare i ministri." });
+  }
+
+  // Role validation
+  if (role === 'foreign' && (region.governmentForm === 'DICTATORSHIP' || region.governmentForm === 'ONE_PARTY_SYSTEM')) {
+    return res.status(403).json({ error: "Questa carica non esiste in questa forma di governo." });
+  }
+
+  // Constraint: One state at a time
+  const existingAsMinister = db.prepare("SELECT stateId FROM ministers WHERE userId = ? AND status = 'ACTIVE'").get(userId) as any;
+  if (existingAsMinister) {
+    return res.status(400).json({ error: "L'utente ricopre già una carica ministeriale in un altro Stato." });
+  }
+
+  const targetUser = db.prepare("SELECT username FROM users WHERE id = ?").get(userId) as any;
+  if (!targetUser) return res.status(404).json({ error: "Utente non trovato." });
+
+  const title = (role === 'economics' && region.governmentForm === 'DICTATORSHIP') ? "Economic Advisor" : (role === 'economics' ? "Minister of Economics" : "Foreign Minister");
+
+  try {
+    db.transaction(() => {
+      // Deactivate old minister in this role for this state if exists
+      db.prepare("UPDATE ministers SET status = 'REVOKED' WHERE stateId = ? AND role = ?").run(iso2, role);
+
+      db.prepare(`
+        INSERT INTO ministers (id, stateId, userId, role, title, assignedByUserId, assignedAt)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(Math.random().toString(36).substring(2, 11), iso2, userId, role, title, leader.id, Date.now());
+
+      // Update regions table caching
+      if (role === 'economics') {
+        db.prepare("UPDATE regions SET economicAdviserId = ? WHERE id = ?").run(userId, iso2);
+      } else {
+        db.prepare("UPDATE regions SET foreignMinisterId = ? WHERE id = ?").run(userId, iso2);
+      }
+    })();
+    res.json({ success: true, title });
+  } catch (err) {
+    console.error("Minister assignment error:", err);
+    res.status(500).json({ error: "Errore durante l'assegnazione." });
+  }
+});
+
+app.post("/api/ministers/revoke", authenticate, (req: any, res) => {
+  const leader = req.user;
+  const { role, iso2 } = req.body;
+
+  const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(iso2) as any;
+  if (!region || region.ownerUserId !== leader.id) {
+    return res.status(403).json({ error: "Solo il Leader può revocare i ministri." });
+  }
+
+  try {
+    db.transaction(() => {
+      db.prepare("UPDATE ministers SET status = 'REVOKED' WHERE stateId = ? AND role = ?").run(iso2, role);
+      if (role === 'economics') {
+        db.prepare("UPDATE regions SET economicAdviserId = NULL WHERE id = ?").run(iso2);
+      } else {
+        db.prepare("UPDATE regions SET foreignMinisterId = NULL WHERE id = ?").run(iso2);
+      }
+    })();
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Errore durante la revoca." });
+  }
+});
+
+app.get("/api/ministers/:iso2", authenticate, (req: any, res) => {
+  const { iso2 } = req.params;
+  const ministers = db.prepare(`
+    SELECT m.*, u.username 
+    FROM ministers m
+    JOIN users u ON m.userId = u.id
+    WHERE m.stateId = ? AND m.status = 'ACTIVE'
+  `).all(iso2) as any[];
+
+  const wageEconomics = calculateMinisterWage(iso2, 'economics');
+  const wageForeign = calculateMinisterWage(iso2, 'foreign');
+
+  res.json({ ministers, wages: { economics: wageEconomics, foreign: wageForeign } });
+});
+
+app.post("/api/ministers/sanctions", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { iso2, active, scope } = req.body; // scope: { resources: bool, weapons: bool, items: bool }
+
+  // Check if user is Minister of Economics or Leader
+  const region = db.prepare("SELECT ownerUserId, economicAdviserId FROM regions WHERE id = ?").get(iso2) as any;
+  if (!region) return res.status(404).json({ error: "Regione non trovata." });
+  if (region.ownerUserId !== user.id && region.economicAdviserId !== user.id) {
+    return res.status(403).json({ error: "Azione riservata al Ministro dell'Economia o al Leader." });
+  }
+
+  try {
+    db.prepare("UPDATE regions SET sanctionsActive = ?, sanctionsScope = ? WHERE id = ?")
+      .run(active ? 1 : 0, JSON.stringify(scope || {}), iso2);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Errore durante l'aggiornamento delle sanzioni." });
+  }
+});
+
+app.delete("/api/ministers/market-offer/:id", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { id } = req.params;
+
+  const offer = db.prepare("SELECT regionId FROM market_offers WHERE id = ?").get(id) as any;
+  if (!offer) return res.status(404).json({ error: "Offerta non trovata." });
+
+  const region = db.prepare("SELECT ownerUserId, economicAdviserId FROM regions WHERE id = ?").get(offer.regionId) as any;
+  if (region.ownerUserId !== user.id && region.economicAdviserId !== user.id) {
+    return res.status(403).json({ error: "Azione riservata al Ministro dell'Economia o al Leader di questo Stato." });
+  }
+
+  try {
+    db.prepare("DELETE FROM market_offers WHERE id = ?").run(id);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Errore durante la rimozione dell'offerta." });
+  }
 });
 
 app.post("/api/actions/apply", authenticate, (req: any, res) => {
@@ -2574,9 +2808,19 @@ app.post("/api/market/offer", authenticate, (req: any, res) => {
       return res.status(400).json({ error: "Non hai abbastanza risorse nell'inventario per creare questa offerta." });
     }
 
-    // Get Tax Rate
-    const region = db.prepare("SELECT marketTaxRate FROM regions WHERE id = ?").get(user.regionId) as any;
+    // Get Tax Rate & Sanctions
+    const region = db.prepare("SELECT marketTaxRate, sanctionsActive, sanctionsScope FROM regions WHERE id = ?").get(user.regionId) as any;
     const taxRate = region?.marketTaxRate !== undefined ? region.marketTaxRate : 10;
+
+    // Sanctions Check
+    if (region?.sanctionsActive) {
+      const scope = JSON.parse(region.sanctionsScope || '{}');
+      const itemType = getItemType(itemId); // Helper to determine 'resources', 'weapons', or 'items'
+
+      if (scope[itemType] && user.originalNation !== user.regionId) {
+        return res.status(403).json({ error: `Sanzioni attive: non puoi vendere ${itemType} in questo Stato se non è la tua nazione d'origine.` });
+      }
+    }
 
     // Transaction
     db.transaction(() => {
@@ -2585,8 +2829,8 @@ app.post("/api/market/offer", authenticate, (req: any, res) => {
       db.prepare("DELETE FROM user_inventory WHERE userId = ? AND itemId = ? AND quantity <= 0").run(user.id, itemId);
 
       const offerId = Math.random().toString(36).substring(2, 11);
-      db.prepare("INSERT INTO market_offers (id, sellerId, sellerName, itemId, quantity, price, regionId, taxRate, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
-        .run(offerId, user.id, user.username, itemId, quantity, price, user.regionId, taxRate, Date.now());
+      db.prepare("INSERT INTO market_offers (id, sellerId, sellerName, itemId, quantity, price, regionId, taxRate, originStateId, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(offerId, user.id, user.username, itemId, quantity, price, user.regionId, taxRate, user.originalNation, Date.now());
     })();
 
     res.json({ success: true });
@@ -2939,10 +3183,19 @@ app.post("/api/parties/kick", authenticate, (req: any, res) => {
   // Log action
   const logId = Math.random().toString(36).substring(2, 11);
   db.prepare("INSERT INTO party_logs (id, partyId, action, details, timestamp) VALUES (?, ?, 'kick', ?, ?)")
+  db.prepare("INSERT INTO party_logs (id, partyId, action, details, timestamp) VALUES (?, ?, 'kick', ?, ?)")
     .run(logId, partyId, `Utente rimosso dal partito. Esecutore: ${user.username}`, Date.now());
 
   res.json({ success: true });
 });
+
+const getItemType = (itemId: string): string => {
+  const resources = ['oil', 'minerals', 'uranium', 'diamonds'];
+  const weapons = ['infantry', 'tank', 'airstrike'];
+  if (resources.includes(itemId)) return 'resources';
+  if (weapons.includes(itemId)) return 'weapons';
+  return 'items';
+};
 
 const calculatePartyCaps = (partyId: string) => {
   const members = db.prepare("SELECT pm.userId, u.level, u.lastLogin, pm.joinedAt FROM party_members pm JOIN users u ON pm.userId = u.id WHERE pm.partyId = ?").all(partyId) as any[];
@@ -3494,7 +3747,7 @@ app.post("/api/blocs/:id/regulations/propose", authenticate, (req: any, res) => 
     const { proposerStateId, type, proposedValue } = req.body;
     const value = proposedValue ? 1 : 0;
 
-    if (!['openBorders', 'defaultMilitaryAgreement'].includes(type)) {
+    if (!['openBorders', 'migrationOpen', 'defaultMilitaryAgreement'].includes(type)) {
       return res.status(400).json({ error: "Tipo di regolamento non valido." });
     }
 
@@ -3559,10 +3812,11 @@ app.post("/api/blocs/regulations/proposals/:id/vote", authenticate, (req: any, r
 
       if (yesVotes >= requiredToPass) {
         db.prepare("UPDATE bloc_regulation_proposals SET status = 'approved' WHERE id = ?").run(propId);
-        const fieldName = proposal.type === 'openBorders' ? 'openBorders' : 'defaultMilitaryAgreement';
-        // Needs dynamic column name properly, but since types are hardcoded to these 2 values it's fine
+        const fieldName = proposal.type;
         if (fieldName === 'openBorders') {
           db.prepare("UPDATE bloc_regulations SET openBorders = ? WHERE blocId = ?").run(proposal.proposedValue, blocId);
+        } else if (fieldName === 'migrationOpen') {
+          db.prepare("UPDATE bloc_regulations SET migrationOpen = ? WHERE blocId = ?").run(proposal.proposedValue, blocId);
         } else {
           db.prepare("UPDATE bloc_regulations SET defaultMilitaryAgreement = ? WHERE blocId = ?").run(proposal.proposedValue, blocId);
         }
@@ -3789,6 +4043,59 @@ export const LawRegistry: Record<string, {
           db.prepare("UPDATE regions SET health = health + 1 WHERE id = ?").run(region.id);
         })();
       }
+    }
+  },
+  migration_agreement: {
+    category: "Diplomazia",
+    icon: "PlaneTakeoff",
+    title: "Accordo di Migrazione",
+    description: "Permette ai cittadini di un'altra nazione di viaggiare liberamente nel nostro territorio.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      if (!params || !params.targetRegionId) return "ID Nazione bersaglio obbligatorio.";
+      if (params.targetRegionId === region.id) return "Non puoi fare un accordo con te stesso.";
+      const target = db.prepare("SELECT id FROM regions WHERE id = ?").get(params.targetRegionId);
+      if (!target) return "Nazione bersaglio inesistente.";
+      const existing = db.prepare("SELECT status FROM migration_agreements WHERE fromStateId = ? AND toStateId = ?").get(region.id, params.targetRegionId) as any;
+      if (existing && existing.status === 'ACTIVE') return "Esiste già un accordo attivo con questa nazione.";
+      return null;
+    },
+    execute: (region, params) => {
+      const id = Math.random().toString(36).substring(2, 11);
+      const now = Date.now();
+      db.prepare(`
+        INSERT INTO migration_agreements (id, fromStateId, toStateId, status, type, createdAt, updatedAt)
+        VALUES (?, ?, ?, 'ACTIVE', 'UNILATERAL', ?, ?)
+        ON CONFLICT(fromStateId, toStateId) DO UPDATE SET status = 'ACTIVE', updatedAt = ?
+      `).run(id, region.id, params.targetRegionId, now, now, now);
+
+      // Check if it's now BILATERAL
+      const inverse = db.prepare("SELECT status FROM migration_agreements WHERE fromStateId = ? AND toStateId = ?").get(params.targetRegionId, region.id) as any;
+      if (inverse && inverse.status === 'ACTIVE') {
+        db.prepare("UPDATE migration_agreements SET type = 'BILATERAL' WHERE fromStateId = ? AND toStateId = ?").run(region.id, params.targetRegionId);
+        db.prepare("UPDATE migration_agreements SET type = 'BILATERAL' WHERE fromStateId = ? AND toStateId = ?").run(params.targetRegionId, region.id);
+      }
+    }
+  },
+  revoke_migration_agreement: {
+    category: "Diplomazia",
+    icon: "PlaneLanding",
+    title: "Revoca Accordo Migrazione",
+    description: "Annulla l'accordo di migrazione con un'altra nazione.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      if (!params || !params.targetRegionId) return "ID Nazione bersaglio obbligatorio.";
+      const existing = db.prepare("SELECT status FROM migration_agreements WHERE fromStateId = ? AND toStateId = ?").get(region.id, params.targetRegionId) as any;
+      if (!existing || existing.status !== 'ACTIVE') return "Non c'è un accordo attivo da revocare.";
+      return null;
+    },
+    execute: (region, params) => {
+      db.prepare("UPDATE migration_agreements SET status = 'REVOKED', type = 'UNILATERAL', updatedAt = ? WHERE fromStateId = ? AND toStateId = ?")
+        .run(Date.now(), region.id, params.targetRegionId);
+      // Reset the other side to unilateral if it was bilateral
+      db.prepare("UPDATE migration_agreements SET type = 'UNILATERAL' WHERE fromStateId = ? AND toStateId = ?").run(params.targetRegionId, region.id);
     }
   },
   build_military_base: {
@@ -4035,6 +4342,21 @@ app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
     }
 
     // Normal Democracy / Executive Monarchy (goes to Parliament first)
+    // Check if proposer is a minister with "Fast-Pass" power for this law type
+    const isEconomicsMinister = region.economicAdviserId === user.id;
+    const isForeignMinister = region.foreignMinisterId === user.id;
+    const lawCat = lawDef.category;
+
+    const canFastPass = (isEconomicsMinister && (lawCat === "Economia e Tasse" || lawCat === "Costruzioni Statali")) ||
+      (isForeignMinister && (type === 'open_borders' || type === 'close_borders'));
+
+    if (canFastPass) {
+      db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'passed', ?, ?)")
+        .run(lawId, region.id, user.id, type, paramsStr, Date.now(), Date.now());
+      lawDef.execute(region, params);
+      return res.json({ success: true, lawId, immediate: true, message: "Legge approvata immediatamente grazie ai tuoi poteri ministeriali." });
+    }
+
     const expiresAt = Date.now() + (lawDef.delayDays * 24 * 60 * 60 * 1000);
     db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)")
       .run(lawId, region.id, user.id, type, paramsStr, Date.now(), expiresAt);
@@ -4223,6 +4545,10 @@ function checkAndResolveLeaderElections() {
           const title = r.governmentForm === 'PRESIDENTIAL_REPUBLIC' ? 'Presidente' : 'Leader';
           db.prepare("UPDATE regions SET leaderUserId = ?, leaderTitle = ? WHERE id = ?")
             .run(winner.userId, title, r.id);
+
+          // REVOKE ALL MINISTERS upon new leader election
+          db.prepare("UPDATE ministers SET status = 'REVOKED' WHERE stateId = ?").run(r.id);
+          db.prepare("UPDATE regions SET economicAdviserId = NULL, foreignMinisterId = NULL WHERE id = ?").run(r.id);
         }
 
         // Reset

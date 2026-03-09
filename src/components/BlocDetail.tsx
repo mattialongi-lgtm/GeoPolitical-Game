@@ -241,10 +241,21 @@ export const BlocDetail = ({ currentUser, regions }: { currentUser: any, regions
                                     {regulations.openBorders ? 'Attivo' : 'Inattivo'}
                                 </span>
                             </div>
+                            <div className="flex justify-between items-center p-3 bg-slate-50 rounded-xl">
+                                <span className="text-sm font-bold text-slate-700">Migrazione Aperta</span>
+                                <span className={`text-xs font-black uppercase px-2 py-1 rounded-md ${regulations.migrationOpen ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                                    {regulations.migrationOpen ? 'Attivo' : 'Inattivo'}
+                                </span>
+                            </div>
                             {isMemberLeader && (
-                                <button onClick={() => handleProposeReg('openBorders', regulations.openBorders ? 0 : 1)} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 w-full text-right">
-                                    Proponi Cambio
-                                </button>
+                                <div className="flex flex-col gap-2">
+                                    <button onClick={() => handleProposeReg('openBorders', regulations.openBorders ? 0 : 1)} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 w-full text-right">
+                                        Proponi Cambio Frontiere
+                                    </button>
+                                    <button onClick={() => handleProposeReg('migrationOpen', regulations.migrationOpen ? 0 : 1)} className="text-xs font-bold text-indigo-600 hover:text-indigo-800 w-full text-right">
+                                        Proponi Cambio Migrazione
+                                    </button>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -300,7 +311,7 @@ export const BlocDetail = ({ currentUser, regions }: { currentUser: any, regions
                             const hasVoted = prop.votes.some((v: any) => v.voterStateId === myStateId);
                             const yes = prop.votes.filter((v: any) => v.choice === 1).length;
                             const no = prop.votes.filter((v: any) => v.choice === 0).length;
-                            const label = prop.type === 'openBorders' ? 'Frontiere Aperte' : 'Accordo Militare';
+                            const label = prop.type === 'openBorders' ? 'Frontiere Aperte' : (prop.type === 'migrationOpen' ? 'Migrazione Aperta' : 'Accordo Militare');
 
                             return (
                                 <div key={prop.id} className="p-4 bg-slate-50 border border-slate-100 rounded-xl flex items-center justify-between">

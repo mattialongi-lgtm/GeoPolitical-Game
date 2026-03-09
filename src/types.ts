@@ -248,8 +248,18 @@ export interface BlocApplication {
 export interface BlocRegulationProposal {
   id: string;
   blocId: string;
-  type: 'openBorders' | 'defaultMilitaryAgreement';
+  type: 'openBorders' | 'migrationOpen' | 'defaultMilitaryAgreement';
   proposedValue: number;
   createdAt: number;
   status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface MigrationAgreement {
+  id: string;
+  fromStateId: string;
+  toStateId: string;
+  status: 'ACTIVE' | 'REVOKED';
+  type: 'UNILATERAL' | 'BILATERAL';
+  createdAt: number;
+  updatedAt: number;
 }

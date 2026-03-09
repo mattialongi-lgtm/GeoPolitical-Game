@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     User,
@@ -33,8 +34,8 @@ interface Region {
     stateColor: string;
     stateHymn: string;
     nextLeaderElectionAt: number | null;
-    economicAdviserId: string | null;
-    foreignMinisterId: string | null;
+    economicMinisterUserId: string | null;
+    foreignMinisterUserId: string | null;
 }
 
 interface Application {
@@ -46,7 +47,9 @@ interface Application {
     createdAt: number;
 }
 
-export const LeaderView: React.FC<{ regionId: string; user: any }> = ({ regionId, user }) => {
+export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionId: propRegionId, user }) => {
+    const { iso2 } = useParams();
+    const regionId = propRegionId || iso2;
     const [region, setRegion] = useState<Region | null>(null);
     const [orders, setOrders] = useState<Order[]>([]);
     const [applications, setApplications] = useState<Application[]>([]);
@@ -58,11 +61,13 @@ export const LeaderView: React.FC<{ regionId: string; user: any }> = ({ regionId
     const [branding, setBranding] = useState({ stateColor: '', stateHymn: '' });
 
     const fetchData = async () => {
+        if (!regionId) return;
+        const authHeader = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
         try {
             const [rRes, oRes, aRes] = await Promise.all([
-                fetch(`/api/regions/${regionId}`),
-                fetch(`/api/leader/orders/${regionId}`),
-                fetch(`/api/actions/applications?regionId=${regionId}`)
+                fetch(`/api/regions/${regionId}`, { headers: authHeader }),
+                fetch(`/api/leader/orders/${regionId}`, { headers: authHeader }),
+                fetch(`/api/actions/applications?regionId=${regionId}`, { headers: authHeader })
             ]);
             const rData = await rRes.json();
             const oData = await oRes.json();
@@ -152,8 +157,8 @@ export const LeaderView: React.FC<{ regionId: string; user: any }> = ({ regionId
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id as any)}
                             className={`flex items-center gap-2 px-4 py-2 rounded-md transition-all ${activeTab === tab.id
-                                    ? 'bg-indigo-600 text-white shadow-lg'
-                                    : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                                ? 'bg-indigo-600 text-white shadow-lg'
+                                : 'text-slate-400 hover:text-white hover:bg-slate-800'
                                 }`}
                         >
                             <tab.icon className="w-4 h-4" />
@@ -277,52 +282,39 @@ export const LeaderView: React.FC<{ regionId: string; user: any }> = ({ regionId
                         <motion.div
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="grid grid-cols-1 md:grid-cols-2 gap-6"
+                            className="space-y-6"
                         >
-                            {[
-                                { label: 'Consigliere Economico', role: 'economicAdviserId', current: region.economicAdviserId },
-                                { label: 'Ministro degli Esteri', role: 'foreignMinisterId', current: region.foreignMinisterId }
-                            ].map(m => (
-                                <div key={m.role} className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/50">
-                                    <h3 className="text-lg font-semibold text-white mb-4">{m.label}</h3>
-                                    <div className="flex items-center gap-4 p-4 bg-slate-900/40 rounded-xl mb-4">
-                                        <div className="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center text-slate-400">
-                                            <User />
+                            <div className="bg-indigo-900/40 p-8 rounded-3xl border border-indigo-500/30 text-center">
+                                <Briefcase className="w-16 h-16 text-indigo-400 mx-auto mb-4" />
+                                <h3 className="text-2xl font-black text-white uppercase tracking-tight">Gestione Ministri</h3>
+                                <p className="text-slate-400 font-medium mb-6">Nomina i tuoi ministri per gestire l'economia e la politica estera. I ministri possono approvare leggi istantaneamente.</p>
+                                <button
+                                    onClick={() => window.location.href = `/ministers/${regionId}`}
+                                    className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-500/20 transition-all transform hover:scale-105"
+                                >
+                                    Apri Gestione Ministri
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {[
+                                    { label: 'Ministro dell\'Economia', role: 'economicMinisterUserId', current: region.economicMinisterUserId },
+                                    { label: 'Ministro degli Esteri', role: 'foreignMinisterUserId', current: region.foreignMinisterUserId }
+                                ].map(m => (
+                                    <div key={m.role} className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/50">
+                                        <h3 className="text-lg font-semibold text-white mb-4">{m.label}</h3>
+                                        <div className="flex items-center gap-4 p-4 bg-slate-900/40 rounded-xl">
+                                            <div className="w-12 h-12 bg-slate-700 rounded-full flex items-center justify-center text-slate-400">
+                                                <User />
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="text-white font-medium">{m.current || "Posizione Vacante"}</p>
+                                                <p className="text-xs text-slate-500">{m.current ? 'In carica' : 'Nessun incaricato'}</p>
+                                            </div>
                                         </div>
-                                        <div className="flex-1">
-                                            <p className="text-white font-medium">{m.current || "Posizione Vacante"}</p>
-                                            <p className="text-xs text-slate-500">{m.current ? 'In carica' : 'Nessun incaricato'}</p>
-                                        </div>
-                                        {isLeader && m.current && (
-                                            <button
-                                                onClick={() => handleAssignMinister(m.role, null)}
-                                                className="text-red-400 hover:text-red-300 text-sm font-medium"
-                                            >
-                                                Rimuovi
-                                            </button>
-                                        )}
                                     </div>
-                                    {isLeader && !m.current && (
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                placeholder="Inserisci ID Utente..."
-                                                id={`input-${m.role}`}
-                                                className="flex-1 bg-slate-900/50 border border-slate-700 rounded-lg p-2 text-sm text-white focus:outline-none"
-                                            />
-                                            <button
-                                                onClick={() => {
-                                                    const val = (document.getElementById(`input-${m.role}`) as HTMLInputElement).value;
-                                                    if (val) handleAssignMinister(m.role, val);
-                                                }}
-                                                className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 rounded-lg text-sm transition-all"
-                                            >
-                                                Assegna
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
+                                ))}
+                            </div>
                         </motion.div>
                     )}
 

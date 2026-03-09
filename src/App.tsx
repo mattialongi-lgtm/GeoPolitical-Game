@@ -63,6 +63,7 @@ import { BlocCreate } from "./components/BlocCreate";
 import { BlocDetail } from "./components/BlocDetail";
 import { GovernmentView } from "./components/GovernmentView";
 import { LeaderView } from "./components/LeaderView";
+import { MinistersView } from "./components/MinistersView";
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -2100,6 +2101,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
   const [region, setRegion] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [apps, setApps] = useState<any[]>([]);
+  const [agreements, setAgreements] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'info' | 'government' | 'leader'>('info');
 
   const fetchCountryDetail = async () => {
@@ -2119,7 +2121,19 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
     }
   };
 
-  useEffect(() => { fetchCountryDetail(); }, [iso2]);
+  const fetchAgreements = async () => {
+    try {
+      const res = await fetch(`/api/countries/${iso2}/agreements`);
+      if (res.ok) setAgreements(await res.json());
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchCountryDetail();
+    fetchAgreements();
+  }, [iso2]);
 
   const COUNTRY_FLAGS: Record<string, string> = {
     IT: "🇮🇹", FR: "🇫🇷", DE: "🇩🇪", ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", CA: "🇨🇦",
@@ -2276,9 +2290,15 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
                 <div className="mt-6 flex flex-col gap-2">
                   <button
                     onClick={() => navigate(`/leader/${iso2}`)}
-                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100"
+                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
                   >
-                    Pagina Leader & Elezioni
+                    <Crown className="w-4 h-4" /> Pagina Leader & Elezioni
+                  </button>
+                  <button
+                    onClick={() => navigate(`/ministers/${iso2}`)}
+                    className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Briefcase className="w-4 h-4" /> Ministri & Incarichi
                   </button>
                 </div>
               </div>
@@ -2353,8 +2373,32 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
           </div>
 
           {/* Ufficio Immigrazione */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
             <h3 className="text-lg font-black uppercase tracking-tight text-indigo-900 border-b border-indigo-50 pb-2">Ufficio Immigrazione</h3>
+
+            {/* Accordi di Migrazione */}
+            <div className="grid grid-cols-1 gap-2 mb-4">
+              {agreements.length > 0 ? (
+                agreements.map((ag: any) => (
+                  <div key={ag.id} className="flex items-center justify-between p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xl">🤝</span>
+                      <div>
+                        <p className="text-xs font-black text-indigo-900 uppercase">Accordo con {ag.partnerName}</p>
+                        <p className="text-[10px] font-bold text-indigo-500 uppercase">
+                          {ag.type === 'BILATERAL' ? 'SISTEMA BILATERALE' : (ag.fromStateId === iso2?.toUpperCase() ? `APERTO VERSO ${ag.partnerName}` : `CITTADINI DI ${iso2} AMMESSI`)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="bg-white px-3 py-1 rounded-lg border border-indigo-100 text-[10px] font-black text-indigo-600">ATTIVO</div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase italic">Nessun accordo di migrazione attivo</p>
+                </div>
+              )}
+            </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
@@ -3206,6 +3250,7 @@ export default function App() {
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
           <Route path="/leader/:iso2" element={<LeaderView user={user} fetchData={fetchData} />} />
+          <Route path="/ministers/:iso2" element={<MinistersView user={user} fetchData={fetchData} />} />
           <Route path="/nation" element={<NationView user={user} fetchData={fetchData} />} />
           <Route path="/parliament" element={<ParliamentView user={user} />} />
           <Route path="/blocs" element={<BlocsList />} />
@@ -4177,7 +4222,28 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
     setActing(false);
   };
 
+  const handlePass = async (lawId: string) => {
+    if (!window.confirm("Sei un Ministro: vuoi approvare questa legge immediatamente (Fast-Pass)?")) return;
+    setActing(true);
+    try {
+      const res = await fetch("/api/parliament/laws/pass", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lawId })
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        alert("Legge approvata via Fast-Pass!");
+        reload();
+      }
+    } catch { alert("Errore di connessione"); }
+    setActing(false);
+  };
+
   const isLeader = region?.ownerUserId === user.id;
+  const isEconomicMinister = region?.economicMinisterUserId === user.id;
+  const isForeignMinister = region?.foreignMinisterUserId === user.id;
   const canPropose = isMp || isLeader;
 
   return (
@@ -4277,7 +4343,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                     <input type="number" min="3" max="30" placeholder="Es: 5" value={paramsForm.days || ''} onChange={e => setParamsForm({ ...paramsForm, days: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
                   </div>
                 )}
-                {(selectedLaw === 'declare_war' || selectedLaw === 'peace_treaty') && (
+                {(selectedLaw === 'declare_war' || selectedLaw === 'peace_treaty' || selectedLaw === 'migration_agreement' || selectedLaw === 'revoke_migration_agreement') && (
                   <div>
                     <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Nazione Bersaglio</label>
                     <input type="text" placeholder="Es: FR, DE, US..." value={paramsForm.targetRegionId || ''} onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500 uppercase" />
@@ -4296,7 +4362,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                   </div>
                 )}
                 {/* Fallback for laws with no params like proclaim_dictatorship */}
-                {['change_market_tax', 'change_salary_tax', 'change_state_name', 'change_parliament_size', 'change_parliament_duration', 'transfer_budget', 'declare_war', 'peace_treaty'].indexOf(selectedLaw) === -1 && (
+                {['change_market_tax', 'change_salary_tax', 'change_state_name', 'change_parliament_size', 'change_parliament_duration', 'transfer_budget', 'declare_war', 'peace_treaty', 'migration_agreement', 'revoke_migration_agreement'].indexOf(selectedLaw) === -1 && (
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-500">
                     Questa legge non richiede parametri aggiuntivi.
                   </div>
@@ -4338,6 +4404,11 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
             if (p.newValue !== undefined && !l.params) paramsDesc = `${p.newValue}`; // fallback per vecchie leggi
           } catch { }
 
+          // Minister fast-pass logic
+          const canEconomicPass = isEconomicMinister && lawDef?.category === 'Economy';
+          const canForeignPass = isForeignMinister && (lawDef?.category === 'Diplomacy' || lawDef?.category === 'Residency');
+          const canFastPass = canEconomicPass || canForeignPass;
+
           return (
             <div key={l.id} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex flex-col md:flex-row gap-6 hover:shadow-md transition-shadow">
               <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400 shrink-0 hidden md:flex">
@@ -4360,6 +4431,11 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                   <span className="text-rose-600 bg-rose-50 px-3 py-1.5 rounded-lg flex items-center gap-1 border border-rose-100"><Trash2 className="w-4 h-4" /> {l.noVotes}</span>
                   {l.status === 'pending' && l.proposerId === user?.id && (
                     <button disabled={acting} onClick={() => handleWithdraw(l.id)} className="ml-auto text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100 transition-colors flex items-center gap-1 shrink-0"><Trash2 className="w-4 h-4" /> Ritira</button>
+                  )}
+                  {l.status === 'pending' && canFastPass && (
+                    <button disabled={acting} onClick={() => handlePass(l.id)} className="ml-auto bg-amber-500 text-white px-3 py-1.5 rounded-lg font-black uppercase tracking-widest text-[10px] shadow-md shadow-amber-100 hover:bg-amber-600 transition-all flex items-center gap-1 shrink-0">
+                      <Zap className="w-3 h-3" /> Fast-Pass
+                    </button>
                   )}
                 </div>
               </div>

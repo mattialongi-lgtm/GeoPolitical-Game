@@ -46,8 +46,17 @@ export interface Region {
   military: number; // 1-10
   ownerUserId: string | null;
   ownerName: string | null;
+  leaderUserId: string | null;
+  leaderName: string | null;
+  stateColor: string | null;
+  stateHymn: string | null;
   factoriesCount: number;
   workRestrictions: boolean;
+  residencePolicy: 'open' | 'closed';
+  governmentForm: 'PARLIAMENTARY_REPUBLIC' | 'PRESIDENTIAL_REPUBLIC' | 'DOMINANT_PARTY' | 'DICTATORSHIP' | 'ONE_PARTY_SYSTEM' | 'EXECUTIVE_MONARCHY';
+  economicAdviserId: string | null;
+  foreignMinisterId: string | null;
+  dictatorshipAttempts: number;
   // Game Stats (legacy or from Firestore)
   power?: number;
   economy?: number;

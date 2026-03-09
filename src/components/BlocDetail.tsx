@@ -12,6 +12,10 @@ export const BlocDetail = ({ currentUser, regions }: { currentUser: any, regions
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [actionLoading, setActionLoading] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editName, setEditName] = useState("");
+    const [editDesc, setEditDesc] = useState("");
+    const [editLogo, setEditLogo] = useState("");
 
     const fetchBloc = async () => {
         try {
@@ -33,6 +37,14 @@ export const BlocDetail = ({ currentUser, regions }: { currentUser: any, regions
     useEffect(() => {
         fetchBloc();
     }, [id]);
+
+    useEffect(() => {
+        if (data?.bloc) {
+            setEditName(data.bloc.name);
+            setEditDesc(data.bloc.description);
+            setEditLogo(data.bloc.logo);
+        }
+    }, [data]);
 
     const userRegions = regions.filter(r => r.ownerUserId === currentUser.id);
     const isLeaderStr = userRegions.length > 0;
@@ -108,6 +120,25 @@ export const BlocDetail = ({ currentUser, regions }: { currentUser: any, regions
         finally { setActionLoading(false); }
     };
 
+    const handleUpdate = async () => {
+        if (!editName.trim()) return;
+        setActionLoading(true);
+        try {
+            const res = await fetch(`/api/blocs/${id}/update`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: editName, description: editDesc, logo: editLogo })
+            });
+            if (res.ok) {
+                setIsEditing(false);
+                fetchBloc();
+            } else {
+                alert((await res.json()).error);
+            }
+        } catch { alert("Errore rete"); }
+        finally { setActionLoading(false); }
+    };
+
     const handleProposeReg = async (type: string, proposedValue: number) => {
         setActionLoading(true);
         try {
@@ -124,7 +155,7 @@ export const BlocDetail = ({ currentUser, regions }: { currentUser: any, regions
         finally { setActionLoading(false); }
     };
 
-    if (loading) return <div className="p-12 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" /></div>;
+    if (loading) return <div className="p-12 text-center transition-all animate-pulse"><Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" /></div>;
     if (error || !data) return <div className="p-12 text-center text-rose-500 font-bold">{error}</div>;
 
     const { bloc, members, regulations, applications, proposals, isMemberLeader } = data;
@@ -137,25 +168,59 @@ export const BlocDetail = ({ currentUser, regions }: { currentUser: any, regions
             </button>
 
             {/* Header */}
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row gap-6 md:items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-3xl shrink-0 overflow-hidden">
-                        {(bloc.logo || "").startsWith('http') ? <img src={bloc.logo} alt="logo" className="w-full h-full object-cover" /> : (bloc.logo || "🌍")}
-                    </div>
-                    <div>
-                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">{bloc.name}</h2>
-                        <p className="text-sm font-bold text-slate-400 mt-1">Fondatore: {bloc.ownerName} ({bloc.ownerStateName})</p>
-                    </div>
-                </div>
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+                {!isEditing ? (
+                    <div className="flex flex-col md:flex-row gap-6 md:items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center text-3xl shrink-0 overflow-hidden shadow-inner">
+                                {(bloc.logo || "").startsWith('http') ? <img src={bloc.logo} alt="logo" className="w-full h-full object-cover" /> : (bloc.logo || "🌍")}
+                            </div>
+                            <div>
+                                <h2 className="text-3xl font-black text-slate-900 tracking-tight">{bloc.name}</h2>
+                                <p className="text-sm font-bold text-slate-400 mt-1 uppercase tracking-widest">Fondatore: {bloc.ownerName}</p>
+                            </div>
+                        </div>
 
-                {isLeaderStr && !isMember && (
-                    <button
-                        disabled={actionLoading}
-                        onClick={handleApply}
-                        className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-sm shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center gap-2"
-                    >
-                        {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Candidati"}
-                    </button>
+                        <div className="flex gap-3">
+                            {bloc.ownerStateId === userRegions[0]?.id && (
+                                <button onClick={() => setIsEditing(true)} className="bg-slate-100 text-slate-600 px-6 py-3 rounded-2xl font-black text-sm hover:bg-slate-200 transition-all">
+                                    Modifica
+                                </button>
+                            )}
+                            {isLeaderStr && !isMember && (
+                                <button
+                                    disabled={actionLoading}
+                                    onClick={handleApply}
+                                    className="bg-indigo-600 text-white px-6 py-3 rounded-2xl font-black text-sm shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all flex items-center gap-2"
+                                >
+                                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Candidati"}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Nome</label>
+                                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-100 focus:bg-white outline-none transition-all font-bold" />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Logo (Emoji o URL)</label>
+                                <input type="text" value={editLogo} onChange={e => setEditLogo(e.target.value)} className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-100 focus:bg-white outline-none transition-all font-bold" />
+                            </div>
+                        </div>
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Descrizione</label>
+                            <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)} rows={3} className="w-full px-4 py-2 rounded-xl bg-slate-50 border border-slate-100 focus:bg-white outline-none transition-all font-medium" />
+                        </div>
+                        <div className="flex gap-3 justify-end">
+                            <button onClick={() => setIsEditing(false)} className="px-6 py-2 rounded-xl font-bold text-slate-400 hover:text-slate-600">Annulla</button>
+                            <button onClick={handleUpdate} disabled={actionLoading} className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-black shadow-lg shadow-indigo-100 flex items-center gap-2">
+                                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Salva"}
+                            </button>
+                        </div>
+                    </div>
                 )}
             </div>
 

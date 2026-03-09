@@ -61,6 +61,8 @@ import { MoreVertical, Settings, Box, Archive, Filter, ShoppingCart, RefreshCcw 
 import { BlocsList } from "./components/BlocsList";
 import { BlocCreate } from "./components/BlocCreate";
 import { BlocDetail } from "./components/BlocDetail";
+import { GovernmentView } from "./components/GovernmentView";
+import { LeaderView } from "./components/LeaderView";
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -163,8 +165,8 @@ const MAP_COUNTRIES = [
 const WorldMap = ({ onRegionClick, regions }: { onRegionClick: (id: string) => void, regions: Region[] }) => {
   const [search, setSearch] = React.useState("");
   const [open, setOpen] = React.useState(false);
-  const [mapMode, setMapMode] = React.useState<"political" | "blocs">("political");
-  const [blocMap, setBlocMap] = React.useState<Record<string, { blocId: string, blocName: string }>>({});
+  const [mapMode, setMapMode] = React.useState<"political" | "blocs" | "government">("political");
+  const [blocMap, setBlocMap] = React.useState<Record<string, { blocId: string, blocName: string, logo?: string }>>({});
   const inputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -198,7 +200,37 @@ const WorldMap = ({ onRegionClick, regions }: { onRegionClick: (id: string) => v
         <select value={mapMode} onChange={e => setMapMode(e.target.value as any)} className="bg-slate-800 text-white text-[10px] font-black uppercase px-3 py-2 rounded-xl border border-slate-700 outline-none shadow-lg cursor-pointer">
           <option value="political">Mappa Politica</option>
           <option value="blocs">Mappa Blocchi</option>
+          <option value="government">Mappa Governi</option>
         </select>
+      </div>
+
+      {/* Map Legend */}
+      <div className="absolute top-16 left-4 z-40 bg-slate-800/90 backdrop-blur-md p-3 rounded-2xl border border-slate-700 shadow-xl max-w-[150px]">
+        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Legenda</p>
+        <div className="space-y-1.5">
+          {mapMode === "political" && (
+            <>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-indigo-500" /><span className="text-[9px] font-bold text-slate-200">Occupato</span></div>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-slate-700" /><span className="text-[9px] font-bold text-slate-200">Neutrale</span></div>
+            </>
+          )}
+          {mapMode === "blocs" && (
+            <>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-emerald-500" /><span className="text-[9px] font-bold text-slate-200">In un Blocco</span></div>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-full bg-slate-700" /><span className="text-[9px] font-bold text-slate-200">Nessun Blocco</span></div>
+            </>
+          )}
+          {mapMode === "government" && (
+            <>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-sm bg-[#3b82f6]" /><span className="text-[8px] font-bold text-slate-200">Rep. Parlamentare</span></div>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-sm bg-[#06b6d4]" /><span className="text-[8px] font-bold text-slate-200">Rep. Presidenziale</span></div>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-sm bg-[#8b5cf6]" /><span className="text-[8px] font-bold text-slate-200">Partito Dominante</span></div>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-sm bg-[#ef4444]" /><span className="text-[8px] font-bold text-slate-200">Dittatura</span></div>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-sm bg-[#f97316]" /><span className="text-[8px] font-bold text-slate-200">Partito Unico</span></div>
+              <div className="flex items-center gap-2"><div className="w-2.5 h-2.5 rounded-sm bg-[#f59e0b]" /><span className="text-[8px] font-bold text-slate-200">Monarchia Esec.</span></div>
+            </>
+          )}
+        </div>
       </div>
       {/* Map visual */}
       <ComposableMap projectionConfig={{ scale: 140 }} style={{ width: "100%", height: "auto", display: "block" }}>
@@ -208,22 +240,45 @@ const WorldMap = ({ onRegionClick, regions }: { onRegionClick: (id: string) => v
               const iso2 = (
                 geo.properties.ISO_A2_EH || geo.properties.ISO_A2 || geo.properties.iso_a2 || ""
               ).replace(/^-99$/, "").trim().toUpperCase();
-              const region = iso2 ? regions.find(r => r.id === iso2) : null;
+              const region = iso2 ? regions.find(r =>
+                r.id === iso2 ||
+                (geo.properties.ISO_A3 && r.id === geo.properties.ISO_A3) ||
+                (geo.properties.NAME && r.name.toUpperCase() === geo.properties.NAME.toUpperCase())
+              ) : null;
               const isOwned = region && region.ownerUserId;
               const blocData = blocMap[iso2];
 
-              let fillColor = "#334155";
+              let fillColor = "#334155"; // Shared base slate color
               const colors = ["#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e"];
 
               if (mapMode === "political") {
                 if (isOwned) {
-                  const hash = Array.from(region.ownerUserId as string).reduce((acc: number, char: any) => acc + String(char).charCodeAt(0), 0);
-                  fillColor = colors[hash % colors.length];
+                  if (region.stateColor) {
+                    fillColor = region.stateColor;
+                  } else {
+                    // Robust hash for owner color
+                    const ownerId = String(region.ownerUserId || "");
+                    const hash = Array.from(ownerId).reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0);
+                    fillColor = colors[hash % colors.length];
+                  }
                 }
               } else if (mapMode === "blocs") {
                 if (blocData) {
                   const hash = Array.from(blocData.blocId as string).reduce((acc: number, char: any) => acc + String(char).charCodeAt(0), 0);
                   fillColor = colors[hash % colors.length];
+                }
+              } else if (mapMode === "government") {
+                if (region) {
+                  const form = region.governmentForm || 'PARLIAMENTARY_REPUBLIC';
+                  const govColors: Record<string, string> = {
+                    'PARLIAMENTARY_REPUBLIC': '#3b82f6',
+                    'PRESIDENTIAL_REPUBLIC': '#06b6d4',
+                    'DOMINANT_PARTY': '#8b5cf6',
+                    'DICTATORSHIP': '#ef4444',
+                    'ONE_PARTY_SYSTEM': '#f97316',
+                    'EXECUTIVE_MONARCHY': '#f59e0b'
+                  };
+                  fillColor = govColors[form] || "#334155";
                 }
               }
 
@@ -282,9 +337,9 @@ const WorldMap = ({ onRegionClick, regions }: { onRegionClick: (id: string) => v
             </div>
           )}
         </div>
-        <div className="flex gap-3 mt-2">
-          <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-indigo-500 rounded-full" /><span className="text-[8px] font-bold text-slate-500 uppercase">Occupato</span></div>
-          <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-slate-700 rounded-full" /><span className="text-[8px] font-bold text-slate-500 uppercase">Neutrale</span></div>
+        <div className="flex gap-3 mt-2 opacity-60">
+          <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-indigo-500 rounded-full" /><span className="text-[8px] font-bold text-slate-500 uppercase">Abitato</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-2 h-2 bg-slate-700 rounded-full" /><span className="text-[8px] font-bold text-slate-500 uppercase">Disabitato</span></div>
         </div>
       </div>
     </div>
@@ -571,7 +626,7 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
       {/* Messages */}
       <div
         ref={listRef}
-        className="h-72 overflow-y-auto px-4 py-3 space-y-2 scroll-smooth"
+        className="h-72 overflow-y-auto px-4 py-3 space-y-2"
         style={{ scrollbarWidth: "thin" }}
       >
         {messages.length === 0 && (
@@ -2045,6 +2100,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
   const [region, setRegion] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [apps, setApps] = useState<any[]>([]);
+  const [activeTab, setActiveTab] = useState<'info' | 'government' | 'leader'>('info');
 
   const fetchCountryDetail = async () => {
     try {
@@ -2152,242 +2208,306 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-slate-50 p-4 rounded-3xl text-center">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Popolazione</p>
-              <p className="text-xl font-black">{((region.population || 1000000) / 1000000).toFixed(1)}M</p>
+          {/* Navigation Tabs */}
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar mb-6 pb-2">
+            <button
+              onClick={() => setActiveTab('info')}
+              className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'info' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
+            >
+              Info & Economia
+            </button>
+            <button
+              onClick={() => setActiveTab('government')}
+              className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'government' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
+            >
+              Governo
+            </button>
+            {region.ownerUserId && (
+              <button
+                onClick={() => setActiveTab('leader')}
+                className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'leader' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
+              >
+                Leader
+              </button>
+            )}
+          </div>
+
+          {activeTab === 'info' && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-slate-50 p-4 rounded-3xl text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Popolazione</p>
+                <p className="text-xl font-black">{((region.population || 1000000) / 1000000).toFixed(1)}M</p>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-3xl text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stabilità</p>
+                <p className="text-xl font-black">{region.stability || 5}/10</p>
+              </div>
+              <div className="bg-emerald-50 p-4 rounded-3xl text-center">
+                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Tesoro</p>
+                <p className="text-xl font-black text-emerald-700">${(region.treasury || 0).toLocaleString()}</p>
+              </div>
+              <div className="bg-amber-50 p-4 rounded-3xl text-center">
+                <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Economia</p>
+                <p className="text-xl font-black text-amber-700">{region.economyLevel || 1}/10</p>
+              </div>
             </div>
-            <div className="bg-slate-50 p-4 rounded-3xl text-center">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stabilità</p>
-              <p className="text-xl font-black">{region.stability || 5}/10</p>
+          )}
+
+          {activeTab === 'leader' && (
+            <div className="space-y-4">
+              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                <h3 className="text-lg font-black uppercase text-indigo-900 mb-4 flex items-center gap-2">
+                  <Crown className="w-5 h-5 text-indigo-600" /> Capo di Stato
+                </h3>
+                {region.leaderUserId ? (
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
+                      <UserIcon className="w-6 h-6 text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-black text-slate-900">{region.leaderName || 'Leader dello Stato'}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">ID: {region.leaderUserId}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm font-bold text-slate-400">Nessun leader attivo in questo Stato.</p>
+                )}
+
+                <div className="mt-6 flex flex-col gap-2">
+                  <button
+                    onClick={() => navigate(`/leader/${iso2}`)}
+                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100"
+                  >
+                    Pagina Leader & Elezioni
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="bg-emerald-50 p-4 rounded-3xl text-center">
-              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Tesoro</p>
-              <p className="text-xl font-black text-emerald-700">${(region.treasury || 0).toLocaleString()}</p>
+          )}
+        </div>
+      </div>
+
+      {activeTab === 'government' ? (
+        <GovernmentView region={region} currentUser={user} onUpdate={fetchCountryDetail} />
+      ) : (
+        <>
+          {/* Region Production Bonuses */}
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-5">
+            <div className="flex justify-between items-end">
+              <h3 className="text-lg font-black uppercase tracking-tight">Bonus Produzione Regionale</h3>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Moltiplicatore di Fabbrica</span>
             </div>
-            <div className="bg-amber-50 p-4 rounded-3xl text-center">
-              <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Economia</p>
-              <p className="text-xl font-black text-amber-700">{region.economyLevel || 1}/10</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { id: 'oil', label: 'Petrolio', icon: '🛢️', val: region.oilBonus || 1.0, color: 'text-slate-800', bg: 'bg-slate-50' },
+                { id: 'minerals', label: 'Minerali', icon: '🪨', val: region.mineralsBonus || 1.0, color: 'text-stone-700', bg: 'bg-stone-50' },
+                { id: 'uranium', label: 'Uranio', icon: '☢️', val: region.uraniumBonus || 1.0, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+                { id: 'diamonds', label: 'Diamanti', icon: '💎', val: region.diamondsBonus || 1.0, color: 'text-sky-700', bg: 'bg-sky-50' },
+              ].map(res => {
+                const percentage = Math.round((res.val - 1) * 100);
+                return (
+                  <div key={res.id} className={`${res.bg} p-4 rounded-3xl flex flex-col items-center justify-center border border-white/50 text-center`}>
+                    <span className="text-2xl mb-2 drop-shadow-sm">{res.icon}</span>
+                    <span className={`text-[10px] font-black uppercase tracking-widest ${res.color}`}>{res.label}</span>
+                    <span className={`text-base font-black mt-1 ${percentage > 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                      {percentage > 0 ? `+${percentage}%` : "Base"}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Region Production Bonuses */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-5">
-        <div className="flex justify-between items-end">
-          <h3 className="text-lg font-black uppercase tracking-tight">Bonus Produzione Regionale</h3>
-          <span className="text-[10px] font-bold text-slate-400 uppercase">Moltiplicatore di Fabbrica</span>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { id: 'oil', label: 'Petrolio', icon: '🛢️', val: region.oilBonus || 1.0, color: 'text-slate-800', bg: 'bg-slate-50' },
-            { id: 'minerals', label: 'Minerali', icon: '🪨', val: region.mineralsBonus || 1.0, color: 'text-stone-700', bg: 'bg-stone-50' },
-            { id: 'uranium', label: 'Uranio', icon: '☢️', val: region.uraniumBonus || 1.0, color: 'text-emerald-700', bg: 'bg-emerald-50' },
-            { id: 'diamonds', label: 'Diamanti', icon: '💎', val: region.diamondsBonus || 1.0, color: 'text-sky-700', bg: 'bg-sky-50' },
-          ].map(res => {
-            const percentage = Math.round((res.val - 1) * 100);
-            return (
-              <div key={res.id} className={`${res.bg} p-4 rounded-3xl flex flex-col items-center justify-center border border-white/50 text-center`}>
-                <span className="text-2xl mb-2 drop-shadow-sm">{res.icon}</span>
-                <span className={`text-[10px] font-black uppercase tracking-widest ${res.color}`}>{res.label}</span>
-                <span className={`text-base font-black mt-1 ${percentage > 0 ? "text-emerald-600" : "text-slate-400"}`}>
-                  {percentage > 0 ? `+${percentage}%` : "Base"}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* National Development */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
-        <div className="flex justify-between items-end">
-          <h3 className="text-lg font-black uppercase tracking-tight">Sviluppo Nazionale</h3>
-          <span className="text-[10px] font-bold text-slate-400 uppercase">Obiettivo: 10/10</span>
-        </div>
-        <div className="space-y-5">
-          {[
-            { label: "Infrastruttura Sanitaria", desc: "Efficienza dei servizi medici", val: health, icon: "❤️", color: "#ef4444" },
-            { label: "Indice di Sviluppo", desc: "Progresso tecnologico e culturale", val: education, icon: "📚", color: "#6366f1" },
-            { label: "Potenziale Bellico", desc: "Capacità difensiva e riserve armate", val: military, icon: "🛡️", color: "#f97316" },
-          ].map(ind => (
-            <div key={ind.label} className="space-y-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{ind.icon}</span>
-                  <div>
-                    <p className="text-[11px] font-black text-slate-700 uppercase tracking-widest">{ind.label}</p>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase">{ind.desc}</p>
+          {/* National Development */}
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+            <div className="flex justify-between items-end">
+              <h3 className="text-lg font-black uppercase tracking-tight">Sviluppo Nazionale</h3>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">Obiettivo: 10/10</span>
+            </div>
+            <div className="space-y-5">
+              {[
+                { label: "Infrastruttura Sanitaria", desc: "Efficienza dei servizi medici", val: health, icon: "❤️", color: "#ef4444" },
+                { label: "Indice di Sviluppo", desc: "Progresso tecnologico e culturale", val: education, icon: "📚", color: "#6366f1" },
+                { label: "Potenziale Bellico", desc: "Capacità difensiva e riserve armate", val: military, icon: "🛡️", color: "#f97316" },
+              ].map(ind => (
+                <div key={ind.label} className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">{ind.icon}</span>
+                      <div>
+                        <p className="text-[11px] font-black text-slate-700 uppercase tracking-widest">{ind.label}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase">{ind.desc}</p>
+                      </div>
+                    </div>
+                    <span className="text-sm font-black text-slate-700">{ind.val}/10</span>
+                  </div>
+                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-700"
+                      style={{ width: `${(ind.val / 10) * 100}%`, backgroundColor: ind.color }}
+                    />
                   </div>
                 </div>
-                <span className="text-sm font-black text-slate-700">{ind.val}/10</span>
-              </div>
-              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full transition-all duration-700"
-                  style={{ width: `${(ind.val / 10) * 100}%`, backgroundColor: ind.color }}
-                />
-              </div>
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Ufficio Immigrazione */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-        <h3 className="text-lg font-black uppercase tracking-tight text-indigo-900 border-b border-indigo-50 pb-2">Ufficio Immigrazione</h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <button
-            disabled={user.regionId === region.id}
-            onClick={() => handleImmigrationAction("/api/actions/travel", { regionId: region.id })}
-            className="flex flex-col items-center justify-center p-4 bg-sky-50 rounded-2xl hover:bg-sky-100 transition-colors disabled:opacity-50 border border-sky-100"
-          >
-            <span className="text-2xl mb-2">✈️</span>
-            <span className="text-[11px] font-black uppercase tracking-widest text-sky-700">Viaggia Qui</span>
-            <span className="text-[9px] font-bold text-sky-500 mt-1">Sposta la tua pedina fisica</span>
-          </button>
-
-          <button
-            disabled={user.residenceId === region.id}
-            onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "residence" })}
-            className="flex flex-col items-center justify-center p-4 bg-emerald-50 rounded-2xl hover:bg-emerald-100 transition-colors disabled:opacity-50 border border-emerald-100"
-          >
-            <span className="text-2xl mb-2">🏠</span>
-            <span className="text-[11px] font-black uppercase tracking-widest text-emerald-700">Residenza</span>
-            <span className="text-[9px] font-bold text-emerald-500 mt-1">Diventa cittadino</span>
-          </button>
-
-          <button
-            disabled={user.workPermitId === region.id || user.residenceId === region.id}
-            onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "work_permit" })}
-            className="flex flex-col items-center justify-center p-4 bg-amber-50 rounded-2xl hover:bg-amber-100 transition-colors disabled:opacity-50 border border-amber-100"
-          >
-            <span className="text-2xl mb-2">📄</span>
-            <span className="text-[11px] font-black uppercase tracking-widest text-amber-700">Visto Lavorativo</span>
-            <span className="text-[9px] font-bold text-amber-500 mt-1">Permesso di lavoro estero</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Amministrazione (Solo per il Leader) */}
-      {region.ownerUserId === user.id && (
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
-          <h3 className="text-lg font-black uppercase tracking-tight text-rose-900 border-b border-rose-50 pb-2">Amministrazione Doganale</h3>
-
-          <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
-            <div>
-              <p className="text-sm font-black text-slate-800">Protezionismo / Visti</p>
-              <p className="text-[10px] font-bold text-slate-400 mt-0.5">Richiedi un permesso per lavorare in questa regione</p>
-            </div>
-            <button
-              onClick={() => handleImmigrationAction("/api/actions/toggle-borders", { regionId: region.id, state: !region.workRestrictions })}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${region.workRestrictions ? "bg-rose-500 text-white" : "bg-emerald-500 text-white"}`}
-            >
-              {region.workRestrictions ? "Rimuovi Limitazioni" : "Attiva Limitazioni"}
-            </button>
           </div>
 
-          <div className="space-y-3">
-            <h4 className="text-sm font-black text-slate-700">Richieste in Sospeso ({apps.length})</h4>
-            {apps.length === 0 ? (
-              <p className="text-xs text-slate-400 font-medium">Nessuna pratica da smaltire.</p>
-            ) : (
-              <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-                {apps.map(app => (
-                  <div key={app.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                    <div>
-                      <p className="text-xs font-black text-slate-800">{app.username}</p>
-                      <p className="text-[10px] uppercase font-bold text-indigo-500">{app.type === 'residence' ? 'Residenza' : 'Permesso Lavoro'}</p>
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => handleImmigrationAction("/api/actions/resolve-application", { applicationId: app.id, action: 'accept' })} className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100">
-                        <Check className="w-4 h-4" />
-                      </button>
-                      <button onClick={() => handleImmigrationAction("/api/actions/resolve-application", { applicationId: app.id, action: 'reject' })} className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center hover:bg-rose-100">
-                        <AlertCircle className="w-4 h-4" />
-                      </button>
-                    </div>
+          {/* Ufficio Immigrazione */}
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+            <h3 className="text-lg font-black uppercase tracking-tight text-indigo-900 border-b border-indigo-50 pb-2">Ufficio Immigrazione</h3>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <button
+                disabled={user.regionId === region.id}
+                onClick={() => handleImmigrationAction("/api/actions/travel", { regionId: region.id })}
+                className="flex flex-col items-center justify-center p-4 bg-sky-50 rounded-2xl hover:bg-sky-100 transition-colors disabled:opacity-50 border border-sky-100"
+              >
+                <span className="text-2xl mb-2">✈️</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-sky-700">Viaggia Qui</span>
+                <span className="text-[9px] font-bold text-sky-500 mt-1">Sposta la tua pedina fisica</span>
+              </button>
+
+              <button
+                disabled={user.residenceId === region.id}
+                onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "residence" })}
+                className="flex flex-col items-center justify-center p-4 bg-emerald-50 rounded-2xl hover:bg-emerald-100 transition-colors disabled:opacity-50 border border-emerald-100"
+              >
+                <span className="text-2xl mb-2">🏠</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-emerald-700">Residenza</span>
+                <span className="text-[9px] font-bold text-emerald-500 mt-1">Diventa cittadino</span>
+              </button>
+
+              <button
+                disabled={user.workPermitId === region.id || user.residenceId === region.id}
+                onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "work_permit" })}
+                className="flex flex-col items-center justify-center p-4 bg-amber-50 rounded-2xl hover:bg-amber-100 transition-colors disabled:opacity-50 border border-amber-100"
+              >
+                <span className="text-2xl mb-2">📄</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-amber-700">Visto Lavorativo</span>
+                <span className="text-[9px] font-bold text-amber-500 mt-1">Permesso di lavoro estero</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Amministrazione (Solo per il Leader) */}
+          {region.ownerUserId === user.id && (
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+              <h3 className="text-lg font-black uppercase tracking-tight text-rose-900 border-b border-rose-50 pb-2">Amministrazione Doganale</h3>
+
+              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                <div>
+                  <p className="text-sm font-black text-slate-800">Protezionismo / Visti</p>
+                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">Richiedi un permesso per lavorare in questa regione</p>
+                </div>
+                <button
+                  onClick={() => handleImmigrationAction("/api/actions/toggle-borders", { regionId: region.id, state: !region.workRestrictions })}
+                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${region.workRestrictions ? "bg-rose-500 text-white" : "bg-emerald-500 text-white"}`}
+                >
+                  {region.workRestrictions ? "Rimuovi Limitazioni" : "Attiva Limitazioni"}
+                </button>
+              </div>
+
+              <div className="space-y-3">
+                <h4 className="text-sm font-black text-slate-700">Richieste in Sospeso ({apps.length})</h4>
+                {apps.length === 0 ? (
+                  <p className="text-xs text-slate-400 font-medium">Nessuna pratica da smaltire.</p>
+                ) : (
+                  <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
+                    {apps.map(app => (
+                      <div key={app.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
+                        <div>
+                          <p className="text-xs font-black text-slate-800">{app.username}</p>
+                          <p className="text-[10px] uppercase font-bold text-indigo-500">{app.type === 'residence' ? 'Residenza' : 'Permesso Lavoro'}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleImmigrationAction("/api/actions/resolve-application", { applicationId: app.id, action: 'accept' })} className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100">
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button onClick={() => handleImmigrationAction("/api/actions/resolve-application", { applicationId: app.id, action: 'reject' })} className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center hover:bg-rose-100">
+                            <AlertCircle className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Factories */}
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+            <h3 className="text-lg font-black uppercase tracking-tight">Strutture Presenti</h3>
+            {(region.factoriesCount || 0) > 0 ? (
+              <div className="flex items-center gap-3 p-4 bg-indigo-50 rounded-3xl border border-indigo-100">
+                <div className="p-3 bg-white rounded-2xl"><Hammer className="w-5 h-5 text-indigo-600" /></div>
+                <div>
+                  <p className="font-black text-indigo-900">{region.factoriesCount} Fabbriche</p>
+                  <p className="text-[10px] font-bold text-indigo-600 uppercase">Operative sul territorio</p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+                <p className="text-slate-400 font-bold italic">Nessuna fabbrica costruita</p>
               </div>
             )}
           </div>
-        </div>
+
+          {/* Resources (if any) */}
+          {resources.length > 0 && (
+            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+              <h3 className="text-lg font-black uppercase tracking-tight">Risorse Naturali</h3>
+              <div className="flex flex-wrap gap-2">
+                {resources.map((res: any) => (
+                  <div key={res.type} className="px-4 py-2 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-2">
+                    <span className="text-sm font-black text-slate-700">{res.type}</span>
+                    <span className="text-xs font-bold text-slate-400">{res.base || res.amount}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Budget e Finanze di Stato */}
+          <BudgetView regionId={region.id} user={user} isLeader={region.ownerUserId === user?.id} />
+
+          {/* Actions */}
+          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+            <h3 className="text-lg font-black uppercase tracking-tight">Azioni Regionali</h3>
+            <div className="grid grid-cols-1 gap-3">
+              <button
+                onClick={() => handleActionWithRefresh("invest", { regionId: region.id })}
+                disabled={actionLoading || (user?.money || 0) < GAME_CONFIG.INVEST_MONEY_COST}
+                className="flex items-center justify-between p-5 rounded-3xl bg-emerald-50 border border-emerald-100 hover:bg-emerald-100 transition-all disabled:opacity-50"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-white rounded-2xl shadow-sm"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
+                  <div className="text-left">
+                    <p className="font-black text-emerald-900 leading-none">Investi</p>
+                    <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Sviluppa Economia & Stabilità</p>
+                  </div>
+                </div>
+                <span className="font-black text-emerald-700">-${GAME_CONFIG.INVEST_MONEY_COST}</span>
+              </button>
+
+              <button
+                onClick={() => handleActionWithRefresh("propaganda", { regionId: region.id })}
+                disabled={actionLoading || (user?.energy || 0) < GAME_CONFIG.PROPAGANDA_ENERGY_COST}
+                className="flex items-center justify-between p-5 rounded-3xl bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 transition-all disabled:opacity-50"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="p-3 bg-white rounded-2xl shadow-sm"><LogOut className="w-5 h-5 text-indigo-600 rotate-180" /></div>
+                  <div className="text-left">
+                    <p className="font-black text-indigo-900 leading-none">Propaganda</p>
+                    <p className="text-[10px] font-bold text-indigo-600 mt-1 uppercase">Aumenta Stabilità</p>
+                  </div>
+                </div>
+                <span className="font-black text-indigo-700">-{GAME_CONFIG.PROPAGANDA_ENERGY_COST}⚡</span>
+              </button>
+            </div>
+          </div>
+        </>
       )}
-
-      {/* Factories */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-        <h3 className="text-lg font-black uppercase tracking-tight">Strutture Presenti</h3>
-        {(region.factoriesCount || 0) > 0 ? (
-          <div className="flex items-center gap-3 p-4 bg-indigo-50 rounded-3xl border border-indigo-100">
-            <div className="p-3 bg-white rounded-2xl"><Hammer className="w-5 h-5 text-indigo-600" /></div>
-            <div>
-              <p className="font-black text-indigo-900">{region.factoriesCount} Fabbriche</p>
-              <p className="text-[10px] font-bold text-indigo-600 uppercase">Operative sul territorio</p>
-            </div>
-          </div>
-        ) : (
-          <div className="p-8 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-            <p className="text-slate-400 font-bold italic">Nessuna fabbrica costruita</p>
-          </div>
-        )}
-      </div>
-
-      {/* Resources (if any) */}
-      {resources.length > 0 && (
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-          <h3 className="text-lg font-black uppercase tracking-tight">Risorse Naturali</h3>
-          <div className="flex flex-wrap gap-2">
-            {resources.map((res: any) => (
-              <div key={res.type} className="px-4 py-2 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-2">
-                <span className="text-sm font-black text-slate-700">{res.type}</span>
-                <span className="text-xs font-bold text-slate-400">{res.base || res.amount}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Budget e Finanze di Stato */}
-      <BudgetView regionId={region.id} user={user} isLeader={region.ownerUserId === user?.id} />
-
-      {/* Actions */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-        <h3 className="text-lg font-black uppercase tracking-tight">Azioni Regionali</h3>
-        <div className="grid grid-cols-1 gap-3">
-          <button
-            onClick={() => handleActionWithRefresh("invest", { regionId: region.id })}
-            disabled={actionLoading || (user?.money || 0) < GAME_CONFIG.INVEST_MONEY_COST}
-            className="flex items-center justify-between p-5 rounded-3xl bg-emerald-50 border border-emerald-100 hover:bg-emerald-100 transition-all disabled:opacity-50"
-          >
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white rounded-2xl shadow-sm"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
-              <div className="text-left">
-                <p className="font-black text-emerald-900 leading-none">Investi</p>
-                <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Sviluppa Economia & Stabilità</p>
-              </div>
-            </div>
-            <span className="font-black text-emerald-700">-${GAME_CONFIG.INVEST_MONEY_COST}</span>
-          </button>
-
-          <button
-            onClick={() => handleActionWithRefresh("propaganda", { regionId: region.id })}
-            disabled={actionLoading || (user?.energy || 0) < GAME_CONFIG.PROPAGANDA_ENERGY_COST}
-            className="flex items-center justify-between p-5 rounded-3xl bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 transition-all disabled:opacity-50"
-          >
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-white rounded-2xl shadow-sm"><LogOut className="w-5 h-5 text-indigo-600 rotate-180" /></div>
-              <div className="text-left">
-                <p className="font-black text-indigo-900 leading-none">Propaganda</p>
-                <p className="text-[10px] font-bold text-indigo-600 mt-1 uppercase">Aumenta Stabilità</p>
-              </div>
-            </div>
-            <span className="font-black text-indigo-700">-{GAME_CONFIG.PROPAGANDA_ENERGY_COST}⚡</span>
-          </button>
-        </div>
-      </div>
     </motion.div>
   );
 };
@@ -3085,6 +3205,7 @@ export default function App() {
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
+          <Route path="/leader/:iso2" element={<LeaderView user={user} fetchData={fetchData} />} />
           <Route path="/nation" element={<NationView user={user} fetchData={fetchData} />} />
           <Route path="/parliament" element={<ParliamentView user={user} />} />
           <Route path="/blocs" element={<BlocsList />} />

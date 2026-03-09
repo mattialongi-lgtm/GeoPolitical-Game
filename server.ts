@@ -131,6 +131,17 @@ addColumnIfMissing("regions", "residencePolicy", "TEXT DEFAULT 'open'");
 addColumnIfMissing("regions", "travelFee", "INTEGER DEFAULT 0");
 addColumnIfMissing("regions", "radiation", "INTEGER DEFAULT 0");
 
+// Government Forms migrations
+addColumnIfMissing("regions", "governmentForm", "TEXT DEFAULT 'PARLIAMENTARY_REPUBLIC'");
+addColumnIfMissing("regions", "economicAdviserId", "TEXT");
+addColumnIfMissing("regions", "foreignMinisterId", "TEXT");
+addColumnIfMissing("regions", "dictatorshipAttempts", "INTEGER DEFAULT 0");
+addColumnIfMissing("regions", "leaderUserId", "TEXT");
+addColumnIfMissing("regions", "leaderTitle", "TEXT DEFAULT 'Leader'");
+addColumnIfMissing("regions", "stateColor", "TEXT DEFAULT '#334155'");
+addColumnIfMissing("regions", "stateHymn", "TEXT");
+addColumnIfMissing("regions", "nextLeaderElectionAt", "INTEGER");
+
 // Energy Drinks and War Medals migrations
 addColumnIfMissing("users", "energyDrinks", "INTEGER DEFAULT 0");
 addColumnIfMissing("users", "lastEnergyDrink", "INTEGER DEFAULT 0");
@@ -303,6 +314,10 @@ db.exec(`
     parliamentSize INTEGER DEFAULT 20,
     parliamentDuration INTEGER DEFAULT 5,
     residencePolicy TEXT DEFAULT 'open',
+    governmentForm TEXT DEFAULT 'PARLIAMENTARY_REPUBLIC',
+    economicAdviserId TEXT,
+    foreignMinisterId TEXT,
+    dictatorshipAttempts INTEGER DEFAULT 0,
     FOREIGN KEY(ownerUserId) REFERENCES users(id)
   );
 
@@ -433,13 +448,34 @@ db.exec(`
     FOREIGN KEY(defenderUserId) REFERENCES users(id)
   );
 
-  CREATE TABLE IF NOT EXISTS action_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+  CREATE TABLE IF NOT EXISTS leader_orders (
+    id TEXT PRIMARY KEY,
+    regionId TEXT,
+    authorUserId TEXT,
+    title TEXT,
+    body TEXT,
+    createdAt INTEGER,
+    audience TEXT, -- 'CITIZENS', 'NEW_PLAYERS', 'ALL'
+    FOREIGN KEY(regionId) REFERENCES regions(id),
+    FOREIGN KEY(authorUserId) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS leader_candidates (
+    regionId TEXT,
     userId TEXT,
-    action TEXT,
-    details TEXT,
-    timestamp INTEGER,
+    votes INTEGER DEFAULT 0,
+    PRIMARY KEY(regionId, userId),
+    FOREIGN KEY(regionId) REFERENCES regions(id),
     FOREIGN KEY(userId) REFERENCES users(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS leader_votes (
+    regionId TEXT,
+    voterId TEXT,
+    candidateId TEXT,
+    PRIMARY KEY(regionId, voterId),
+    FOREIGN KEY(regionId) REFERENCES regions(id),
+    FOREIGN KEY(voterId) REFERENCES users(id)
   );
 
   CREATE TABLE IF NOT EXISTS cooldowns (
@@ -1228,7 +1264,17 @@ app.post("/api/actions/work", authenticate, (req: any, res) => {
 
   // FORZA boosts public factory productivity (+3% per level)
   const forzaBoost = (user.perks['FORZA'] || 0) * 0.03;
-  const earnings = Math.floor(factory.payoutMoney * (1 + forzaBoost));
+
+  // PRESIDENTIAL_REPUBLIC: Double wage bonus for Leader and economic/foreign ministers
+  let govBonus = 1;
+  const regionData = db.prepare("SELECT governmentForm, ownerUserId, economicAdviserId, foreignMinisterId FROM regions WHERE id = ?").get(userRegion) as any;
+  if (regionData && regionData.governmentForm === 'PRESIDENTIAL_REPUBLIC') {
+    if (user.id === regionData.ownerUserId || user.id === regionData.economicAdviserId || user.id === regionData.foreignMinisterId) {
+      govBonus = 2;
+    }
+  }
+
+  const earnings = Math.floor(factory.payoutMoney * (1 + forzaBoost) * govBonus);
 
   // ISTRUZIONE increases XP cap (each level adds 10 to XP per work)
   const xpGain = GAME_CONFIG.XP_PER_WORK + pIstruzione * 2;
@@ -1591,15 +1637,25 @@ app.post("/api/actions/resolve-application", authenticate, (req: any, res) => {
   const application = db.prepare("SELECT * FROM applications WHERE id = ?").get(applicationId) as any;
   if (!application) return res.status(404).json({ error: "Richiesta non trovata." });
 
-  const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(application.regionId) as any;
-  if (!region || region.ownerUserId !== user.id) {
-    return res.status(403).json({ error: "Non sei il Governatore di questa regione." });
+  const regionInfo = db.prepare("SELECT leaderUserId, governmentForm FROM regions WHERE id = ?").get(application.regionId) as any;
+  if (!regionInfo) return res.status(404).json({ error: "Regione non trovata." });
+
+  // Only Leader can resolve RESIDENCE requests.
+  if (application.type === 'residence') {
+    if (regionInfo.leaderUserId !== user.id) {
+      return res.status(403).json({ error: "Solo il Leader può approvare o rifiutare le richieste di residenza." });
+    }
+  } else {
+    // Fallback for work_permit: MP or Leader
+    const isMp = db.prepare("SELECT userId FROM parliament_members WHERE userId = ? AND regionId = ?").get(user.id, application.regionId);
+    if (!isMp && regionInfo.leaderUserId !== user.id) {
+      return res.status(403).json({ error: "Permessi insufficienti." });
+    }
   }
 
   if (action === 'accept') {
     if (application.type === 'residence') {
       db.prepare("UPDATE users SET residenceId = ? WHERE id = ?").run(application.regionId, application.userId);
-      // Remove any previously held work permit for the same region as it's redundant
       db.prepare("UPDATE users SET workPermitId = NULL WHERE id = ? AND workPermitId = ?").run(application.userId, application.regionId);
     } else if (application.type === 'work_permit') {
       db.prepare("UPDATE users SET workPermitId = ? WHERE id = ?").run(application.regionId, application.userId);
@@ -1623,6 +1679,173 @@ app.post("/api/actions/toggle-borders", authenticate, (req: any, res) => {
 
   db.prepare("UPDATE regions SET workRestrictions = ? WHERE id = ?").run(state ? 1 : 0, regionId);
   res.json({ success: true });
+});
+
+// --- Government & Ministers API ---
+app.post("/api/government/assign-minister", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId, role, ministerId } = req.body; // role: 'economicAdviserId' | 'foreignMinisterId', ministerId: string | null
+
+  if (!regionId || !role) return res.status(400).json({ error: "Missing parameters." });
+  if (role !== "economicAdviserId" && role !== "foreignMinisterId") return res.status(400).json({ error: "Invalid role." });
+
+  const region = db.prepare("SELECT leaderUserId, governmentForm FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region) return res.status(404).json({ error: "Region not found." });
+  if (region.leaderUserId !== user.id) return res.status(403).json({ error: "Solo il Leader può assegnare i ministri." });
+
+  // Validate form rules
+  const autocracies = ["DICTATORSHIP", "ONE_PARTY_SYSTEM", "EXECUTIVE_MONARCHY"];
+  if (role === "foreignMinisterId" && autocracies.includes(region.governmentForm)) {
+    return res.status(400).json({ error: "Questa forma di governo non prevede un Ministro degli Esteri." });
+  }
+
+  // Assign or remove
+  if (ministerId) {
+    const targetUser = db.prepare("SELECT id FROM users WHERE id = ?").get(ministerId);
+    if (!targetUser) return res.status(404).json({ error: "Utente non trovato." });
+    db.prepare(`UPDATE regions SET ${role} = ? WHERE id = ?`).run(ministerId, regionId);
+  } else {
+    db.prepare(`UPDATE regions SET ${role} = NULL WHERE id = ?`).run(regionId);
+  }
+
+  res.json({ success: true, role, ministerId });
+});
+
+app.post("/api/government/transition", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId, targetForm } = req.body;
+
+  if (!regionId || !targetForm) return res.status(400).json({ error: "Missing parameters." });
+
+  const region = db.prepare("SELECT leaderUserId, governmentForm FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region) return res.status(404).json({ error: "Region not found." });
+  // If no leader (Parliamentary), allow anyone who can trigger it? 
+  // Actually, usually Transition is a Law/Dictator action. 
+  // Let's assume for manual transition we need the current leader or dictator.
+  if (region.leaderUserId && region.leaderUserId !== user.id) {
+    return res.status(403).json({ error: "Azione riservata al Leader dello Stato." });
+  }
+
+  const currentForm = region.governmentForm;
+
+  // Dictionary of allowed direct transitions
+  const allowedTransitions = [
+    { from: "DICTATORSHIP", to: "ONE_PARTY_SYSTEM" },
+    { from: "DICTATORSHIP", to: "EXECUTIVE_MONARCHY" },
+    { from: "ONE_PARTY_SYSTEM", to: "DICTATORSHIP" },
+    { from: "EXECUTIVE_MONARCHY", to: "DICTATORSHIP" },
+    { from: "DICTATORSHIP", to: "PRESIDENTIAL_REPUBLIC" }, // Dictator stepping down manually
+  ];
+
+  const isValid = allowedTransitions.some(t => t.from === currentForm && t.to === targetForm);
+
+  if (!isValid) {
+    return res.status(400).json({
+      error: `Transizione diretta da ${currentForm} a ${targetForm} non consentita. Passa per il Parlamento o usa le azioni corrette.`
+    });
+  }
+
+  try {
+    db.transaction(() => {
+      db.prepare(`UPDATE regions SET governmentForm = ? WHERE id = ?`).run(targetForm, regionId);
+
+      // Transition-specific logic
+      if (targetForm === 'PARLIAMENTARY_REPUBLIC') {
+        db.prepare("UPDATE regions SET leaderUserId = NULL, leaderTitle = 'None', nextLeaderElectionAt = NULL WHERE id = ?").run(regionId);
+      } else if (['DICTATORSHIP', 'ONE_PARTY_SYSTEM', 'EXECUTIVE_MONARCHY'].includes(targetForm)) {
+        // Current transitioning user becomes Dictator/King
+        const newTitle = targetForm === 'EXECUTIVE_MONARCHY' ? 'Sovrano' : 'Dittatore';
+        db.prepare("UPDATE regions SET leaderUserId = ?, leaderTitle = ?, nextLeaderElectionAt = NULL WHERE id = ?").run(user.id, newTitle, regionId);
+      } else if (['PRESIDENTIAL_REPUBLIC', 'DOMINANT_PARTY'].includes(targetForm)) {
+        // Reset election timer
+        const nextElec = Date.now() + (5 * 24 * 60 * 60 * 1000);
+        db.prepare("UPDATE regions SET leaderTitle = 'Leader', nextLeaderElectionAt = ? WHERE id = ?").run(nextElec, regionId);
+      }
+    })(); // Execute the transaction
+    return res.json({ success: true, newForm: targetForm });
+  } catch (err) {
+    console.error("Transition error:", err);
+    return res.status(500).json({ error: "Errore durante il cambio di governo." });
+  }
+});
+
+// --- Leader System Specific API ---
+
+app.post("/api/leader/candidate", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId } = req.body;
+
+  const region = db.prepare("SELECT governmentForm, nextLeaderElectionAt FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region) return res.status(404).json({ error: "Regione non trovata." });
+  if (!['PRESIDENTIAL_REPUBLIC', 'DOMINANT_PARTY'].includes(region.governmentForm)) {
+    return res.status(400).json({ error: "Questa forma di governo non prevede elezioni del Leader." });
+  }
+
+  // Voter/Candidate must be a citizen
+  if (user.residenceId !== regionId) {
+    return res.status(403).json({ error: "Devi essere cittadino per candidarti." });
+  }
+
+  try {
+    db.prepare("INSERT INTO leader_candidates (regionId, userId, votes) VALUES (?, ?, 0)").run(regionId, user.id);
+    res.json({ success: true });
+  } catch (e) {
+    res.status(400).json({ error: "Sei già candidato." });
+  }
+});
+
+app.post("/api/leader/vote", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId, candidateId } = req.body;
+
+  const region = db.prepare("SELECT id FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region) return res.status(404).json({ error: "Regione non trovata." });
+  if (user.residenceId !== regionId) return res.status(403).json({ error: "Devi essere cittadino per votare." });
+
+  try {
+    db.transaction(() => {
+      db.prepare("INSERT INTO leader_votes (regionId, voterId, candidateId) VALUES (?, ?, ?)")
+        .run(regionId, user.id, candidateId);
+      db.prepare("UPDATE leader_candidates SET votes = votes + 1 WHERE regionId = ? AND userId = ?")
+        .run(regionId, candidateId);
+    })();
+    res.json({ success: true });
+  } catch (e) {
+    res.status(400).json({ error: "Hai già votato in queste elezioni." });
+  }
+});
+
+app.post("/api/leader/update-state-ui", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId, stateColor, stateHymn } = req.body;
+
+  const region = db.prepare("SELECT leaderUserId FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region || region.leaderUserId !== user.id) return res.status(403).json({ error: "Solo il Leader può modificare queste impostazioni." });
+
+  db.prepare("UPDATE regions SET stateColor = ?, stateHymn = ? WHERE id = ?")
+    .run(stateColor || '#334155', stateHymn || '', regionId);
+
+  res.json({ success: true });
+});
+
+app.post("/api/leader/orders", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId, title, body, audience } = req.body; // audience: 'CITIZENS', 'NEW_PLAYERS', 'ALL'
+
+  const region = db.prepare("SELECT leaderUserId FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region || region.leaderUserId !== user.id) return res.status(403).json({ error: "Solo il Leader può emettere ordini." });
+
+  const id = Math.random().toString(36).substring(2, 11);
+  db.prepare("INSERT INTO leader_orders (id, regionId, authorUserId, title, body, createdAt, audience) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(id, regionId, user.id, title, body, Date.now(), audience || 'ALL');
+
+  res.json({ success: true, orderId: id });
+});
+
+app.get("/api/leader/orders/:regionId", (req, res) => {
+  const { regionId } = req.params;
+  const orders = db.prepare("SELECT * FROM leader_orders WHERE regionId = ? ORDER BY createdAt DESC LIMIT 10").all(regionId);
+  res.json(orders);
 });
 
 // --- Nation Management API ---
@@ -2098,6 +2321,20 @@ app.post("/api/work", authenticate, (req: any, res) => {
 
   const finalOutput = Math.max(1, Math.floor(outputBase * bonusMult));
 
+  // PRESIDENTIAL_REPUBLIC: Double wage bonus for Leader and economic/foreign ministers
+  let govBonus = 1;
+  if (currentRegion && currentRegion.governmentForm === 'PRESIDENTIAL_REPUBLIC') {
+    if (user.id === currentRegion.ownerUserId || user.id === currentRegion.economicAdviserId || user.id === currentRegion.foreignMinisterId) {
+      govBonus = 2;
+    }
+  }
+
+  const finalWage = Math.floor(factory.wage * govBonus);
+
+  if (factory.budget < finalWage) {
+    return res.status(400).json({ error: "L'azienda non ha abbastanza fondi per pagarti il salario." });
+  }
+
   if (currentVol + finalOutput > maxStorage) {
     return res.status(400).json({ error: "Il magazzino dell'azienda è pieno." });
   }
@@ -2106,10 +2343,10 @@ app.post("/api/work", authenticate, (req: any, res) => {
   try {
     db.transaction(() => {
       // Deduct budget, add xp to factory
-      db.prepare("UPDATE factories SET budget = budget - ?, exp = exp + 1 WHERE id = ?").run(factory.wage, factory.id);
+      db.prepare("UPDATE factories SET budget = budget - ?, exp = exp + 1 WHERE id = ?").run(finalWage, factory.id);
 
       // Pay worker, deduct energy
-      db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?").run(factory.wage, energyCost, user.id);
+      db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?").run(finalWage, energyCost, user.id);
 
       // Cooldown
       db.prepare("INSERT OR REPLACE INTO user_factory_cooldowns (userId, factoryId, lastUsed) VALUES (?, ?, ?)").run(user.id, factoryId, Date.now());
@@ -3024,13 +3261,16 @@ app.get("/api/blocs", authenticate, (req: any, res) => {
     // Return blocs that have >= 2 active members
     const blocs = db.prepare(`
       SELECT b.*, u.username as ownerName, 
-             (SELECT COUNT(*) FROM bloc_memberships m WHERE m.blocId = b.id AND m.status = 'active') as memberCount
+             (SELECT COUNT(*) FROM bloc_memberships m WHERE m.blocId = b.id AND m.status = 'active') as memberCount,
+             (SELECT COUNT(*) FROM bloc_memberships m2 
+              JOIN regions r2 ON m2.stateId = r2.id 
+              WHERE m2.blocId = b.id AND r2.ownerUserId = ? AND m2.status = 'active') as isMyBloc
       FROM blocs b
       LEFT JOIN regions r ON b.ownerStateId = r.id
       LEFT JOIN users u ON r.ownerUserId = u.id
-      HAVING memberCount >= 2
+      WHERE memberCount >= 2 OR isMyBloc > 0
       ORDER BY memberCount DESC, b.createdAt DESC
-    `).all();
+    `).all(req.user.id);
     res.json(blocs);
   } catch (err: any) {
     res.status(500).json({ error: "Errore nel caricamento dei blocchi." });
@@ -3103,6 +3343,31 @@ app.get("/api/blocs/:id", authenticate, (req: any, res) => {
     res.json({ bloc, members, regulations, applications, proposals, isMemberLeader });
   } catch (err: any) {
     res.status(500).json({ error: "Errore nel caricamento dei dettagli del blocco." });
+  }
+});
+
+app.post("/api/blocs/:id/update", authenticate, (req: any, res) => {
+  try {
+    const user = req.user;
+    const blocId = req.params.id;
+    const { name, description, logo } = req.body;
+
+    if (!name || name.trim().length === 0) return res.status(400).json({ error: "Nome obbligatorio." });
+
+    const bloc = db.prepare("SELECT ownerStateId FROM blocs WHERE id = ?").get(blocId) as any;
+    if (!bloc) return res.status(404).json({ error: "Blocco non trovato." });
+
+    const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(bloc.ownerStateId) as any;
+    if (!region || region.ownerUserId !== user.id) {
+      return res.status(403).json({ error: "Solo il fondatore può modificare il blocco." });
+    }
+
+    db.prepare("UPDATE blocs SET name = ?, description = ?, logo = ? WHERE id = ?")
+      .run(name.trim(), description || '', logo || '', blocId);
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore durante l'aggiornamento del blocco." });
   }
 });
 
@@ -3737,20 +4002,31 @@ app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
       return res.status(403).json({ error: "Solo i Parlamentari o il Leader possono proporre leggi." });
     }
 
+    // specific dict check
+    if (type === "proclaim_dictatorship") {
+      region.dictatorshipAttempts = (region.dictatorshipAttempts || 0) + 1;
+      if (region.dictatorshipAttempts > 2) {
+        return res.status(400).json({ error: "Hai già raggiunto il limite di 2 tentativi di dittatura in questo mandato parlamentare." });
+      }
+      db.prepare("UPDATE regions SET dictatorshipAttempts = ? WHERE id = ?").run(region.dictatorshipAttempts, region.id);
+    }
+
     // Validate params
     const validationError = lawDef.validate(region, params, user);
     if (validationError) return res.status(400).json({ error: validationError });
 
     // Prevent multiple active laws of the SAME TYPE to avoid conflicts
-    const activeLaw = db.prepare("SELECT id FROM laws WHERE regionId = ? AND type = ? AND status = 'pending'").get(region.id, type);
-    if (activeLaw) return res.status(400).json({ error: "Una proposta simile è già in votazione." });
+    const activeLaw = db.prepare("SELECT id FROM laws WHERE regionId = ? AND type = ? AND status IN ('pending', 'pending_assent')").get(region.id, type);
+    if (activeLaw) return res.status(400).json({ error: "Una proposta simile è già in votazione o in attesa di sanzione." });
 
     // Format params
     const paramsStr = JSON.stringify(params || {});
     const lawId = Math.random().toString(36).substring(2, 11);
 
-    // Check Dictatorship
-    if (region.dictatorship) {
+    // Check Dictatorship / Autocracies
+    const autocracies = ["DICTATORSHIP", "ONE_PARTY_SYSTEM"];
+    if (region.dictatorship || autocracies.includes(region.governmentForm)) {
+      if (!isLeader) return res.status(403).json({ error: "In questo regime solo il Leader può legiferare." });
       db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'passed', ?, ?)")
         .run(lawId, region.id, user.id, type, paramsStr, Date.now(), Date.now());
 
@@ -3758,7 +4034,7 @@ app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
       return res.json({ success: true, lawId, immediate: true });
     }
 
-    // Normal Democracy
+    // Normal Democracy / Executive Monarchy (goes to Parliament first)
     const expiresAt = Date.now() + (lawDef.delayDays * 24 * 60 * 60 * 1000);
     db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)")
       .run(lawId, region.id, user.id, type, paramsStr, Date.now(), expiresAt);
@@ -3772,19 +4048,58 @@ app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
 
 app.post("/api/parliament/laws/vote", authenticate, (req: any, res) => {
   const user = req.user;
-  const { lawId, vote } = req.body; // vote: 'yes' or 'no'
+  const { lawId, vote } = req.body; // vote: 'yes' or 'no', or 'assent' / 'veto'
 
-  const isMp = db.prepare("SELECT userId FROM parliament_members WHERE userId = ? AND regionId = ?").get(user.id, user.residenceId);
-  if (!isMp) return res.status(403).json({ error: "Solo i Parlamentari possono votare le leggi." });
+  const law = db.prepare("SELECT * FROM laws WHERE id = ?").get(lawId) as any;
+  if (!law) return res.status(404).json({ error: "Legge non trovata." });
 
-  const law = db.prepare("SELECT status FROM laws WHERE id = ? AND regionId = ?").get(lawId, user.residenceId) as any;
-  if (!law || law.status !== 'pending') return res.status(400).json({ error: "Legge non trovata o votazione chiusa." });
+  const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(law.regionId) as any;
+  if (!region) return res.status(404).json({ error: "Regione non trovata." });
+
+  // Handle Assent Phase (Executive Monarchy)
+  if (law.status === 'pending_assent') {
+    if (region.governmentForm !== "EXECUTIVE_MONARCHY") {
+      return res.status(400).json({ error: "L'Assenso del Sovrano si applica solo in Monarchia Esecutiva." });
+    }
+
+    const isEconomyLaw = LawRegistry[law.type]?.category === "Economia e Tasse";
+    const canAssent = (isEconomyLaw && (user.id === region.economicAdviserId || user.id === region.ownerUserId)) ||
+      (!isEconomyLaw && user.id === region.ownerUserId);
+
+    if (!canAssent) {
+      return res.status(403).json({ error: "Non hai l'autorità per sanzionare o porre veto a questa legge." });
+    }
+
+    if (vote === 'yes' || vote === 'assent') {
+      db.prepare("UPDATE laws SET status = 'passed' WHERE id = ?").run(lawId);
+      try {
+        const params = law.params ? JSON.parse(law.params) : {};
+        LawRegistry[law.type]?.execute(region, params);
+      } catch (e) {
+        console.error(`Error executing law ${law.type} after assent:`, e);
+      }
+      return res.json({ success: true, result: 'passed' });
+    } else {
+      db.prepare("UPDATE laws SET status = 'rejected' WHERE id = ?").run(lawId);
+      return res.json({ success: true, result: 'vetoed' });
+    }
+  }
+
+  // Normal Voting Phase
+  if (law.status !== 'pending') return res.status(400).json({ error: "Votazione chiusa." });
+
+  const isMp = db.prepare("SELECT userId FROM parliament_members WHERE userId = ? AND regionId = ?").get(user.id, law.regionId);
+  const isLeader = region.ownerUserId === user.id;
+
+  if (!isMp && !isLeader) {
+    return res.status(403).json({ error: "Solo i Parlamentari o il Leader possono votare le leggi." });
+  }
 
   const existingVote = db.prepare("SELECT id FROM law_votes WHERE lawId = ? AND voterId = ?").get(lawId, user.id);
-  if (existingVote) return res.status(400).json({ error: "Hai già votato per questa legge." });
+  if (existingVote) return res.status(400).json({ error: "Hai già votato." });
 
   db.prepare("INSERT INTO law_votes (id, lawId, voterId, vote, timestamp) VALUES (?, ?, ?, ?, ?)")
-    .run(Math.random().toString(36).substring(2, 11), lawId, user.id, vote, Date.now());
+    .run(Math.random().toString(36).substring(2, 11), lawId, user.id, vote === 'yes' ? 'yes' : 'no', Date.now());
 
   res.json({ success: true });
 });
@@ -3795,7 +4110,7 @@ app.post("/api/parliament/laws/withdraw", authenticate, (req: any, res) => {
 
   const law = db.prepare("SELECT proposerId, status FROM laws WHERE id = ?").get(lawId) as any;
   if (!law) return res.status(404).json({ error: "Legge non trovata." });
-  if (law.status !== 'pending') return res.status(400).json({ error: "Puoi ritirare solo leggi attualmente in votazione." });
+  if (law.status !== 'pending' && law.status !== 'pending_assent') return res.status(400).json({ error: "Puoi ritirare solo leggi attualmente in votazione." });
   if (law.proposerId !== user.id) return res.status(403).json({ error: "Solo il creatore della proposta può ritirarla." });
 
   db.prepare("UPDATE laws SET status = 'withdrawn' WHERE id = ?").run(lawId);
@@ -3877,10 +4192,59 @@ function checkAndResolveElections() {
   }
 }
 
+function checkAndResolveLeaderElections() {
+  const now = Date.now();
+  const regions = db.prepare(`
+    SELECT id, governmentForm, nextLeaderElectionAt 
+    FROM regions 
+    WHERE governmentForm IN ('PRESIDENTIAL_REPUBLIC', 'DOMINANT_PARTY')
+  `).all() as any[];
+
+  for (const r of regions) {
+    if (!r.nextLeaderElectionAt) {
+      // Initialize timer if missing (5 days)
+      const firstElection = now + (5 * 24 * 60 * 60 * 1000);
+      db.prepare("UPDATE regions SET nextLeaderElectionAt = ? WHERE id = ?").run(firstElection, r.id);
+      continue;
+    }
+
+    if (now >= r.nextLeaderElectionAt) {
+      db.transaction(() => {
+        // Resolve: find winner
+        const winner = db.prepare(`
+          SELECT userId, votes 
+          FROM leader_candidates 
+          WHERE regionId = ? 
+          ORDER BY votes DESC 
+          LIMIT 1
+        `).get(r.id) as any;
+
+        if (winner) {
+          const title = r.governmentForm === 'PRESIDENTIAL_REPUBLIC' ? 'Presidente' : 'Leader';
+          db.prepare("UPDATE regions SET leaderUserId = ?, leaderTitle = ? WHERE id = ?")
+            .run(winner.userId, title, r.id);
+        }
+
+        // Reset
+        db.prepare("DELETE FROM leader_candidates WHERE regionId = ?").run(r.id);
+        db.prepare("DELETE FROM leader_votes WHERE regionId = ?").run(r.id);
+
+        const nextElec = now + (5 * 24 * 60 * 60 * 1000);
+        db.prepare("UPDATE regions SET nextLeaderElectionAt = ? WHERE id = ?").run(nextElec, r.id);
+      })();
+    }
+  }
+}
+
 // Law Cronjob Simulation
 function checkAndResolveLaws() {
   const now = Date.now();
-  const pendingLaws = db.prepare("SELECT * FROM laws WHERE status = 'pending' AND expiresAt <= ?").all(now) as any[];
+  const pendingLaws = db.prepare(`
+    SELECT l.*, r.governmentForm 
+    FROM laws l 
+    JOIN regions r ON l.regionId = r.id 
+    WHERE l.status = 'pending' AND l.expiresAt <= ?
+  `).all(now) as any[];
 
   db.transaction(() => {
     for (const law of pendingLaws) {
@@ -3891,29 +4255,36 @@ function checkAndResolveLaws() {
 
       const lawDef = LawRegistry[law.type];
       if (!lawDef) {
-        // Obsolete law type
         db.prepare("UPDATE laws SET status = 'rejected' WHERE id = ?").run(law.id);
         continue;
       }
 
-      // Check threshold (e.g. >50% means yes/total > 0.5)
-      // Note: threshold usually means >= so if threshold is 0.5, >0.5 or >=0.5? Usually >50% for simple majority.
-      // If 0.8, requires >= 80%. Let's use strict > for 0.5, >= for others to be safe, or just >= for all with adjusted values.
+      // Calculate passRatio depending on government form
+      // Presidential Republic: Yes > 50% of members voting
+      // Parliamentary: often proportional or simple majority. We'll stick to threshold
       const passRatio = totalVotes > 0 ? (yes / totalVotes) : 0;
 
       let passed = false;
       if (lawDef.threshold === 0.5) {
-        passed = yes > no; // Simple majority
+        // Presidential instantly passes if Yes > 50% of TOTAL PARLIAMENT SEATS could be an advanced rule, 
+        // but for now > 50% of votes cast is standard. Let's keep Yes > No
+        passed = yes > no;
       } else {
-        passed = totalVotes > 0 && passRatio >= lawDef.threshold; // Supermajority
+        passed = totalVotes > 0 && passRatio >= lawDef.threshold;
       }
 
       if (passed) {
+        if (law.governmentForm === "EXECUTIVE_MONARCHY") {
+          // Send to Assent phase instead of passing immediately
+          db.prepare("UPDATE laws SET status = 'pending_assent' WHERE id = ?").run(law.id);
+          continue;
+        }
+
         db.prepare("UPDATE laws SET status = 'passed' WHERE id = ?").run(law.id);
 
         try {
           const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(law.regionId);
-          const params = law.params ? JSON.parse(law.params) : { newValue: law.newValue }; // fallback for old laws
+          const params = law.params ? JSON.parse(law.params) : { newValue: law.newValue };
           lawDef.execute(region, params);
         } catch (e) {
           console.error(`Error executing law ${law.type} (${law.id}):`, e);
@@ -3963,6 +4334,7 @@ function budgetMaintenanceTick() {
 // Vite middleware for development
 async function startServer() {
   checkAndResolveElections();
+  checkAndResolveLeaderElections();
   checkAndResolveLaws();
 
   if (process.env.NODE_ENV !== "production") {

@@ -258,8 +258,11 @@ export interface MigrationAgreement {
   id: string;
   fromStateId: string;
   toStateId: string;
-  status: 'ACTIVE' | 'REVOKED';
+  status: 'ACTIVE' | 'INACTIVE';
   type: 'UNILATERAL' | 'BILATERAL';
   createdAt: number;
+  activatedAt?: number;
+  revokedAt?: number;
+  sourceLawId?: string;
   updatedAt: number;
 }

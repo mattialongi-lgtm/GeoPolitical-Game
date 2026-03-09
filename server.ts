@@ -123,6 +123,13 @@ addColumnIfMissing("regions", "economyLevel", "INTEGER DEFAULT 1");
 addColumnIfMissing("regions", "health", "INTEGER DEFAULT 1");
 addColumnIfMissing("regions", "education", "INTEGER DEFAULT 1");
 addColumnIfMissing("regions", "military", "INTEGER DEFAULT 1");
+addColumnIfMissing("regions", "dictatorship", "INTEGER DEFAULT 0");
+addColumnIfMissing("regions", "foundationDate", "INTEGER DEFAULT 0");
+addColumnIfMissing("regions", "parliamentSize", "INTEGER DEFAULT 20");
+addColumnIfMissing("regions", "parliamentDuration", "INTEGER DEFAULT 5");
+addColumnIfMissing("regions", "residencePolicy", "TEXT DEFAULT 'open'");
+addColumnIfMissing("regions", "travelFee", "INTEGER DEFAULT 0");
+addColumnIfMissing("regions", "radiation", "INTEGER DEFAULT 0");
 
 // Energy Drinks and War Medals migrations
 addColumnIfMissing("users", "energyDrinks", "INTEGER DEFAULT 0");
@@ -139,6 +146,9 @@ addColumnIfMissing("regions", "workRestrictions", "INTEGER DEFAULT 0");
 addColumnIfMissing("users", "originalNation", "TEXT DEFAULT 'ST'");
 addColumnIfMissing("users", "displayedNation", "TEXT DEFAULT 'ST'");
 addColumnIfMissing("users", "lastOriginalNationChange", "INTEGER DEFAULT 0");
+
+// Laws migrations
+addColumnIfMissing("laws", "params", "TEXT");
 
 // Activity Tracking
 addColumnIfMissing("users", "lastLogin", "INTEGER DEFAULT 0");
@@ -226,6 +236,7 @@ try {
 try {
   db.exec("ALTER TABLE player_factories ADD COLUMN regionId TEXT");
 } catch (e) { }
+
 
 // User requests: 10000 cash and 10000 gold
 try {
@@ -550,6 +561,28 @@ db.exec(`
     FOREIGN KEY(lawId) REFERENCES laws(id),
     FOREIGN KEY(voterId) REFERENCES users(id)
   );
+
+  CREATE TABLE IF NOT EXISTS budgets (
+    id TEXT PRIMARY KEY,
+    ownerType TEXT, -- 'REGION', 'AUTONOMY', 'STATE'
+    ownerId TEXT,
+    moneyEUR INTEGER DEFAULT 0,
+    resources TEXT DEFAULT '{}',
+    updatedAt INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS budget_transactions (
+    id TEXT PRIMARY KEY,
+    budgetId TEXT,
+    type TEXT, -- 'INCOME', 'EXPENSE', 'TRANSFER', 'WAR_LOOT', 'SYSTEM_TICK'
+    subtype TEXT,
+    moneyDelta INTEGER DEFAULT 0,
+    resourcesDelta TEXT DEFAULT '{}',
+    createdAt INTEGER,
+    createdByUserId TEXT,
+    metadata TEXT DEFAULT '{}',
+    FOREIGN KEY(budgetId) REFERENCES budgets(id)
+  );
 `);
 
 // Seed initial regions if empty
@@ -601,6 +634,27 @@ if (regionCount.count === 0) {
 }
 
 // Seed factories if empty (REMOVED: Now completely Player-Driven)
+
+// Migration: Initialize budgets for all existing regions if they don't have one
+try {
+  const regionsWithoutBudget = db.prepare(`
+    SELECT id, treasury FROM regions 
+    WHERE id NOT IN (SELECT ownerId FROM budgets WHERE ownerType = 'REGION')
+  `).all() as any[];
+
+  if (regionsWithoutBudget.length > 0) {
+    db.transaction(() => {
+      const insertBudget = db.prepare("INSERT INTO budgets (id, ownerType, ownerId, moneyEUR, resources, updatedAt) VALUES (?, 'REGION', ?, ?, '{}', ?)");
+      const now = Date.now();
+      for (const r of regionsWithoutBudget) {
+        insertBudget.run(Math.random().toString(36).substring(2, 11), r.id, r.treasury || 0, now);
+      }
+    })();
+    console.log(`Migration SUCCESS: Initialized budgets for ${regionsWithoutBudget.length} regions.`);
+  }
+} catch (e) {
+  console.error("Migration error (budgets init):", e);
+}
 
 app.use(express.json());
 app.use(cookieParser());
@@ -1040,6 +1094,48 @@ const updateCooldown = (userId: string, actionType: string) => {
     .run(userId, actionType, Date.now());
 };
 
+// --- Budget Core Helper ---
+// ALWAYS call this inside a db.transaction() block if combined with other updates!
+function addBudgetTransaction(
+  ownerType: string,
+  ownerId: string,
+  type: string,
+  subtype: string,
+  moneyDelta: number,
+  resourcesDelta: Record<string, number> = {},
+  createdByUserId: string | null = null,
+  metadata: any = {}
+) {
+  const budget = db.prepare("SELECT * FROM budgets WHERE ownerType = ? AND ownerId = ?").get(ownerType, ownerId) as any;
+  if (!budget) throw new Error(`Budget inesistente per ${ownerType} ${ownerId}`);
+
+  const currentResources = JSON.parse(budget.resources || '{}');
+
+  const newMoney = budget.moneyEUR + moneyDelta;
+  if (newMoney < 0) throw new Error("Fondi del budget insufficienti per l'operazione.");
+
+  const newResources = { ...currentResources };
+  for (const [key, val] of Object.entries(resourcesDelta)) {
+    newResources[key] = (newResources[key] || 0) + val;
+    if (newResources[key] < 0) throw new Error(`Risorse insufficienti nel budget: ${key}`);
+  }
+
+  const now = Date.now();
+  db.prepare("UPDATE budgets SET moneyEUR = ?, resources = ?, updatedAt = ? WHERE id = ?")
+    .run(newMoney, JSON.stringify(newResources), now, budget.id);
+
+  const txId = Math.random().toString(36).substring(2, 11);
+  db.prepare(`
+    INSERT INTO budget_transactions 
+    (id, budgetId, type, subtype, moneyDelta, resourcesDelta, createdAt, createdByUserId, metadata)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    txId, budget.id, type, subtype, moneyDelta, JSON.stringify(resourcesDelta), now, createdByUserId, JSON.stringify(metadata)
+  );
+
+  return txId;
+}
+
 app.post("/api/actions/work", authenticate, (req: any, res) => {
   const user = req.user;
   // Require player to be in the SAME region physically
@@ -1083,15 +1179,40 @@ app.post("/api/actions/work", authenticate, (req: any, res) => {
   // ISTRUZIONE increases XP cap (each level adds 10 to XP per work)
   const xpGain = GAME_CONFIG.XP_PER_WORK + pIstruzione * 2;
 
-  db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?")
-    .run(earnings, energyCost, user.id);
+  // Calculate and apply taxes to the regional budget
+  const taxRate = currentRegion?.marketTaxRate || 10;
+  const taxes = Math.floor(earnings * (taxRate / 100));
+  const netEarnings = earnings - taxes;
 
-  db.prepare("INSERT OR REPLACE INTO user_factory_cooldowns (userId, factoryId, lastUsed) VALUES (?, ?, ?)")
-    .run(user.id, factoryId, Date.now());
+  try {
+    db.transaction(() => {
+      // Player updates
+      db.prepare("UPDATE users SET money = money + ?, energy = energy - ? WHERE id = ?")
+        .run(netEarnings, energyCost, user.id);
+
+      db.prepare("INSERT OR REPLACE INTO user_factory_cooldowns (userId, factoryId, lastUsed) VALUES (?, ?, ?)")
+        .run(user.id, factoryId, Date.now());
+
+      // Regional Budget update
+      if (taxes > 0) {
+        // Find if State or Region budget should receive. We default to 'REGION' using userRegion
+        addBudgetTransaction(
+          'REGION', userRegion,
+          'INCOME', 'TAX',
+          taxes, {},
+          user.id,
+          { factoryId, grossEarnings: earnings, taxRate }
+        );
+      }
+    })();
+  } catch (err) {
+    console.error("Lavoro fallito (budget transaction error):", err);
+    return res.status(500).json({ error: "Errore durante il lavoro. Riprova." });
+  }
 
   addXP(user.id, xpGain);
 
-  res.json({ success: true, earnings, energyCost, xpGain });
+  res.json({ success: true, earnings: netEarnings, taxes, energyCost, xpGain });
 });
 
 app.get("/api/factories", authenticate, (req: any, res) => {
@@ -1217,8 +1338,136 @@ app.post("/api/actions/travel", authenticate, (req: any, res) => {
   if (!regionId) return res.status(400).json({ error: "Nessuna destinazione specificata." });
   if (user.regionId === regionId) return res.status(400).json({ error: "Sei già in questa regione." });
 
-  db.prepare("UPDATE users SET regionId = ? WHERE id = ?").run(regionId, user.id);
+  const region = db.prepare("SELECT workRestrictions, travelFee FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region) return res.status(404).json({ error: "Regione inesistente." });
+
+  // Travel Fee Logic (only if borders are closed/restricted)
+  const isRestricted = region.workRestrictions === 1;
+  const travelFee = region.travelFee || 0;
+
+  if (isRestricted && travelFee > 0) {
+    if (user.money < travelFee) {
+      return res.status(400).json({ error: `Fondi insufficienti per pagare la tassa di frontiera ($${travelFee}).` });
+    }
+  }
+
+  try {
+    db.transaction(() => {
+      // 1. Move player and deduct fee (if applicable)
+      if (isRestricted && travelFee > 0) {
+        db.prepare("UPDATE users SET regionId = ?, money = money - ? WHERE id = ?").run(regionId, travelFee, user.id);
+        // 2. Add income to state/regional budget
+        addBudgetTransaction('REGION', regionId, 'INCOME', 'TRAVEL_FEE', travelFee, {}, user.id, { fromRegion: user.regionId });
+      } else {
+        db.prepare("UPDATE users SET regionId = ? WHERE id = ?").run(regionId, user.id);
+      }
+    })();
+  } catch (err) {
+    console.error("Travel error:", err);
+    return res.status(500).json({ error: "Errore durante il viaggio" });
+  }
+
   res.json({ success: true, regionId });
+});
+
+app.post("/api/budget/donate", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { entityId, amount, currency } = req.body;
+
+  if (user.level < 60) return res.status(403).json({ error: "Devi essere al Livello 60 per effettuare donazioni di Stato." });
+  if (!entityId || !amount || amount <= 0) return res.status(400).json({ error: "Dati donazione non validi." });
+  if (currency !== 'EUR' && currency !== 'GOLD') return res.status(400).json({ error: "Valuta non supportata." });
+
+  const amountNum = Number(amount);
+
+  if (currency === 'EUR' && user.money < amountNum) return res.status(400).json({ error: "Fondi in € insufficienti." });
+  if (currency === 'GOLD' && user.gold < amountNum) return res.status(400).json({ error: "Fondi in Gold insufficienti." });
+
+  // Conversion logic
+  const conversionRate = 500000;
+  const moneyDelta = currency === 'GOLD' ? amountNum * conversionRate : amountNum;
+
+  try {
+    db.transaction(() => {
+      if (currency === 'EUR') {
+        db.prepare("UPDATE users SET money = money - ? WHERE id = ?").run(amountNum, user.id);
+      } else if (currency === 'GOLD') {
+        db.prepare("UPDATE users SET gold = gold - ? WHERE id = ?").run(amountNum, user.id);
+      }
+
+      addBudgetTransaction('REGION', entityId, 'INCOME', 'DONATION', moneyDelta, {}, user.id, { originalCurrency: currency, originalAmount: amountNum });
+    })();
+    res.json({ success: true, donated: moneyDelta });
+  } catch (err) {
+    console.error("Donation error:", err);
+    res.status(500).json({ error: "La donazione è fallita." });
+  }
+});
+
+app.post("/api/budget/clean-radiation", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId } = req.body;
+  if (!regionId) return res.status(400).json({ error: "Nessuna regione specificata." });
+
+  // Only Governor/Leader can do this
+  const region = db.prepare("SELECT ownerUserId, radiation FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region || region.ownerUserId !== user.id) return res.status(403).json({ error: "Azione riservata al Leader." });
+  if (region.radiation <= 0) return res.status(400).json({ error: "Nessuna radiazione da pulire." });
+
+  const cost = 10000;
+
+  try {
+    db.transaction(() => {
+      addBudgetTransaction('REGION', regionId, 'EXPENSE', 'RADIATION_CLEAN', -cost, {}, user.id);
+      db.prepare("UPDATE regions SET radiation = MAX(0, radiation - 10) WHERE id = ?").run(regionId);
+    })();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Fondi insufficienti." });
+  }
+});
+
+app.post("/api/budget/explore", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { regionId, type } = req.body; // type: 'normal' | 'deep'
+  if (!regionId || (type !== 'normal' && type !== 'deep')) return res.status(400).json({ error: "Parametri esplorazione non validi." });
+
+  const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region || region.ownerUserId !== user.id) return res.status(403).json({ error: "Azione riservata al Leader." });
+
+  const isDeep = type === 'deep';
+  const cost = isDeep ? 50000 : 15000;
+
+  try {
+    db.transaction(() => {
+      // In a full implementation, this might start a timer to increase resources. 
+      // For now, it costs budget and instantly returns some random resources.
+      const foundOil = isDeep ? Math.floor(Math.random() * 500) + 100 : Math.floor(Math.random() * 100) + 20;
+      const foundItems: Record<string, number> = { oil: foundOil };
+
+      addBudgetTransaction('REGION', regionId, 'EXPENSE', isDeep ? 'EXPLORE_DEEP' : 'EXPLORE_NORMAL', -cost, foundItems, user.id);
+    })();
+    res.json({ success: true, message: `Esplorazione completata!` });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message || "Fondi insufficienti." });
+  }
+});
+
+app.get("/api/budget/:ownerType/:ownerId", authenticate, (req: any, res) => {
+  const { ownerType, ownerId } = req.params;
+  const budget = db.prepare("SELECT * FROM budgets WHERE ownerType = ? AND ownerId = ?").get(ownerType, ownerId) as any;
+  if (!budget) return res.status(404).json({ error: "Budget non trovato." });
+
+  const transactions = db.prepare(`
+    SELECT t.*, u.username as createdBy 
+    FROM budget_transactions t 
+    LEFT JOIN users u ON t.createdByUserId = u.id 
+    WHERE t.budgetId = ? 
+    ORDER BY t.createdAt DESC 
+    LIMIT 50
+  `).all(budget.id);
+
+  res.json({ budget, transactions });
 });
 
 app.post("/api/actions/apply", authenticate, (req: any, res) => {
@@ -1402,6 +1651,61 @@ app.post("/api/actions/attack", authenticate, (req: any, res) => {
 
   updateCooldown(user.id, "attack");
   res.json({ success, winProbability: Math.round(winProbability * 100) });
+});
+
+// --- War Interactive Deploy API ---
+app.post("/api/wars/deploy", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { warId, side, weaponId } = req.body;
+
+  if (!warId || !side || !weaponId) return res.status(400).json({ error: "Dati mancanti." });
+  if (side !== 'attacker' && side !== 'defender') return res.status(400).json({ error: "Schieramento non valido." });
+
+  const war = db.prepare("SELECT * FROM wars WHERE id = ?").get(warId) as any;
+  if (!war) return res.status(404).json({ error: "Guerra inesistente." });
+  if (war.status !== 'active') return res.status(400).json({ error: "Questa guerra è già terminata." });
+
+  const weapons: any = {
+    infantry: { energy: 10, cash: 50, damage: 100 },
+    tank: { energy: 30, cash: 500, damage: 1000 },
+    airstrike: { energy: 50, cash: 2000, damage: 5000 }
+  };
+
+  const weapon = weapons[weaponId];
+  if (!weapon) return res.status(400).json({ error: "Armamento sconosciuto." });
+
+  if (user.energy < weapon.energy) return res.status(400).json({ error: `Energia insufficiente (richiesti ${weapon.energy}).` });
+  if (user.money < weapon.cash) return res.status(400).json({ error: `Fondi insufficienti (richiesti $${weapon.cash}).` });
+
+  // Damage Calculation
+  let totalDamage = weapon.damage;
+  const isPatriot = (side === 'attacker' && war.attackerCountryIso2 === user.originalNation) ||
+    (side === 'defender' && war.defenderCountryIso2 === user.originalNation);
+
+  if (isPatriot) totalDamage = Math.floor(totalDamage * 1.10);
+
+  // Perks bonuses
+  const forzaBonus = (user.perks?.['FORZA'] || 0) * 0.05;
+  const resistBonus = (user.perks?.['RESISTENZA'] || 0) * 0.03;
+  totalDamage = Math.floor(totalDamage * (1 + forzaBonus + resistBonus));
+
+  try {
+    db.transaction(() => {
+      // Deduct resources
+      db.prepare("UPDATE users SET energy = energy - ?, money = money - ? WHERE id = ?").run(weapon.energy, weapon.cash, user.id);
+
+      // Update scores
+      if (side === 'attacker') {
+        db.prepare("UPDATE wars SET attackerScore = attackerScore + ? WHERE id = ?").run(totalDamage, warId);
+      } else {
+        db.prepare("UPDATE wars SET defenderScore = defenderScore + ? WHERE id = ?").run(totalDamage, warId);
+      }
+    })();
+
+    res.json({ success: true, damageDealt: totalDamage, side });
+  } catch (err) {
+    res.status(500).json({ error: "Errore durante lo schieramento in battaglia." });
+  }
 });
 
 // Articles API
@@ -2634,27 +2938,6 @@ app.get("/api/parliament", authenticate, (req: any, res) => {
   res.json(members);
 });
 
-app.get("/api/parliament/laws", authenticate, (req: any, res) => {
-  const laws = db.prepare(`
-    SELECT l.*, u.username as proposerName 
-    FROM laws l 
-    JOIN users u ON l.proposerId = u.id 
-    WHERE l.regionId = ? 
-    ORDER BY l.createdAt DESC
-  `).all(req.user.residenceId);
-
-  const lawsWithVotes = laws.map((l: any) => {
-    const votes = db.prepare("SELECT vote, COUNT(*) as count FROM law_votes WHERE lawId = ? GROUP BY vote").all(l.id) as any[];
-    return {
-      ...l,
-      yesVotes: votes.find((v: any) => v.vote === 'yes')?.count || 0,
-      noVotes: votes.find((v: any) => v.vote === 'no')?.count || 0,
-      myVote: db.prepare("SELECT vote FROM law_votes WHERE lawId = ? AND voterId = ?").get(l.id, req.user.id)
-    };
-  });
-
-  res.json(lawsWithVotes);
-});
 
 // ==========================================
 // STATE LAWS REGISTRY
@@ -2712,7 +2995,9 @@ export const LawRegistry: Record<string, {
     validate: (region, params) => {
       const amount = parseInt(params.amount);
       if (isNaN(amount) || amount <= 0) return "Importo non valido.";
-      if (amount > region.treasury) return "Spesa superiore al tesoro attuale.";
+
+      const budget = db.prepare("SELECT moneyEUR FROM budgets WHERE ownerType = 'REGION' AND ownerId = ?").get(region.id) as any;
+      if (!budget || budget.moneyEUR < amount) return "Spesa superiore ai fondi in bilancio attuali.";
 
       const target = db.prepare("SELECT id FROM regions WHERE id = ?").get(params.targetRegionId);
       if (!target) return "Nazione destinataria inesistente.";
@@ -2724,11 +3009,11 @@ export const LawRegistry: Record<string, {
       const amount = parseInt(params.amount);
 
       // Ensure we still have the money at execution time
-      const currentRegion = db.prepare("SELECT treasury FROM regions WHERE id = ?").get(region.id) as any;
-      if (currentRegion.treasury >= amount) {
+      const currentBudget = db.prepare("SELECT moneyEUR FROM budgets WHERE ownerType = 'REGION' AND ownerId = ?").get(region.id) as any;
+      if (currentBudget && currentBudget.moneyEUR >= amount) {
         db.transaction(() => {
-          db.prepare("UPDATE regions SET treasury = treasury - ? WHERE id = ?").run(amount, region.id);
-          db.prepare("UPDATE regions SET treasury = treasury + ? WHERE id = ?").run(amount, params.targetRegionId);
+          addBudgetTransaction('REGION', region.id, 'TRANSFER', 'BUDGET_TRANSFER', -amount, {}, null, { to: params.targetRegionId });
+          addBudgetTransaction('REGION', params.targetRegionId, 'TRANSFER', 'BUDGET_TRANSFER', amount, {}, null, { from: region.id });
         })();
       }
     }
@@ -2786,85 +3071,327 @@ export const LawRegistry: Record<string, {
     execute: (region, params) => {
       db.prepare("UPDATE regions SET name = ? WHERE id = ?").run(params.name, region.id);
     }
+  },
+  change_parliament_size: {
+    category: "Politica Interna",
+    icon: "Users",
+    title: "Dimensione Parlamento",
+    description: "Modifica il numero dei seggi in Parlamento (da 10 a 100).",
+    threshold: 0.8,
+    delayDays: 1,
+    validate: (region, params) => {
+      const size = parseInt(params.size);
+      if (isNaN(size) || size < 10 || size > 100) return "Dimensione non valida (min 10, max 100).";
+      return null;
+    },
+    execute: (region, params) => {
+      db.prepare("UPDATE regions SET parliamentSize = ? WHERE id = ?").run(parseInt(params.size), region.id);
+    }
+  },
+  change_parliament_duration: {
+    category: "Politica Interna",
+    icon: "Clock",
+    title: "Durata Mandato",
+    description: "Modifica i giorni di durata del mandato parlamentare (da 3 a 30).",
+    threshold: 0.8,
+    delayDays: 1,
+    validate: (region, params) => {
+      const days = parseInt(params.days);
+      if (isNaN(days) || days < 3 || days > 30) return "Durata non valida (min 3, max 30).";
+      return null;
+    },
+    execute: (region, params) => {
+      db.prepare("UPDATE regions SET parliamentDuration = ? WHERE id = ?").run(parseInt(params.days), region.id);
+    }
+  },
+  open_borders: {
+    category: "Politica Interna",
+    icon: "Unlock",
+    title: "Apri Confini",
+    description: "Permette a chiunque di prendere la residenza o il permesso di lavoro.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region) => {
+      if (region.residencePolicy === 'open') return "I confini sono già aperti.";
+      return null;
+    },
+    execute: (region) => {
+      db.prepare("UPDATE regions SET residencePolicy = 'open' WHERE id = ?").run(region.id);
+    }
+  },
+  close_borders: {
+    category: "Politica Interna",
+    icon: "Lock",
+    title: "Chiudi Confini",
+    description: "Blocca l'immigrazione. Solo il Leader può approvare visti lavorativi.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region) => {
+      if (region.residencePolicy === 'closed') return "I confini sono già chiusi.";
+      return null;
+    },
+    execute: (region) => {
+      db.prepare("UPDATE regions SET residencePolicy = 'closed' WHERE id = ?").run(region.id);
+    }
+  },
+  build_hospital: {
+    category: "Costruzioni Statali",
+    icon: "Heart",
+    title: "Costruzione Ospedale",
+    description: "Aumenta la Salute (Health) della nazione di 1 punto. Costo: $25.000",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region) => {
+      if (region.health >= 11) return "Livello Salute già al massimo (11).";
+      const budget = db.prepare("SELECT moneyEUR FROM budgets WHERE ownerType = 'REGION' AND ownerId = ?").get(region.id) as any;
+      if (!budget || budget.moneyEUR < 25000) return "Fondi statali in bilancio insufficienti ($25.000 richiesti).";
+      return null;
+    },
+    execute: (region) => {
+      const currentRegion = db.prepare("SELECT health FROM regions WHERE id = ?").get(region.id) as any;
+      if (currentRegion && currentRegion.health < 11) {
+        db.transaction(() => {
+          addBudgetTransaction('REGION', region.id, 'EXPENSE', 'BUILDING', -25000, {}, null, { building: 'hospital' });
+          db.prepare("UPDATE regions SET health = health + 1 WHERE id = ?").run(region.id);
+        })();
+      }
+    }
+  },
+  build_military_base: {
+    category: "Costruzioni Statali",
+    icon: "ShieldAlert",
+    title: "Base Militare",
+    description: "Aumenta la potenza Militare della nazione di 1 punto. Costo: $50.000",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region) => {
+      if (region.military >= 11) return "Livello Militare già al massimo (11).";
+      const budget = db.prepare("SELECT moneyEUR FROM budgets WHERE ownerType = 'REGION' AND ownerId = ?").get(region.id) as any;
+      if (!budget || budget.moneyEUR < 50000) return "Fondi statali in bilancio insufficienti ($50.000 richiesti).";
+      return null;
+    },
+    execute: (region) => {
+      const currentRegion = db.prepare("SELECT military FROM regions WHERE id = ?").get(region.id) as any;
+      if (currentRegion && currentRegion.military < 11) {
+        db.transaction(() => {
+          addBudgetTransaction('REGION', region.id, 'EXPENSE', 'BUILDING', -50000, {}, null, { building: 'military_base' });
+          db.prepare("UPDATE regions SET military = military + 1 WHERE id = ?").run(region.id);
+        })();
+      }
+    }
+  },
+  build_school: {
+    category: "Costruzioni Statali",
+    icon: "GraduationCap",
+    title: "Costruzione Scuola",
+    description: "Aumenta l'Istruzione (Education) della nazione di 1 punto. Costo: $20.000",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region) => {
+      if (region.education >= 11) return "Livello Istruzione già al massimo (11).";
+      const budget = db.prepare("SELECT moneyEUR FROM budgets WHERE ownerType = 'REGION' AND ownerId = ?").get(region.id) as any;
+      if (!budget || budget.moneyEUR < 20000) return "Fondi statali in bilancio insufficienti ($20.000 richiesti).";
+      return null;
+    },
+    execute: (region) => {
+      const currentRegion = db.prepare("SELECT education FROM regions WHERE id = ?").get(region.id) as any;
+      if (currentRegion && currentRegion.education < 11) {
+        db.transaction(() => {
+          addBudgetTransaction('REGION', region.id, 'EXPENSE', 'BUILDING', -20000, {}, null, { building: 'school' });
+          db.prepare("UPDATE regions SET education = education + 1 WHERE id = ?").run(region.id);
+        })();
+      }
+    }
+  },
+  declare_war: {
+    category: "Guerra e Diplomazia",
+    icon: "Swords",
+    title: "Dichiarazione di Guerra",
+    description: "Avvia una guerra contro la nazione bersaglio.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      if (!params || !params.targetRegionId) return "ID Nazione bersaglio obbligatorio.";
+      const target = db.prepare("SELECT id FROM regions WHERE id = ?").get(params.targetRegionId);
+      if (!target) return "Nazione bersaglio inesistente.";
+      if (params.targetRegionId === region.id) return "Non puoi dichiarare guerra a te stesso.";
+      const existingWar = db.prepare("SELECT id FROM wars WHERE status = 'active' AND ((attackerCountryIso2 = ? AND defenderCountryIso2 = ?) OR (attackerCountryIso2 = ? AND defenderCountryIso2 = ?))").get(region.id, params.targetRegionId, params.targetRegionId, region.id);
+      if (existingWar) return "Sei già in guerra con questa nazione.";
+
+      const activeWars = db.prepare("SELECT COUNT(*) as c FROM wars WHERE status = 'active' AND (attackerCountryIso2 = ? OR defenderCountryIso2 = ?)").get(region.id, region.id) as any;
+      const baseCost = 50000;
+      const cost = Math.floor(baseCost * (1 + 0.25 * activeWars.c));
+      const budget = db.prepare("SELECT moneyEUR FROM budgets WHERE ownerType = 'REGION' AND ownerId = ?").get(region.id) as any;
+      if (!budget || budget.moneyEUR < cost) return `Fondi in bilancio insufficienti ($${cost} richiesti assecondando le guerre simultanee).`;
+
+      return null;
+    },
+    execute: (region, params) => {
+      const activeWars = db.prepare("SELECT COUNT(*) as c FROM wars WHERE status = 'active' AND (attackerCountryIso2 = ? OR defenderCountryIso2 = ?)").get(region.id, region.id) as any;
+      const baseCost = 50000;
+      const cost = Math.floor(baseCost * (1 + 0.25 * activeWars.c));
+
+      db.transaction(() => {
+        addBudgetTransaction('REGION', region.id, 'EXPENSE', 'WAR_START', -cost, {}, null, { target: params.targetRegionId });
+
+        db.prepare(`
+          INSERT INTO wars (id, attackerCountryIso2, defenderCountryIso2, status, startedAt, endsAt, attackerScore, defenderScore, lastEventAt)
+          VALUES (?, ?, ?, 'active', ?, ?, 0, 0, ?)
+        `).run(
+          `war_${Date.now()}_${region.id}_${params.targetRegionId}`,
+          region.id,
+          params.targetRegionId,
+          Date.now(),
+          Date.now() + (24 * 60 * 60 * 1000), // 24h default
+          Date.now()
+        );
+      })();
+    }
+  },
+  peace_treaty: {
+    category: "Guerra e Diplomazia",
+    icon: "Handshake",
+    title: "Trattato di Pace",
+    description: "Propone o accetta la fine delle ostilità con una nazione in guerra.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      if (!params || !params.targetRegionId) return "ID Nazione bersaglio obbligatorio.";
+      const target = db.prepare("SELECT id FROM regions WHERE id = ?").get(params.targetRegionId);
+      if (!target) return "Nazione bersaglio inesistente.";
+      const existingWar = db.prepare("SELECT id FROM wars WHERE status = 'active' AND ((attackerCountryIso2 = ? AND defenderCountryIso2 = ?) OR (attackerCountryIso2 = ? AND defenderCountryIso2 = ?))").get(region.id, params.targetRegionId, params.targetRegionId, region.id);
+      if (!existingWar) return "Non c'è una guerra attiva con questa nazione.";
+      return null;
+    },
+    execute: (region, params) => {
+      const existingWar = db.prepare("SELECT * FROM wars WHERE status = 'active' AND ((attackerCountryIso2 = ? AND defenderCountryIso2 = ?) OR (attackerCountryIso2 = ? AND defenderCountryIso2 = ?))").get(region.id, params.targetRegionId, params.targetRegionId, region.id) as any;
+
+      db.transaction(() => {
+        if (existingWar) {
+          // Determine winner based on scores
+          let winner = null;
+          let loser = null;
+          if (existingWar.attackerScore > existingWar.defenderScore) {
+            winner = existingWar.attackerCountryIso2;
+            loser = existingWar.defenderCountryIso2;
+          } else if (existingWar.defenderScore > existingWar.attackerScore) {
+            winner = existingWar.defenderCountryIso2;
+            loser = existingWar.attackerCountryIso2;
+          }
+
+          // Execute War Loot Transfer if there's a clear winner
+          if (winner && loser) {
+            const loserBudget = db.prepare("SELECT id, moneyEUR, resources FROM budgets WHERE ownerType = 'REGION' AND ownerId = ?").get(loser) as any;
+            if (loserBudget && loserBudget.moneyEUR > 0) {
+              const stolenMoney = loserBudget.moneyEUR;
+              const stolenResourcesRaw = loserBudget.resources || '{}';
+
+              // Empty the loser
+              addBudgetTransaction('REGION', loser, 'WAR_LOOT', 'LOOT_LOST', -stolenMoney, {}, null, { to: winner, warId: existingWar.id });
+
+              // Add to the winner
+              addBudgetTransaction('REGION', winner, 'WAR_LOOT', 'LOOT_WON', stolenMoney, {}, null, { from: loser, warId: existingWar.id });
+
+              console.log(`War ended. ${winner} looted ${stolenMoney} EUR from ${loser}`);
+            }
+          }
+        }
+
+        db.prepare(`UPDATE wars SET status = 'ended', endsAt = ? WHERE id = ?`).run(Date.now(), existingWar?.id);
+      })();
+    }
   }
 };
 
 app.get("/api/parliament/laws", authenticate, (req: any, res) => {
-  const laws = db.prepare(`
-    SELECT l.*, u.username as proposerName 
-    FROM laws l 
-    JOIN users u ON l.proposerId = u.id 
-    WHERE l.regionId = ? 
-    ORDER BY l.createdAt DESC
-  `).all(req.user.residenceId);
+  try {
+    const laws = db.prepare(`
+      SELECT l.*, u.username as proposerName 
+      FROM laws l 
+      JOIN users u ON l.proposerId = u.id 
+      WHERE l.regionId = ? 
+      ORDER BY l.createdAt DESC
+    `).all(req.user.residenceId);
 
-  const lawsWithVotes = laws.map((l: any) => {
-    const votes = db.prepare("SELECT vote, COUNT(*) as count FROM law_votes WHERE lawId = ? GROUP BY vote").all(l.id) as any[];
-    return {
-      ...l,
-      yesVotes: votes.find((v: any) => v.vote === 'yes')?.count || 0,
-      noVotes: votes.find((v: any) => v.vote === 'no')?.count || 0,
-      myVote: db.prepare("SELECT vote FROM law_votes WHERE lawId = ? AND voterId = ?").get(l.id, req.user.id)
-    };
-  });
+    const lawsWithVotes = laws.map((l: any) => {
+      const votes = db.prepare("SELECT vote, COUNT(*) as count FROM law_votes WHERE lawId = ? GROUP BY vote").all(l.id) as any[];
+      return {
+        ...l,
+        yesVotes: votes.find((v: any) => v.vote === 'yes')?.count || 0,
+        noVotes: votes.find((v: any) => v.vote === 'no')?.count || 0,
+        myVote: db.prepare("SELECT vote FROM law_votes WHERE lawId = ? AND voterId = ?").get(l.id, req.user.id)
+      };
+    });
 
-  res.json({ laws: lawsWithVotes, registry: LawRegistry });
+    const registryForFrontend = Object.entries(LawRegistry).reduce((acc: any, [key, law]: any) => {
+      acc[key] = {
+        category: law.category,
+        icon: law.icon,
+        title: law.title,
+        description: law.description,
+        threshold: law.threshold,
+        delayDays: law.delayDays
+      };
+      return acc;
+    }, {});
+
+    res.json({ laws: lawsWithVotes, registry: registryForFrontend });
+  } catch (err: any) {
+    require('fs').writeFileSync('debug_api.txt', err.stack || err.toString());
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
   const user = req.user;
   const { type, params } = req.body; // params is an object
 
-  const lawDef = LawRegistry[type];
-  if (!lawDef) return res.status(400).json({ error: "Tipo di legge sconosciuto." });
+  try {
+    const lawDef = LawRegistry[type];
+    if (!lawDef) return res.status(400).json({ error: "Tipo di legge sconosciuto." });
 
-  // Verify permission
-  const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(user.residenceId) as any;
-  if (!region) return res.status(404).json({ error: "Regione non trovata." });
+    // Verify permission
+    const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(user.residenceId) as any;
+    if (!region) return res.status(404).json({ error: "Regione non trovata." });
 
-  const isMp = db.prepare("SELECT userId FROM parliament_members WHERE userId = ? AND regionId = ?").get(user.id, user.residenceId);
-  const isLeader = region.ownerUserId === user.id;
+    const isMp = db.prepare("SELECT userId FROM parliament_members WHERE userId = ? AND regionId = ?").get(user.id, user.residenceId);
+    const isLeader = region.ownerUserId === user.id;
 
-  if (!isMp && !isLeader) {
-    return res.status(403).json({ error: "Solo i Parlamentari o il Leader possono proporre leggi." });
-  }
+    if (!isMp && !isLeader) {
+      return res.status(403).json({ error: "Solo i Parlamentari o il Leader possono proporre leggi." });
+    }
 
-  // Validate params
-  const validationError = lawDef.validate(region, params, user);
-  if (validationError) return res.status(400).json({ error: validationError });
+    // Validate params
+    const validationError = lawDef.validate(region, params, user);
+    if (validationError) return res.status(400).json({ error: validationError });
 
-  // Prevent multiple active laws of the SAME TYPE to avoid conflicts
-  const activeLaw = db.prepare("SELECT id FROM laws WHERE regionId = ? AND type = ? AND status = 'pending'").get(region.id, type);
-  if (activeLaw) return res.status(400).json({ error: "Una proposta simile è già in votazione." });
+    // Prevent multiple active laws of the SAME TYPE to avoid conflicts
+    const activeLaw = db.prepare("SELECT id FROM laws WHERE regionId = ? AND type = ? AND status = 'pending'").get(region.id, type);
+    if (activeLaw) return res.status(400).json({ error: "Una proposta simile è già in votazione." });
 
-  // Format params
-  const paramsStr = JSON.stringify(params || {});
-  const lawId = Math.random().toString(36).substring(2, 11);
+    // Format params
+    const paramsStr = JSON.stringify(params || {});
+    const lawId = Math.random().toString(36).substring(2, 11);
 
-  // Check Dictatorship
-  if (region.dictatorship) {
-    // Law passes immediately without parliament vote if dictator dictates it
-    // Or if MP proposes it, perhaps dictator still overrides or it passes instantly
-    // We'll let it pass instantly for now
-    db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'passed', ?, ?)")
-      .run(lawId, region.id, user.id, type, paramsStr, Date.now(), Date.now());
+    // Check Dictatorship
+    if (region.dictatorship) {
+      db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'passed', ?, ?)")
+        .run(lawId, region.id, user.id, type, paramsStr, Date.now(), Date.now());
 
-    // Execute immediately
-    try {
       lawDef.execute(region, params);
       return res.json({ success: true, lawId, immediate: true });
-    } catch (e) {
-      console.error(e);
-      return res.status(500).json({ error: "Errore durante l'esecuzione della legge." });
     }
+
+    // Normal Democracy
+    const expiresAt = Date.now() + (lawDef.delayDays * 24 * 60 * 60 * 1000);
+    db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)")
+      .run(lawId, region.id, user.id, type, paramsStr, Date.now(), expiresAt);
+
+    res.json({ success: true, lawId, immediate: false });
+  } catch (err: any) {
+    require('fs').writeFileSync('debug_api.txt', err.stack || err.toString());
+    res.status(500).json({ error: err.message });
   }
-
-  // Normal Democracy
-  const expiresAt = Date.now() + (lawDef.delayDays * 24 * 60 * 60 * 1000);
-  db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)")
-    .run(lawId, region.id, user.id, type, paramsStr, Date.now(), expiresAt);
-
-  res.json({ success: true, lawId, immediate: false });
 });
 
 app.post("/api/parliament/laws/vote", authenticate, (req: any, res) => {
@@ -2883,6 +3410,19 @@ app.post("/api/parliament/laws/vote", authenticate, (req: any, res) => {
   db.prepare("INSERT INTO law_votes (id, lawId, voterId, vote, timestamp) VALUES (?, ?, ?, ?, ?)")
     .run(Math.random().toString(36).substring(2, 11), lawId, user.id, vote, Date.now());
 
+  res.json({ success: true });
+});
+
+app.post("/api/parliament/laws/withdraw", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { lawId } = req.body;
+
+  const law = db.prepare("SELECT proposerId, status FROM laws WHERE id = ?").get(lawId) as any;
+  if (!law) return res.status(404).json({ error: "Legge non trovata." });
+  if (law.status !== 'pending') return res.status(400).json({ error: "Puoi ritirare solo leggi attualmente in votazione." });
+  if (law.proposerId !== user.id) return res.status(403).json({ error: "Solo il creatore della proposta può ritirarla." });
+
+  db.prepare("UPDATE laws SET status = 'withdrawn' WHERE id = ?").run(lawId);
   res.json({ success: true });
 });
 
@@ -3009,10 +3549,46 @@ function checkAndResolveLaws() {
   })();
 }
 
+// Budget Cronjob Automation
+function budgetMaintenanceTick() {
+  const regions = db.prepare("SELECT id, workRestrictions, residencePolicy FROM regions").all() as any[];
+
+  // Cost definitions
+  const borderClosedCost = 100; // $100 per minute
+  const residenceRestrictedCost = 50; // $50 per minute
+
+  db.transaction(() => {
+    for (const r of regions) {
+      let maintenanceCost = 0;
+      let reasons: string[] = [];
+
+      if (r.workRestrictions === 1) {
+        maintenanceCost += borderClosedCost;
+        reasons.push("Confini chiusi");
+      }
+      if (r.residencePolicy !== 'open') {
+        maintenanceCost += residenceRestrictedCost;
+        reasons.push("Residenza controllata");
+      }
+
+      if (maintenanceCost > 0) {
+        try {
+          addBudgetTransaction('REGION', r.id, 'SYSTEM_TICK', 'BORDERS_MAINTENANCE', -maintenanceCost, {}, null, { reasons });
+        } catch (e) {
+          // Budget insufficient, auto-open borders and free residence
+          db.prepare("UPDATE regions SET workRestrictions = 0, residencePolicy = 'open' WHERE id = ?").run(r.id);
+          console.log(`Region ${r.id} ran out of budget for maintenance. Borders auto-opened.`);
+        }
+      }
+    }
+  })();
+}
+
 // Vite middleware for development
 async function startServer() {
   checkAndResolveElections();
   checkAndResolveLaws();
+
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -3034,6 +3610,15 @@ async function startServer() {
     process.exit(1);
   });
 
+  // Global Budget Tick (every 60 seconds)
+  setInterval(() => {
+    try {
+      budgetMaintenanceTick();
+    } catch (e) {
+      console.error("Budget tick error:", e);
+    }
+  }, 60 * 1000);
+
   // Global Economy Tick (every 10 minutes)
   // DISABLED: Regions are now passive containers.
   /*
@@ -3047,6 +3632,12 @@ async function startServer() {
     `).run();
   }, 10 * 60 * 1000);
   */
+
+  // Game Cronjobs (Laws and Elections)
+  setInterval(() => {
+    checkAndResolveElections();
+    checkAndResolveLaws();
+  }, 60 * 1000); // Check every minute
 }
 
 startServer();

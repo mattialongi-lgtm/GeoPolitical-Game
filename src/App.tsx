@@ -44,7 +44,8 @@ import {
   AlertCircle,
   Users,
   Crown,
-  Landmark
+  Landmark,
+  ArrowUpRight
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -861,10 +862,45 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
           <h3 className="text-lg font-black uppercase tracking-tight">Guerre in Corso</h3>
           <div className="grid grid-cols-1 gap-4">
             {wars.active.map((war: any) => {
+              const [expanded, setExpanded] = useState(false);
+              const [deploying, setDeploying] = useState(false);
+
               const isAttackerPatriot = war.attackerCountryIso2 === user.originalNation;
               const isDefenderPatriot = war.defenderCountryIso2 === user.originalNation;
+
+              const totalScore = war.attackerScore + war.defenderScore || 1;
+              const attackerPct = (war.attackerScore / totalScore) * 100;
+              const defenderPct = (war.defenderScore / totalScore) * 100;
+
+              const handleDeploy = async (side: 'attacker' | 'defender', weaponId: string) => {
+                setDeploying(true);
+                try {
+                  const res = await fetch("/api/wars/deploy", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ warId: war.id, side, weaponId })
+                  });
+                  const data = await res.json();
+                  if (data.error) alert(data.error);
+                  else {
+                    fetchData(); // Refresh scores and user resources
+                  }
+                } catch {
+                  alert("Errore durante lo schieramento.");
+                } finally {
+                  setDeploying(false);
+                }
+              };
+
               return (
-                <div key={war.id} className={`bg-white p-6 rounded-[2.5rem] shadow-sm border ${isAttackerPatriot || isDefenderPatriot ? 'border-rose-400 shadow-rose-100/50' : 'border-rose-100'}`}>
+                <div key={war.id}
+                  className={`bg-white p-6 rounded-[2.5rem] shadow-sm border cursor-pointer transition-all ${isAttackerPatriot || isDefenderPatriot ? 'border-rose-400 shadow-rose-100/50 hover:shadow-rose-200' : 'border-slate-100 hover:shadow-md'}`}
+                  onClick={(e) => {
+                    // Prevent toggle if clicking buttons
+                    if ((e.target as HTMLElement).closest('button')) return;
+                    setExpanded(!expanded);
+                  }}>
+
                   {(isAttackerPatriot || isDefenderPatriot) && (
                     <div className="flex justify-center mb-4">
                       <span className="bg-rose-100 text-rose-700 text-[10px] font-black uppercase tracking-widest px-3 py-1 rounded-xl flex items-center gap-1">
@@ -872,21 +908,100 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                       </span>
                     </div>
                   )}
+
                   <div className="flex justify-between items-center mb-4">
                     <div className="text-center flex-1">
                       <p className={`text-2xl font-black ${isAttackerPatriot ? 'text-rose-600' : ''}`}>{war.attackerCountryIso2}</p>
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Attaccante</p>
+                      <p className="text-xs font-black text-indigo-500 mt-1">{war.attackerScore.toLocaleString()}</p>
                     </div>
-                    <div className="px-4 font-black text-slate-300">VS</div>
+                    <div className="px-4 font-black flex flex-col items-center gap-1">
+                      <span className="text-slate-300">VS</span>
+                      {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                    </div>
                     <div className="text-center flex-1">
                       <p className={`text-2xl font-black ${isDefenderPatriot ? 'text-emerald-600' : ''}`}>{war.defenderCountryIso2}</p>
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Difensore</p>
+                      <p className="text-xs font-black text-rose-500 mt-1">{war.defenderScore.toLocaleString()}</p>
                     </div>
                   </div>
-                  <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden flex">
-                    <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${(war.attackerScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
-                    <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${(war.defenderScore / (war.attackerScore + war.defenderScore || 1)) * 100}%` }}></div>
+
+                  <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden flex mb-2 relative">
+                    <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${attackerPct}%` }}></div>
+                    <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${defenderPct}%` }}></div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-1 h-full bg-white/50"></div>
+                    </div>
                   </div>
+
+                  {/* Expanded Deploy Section */}
+                  <AnimatePresence>
+                    {expanded && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden mt-6 pt-6 border-t border-slate-50"
+                      >
+                        <h4 className="text-center text-sm font-black text-slate-800 uppercase tracking-widest mb-4">Schieramento Militare</h4>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                          {/* Attacker Side */}
+                          <div className="space-y-3 bg-indigo-50 rounded-3xl p-4 border border-indigo-100/50">
+                            <h5 className="text-center text-xs font-black text-indigo-700 uppercase mb-3">Supporta Attaccante</h5>
+                            <button disabled={deploying} onClick={() => handleDeploy('attacker', 'infantry')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                              <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs font-black text-indigo-600">+100 Danni</span>
+                                <span className="text-[10px] font-bold text-slate-400">-10⚡ -$50</span>
+                              </div>
+                            </button>
+                            <button disabled={deploying} onClick={() => handleDeploy('attacker', 'tank')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                              <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs font-black text-indigo-600">+1000 Danni</span>
+                                <span className="text-[10px] font-bold text-slate-400">-30⚡ -$500</span>
+                              </div>
+                            </button>
+                            <button disabled={deploying} onClick={() => handleDeploy('attacker', 'airstrike')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                              <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs font-black text-indigo-600">+5000 Danni</span>
+                                <span className="text-[10px] font-bold text-slate-400">-50⚡ -$2000</span>
+                              </div>
+                            </button>
+                          </div>
+
+                          {/* Defender Side */}
+                          <div className="space-y-3 bg-rose-50 rounded-3xl p-4 border border-rose-100/50">
+                            <h5 className="text-center text-xs font-black text-rose-700 uppercase mb-3">Supporta Difensore</h5>
+                            <button disabled={deploying} onClick={() => handleDeploy('defender', 'infantry')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                              <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs font-black text-rose-600">+100 Danni</span>
+                                <span className="text-[10px] font-bold text-slate-400">-10⚡ -$50</span>
+                              </div>
+                            </button>
+                            <button disabled={deploying} onClick={() => handleDeploy('defender', 'tank')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                              <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs font-black text-rose-600">+1000 Danni</span>
+                                <span className="text-[10px] font-bold text-slate-400">-30⚡ -$500</span>
+                              </div>
+                            </button>
+                            <button disabled={deploying} onClick={() => handleDeploy('defender', 'airstrike')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                              <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
+                              <div className="flex flex-col items-end">
+                                <span className="text-xs font-black text-rose-600">+5000 Danni</span>
+                                <span className="text-[10px] font-bold text-slate-400">-50⚡ -$2000</span>
+                              </div>
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                 </div>
               )
             })}
@@ -1736,6 +1851,148 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
   );
 };
 
+const BudgetView = ({ regionId, user, isLeader }: { regionId: string, user: any, isLeader: boolean }) => {
+  const [budgetData, setBudgetData] = useState<any>(null);
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [donateAmount, setDonateAmount] = useState("");
+  const [donateCurrency, setDonateCurrency] = useState("EUR");
+
+  const fetchBudget = async () => {
+    try {
+      const res = await fetch(`/api/budget/REGION/${regionId}`);
+      const data = await res.json();
+      if (!data.error) {
+        setBudgetData(data.budget);
+        setTransactions(data.transactions || []);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchBudget(); }, [regionId]);
+
+  const handleDonate = async () => {
+    if (!donateAmount) return;
+    try {
+      const res = await fetch("/api/budget/donate", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entityId: regionId, amount: donateAmount, currency: donateCurrency })
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert("Donazione effettuata!"); fetchBudget(); setDonateAmount(""); }
+    } catch { alert("Errore"); }
+  };
+
+  const handleAction = async (endpoint: string, body: any) => {
+    if (!confirm("Sei sicuro?")) return;
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert(data.message || "Azione completata"); fetchBudget(); }
+    } catch { alert("Errore"); }
+  }
+
+  if (loading) return <div className="p-8 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500" /></div>;
+  if (!budgetData) return null;
+
+  const resources = JSON.parse(budgetData.resources || '{}');
+
+  return (
+    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+      <div className="flex items-center justify-between border-b border-indigo-50 pb-4">
+        <h3 className="text-lg font-black uppercase tracking-tight text-indigo-900 flex items-center gap-2">
+          <DollarSign className="w-6 h-6 text-indigo-600" /> Bilancio di Stato
+        </h3>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-emerald-50 p-5 rounded-3xl border border-emerald-100 flex flex-col justify-center items-center text-center">
+          <p className="text-[10px] uppercase font-black tracking-widest text-emerald-600 mb-1">Fondi in €</p>
+          <p className="text-xl font-black text-emerald-800">${budgetData.moneyEUR.toLocaleString()}</p>
+        </div>
+        {Object.entries(resources).map(([res, val]: any) => (
+          <div key={res} className="bg-slate-50 p-5 rounded-3xl border border-slate-100 flex flex-col justify-center items-center text-center">
+            <p className="text-[10px] uppercase font-black tracking-widest text-slate-500 mb-1">{res}</p>
+            <p className="text-xl font-black text-slate-800">{val}</p>
+          </div>
+        ))}
+      </div>
+
+      {user?.level >= 60 && (
+        <div className="p-5 bg-slate-50 rounded-3xl border border-slate-100">
+          <p className="text-sm font-black text-slate-800 mb-3 flex items-center gap-2"><ArrowUpRight className="w-4 h-4 text-emerald-500" /> Dona allo Stato</p>
+          <div className="flex flex-col md:flex-row gap-3">
+            <input type="number" min="1" value={donateAmount} onChange={e => setDonateAmount(e.target.value)} placeholder="0" className="flex-1 px-4 py-3 bg-white rounded-xl border border-slate-200 font-bold focus:ring-2 focus:ring-emerald-500 outline-none" />
+            <select value={donateCurrency} onChange={e => setDonateCurrency(e.target.value)} className="px-4 py-3 bg-white rounded-xl border border-slate-200 font-bold outline-none">
+              <option value="EUR">Euro (€)</option>
+              <option value="GOLD">Gold</option>
+            </select>
+            <button onClick={handleDonate} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-colors">Dona</button>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-3 font-bold">Tasso di cambio: 1 Gold = 500.000 €</p>
+        </div>
+      )}
+
+      {isLeader && (
+        <div className="p-5 bg-amber-50 rounded-3xl border border-amber-100">
+          <p className="text-sm font-black text-amber-900 mb-4 flex items-center gap-2"><MapPin className="w-4 h-4 text-amber-600" /> Controlli Budgettari</p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <button onClick={() => handleAction("/api/budget/explore", { regionId, type: 'normal' })} className="px-4 py-3 bg-amber-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm hover:bg-amber-700 flex flex-col items-center">
+              <span>Esplora (Normale)</span>
+              <span className="text-amber-200 mt-1">-$15.000</span>
+            </button>
+            <button onClick={() => handleAction("/api/budget/explore", { regionId, type: 'deep' })} className="px-4 py-3 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm hover:bg-rose-700 flex flex-col items-center">
+              <span>Esplora (Profonda)</span>
+              <span className="text-rose-200 mt-1">-$50.000</span>
+            </button>
+            <button onClick={() => handleAction("/api/budget/clean-radiation", { regionId })} className="px-4 py-3 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm hover:bg-emerald-700 flex flex-col items-center">
+              <span>Pulisci Radiazioni</span>
+              <span className="text-emerald-200 mt-1">-$10.000</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div>
+        <h4 className="text-sm font-black tracking-tight text-slate-800 mb-4">Registro Transazioni</h4>
+        {transactions.length === 0 ? (
+          <p className="text-xs text-slate-400 font-bold text-center py-4">Nessuna transazione recente.</p>
+        ) : (
+          <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+            {transactions.map(t => (
+              <div key={t.id} className="flex justify-between items-center p-4 border border-slate-100 rounded-2xl bg-white hover:bg-slate-50 transition-colors shadow-sm">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[9px] px-2 py-0.5 rounded-md bg-slate-100 font-black uppercase text-slate-500 tracking-widest">{t.type}</span>
+                    <span className="text-[9px] font-black uppercase text-slate-400 tracking-widest">{t.subtype}</span>
+                  </div>
+                  <p className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                    <UserIcon className="w-3 h-3 text-slate-400" /> {t.createdBy || 'Sistema'}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className={`text-sm font-black ${t.moneyDelta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    {t.moneyDelta > 0 ? '+' : ''}{t.moneyDelta.toLocaleString()} €
+                  </p>
+                  <p className="text-[9px] text-slate-400 font-bold mt-1">{new Date(t.createdAt).toLocaleString()}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, handleAction: (a: string, b: any) => void, actionLoading: boolean }) => {
   const { iso2 } = useParams();
@@ -2047,6 +2304,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
           </div>
         </div>
       )}
+
+      {/* Budget e Finanze di Stato */}
+      <BudgetView regionId={region.id} user={user} isLeader={region.ownerUserId === user?.id} />
 
       {/* Actions */}
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
@@ -3677,6 +3937,29 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
   const [selectedLaw, setSelectedLaw] = useState<string | null>(null);
   const [paramsForm, setParamsForm] = useState<any>({});
   const [acting, setActing] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
+  const activeLaws = (laws || []).filter((l: any) => l.status === 'pending');
+  const historyLaws = (laws || []).filter((l: any) => l.status !== 'pending');
+  const displayLaws = showHistory ? historyLaws : activeLaws;
+
+  const handleWithdraw = async (lawId: string) => {
+    if (!window.confirm("Sei sicuro di voler ritirare questa proposta di legge? Verrà spostata nell'archivio storico.")) return;
+    setActing(true);
+    try {
+      const res = await fetch("/api/parliament/laws/withdraw", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lawId })
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        reload();
+      }
+    } catch { alert("Errore di connessione"); }
+    setActing(false);
+  };
 
   // Group laws by category
   const categories = registry ? Object.entries(registry).reduce((acc: any, [key, law]: any) => {
@@ -3810,6 +4093,24 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                     <input type="text" maxLength={22} placeholder="Es: Antigravitia" value={paramsForm.name || ''} onChange={e => setParamsForm({ ...paramsForm, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
                   </div>
                 )}
+                {selectedLaw === 'change_parliament_size' && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Numero Seggi Parlamentari</label>
+                    <input type="number" min="10" max="100" placeholder="Es: 20" value={paramsForm.size || ''} onChange={e => setParamsForm({ ...paramsForm, size: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
+                  </div>
+                )}
+                {selectedLaw === 'change_parliament_duration' && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Durata Mandato (Giorni)</label>
+                    <input type="number" min="3" max="30" placeholder="Es: 5" value={paramsForm.days || ''} onChange={e => setParamsForm({ ...paramsForm, days: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
+                  </div>
+                )}
+                {(selectedLaw === 'declare_war' || selectedLaw === 'peace_treaty') && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Nazione Bersaglio</label>
+                    <input type="text" placeholder="Es: FR, DE, US..." value={paramsForm.targetRegionId || ''} onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500 uppercase" />
+                  </div>
+                )}
                 {selectedLaw === 'transfer_budget' && (
                   <div className="space-y-4">
                     <div>
@@ -3823,7 +4124,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                   </div>
                 )}
                 {/* Fallback for laws with no params like proclaim_dictatorship */}
-                {['change_market_tax', 'change_salary_tax', 'change_state_name', 'transfer_budget'].indexOf(selectedLaw) === -1 && (
+                {['change_market_tax', 'change_salary_tax', 'change_state_name', 'change_parliament_size', 'change_parliament_duration', 'transfer_budget', 'declare_war', 'peace_treaty'].indexOf(selectedLaw) === -1 && (
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-500">
                     Questa legge non richiede parametri aggiuntivi.
                   </div>
@@ -3842,13 +4143,18 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
       )}
 
       <div className="grid gap-4">
-        <h3 className="text-xl font-black text-slate-900 ml-2">Archivio Leggi</h3>
-        {laws.length === 0 && (
+        <div className="flex items-center justify-between ml-2">
+          <h3 className="text-xl font-black text-slate-900">{showHistory ? "Archivio Storico" : "Proposte in Votazione"}</h3>
+          <button onClick={() => setShowHistory(!showHistory)} className="text-xs font-bold text-indigo-500 hover:text-indigo-700 uppercase tracking-widest bg-indigo-50 px-3 py-1.5 rounded-lg transition-colors border border-indigo-100">
+            {showHistory ? "Mostra Attive" : "Vai all'Archivio"}
+          </button>
+        </div>
+        {displayLaws.length === 0 && (
           <div className="text-center p-8 bg-white rounded-3xl border border-slate-100 text-slate-400 font-bold shadow-sm">
-            Non ci sono leggi in archivio per questa nazione.
+            {showHistory ? "Nessuna legge in archivio." : "Nessuna proposta in votazione."}
           </div>
         )}
-        {laws.map((l: any) => {
+        {displayLaws.map((l: any) => {
           const lawDef = registry && registry[l.type];
           const defaultTitle = lawDef ? lawDef.title : l.type;
 
@@ -3867,8 +4173,8 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
               </div>
               <div className="flex-1">
                 <div className="flex items-center flex-wrap gap-2 mb-2">
-                  <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider ${l.status === 'pending' ? 'bg-amber-100 text-amber-700' : l.status === 'passed' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
-                    {l.status === 'pending' ? 'In Votazione' : l.status === 'passed' ? 'Approvata' : 'Respinta'}
+                  <span className={`px-2.5 py-1 rounded text-[10px] font-black uppercase tracking-wider ${l.status === 'pending' ? 'bg-amber-100 text-amber-700' : l.status === 'passed' ? 'bg-emerald-100 text-emerald-700' : l.status === 'withdrawn' ? 'bg-slate-100 text-slate-600' : 'bg-rose-100 text-rose-700'}`}>
+                    {l.status === 'pending' ? 'In Votazione' : l.status === 'passed' ? 'Approvata' : l.status === 'withdrawn' ? 'Ritirata' : 'Respinta'}
                   </span>
                   <span className="text-[10px] font-bold text-slate-400">{new Date(l.createdAt).toLocaleString()}</span>
                 </div>
@@ -3877,9 +4183,12 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                 </h4>
                 <p className="text-sm font-bold text-slate-500 mt-1">Proposta da <span className="text-indigo-500">{l.proposerName}</span></p>
 
-                <div className="flex items-center gap-4 mt-4 text-xs font-black">
+                <div className="flex items-center flex-wrap gap-4 mt-4 text-xs font-black w-full">
                   <span className="text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-lg flex items-center gap-1 border border-emerald-100"><CheckCircle2 className="w-4 h-4" /> {l.yesVotes}</span>
                   <span className="text-rose-600 bg-rose-50 px-3 py-1.5 rounded-lg flex items-center gap-1 border border-rose-100"><Trash2 className="w-4 h-4" /> {l.noVotes}</span>
+                  {l.status === 'pending' && l.proposerId === user?.id && (
+                    <button disabled={acting} onClick={() => handleWithdraw(l.id)} className="ml-auto text-rose-500 hover:bg-rose-50 px-3 py-1.5 rounded-lg border border-rose-100 transition-colors flex items-center gap-1 shrink-0"><Trash2 className="w-4 h-4" /> Ritira</button>
+                  )}
                 </div>
               </div>
 

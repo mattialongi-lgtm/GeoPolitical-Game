@@ -58,6 +58,9 @@ import { auth, googleProvider, isFirebaseConfigured } from "./lib/firebase";
 import { signInWithPopup } from "firebase/auth";
 import { useNavigate, useLocation, Routes, Route, Link, useParams, Navigate } from "react-router-dom";
 import { MoreVertical, Settings, Box, Archive, Filter, ShoppingCart, RefreshCcw } from "lucide-react";
+import { BlocsList } from "./components/BlocsList";
+import { BlocCreate } from "./components/BlocCreate";
+import { BlocDetail } from "./components/BlocDetail";
 
 const geoUrl = "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
@@ -160,7 +163,21 @@ const MAP_COUNTRIES = [
 const WorldMap = ({ onRegionClick, regions }: { onRegionClick: (id: string) => void, regions: Region[] }) => {
   const [search, setSearch] = React.useState("");
   const [open, setOpen] = React.useState(false);
+  const [mapMode, setMapMode] = React.useState<"political" | "blocs">("political");
+  const [blocMap, setBlocMap] = React.useState<Record<string, { blocId: string, blocName: string }>>({});
   const inputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (mapMode === "blocs") {
+      fetch("/api/blocs-map").then(res => res.json()).then(data => {
+        if (Array.isArray(data)) {
+          const map: any = {};
+          data.forEach(m => { map[m.stateId] = m; });
+          setBlocMap(map);
+        }
+      }).catch(console.error);
+    }
+  }, [mapMode]);
 
   const filtered = search.length >= 1
     ? MAP_COUNTRIES.filter(c =>
@@ -176,7 +193,13 @@ const WorldMap = ({ onRegionClick, regions }: { onRegionClick: (id: string) => v
   };
 
   return (
-    <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-xl border border-slate-800">
+    <div className="bg-slate-900 rounded-[2.5rem] overflow-hidden shadow-xl border border-slate-800 relative">
+      <div className="absolute top-4 left-4 z-40">
+        <select value={mapMode} onChange={e => setMapMode(e.target.value as any)} className="bg-slate-800 text-white text-[10px] font-black uppercase px-3 py-2 rounded-xl border border-slate-700 outline-none shadow-lg cursor-pointer">
+          <option value="political">Mappa Politica</option>
+          <option value="blocs">Mappa Blocchi</option>
+        </select>
+      </div>
       {/* Map visual */}
       <ComposableMap projectionConfig={{ scale: 140 }} style={{ width: "100%", height: "auto", display: "block" }}>
         <Geographies geography={geoUrl}>
@@ -187,14 +210,31 @@ const WorldMap = ({ onRegionClick, regions }: { onRegionClick: (id: string) => v
               ).replace(/^-99$/, "").trim().toUpperCase();
               const region = iso2 ? regions.find(r => r.id === iso2) : null;
               const isOwned = region && region.ownerUserId;
+              const blocData = blocMap[iso2];
+
+              let fillColor = "#334155";
+              const colors = ["#ef4444", "#f97316", "#f59e0b", "#84cc16", "#22c55e", "#06b6d4", "#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e"];
+
+              if (mapMode === "political") {
+                if (isOwned) {
+                  const hash = Array.from(region.ownerUserId as string).reduce((acc: number, char: any) => acc + String(char).charCodeAt(0), 0);
+                  fillColor = colors[hash % colors.length];
+                }
+              } else if (mapMode === "blocs") {
+                if (blocData) {
+                  const hash = Array.from(blocData.blocId as string).reduce((acc: number, char: any) => acc + String(char).charCodeAt(0), 0);
+                  fillColor = colors[hash % colors.length];
+                }
+              }
+
               return (
                 <Geography
                   key={geo.rsmKey}
                   geography={geo}
                   style={{
-                    default: { fill: isOwned ? "#6366f1" : "#334155", outline: "none", stroke: "#1e293b", strokeWidth: 0.5 },
-                    hover: { fill: isOwned ? "#6366f1" : "#334155", outline: "none" },
-                    pressed: { fill: isOwned ? "#6366f1" : "#334155", outline: "none" },
+                    default: { fill: fillColor, outline: "none", stroke: "#1e293b", strokeWidth: 0.5 },
+                    hover: { fill: fillColor, outline: "none" },
+                    pressed: { fill: fillColor, outline: "none" },
                   }}
                 />
               );
@@ -221,6 +261,9 @@ const WorldMap = ({ onRegionClick, regions }: { onRegionClick: (id: string) => v
               {filtered.map(c => {
                 const regionData = regions.find(r => r.id === c.iso2);
                 const isOwned = regionData?.ownerUserId;
+                const blocData = blocMap[c.iso2];
+                let subText = isOwned ? " • 🟣 Occupato" : " • Neutrale";
+                if (mapMode === "blocs" && blocData) subText = ` • 🛡️ ${blocData.blocName}`;
                 return (
                   <button
                     key={c.iso2}
@@ -230,7 +273,7 @@ const WorldMap = ({ onRegionClick, regions }: { onRegionClick: (id: string) => v
                     <span className="text-xl shrink-0">{c.flag}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-black text-white truncate">{c.name}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">{c.iso2}{isOwned ? " • 🟣 Occupato" : " • Neutrale"}</p>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase">{c.iso2}{subText}</p>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
                   </button>
@@ -479,10 +522,12 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
     return () => clearInterval(iv);
   }, []);
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll to bottom only inside the container
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (listRef.current) {
+      listRef.current.scrollTop = listRef.current.scrollHeight;
+    }
+  }, [messages.length]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2985,6 +3030,9 @@ export default function App() {
                     <button onClick={() => { navigate("/party"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Users className="w-4 h-4 text-purple-500" /> PARTITO
                     </button>
+                    <button onClick={() => { navigate("/blocs"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                      <Shield className="w-4 h-4 text-indigo-500" /> BLOCCHI
+                    </button>
                     <button onClick={() => { navigate("/produce"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                       <Hammer className="w-4 h-4 text-orange-500" /> PRODUCI ARMI
                     </button>
@@ -3039,6 +3087,9 @@ export default function App() {
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
           <Route path="/nation" element={<NationView user={user} fetchData={fetchData} />} />
           <Route path="/parliament" element={<ParliamentView user={user} />} />
+          <Route path="/blocs" element={<BlocsList />} />
+          <Route path="/blocs/create" element={<BlocCreate currentUser={user} regions={regions} />} />
+          <Route path="/blocs/:id" element={<BlocDetail currentUser={user} regions={regions} />} />
         </Routes>
       </main>
 

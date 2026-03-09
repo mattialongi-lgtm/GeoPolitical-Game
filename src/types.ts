@@ -211,3 +211,36 @@ export const PERKS_DEFS = [
     baseTimeGoldSec: 1200,
   },
 ];
+
+export interface Bloc {
+  id: string;
+  name: string;
+  logo: string;
+  description: string;
+  ownerStateId: string;
+  createdAt: number;
+}
+
+export interface BlocMembership {
+  blocId: string;
+  stateId: string;
+  status: 'active';
+  joinedAt: number;
+}
+
+export interface BlocApplication {
+  id: string;
+  blocId: string;
+  stateId: string;
+  createdAt: number;
+  status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface BlocRegulationProposal {
+  id: string;
+  blocId: string;
+  type: 'openBorders' | 'defaultMilitaryAgreement';
+  proposedValue: number;
+  createdAt: number;
+  status: 'pending' | 'approved' | 'rejected';
+}

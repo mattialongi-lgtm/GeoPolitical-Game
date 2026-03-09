@@ -583,6 +583,60 @@ db.exec(`
     metadata TEXT DEFAULT '{}',
     FOREIGN KEY(budgetId) REFERENCES budgets(id)
   );
+
+  CREATE TABLE IF NOT EXISTS blocs (
+    id TEXT PRIMARY KEY,
+    name TEXT UNIQUE,
+    logo TEXT,
+    description TEXT,
+    ownerStateId TEXT,
+    createdAt INTEGER
+  );
+
+  CREATE TABLE IF NOT EXISTS bloc_memberships (
+    blocId TEXT,
+    stateId TEXT,
+    status TEXT,
+    joinedAt INTEGER,
+    PRIMARY KEY(blocId, stateId),
+    FOREIGN KEY(blocId) REFERENCES blocs(id),
+    FOREIGN KEY(stateId) REFERENCES regions(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS bloc_applications (
+    id TEXT PRIMARY KEY,
+    blocId TEXT,
+    stateId TEXT,
+    createdAt INTEGER,
+    status TEXT,
+    FOREIGN KEY(blocId) REFERENCES blocs(id),
+    FOREIGN KEY(stateId) REFERENCES regions(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS bloc_votes (
+    targetId TEXT,
+    voterStateId TEXT,
+    choice INTEGER,
+    createdAt INTEGER,
+    PRIMARY KEY(targetId, voterStateId)
+  );
+
+  CREATE TABLE IF NOT EXISTS bloc_regulations (
+    blocId TEXT PRIMARY KEY,
+    openBorders INTEGER DEFAULT 0,
+    defaultMilitaryAgreement INTEGER DEFAULT 0,
+    FOREIGN KEY(blocId) REFERENCES blocs(id)
+  );
+
+  CREATE TABLE IF NOT EXISTS bloc_regulation_proposals (
+    id TEXT PRIMARY KEY,
+    blocId TEXT,
+    type TEXT,
+    proposedValue INTEGER,
+    createdAt INTEGER,
+    status TEXT,
+    FOREIGN KEY(blocId) REFERENCES blocs(id)
+  );
 `);
 
 // Seed initial regions if empty
@@ -1342,8 +1396,19 @@ app.post("/api/actions/travel", authenticate, (req: any, res) => {
   if (!region) return res.status(404).json({ error: "Regione inesistente." });
 
   // Travel Fee Logic (only if borders are closed/restricted)
-  const isRestricted = region.workRestrictions === 1;
-  const travelFee = region.travelFee || 0;
+  let isRestricted = region.workRestrictions === 1;
+  let travelFee = region.travelFee || 0;
+
+  // Bloc Open Borders Check
+  const userBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(user.regionId) as any;
+  const targetBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(regionId) as any;
+  if (userBloc && targetBloc && userBloc.blocId === targetBloc.blocId) {
+    const blocReg = db.prepare("SELECT openBorders FROM bloc_regulations WHERE blocId = ?").get(userBloc.blocId) as any;
+    if (blocReg && blocReg.openBorders) {
+      isRestricted = false;
+      travelFee = 0;
+    }
+  }
 
   if (isRestricted && travelFee > 0) {
     if (user.money < travelFee) {
@@ -1612,6 +1677,13 @@ app.post("/api/actions/attack", authenticate, (req: any, res) => {
 
   const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(regionId) as any;
   if (!region) return res.status(404).json({ error: "Region not found" });
+
+  // Bloc restriction
+  const attackerBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(user.regionId) as any;
+  const defenderBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(regionId) as any;
+  if (attackerBloc && defenderBloc && attackerBloc.blocId === defenderBloc.blocId) {
+    return res.status(403).json({ error: "Non puoi dichiarare guerra a un membro dello stesso Blocco Geopolitico." });
+  }
 
   // Combined damage formula: FORZA (+5%/lv) + ISTRUZIONE (+2%/lv) + RESISTENZA (+3%/lv)
   const forzaBonus = (perks['FORZA'] || 0) * 0.05;
@@ -2943,6 +3015,303 @@ app.get("/api/parliament", authenticate, (req: any, res) => {
 // STATE LAWS REGISTRY
 // ==========================================
 
+// ==========================================
+// BLOCS API
+// ==========================================
+
+app.get("/api/blocs", authenticate, (req: any, res) => {
+  try {
+    // Return blocs that have >= 2 active members
+    const blocs = db.prepare(`
+      SELECT b.*, u.username as ownerName, 
+             (SELECT COUNT(*) FROM bloc_memberships m WHERE m.blocId = b.id AND m.status = 'active') as memberCount
+      FROM blocs b
+      LEFT JOIN regions r ON b.ownerStateId = r.id
+      LEFT JOIN users u ON r.ownerUserId = u.id
+      HAVING memberCount >= 2
+      ORDER BY memberCount DESC, b.createdAt DESC
+    `).all();
+    res.json(blocs);
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nel caricamento dei blocchi." });
+  }
+});
+
+app.get("/api/blocs-map", (req, res) => {
+  try {
+    const memberships = db.prepare(`
+      SELECT m.stateId, m.blocId, b.name as blocName 
+      FROM bloc_memberships m 
+      JOIN blocs b ON m.blocId = b.id 
+      WHERE m.status = 'active'
+    `).all();
+    res.json(memberships);
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore mappa blocchi." });
+  }
+});
+
+app.get("/api/blocs/:id", authenticate, (req: any, res) => {
+  try {
+    const user = req.user;
+    const blocId = req.params.id;
+    const bloc = db.prepare(`
+      SELECT b.*, u.username as ownerName, r.name as ownerStateName
+      FROM blocs b
+      LEFT JOIN regions r ON b.ownerStateId = r.id
+      LEFT JOIN users u ON r.ownerUserId = u.id
+      WHERE b.id = ?
+    `).get(blocId) as any;
+
+    if (!bloc) return res.status(404).json({ error: "Blocco non trovato." });
+
+    const members = db.prepare(`
+      SELECT m.*, r.name as stateName, u.username as leaderName, r.ownerUserId
+      FROM bloc_memberships m
+      JOIN regions r ON m.stateId = r.id
+      LEFT JOIN users u ON r.ownerUserId = u.id
+      WHERE m.blocId = ? AND m.status = 'active'
+    `).all(blocId) as any[];
+
+    const regulations = db.prepare("SELECT * FROM bloc_regulations WHERE blocId = ?").get(blocId) || { openBorders: 0, defaultMilitaryAgreement: 0 };
+
+    // Check se user is a leader of any member state
+    const isMemberLeader = members.some(m => m.ownerUserId === user.id);
+
+    let applications = [];
+    let proposals = [];
+
+    if (isMemberLeader) {
+      applications = db.prepare(`
+        SELECT a.*, r.name as stateName, u.username as leaderName
+        FROM bloc_applications a
+        JOIN regions r ON a.stateId = r.id
+        LEFT JOIN users u ON r.ownerUserId = u.id
+        WHERE a.blocId = ? AND a.status = 'pending'
+      `).all(blocId);
+
+      for (const app of applications as any[]) {
+        app.votes = db.prepare("SELECT * FROM bloc_votes WHERE targetId = ?").all(app.id);
+      }
+
+      proposals = db.prepare("SELECT * FROM bloc_regulation_proposals WHERE blocId = ? AND status = 'pending'").all(blocId);
+      for (const prop of proposals as any[]) {
+        prop.votes = db.prepare("SELECT * FROM bloc_votes WHERE targetId = ?").all(prop.id);
+      }
+    }
+
+    res.json({ bloc, members, regulations, applications, proposals, isMemberLeader });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nel caricamento dei dettagli del blocco." });
+  }
+});
+
+app.post("/api/blocs/create", authenticate, (req: any, res) => {
+  try {
+    const user = req.user;
+    const { name, description, logo, stateId } = req.body;
+
+    if (!name || name.trim().length === 0) return res.status(400).json({ error: "Nome obbligatorio." });
+    if (!stateId) return res.status(400).json({ error: "Devi selezionare uno Stato da te guidato." });
+
+    const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(stateId) as any;
+    if (!region || region.ownerUserId !== user.id) {
+      return res.status(403).json({ error: "Solo il Leader dello Stato può creare un blocco a suo nome." });
+    }
+
+    const existingMembership = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(stateId);
+    if (existingMembership) {
+      return res.status(400).json({ error: "Questo Stato fa già parte di un blocco." });
+    }
+
+    const id = Math.random().toString(36).substring(2, 11);
+
+    db.transaction(() => {
+      db.prepare("INSERT INTO blocs (id, name, logo, description, ownerStateId, createdAt) VALUES (?, ?, ?, ?, ?, ?)")
+        .run(id, name.trim(), logo || '', description || '', stateId, Date.now());
+
+      db.prepare("INSERT INTO bloc_memberships (blocId, stateId, status, joinedAt) VALUES (?, ?, 'active', ?)")
+        .run(id, stateId, Date.now());
+
+      db.prepare("INSERT OR IGNORE INTO bloc_regulations (blocId, openBorders, defaultMilitaryAgreement) VALUES (?, 0, 0)")
+        .run(id);
+    })();
+
+    res.json({ success: true, blocId: id });
+  } catch (err: any) {
+    if (err.message.includes("UNIQUE")) return res.status(409).json({ error: "Esiste già un blocco con questo nome." });
+    res.status(500).json({ error: "Errore durante la creazione del blocco." });
+  }
+});
+
+app.post("/api/blocs/:id/apply", authenticate, (req: any, res) => {
+  try {
+    const user = req.user;
+    const blocId = req.params.id;
+    const { stateId } = req.body;
+
+    if (!stateId) return res.status(400).json({ error: "Stato non specificato." });
+
+    const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(stateId) as any;
+    if (!region || region.ownerUserId !== user.id) return res.status(403).json({ error: "Solo il Leader dello Stato può richiederne l'ingresso." });
+
+    const existingMembership = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(stateId);
+    if (existingMembership) return res.status(400).json({ error: "Questo Stato fa già parte di un blocco." });
+
+    const existingApp = db.prepare("SELECT id FROM bloc_applications WHERE blocId = ? AND stateId = ? AND status = 'pending'").get(blocId, stateId);
+    if (existingApp) return res.status(400).json({ error: "Hai già una candidatura in sospeso per questo blocco." });
+
+    const id = Math.random().toString(36).substring(2, 11);
+    db.prepare("INSERT INTO bloc_applications (id, blocId, stateId, createdAt, status) VALUES (?, ?, ?, ?, 'pending')")
+      .run(id, blocId, stateId, Date.now());
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore durante la candidatura." });
+  }
+});
+
+app.post("/api/blocs/applications/:id/vote", authenticate, (req: any, res) => {
+  try {
+    const user = req.user;
+    const appId = req.params.id;
+    const { voterStateId, choice } = req.body;
+    const voteChoice = choice ? 1 : 0;
+
+    const application = db.prepare("SELECT * FROM bloc_applications WHERE id = ?").get(appId) as any;
+    if (!application) return res.status(404).json({ error: "Candidatura non trovata." });
+    if (application.status !== 'pending') return res.status(400).json({ error: "Questa candidatura non è più in sospeso." });
+
+    const blocId = application.blocId;
+
+    const membership = db.prepare("SELECT status FROM bloc_memberships WHERE blocId = ? AND stateId = ? AND status = 'active'").get(blocId, voterStateId);
+    if (!membership) return res.status(403).json({ error: "Lo Stato votante non è un membro attivo di questo blocco." });
+
+    const voterRegion = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(voterStateId) as any;
+    if (!voterRegion || voterRegion.ownerUserId !== user.id) return res.status(403).json({ error: "Solo il Leader dello Stato può votare." });
+
+    const existingVote = db.prepare("SELECT * FROM bloc_votes WHERE targetId = ? AND voterStateId = ?").get(appId, voterStateId);
+    if (existingVote) return res.status(400).json({ error: "Questo Stato ha già votato per questa candidatura." });
+
+    db.transaction(() => {
+      db.prepare("INSERT INTO bloc_votes (targetId, voterStateId, choice, createdAt) VALUES (?, ?, ?, ?)")
+        .run(appId, voterStateId, voteChoice, Date.now());
+
+      const activeMembersCount = (db.prepare("SELECT COUNT(*) as c FROM bloc_memberships WHERE blocId = ? AND status = 'active'").get(blocId) as any).c;
+      const votes = db.prepare("SELECT choice, COUNT(*) as c FROM bloc_votes WHERE targetId = ? GROUP BY choice").all(appId) as any[];
+
+      const yesVotes = votes.find(v => v.choice === 1)?.c || 0;
+      const noVotes = votes.find(v => v.choice === 0)?.c || 0;
+      const totalVotes = yesVotes + noVotes;
+
+      const requiredToPass = Math.floor(activeMembersCount / 2) + 1;
+      const requiredToReject = activeMembersCount - requiredToPass + 1;
+
+      if (yesVotes >= requiredToPass) {
+        db.prepare("UPDATE bloc_applications SET status = 'approved' WHERE id = ?").run(appId);
+        db.prepare("INSERT INTO bloc_memberships (blocId, stateId, status, joinedAt) VALUES (?, ?, 'active', ?)")
+          .run(blocId, application.stateId, Date.now());
+      } else if (noVotes >= requiredToReject || totalVotes === activeMembersCount) {
+        db.prepare("UPDATE bloc_applications SET status = 'rejected' WHERE id = ?").run(appId);
+      }
+    })();
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore durante il voto." });
+  }
+});
+
+app.post("/api/blocs/:id/regulations/propose", authenticate, (req: any, res) => {
+  try {
+    const user = req.user;
+    const blocId = req.params.id;
+    const { proposerStateId, type, proposedValue } = req.body;
+    const value = proposedValue ? 1 : 0;
+
+    if (!['openBorders', 'defaultMilitaryAgreement'].includes(type)) {
+      return res.status(400).json({ error: "Tipo di regolamento non valido." });
+    }
+
+    const membership = db.prepare("SELECT status FROM bloc_memberships WHERE blocId = ? AND stateId = ? AND status = 'active'").get(blocId, proposerStateId);
+    if (!membership) return res.status(403).json({ error: "Solo i membri attivi possono proporre regolamenti." });
+
+    const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(proposerStateId) as any;
+    if (!region || region.ownerUserId !== user.id) return res.status(403).json({ error: "Solo il Leader può proporre regolamenti." });
+
+    const existingProp = db.prepare("SELECT id FROM bloc_regulation_proposals WHERE blocId = ? AND type = ? AND status = 'pending'").get(blocId, type);
+    if (existingProp) return res.status(400).json({ error: "C'è già una proposta in sospeso per questo regolamento." });
+
+    const id = Math.random().toString(36).substring(2, 11);
+    db.transaction(() => {
+      db.prepare("INSERT INTO bloc_regulation_proposals (id, blocId, type, proposedValue, createdAt, status) VALUES (?, ?, ?, ?, ?, 'pending')")
+        .run(id, blocId, type, value, Date.now());
+      db.prepare("INSERT INTO bloc_votes (targetId, voterStateId, choice, createdAt) VALUES (?, ?, 1, ?)")
+        .run(id, proposerStateId, Date.now());
+    })();
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore durante la proposta." });
+  }
+});
+
+app.post("/api/blocs/regulations/proposals/:id/vote", authenticate, (req: any, res) => {
+  try {
+    const user = req.user;
+    const propId = req.params.id;
+    const { voterStateId, choice } = req.body;
+    const voteChoice = choice ? 1 : 0;
+
+    const proposal = db.prepare("SELECT * FROM bloc_regulation_proposals WHERE id = ?").get(propId) as any;
+    if (!proposal) return res.status(404).json({ error: "Proposta non trovata." });
+    if (proposal.status !== 'pending') return res.status(400).json({ error: "Questa proposta non è in votazione." });
+
+    const blocId = proposal.blocId;
+
+    const membership = db.prepare("SELECT status FROM bloc_memberships WHERE blocId = ? AND stateId = ? AND status = 'active'").get(blocId, voterStateId);
+    if (!membership) return res.status(403).json({ error: "Lo Stato votante non è membro di questo blocco." });
+
+    const voterRegion = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(voterStateId) as any;
+    if (!voterRegion || voterRegion.ownerUserId !== user.id) return res.status(403).json({ error: "Solo il Leader può votare." });
+
+    const existingVote = db.prepare("SELECT * FROM bloc_votes WHERE targetId = ? AND voterStateId = ?").get(propId, voterStateId);
+    if (existingVote) return res.status(400).json({ error: "Questo Stato ha già votato." });
+
+    db.transaction(() => {
+      db.prepare("INSERT INTO bloc_votes (targetId, voterStateId, choice, createdAt) VALUES (?, ?, ?, ?)")
+        .run(propId, voterStateId, voteChoice, Date.now());
+
+      const activeMembersCount = (db.prepare("SELECT COUNT(*) as c FROM bloc_memberships WHERE blocId = ? AND status = 'active'").get(blocId) as any).c;
+      const votes = db.prepare("SELECT choice, COUNT(*) as c FROM bloc_votes WHERE targetId = ? GROUP BY choice").all(propId) as any[];
+
+      const yesVotes = votes.find(v => v.choice === 1)?.c || 0;
+      const noVotes = votes.find(v => v.choice === 0)?.c || 0;
+      const totalVotes = yesVotes + noVotes;
+
+      const requiredToPass = Math.floor(activeMembersCount / 2) + 1;
+      const requiredToReject = activeMembersCount - requiredToPass + 1;
+
+      if (yesVotes >= requiredToPass) {
+        db.prepare("UPDATE bloc_regulation_proposals SET status = 'approved' WHERE id = ?").run(propId);
+        const fieldName = proposal.type === 'openBorders' ? 'openBorders' : 'defaultMilitaryAgreement';
+        // Needs dynamic column name properly, but since types are hardcoded to these 2 values it's fine
+        if (fieldName === 'openBorders') {
+          db.prepare("UPDATE bloc_regulations SET openBorders = ? WHERE blocId = ?").run(proposal.proposedValue, blocId);
+        } else {
+          db.prepare("UPDATE bloc_regulations SET defaultMilitaryAgreement = ? WHERE blocId = ?").run(proposal.proposedValue, blocId);
+        }
+      } else if (noVotes >= requiredToReject || totalVotes === activeMembersCount) {
+        db.prepare("UPDATE bloc_regulation_proposals SET status = 'rejected' WHERE id = ?").run(propId);
+      }
+    })();
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore durante il voto." });
+  }
+});
+
 export const LawRegistry: Record<string, {
   category: string;
   icon: string;
@@ -3217,6 +3586,13 @@ export const LawRegistry: Record<string, {
       if (params.targetRegionId === region.id) return "Non puoi dichiarare guerra a te stesso.";
       const existingWar = db.prepare("SELECT id FROM wars WHERE status = 'active' AND ((attackerCountryIso2 = ? AND defenderCountryIso2 = ?) OR (attackerCountryIso2 = ? AND defenderCountryIso2 = ?))").get(region.id, params.targetRegionId, params.targetRegionId, region.id);
       if (existingWar) return "Sei già in guerra con questa nazione.";
+
+      // Bloc restriction
+      const attackerBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(region.id) as any;
+      const defenderBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(params.targetRegionId) as any;
+      if (attackerBloc && defenderBloc && attackerBloc.blocId === defenderBloc.blocId) {
+        return "Non puoi dichiarare guerra a un membro dello stesso Blocco Geopolitico.";
+      }
 
       const activeWars = db.prepare("SELECT COUNT(*) as c FROM wars WHERE status = 'active' AND (attackerCountryIso2 = ? OR defenderCountryIso2 = ?)").get(region.id, region.id) as any;
       const baseCost = 50000;

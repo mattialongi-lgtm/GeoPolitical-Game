@@ -2101,7 +2101,8 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
   const [region, setRegion] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [apps, setApps] = useState<any[]>([]);
-  const [agreements, setAgreements] = useState<any[]>([]);
+  const [agreements, setAgreements] = useState<{ outgoing: any[]; incoming: any[] }>({ outgoing: [], incoming: [] });
+  const [agreementTargetId, setAgreementTargetId] = useState("");
   const [activeTab, setActiveTab] = useState<'info' | 'government' | 'leader'>('info');
 
   const fetchCountryDetail = async () => {
@@ -2124,7 +2125,13 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
   const fetchAgreements = async () => {
     try {
       const res = await fetch(`/api/countries/${iso2}/agreements`);
-      if (res.ok) setAgreements(await res.json());
+      if (res.ok) {
+        const data = await res.json();
+        setAgreements({
+          outgoing: data?.outgoing || [],
+          incoming: data?.incoming || []
+        });
+      }
     } catch (e) {
       console.error(e);
     }
@@ -2186,11 +2193,31 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
     }
   };
 
+  const handleProposeMigrationLaw = async (type: 'migration_agreement' | 'revoke_migration_agreement', partnerId?: string) => {
+    const targetRegionId = (partnerId || agreementTargetId).toUpperCase().trim();
+    if (!targetRegionId) return alert("Seleziona uno Stato target.");
+    try {
+      const res = await fetch('/api/parliament/laws/propose', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type, params: { targetRegionId } })
+      });
+      const data = await res.json();
+      if (data.error) return alert(data.error);
+      alert(type === 'migration_agreement' ? 'Proposta legge inviata.' : 'Proposta revoca inviata.');
+      setAgreementTargetId('');
+      fetchAgreements();
+    } catch {
+      alert('Errore di connessione.');
+    }
+  };
+
   const flag = COUNTRY_FLAGS[iso2?.toUpperCase() || ""] || "🌍";
   const resources = Array.isArray(region.resources) ? region.resources : [];
   const health = region.health || 1;
   const education = region.education || 1;
   const military = region.military || 1;
+  const canManageMigration = user?.id === region.ownerUserId || user?.id === region.foreignMinisterId;
 
   return (
     <motion.div
@@ -2289,13 +2316,13 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
 
                 <div className="mt-6 flex flex-col gap-2">
                   <button
-                    onClick={() => navigate(`/leader/${iso2}`)}
+                    onClick={() => navigate(`/leader/${(iso2 || '').toUpperCase()}`)}
                     className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
                   >
                     <Crown className="w-4 h-4" /> Pagina Leader & Elezioni
                   </button>
                   <button
-                    onClick={() => navigate(`/ministers/${iso2}`)}
+                    onClick={() => navigate(`/ministers/${(iso2 || '').toUpperCase()}`)}
                     className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
                   >
                     <Briefcase className="w-4 h-4" /> Ministri & Incarichi
@@ -2377,28 +2404,38 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
             <h3 className="text-lg font-black uppercase tracking-tight text-indigo-900 border-b border-indigo-50 pb-2">Ufficio Immigrazione</h3>
 
             {/* Accordi di Migrazione */}
-            <div className="grid grid-cols-1 gap-2 mb-4">
-              {agreements.length > 0 ? (
-                agreements.map((ag: any) => (
-                  <div key={ag.id} className="flex items-center justify-between p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xl">🤝</span>
-                      <div>
-                        <p className="text-xs font-black text-indigo-900 uppercase">Accordo con {ag.partnerName}</p>
-                        <p className="text-[10px] font-bold text-indigo-500 uppercase">
-                          {ag.type === 'BILATERAL' ? 'SISTEMA BILATERALE' : (ag.fromStateId === iso2?.toUpperCase() ? `APERTO VERSO ${ag.partnerName}` : `CITTADINI DI ${iso2} AMMESSI`)}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="bg-white px-3 py-1 rounded-lg border border-indigo-100 text-[10px] font-black text-indigo-600">ATTIVO</div>
+            <div className="space-y-3 mb-4">
+              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Accordi di migrazione in uscita</p>
+              {agreements.outgoing.length > 0 ? agreements.outgoing.map((ag: any) => (
+                <div key={ag.id} className="flex items-center justify-between p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
+                  <div>
+                    <p className="text-xs font-black text-indigo-900 uppercase">Verso {ag.partnerName}</p>
+                    <p className="text-[10px] font-bold text-indigo-500 uppercase">Attivato: {new Date(ag.activatedAt || ag.createdAt).toLocaleDateString()}</p>
                   </div>
-                ))
-              ) : (
-                <div className="p-4 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase italic">Nessun accordo di migrazione attivo</p>
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${ag.agreementType === 'BILATERAL' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{ag.agreementType === 'BILATERAL' ? 'Bilateral' : 'Unilateral'}</span>
+                    {canManageMigration && (
+                      <button onClick={() => handleProposeMigrationLaw('revoke_migration_agreement', ag.partnerId)} className="px-2 py-1 rounded-lg text-[10px] font-black bg-rose-100 text-rose-700">Revoca</button>
+                    )}
+                  </div>
                 </div>
-              )}
+              )) : <div className="p-3 bg-slate-50 rounded-xl text-[11px] font-bold text-slate-400">Nessun accordo attivo in uscita.</div>}
+
+              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500 pt-1">Accordi di migrazione in entrata</p>
+              {agreements.incoming.length > 0 ? agreements.incoming.map((ag: any) => (
+                <div key={ag.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <p className="text-xs font-black text-slate-700">{ag.partnerName} apre l'ingresso ai tuoi cittadini</p>
+                  <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${ag.agreementType === 'BILATERAL' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{ag.agreementType === 'BILATERAL' ? 'Bilateral' : 'Unilateral'}</span>
+                </div>
+              )) : <div className="p-3 bg-slate-50 rounded-xl text-[11px] font-bold text-slate-400">Nessun accordo in entrata.</div>}
             </div>
+
+            {canManageMigration && (
+              <div className="flex gap-2 items-center">
+                <input value={agreementTargetId} onChange={(e) => setAgreementTargetId(e.target.value.toUpperCase())} placeholder="Stato target (ISO)" className="flex-1 bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-black uppercase" />
+                <button onClick={() => handleProposeMigrationLaw('migration_agreement')} className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase">Proponi accordo</button>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
@@ -4458,4 +4495,3 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
     </div>
   );
 };
-

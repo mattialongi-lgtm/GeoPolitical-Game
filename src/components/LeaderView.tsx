@@ -49,7 +49,7 @@ interface Application {
 
 export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionId: propRegionId, user }) => {
     const { iso2 } = useParams();
-    const regionId = propRegionId || iso2;
+    const regionId = (propRegionId || iso2 || '').toUpperCase();
     const [region, setRegion] = useState<Region | null>(null);
     const [orders, setOrders] = useState<Order[]>([]);
     const [applications, setApplications] = useState<Application[]>([]);

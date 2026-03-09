@@ -50,6 +50,7 @@ interface Application {
 
 export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const { iso2 } = useParams();
+    const stateId = (iso2 || '').toUpperCase();
     const navigate = useNavigate();
     const [region, setRegion] = useState<Region | null>(null);
     const [ministers, setMinisters] = useState<Minister[]>([]);
@@ -62,9 +63,9 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const fetchData = async () => {
         try {
             const [rRes, mRes, aRes] = await Promise.all([
-                fetch(`/api/regions/${iso2}`),
-                fetch(`/api/ministers/${iso2}`),
-                fetch(`/api/actions/applications?regionId=${iso2}`)
+                fetch(`/api/regions/${stateId}`),
+                fetch(`/api/ministers/${stateId}`),
+                fetch(`/api/actions/applications?regionId=${stateId}`)
             ]);
             setRegion(await rRes.json());
             const mData = await mRes.json();
@@ -79,7 +80,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
 
     useEffect(() => {
         fetchData();
-    }, [iso2]);
+    }, [stateId]);
 
     const isLeader = region?.leaderUserId === user?.id;
     const isEconMinister = region?.economicAdviserId === user?.id;
@@ -92,7 +93,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
             const res = await fetch('/api/ministers/assign', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                body: JSON.stringify({ stateId: iso2, userId: targetUserId, role: selectedRole })
+                body: JSON.stringify({ stateId, userId: targetUserId, role: selectedRole })
             });
             const data = await res.json();
             if (data.error) alert(data.error);
@@ -112,7 +113,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
             const res = await fetch('/api/ministers/revoke', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                body: JSON.stringify({ stateId: iso2, role })
+                body: JSON.stringify({ stateId, role })
             });
             if (res.ok) fetchData();
         } finally {
@@ -127,7 +128,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    stateId: iso2,
+                    stateId,
                     active: !region?.sanctionsActive,
                     scope
                 })

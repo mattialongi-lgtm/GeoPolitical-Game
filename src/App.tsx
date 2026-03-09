@@ -2316,13 +2316,13 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
 
                 <div className="mt-6 flex flex-col gap-2">
                   <button
-                    onClick={() => navigate(`/leader/${iso2}`)}
+                    onClick={() => navigate(`/leader/${(iso2 || '').toUpperCase()}`)}
                     className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
                   >
                     <Crown className="w-4 h-4" /> Pagina Leader & Elezioni
                   </button>
                   <button
-                    onClick={() => navigate(`/ministers/${iso2}`)}
+                    onClick={() => navigate(`/ministers/${(iso2 || '').toUpperCase()}`)}
                     className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
                   >
                     <Briefcase className="w-4 h-4" /> Ministri & Incarichi

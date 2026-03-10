@@ -1167,7 +1167,7 @@ app.get("/api/me", authenticate, (req: any, res) => {
 app.get("/api/regions", authenticate, (req, res) => {
   const regions = db.prepare(`
     SELECT r.*, u.username as ownerName, l.username as leaderName, l.level as leaderLevel,
-           (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
+           (SELECT COUNT(*) FROM factories WHERE regionId = r.id) as factoriesCount
     FROM regions r 
     LEFT JOIN users u ON r.ownerUserId = u.id
     LEFT JOIN users l ON r.leaderUserId = l.id
@@ -1180,7 +1180,7 @@ app.get("/api/regions/:id", authenticate, (req, res) => {
     const regionId = (req.params.id || '').toUpperCase().replace('NATION_', '');
     const region = db.prepare(`
       SELECT r.*, u.username as ownerName, l.username as leaderName, l.level as leaderLevel,
-             (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
+             (SELECT COUNT(*) FROM factories WHERE regionId = r.id) as factoriesCount
       FROM regions r 
       LEFT JOIN users u ON r.ownerUserId = u.id
       LEFT JOIN users l ON r.leaderUserId = l.id
@@ -1209,7 +1209,7 @@ app.get("/api/countries/:iso2", async (req: any, res) => {
     // 1. Get base data from SQLite
     let region = db.prepare(`
       SELECT r.*, u.username as ownerName, l.username as leaderName, l.level as leaderLevel,
-             (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
+             (SELECT COUNT(*) FROM factories WHERE regionId = r.id) as factoriesCount
       FROM regions r 
       LEFT JOIN users u ON r.ownerUserId = u.id
       LEFT JOIN users l ON r.leaderUserId = l.id
@@ -1222,7 +1222,7 @@ app.get("/api/countries/:iso2", async (req: any, res) => {
         .run(iso2.toUpperCase(), iso2.toUpperCase(), 1000000, 50);
       region = db.prepare(`
         SELECT r.*, u.username as ownerName,
-               (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
+               (SELECT COUNT(*) FROM factories WHERE regionId = r.id) as factoriesCount
         FROM regions r 
         LEFT JOIN users u ON r.ownerUserId = u.id
         WHERE r.id = ?
@@ -2482,7 +2482,12 @@ const FACTORY_CREATE_COST = {
 
 app.get("/api/factories", authenticate, (req: any, res) => {
   const { regionId, ownerId } = req.query;
-  let query = "SELECT f.*, u.username as ownerName FROM factories f JOIN users u ON f.ownerUserId = u.id WHERE 1=1";
+  let query = `
+    SELECT f.*, u.username as ownerName 
+    FROM factories f 
+    LEFT JOIN users u ON f.ownerUserId = u.id 
+    WHERE 1=1
+  `;
   const params: any[] = [];
 
   if (regionId) {

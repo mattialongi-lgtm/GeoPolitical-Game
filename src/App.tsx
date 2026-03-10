@@ -96,6 +96,30 @@ const formatRemaining = (ms: number): string => {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
+const WarTimer = ({ endsAt }: { endsAt: number | any }) => {
+  const ts = getTs(endsAt);
+  const [remaining, setRemaining] = useState(() => Math.max(0, ts - Date.now()));
+
+  useEffect(() => {
+    const tick = () => {
+      const r = Math.max(0, ts - Date.now());
+      setRemaining(r);
+    };
+    if (Math.max(0, ts - Date.now()) <= 0) return;
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [endsAt]);
+
+  return (
+    <div className="flex items-center gap-1.5 px-3 py-1 bg-slate-900 text-white rounded-xl shadow-lg shadow-slate-200">
+      <Clock className="w-3 h-3 text-indigo-400" />
+      <span className="text-[10px] font-black tabular-nums tracking-wider uppercase">
+        {remaining > 0 ? formatRemaining(remaining) : "Terminata"}
+      </span>
+    </div>
+  );
+};
+
 // --- Components ---
 
 const BottomNav = () => {
@@ -1010,6 +1034,10 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                     </div>
                   )}
 
+                  <div className="flex justify-center mb-4">
+                    <WarTimer endsAt={war.endsAt} />
+                  </div>
+
                   <div className="flex justify-between items-center mb-4">
                     <div className="text-center flex-1">
                       <p className={`text-2xl font-black ${isAttackerPatriot ? 'text-rose-600' : ''}`}>{war.attackerCountryIso2}</p>
@@ -1124,7 +1152,9 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                 <p className={`text-xs font-black uppercase ${war.attackerScore > war.defenderScore ? "text-emerald-600" : "text-rose-600"}`}>
                   {war.attackerScore > war.defenderScore ? "Vittoria" : "Sconfitta"}
                 </p>
-                <p className="text-[10px] text-slate-400 font-bold">{new Date(war.endsAt).toLocaleDateString()}</p>
+                <p className="text-[10px] text-slate-400 font-bold">
+                  {new Date(war.endsAt).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </p>
               </div>
             </div>
           ))}
@@ -2105,6 +2135,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
   const [agreementTargetId, setAgreementTargetId] = useState("");
   const [sanctions, setSanctions] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'info' | 'government' | 'leader'>('info');
+  const [regionFactories, setRegionFactories] = useState<any[]>([]);
 
   const fetchCountryDetail = async () => {
     try {
@@ -2149,10 +2180,22 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
     }
   };
 
+  const fetchRegionFactories = async () => {
+    try {
+      const res = await fetch(`/api/factories?regionId=${iso2?.toUpperCase()}`);
+      if (res.ok) {
+        setRegionFactories(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     fetchCountryDetail();
     fetchAgreements();
     fetchSanctions();
+    fetchRegionFactories();
   }, [iso2]);
 
   const COUNTRY_FLAGS: Record<string, string> = {
@@ -2552,13 +2595,25 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
           {/* Factories */}
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
             <h3 className="text-lg font-black uppercase tracking-tight">Strutture Presenti</h3>
-            {(region.factoriesCount || 0) > 0 ? (
-              <div className="flex items-center gap-3 p-4 bg-indigo-50 rounded-3xl border border-indigo-100">
-                <div className="p-3 bg-white rounded-2xl"><Hammer className="w-5 h-5 text-indigo-600" /></div>
-                <div>
-                  <p className="font-black text-indigo-900">{region.factoriesCount} Fabbriche</p>
-                  <p className="text-[10px] font-bold text-indigo-600 uppercase">Operative sul territorio</p>
-                </div>
+            {regionFactories.length > 0 ? (
+              <div className="space-y-3">
+                {regionFactories.map((f) => (
+                  <div key={f.id} className="flex items-center gap-3 p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                    <div className="p-3 bg-white rounded-xl text-xl">
+                      {RESOURCE_ICONS[f.type] || "🏭"}
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-black text-indigo-900 leading-tight">{f.name}</p>
+                      <p className="text-[10px] font-bold text-indigo-400 uppercase">
+                        {RESOURCE_NAMES[f.type] || f.type} • Livello {f.level}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-black text-slate-400 uppercase">Proprietario</p>
+                      <p className="text-xs font-bold text-slate-700">{f.ownerName || 'Unknown'}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : (
               <div className="p-8 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">

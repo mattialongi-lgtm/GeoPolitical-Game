@@ -2837,21 +2837,24 @@ const StorageView = ({ user }: { user: any }) => {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            {Object.entries(user.inventory || {}).filter(([_, qty]) => (qty as number) > 0).map(([itemId, qty]) => {
-              const weapon = WEAPONS_CATALOG.find(w => w.id === itemId);
-              return (
-                <div key={itemId} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{weapon?.emoji || "📦"}</span>
-                    <span className="font-black text-slate-800 capitalize">{weapon?.name || itemId}</span>
+            {(() => {
+              const inventoryEntries = Object.entries(user.inventory || {}).filter(([_, qty]) => (qty as number) > 0);
+              if (inventoryEntries.length === 0) {
+                return <div className="col-span-2 text-center p-6 text-slate-400 font-bold">Magazzino vuoto</div>;
+              }
+              return inventoryEntries.map(([itemId, qty]) => {
+                const weapon = WEAPONS_CATALOG.find(w => w.id === itemId);
+                return (
+                  <div key={itemId} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">{weapon?.emoji || "📦"}</span>
+                      <span className="font-black text-slate-800 capitalize">{weapon?.name || itemId}</span>
+                    </div>
+                    <span className="font-bold text-indigo-600">x{qty as number}</span>
                   </div>
-                  <span className="font-bold text-indigo-600">x{qty as number}</span>
-                </div>
-              )
-            })}
-            {Object.values(user.inventory || {}).filter(q => (q as number) > 0).length === 0 && (
-              <div className="col-span-2 text-center p-6 text-slate-400 font-bold">Magazzino vuoto</div>
-            )}
+                );
+              });
+            })()}
           </div>
         </div>
       )}

@@ -756,6 +756,55 @@ db.exec(`
   );
 `);
 
+// Performance indexes — created once, silently ignored if they already exist
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_factories_regionId ON factories(regionId);
+  CREATE INDEX IF NOT EXISTS idx_user_factory_cooldowns_userId ON user_factory_cooldowns(userId);
+  CREATE INDEX IF NOT EXISTS idx_production_queue_userId_status ON production_queue(userId, status, willCompleteAt);
+  CREATE INDEX IF NOT EXISTS idx_market_offers_itemId ON market_offers(itemId);
+  CREATE INDEX IF NOT EXISTS idx_market_offers_sellerId_itemId ON market_offers(sellerId, itemId);
+  CREATE INDEX IF NOT EXISTS idx_market_offers_regionId ON market_offers(regionId);
+  CREATE INDEX IF NOT EXISTS idx_laws_regionId_status ON laws(regionId, status);
+  CREATE INDEX IF NOT EXISTS idx_law_votes_lawId ON law_votes(lawId);
+  CREATE INDEX IF NOT EXISTS idx_election_votes_electionId ON election_votes(electionId);
+  CREATE INDEX IF NOT EXISTS idx_election_votes_electionId_voterId ON election_votes(electionId, voterId);
+  CREATE INDEX IF NOT EXISTS idx_parliament_members_regionId ON parliament_members(regionId);
+  CREATE INDEX IF NOT EXISTS idx_party_members_partyId ON party_members(partyId);
+  CREATE INDEX IF NOT EXISTS idx_party_primaries_partyId_voterId ON party_primaries(partyId, voterId, createdAt);
+  CREATE INDEX IF NOT EXISTS idx_migration_agreements_fromStateId ON migration_agreements(fromStateId, status);
+  CREATE INDEX IF NOT EXISTS idx_migration_agreements_toStateId ON migration_agreements(toStateId, status);
+  CREATE INDEX IF NOT EXISTS idx_ministers_stateId_status ON ministers(stateId, status);
+  CREATE INDEX IF NOT EXISTS idx_chat_messages_createdAt ON chat_messages(createdAt);
+  CREATE INDEX IF NOT EXISTS idx_chat_messages_userId_createdAt ON chat_messages(userId, createdAt);
+  CREATE INDEX IF NOT EXISTS idx_wars_status ON wars(status);
+  CREATE INDEX IF NOT EXISTS idx_wars_attackerDefender ON wars(attackerCountryIso2, defenderCountryIso2);
+  CREATE INDEX IF NOT EXISTS idx_bloc_memberships_stateId ON bloc_memberships(stateId, status);
+  CREATE INDEX IF NOT EXISTS idx_users_regionId ON users(regionId);
+  CREATE INDEX IF NOT EXISTS idx_party_invites_userId_status ON party_invites(userId, status);
+  CREATE INDEX IF NOT EXISTS idx_party_invites_partyId_status ON party_invites(partyId, status);
+  CREATE INDEX IF NOT EXISTS idx_elections_regionId_status ON elections(regionId, status);
+  CREATE INDEX IF NOT EXISTS idx_budgets_ownerType_ownerId ON budgets(ownerType, ownerId);
+  CREATE INDEX IF NOT EXISTS idx_articles_createdAt ON articles(createdAt);
+  CREATE INDEX IF NOT EXISTS idx_articles_authorId_createdAt ON articles(authorId, createdAt);
+  CREATE INDEX IF NOT EXISTS idx_leader_candidates_regionId ON leader_candidates(regionId);
+  CREATE INDEX IF NOT EXISTS idx_leader_votes_regionId ON leader_votes(regionId);
+  CREATE INDEX IF NOT EXISTS idx_party_logs_partyId_action_ts ON party_logs(partyId, action, timestamp);
+  CREATE INDEX IF NOT EXISTS idx_regions_ownerUserId ON regions(ownerUserId);
+  CREATE INDEX IF NOT EXISTS idx_regions_nationId ON regions(nationId);
+  CREATE INDEX IF NOT EXISTS idx_bloc_applications_blocId_status ON bloc_applications(blocId, status);
+  CREATE INDEX IF NOT EXISTS idx_bloc_votes_targetId ON bloc_votes(targetId);
+  CREATE INDEX IF NOT EXISTS idx_applications_regionId_status ON applications(regionId, status);
+  CREATE INDEX IF NOT EXISTS idx_applications_userId ON applications(userId);
+  CREATE INDEX IF NOT EXISTS idx_user_inventory_userId ON user_inventory(userId);
+  CREATE INDEX IF NOT EXISTS idx_state_inventory_regionId ON state_inventory(regionId);
+  CREATE INDEX IF NOT EXISTS idx_budget_transactions_budgetId ON budget_transactions(budgetId, createdAt);
+  CREATE INDEX IF NOT EXISTS idx_sanctions_targetStateId_status ON sanctions(targetStateId, status);
+  CREATE INDEX IF NOT EXISTS idx_sanctions_fromStateId_status ON sanctions(fromStateId, status);
+  CREATE INDEX IF NOT EXISTS idx_player_factories_ownerId ON player_factories(ownerId);
+  CREATE INDEX IF NOT EXISTS idx_player_factories_regionId ON player_factories(regionId);
+  CREATE INDEX IF NOT EXISTS idx_perks_userId ON perks(userId);
+`);
+
 // Seed initial regions if empty
 const regionCount = db.prepare("SELECT COUNT(*) as count FROM regions").get() as { count: number };
 if (regionCount.count === 0) {
@@ -1521,8 +1570,9 @@ app.get("/api/factories", authenticate, (req: any, res) => {
   const factories = db.prepare("SELECT * FROM factories").all() as any[];
   const cooldowns = db.prepare("SELECT factoryId, lastUsed FROM user_factory_cooldowns WHERE userId = ?").all(req.user.id) as any[];
 
+  const cooldownMap = new Map(cooldowns.map(c => [c.factoryId, c]));
   const factoriesWithCooldown = factories.map(f => {
-    const cd = cooldowns.find(c => c.factoryId === f.id);
+    const cd = cooldownMap.get(f.id);
     const remaining = cd ? Math.max(0, (f.cooldownSec * 1000) - (Date.now() - cd.lastUsed)) : 0;
     return { ...f, remainingCooldown: remaining };
   });
@@ -4741,8 +4791,12 @@ function checkAndResolveElections() {
   const now = Date.now();
   const electionDuration = 3 * 24 * 60 * 60 * 1000; // 3 days
 
+  // Fetch all active elections in one query instead of per-region (avoids N+1)
+  const activeElections = db.prepare("SELECT * FROM elections WHERE status = 'active'").all() as any[];
+  const activeElectionByRegion = new Map(activeElections.map((e: any) => [e.regionId, e]));
+
   for (const r of regions) {
-    const activeElection = db.prepare("SELECT * FROM elections WHERE regionId = ? AND status = 'active'").get(r.id) as any;
+    const activeElection = activeElectionByRegion.get(r.id);
 
     if (!activeElection) {
       // Start a new election

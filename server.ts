@@ -741,6 +741,19 @@ db.exec(`
     FOREIGN KEY(userId) REFERENCES users(id),
     FOREIGN KEY(stateId) REFERENCES regions(id)
   );
+
+  CREATE TABLE IF NOT EXISTS sanctions (
+    id TEXT PRIMARY KEY,
+    fromStateId TEXT,
+    targetStateId TEXT,
+    status TEXT DEFAULT 'ACTIVE',
+    createdAt INTEGER,
+    createdByUserId TEXT,
+    revokedAt INTEGER,
+    revokedByUserId TEXT,
+    FOREIGN KEY(fromStateId) REFERENCES regions(id),
+    FOREIGN KEY(targetStateId) REFERENCES regions(id)
+  );
 `);
 
 // Seed initial regions if empty
@@ -903,13 +916,31 @@ const calculateMinisterWage = (stateId: string, role: string) => {
 
 // Middleware to verify JWT and update energy
 const authenticate = async (req: any, res: any, next: any) => {
-  const token = req.cookies.token;
-  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  let token = null;
+
+  // 1. Try Authorization header first (Bearer <token>)
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    const headerToken = req.headers.authorization.substring(7);
+    if (headerToken && headerToken !== 'null' && headerToken !== 'undefined') {
+      token = headerToken;
+    }
+  }
+  
+  // 2. Fallback to cookies if no valid header token found
+  if (!token) {
+    token = req.cookies.token;
+  }
+
+  if (!token) {
+    return res.status(401).json({ error: "Unauthorized: Access token missing." });
+  }
 
   try {
     const decoded = jwt.verify(token, SECRET_KEY) as { id: string };
     const user = db.prepare("SELECT * FROM users WHERE id = ?").get(decoded.id) as any;
-    if (!user) return res.status(401).json({ error: "User not found" });
+    if (!user) {
+      return res.status(401).json({ error: "Unauthorized: User not found in database." });
+    }
 
     // Booster logic
     let activeBoosters: Record<string, any> = {};
@@ -2854,6 +2885,116 @@ app.post("/api/perks/booster", authenticate, async (req: any, res) => {
 });
 
 // ==============================================================
+// SANCTIONS SYSTEM
+// ==============================================================
+
+const canSellInState = (targetStateId: string, originStateId: string): boolean => {
+  const sanction = db.prepare("SELECT id FROM sanctions WHERE fromStateId = ? AND targetStateId = ? AND status = 'ACTIVE'").get(targetStateId, originStateId);
+  return !sanction;
+};
+
+app.get("/api/countries/:iso2/sanctions", authenticate, (req: any, res) => {
+  try {
+    const stateId = (req.params.iso2 || '').toUpperCase();
+    if (!stateId) return res.status(400).json({ error: "ISO2 parameter missing" });
+
+    // Use LEFT JOIN to ensure sanctions show up even if the target region name is missing
+    const sanctions = db.prepare(`
+      SELECT s.*, 
+             COALESCE(n.name, r.name, s.targetStateId) as targetStateName 
+      FROM sanctions s
+      LEFT JOIN nations n ON s.targetStateId = n.id OR ('nation_' || s.targetStateId) = n.id
+      LEFT JOIN regions r ON s.targetStateId = r.id
+      WHERE s.fromStateId = ? AND s.status = 'ACTIVE'
+    `).all(stateId);
+    
+    res.json(sanctions);
+  } catch (err: any) {
+    console.error(`[CRITICAL] Error fetching sanctions for ${req.params.iso2}:`, err.message);
+    res.status(500).json({ error: "Internal server error while fetching sanctions." });
+  }
+});
+
+app.post("/api/sanctions/apply", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { targetStateId: rawTarget, fromStateId: rawFrom } = req.body;
+  
+  const targetStateId = rawTarget?.toUpperCase();
+  const finalFromStateId = (rawFrom || user.regionId)?.toUpperCase();
+
+  console.log(`[API] Sanction Apply request: ${finalFromStateId} -> ${targetStateId} (By: ${user.username})`);
+
+  if (!targetStateId || targetStateId === finalFromStateId) {
+    return res.status(400).json({ error: "Stato target non valido." });
+  }
+
+  // Check authority: Leader, Economics Minister, or Economic Advisor (dictatorship) of finalFromStateId
+  const region = db.prepare("SELECT ownerUserId, economicAdviserId, dictatorship FROM regions WHERE id = ?").get(finalFromStateId) as any;
+  if (!region) {
+    console.log(`[API ERROR] Region not found: ${finalFromStateId}`);
+    return res.status(404).json({ error: "Regione non trovata." });
+  }
+
+  const isLeader = region.ownerUserId === user.id;
+  const isEconomicAdvisor = region.economicAdviserId === user.id;
+
+  // Also check ministers table for 'economics' role
+  const minister = db.prepare("SELECT id FROM ministers WHERE stateId = ? AND userId = ? AND role = 'economics' AND status = 'ACTIVE'").get(finalFromStateId, user.id);
+
+  if (!isLeader && !isEconomicAdvisor && !minister) {
+    console.log(`[AUTH] Refused sanction apply! User ${user.username} has no authority in ${finalFromStateId}`);
+    return res.status(403).json({ error: "Non hai l'autorità per applicare sanzioni in questo Stato." });
+  }
+
+  try {
+    const existing = db.prepare("SELECT id FROM sanctions WHERE fromStateId = ? AND targetStateId = ? AND status = 'ACTIVE'").get(finalFromStateId, targetStateId);
+    if (existing) {
+      console.log(`[API] Sanction already exists: ${finalFromStateId} -> ${targetStateId}`);
+      return res.status(400).json({ error: "Sanzione già attiva per questo Stato." });
+    }
+
+    db.transaction(() => {
+      const id = Math.random().toString(36).substring(2, 11);
+      db.prepare("INSERT INTO sanctions (id, fromStateId, targetStateId, status, createdAt, createdByUserId) VALUES (?, ?, ?, 'ACTIVE', ?, ?)")
+        .run(id, finalFromStateId, targetStateId, Date.now(), user.id);
+
+      // Market Cleanup: Remove all existing offers originating from the target state in this region
+      db.prepare("DELETE FROM market_offers WHERE regionId = ? AND originStateId = ?").run(finalFromStateId, targetStateId);
+    })();
+
+    console.log(`[API] Sanction SUCCESS: ${finalFromStateId} -> ${targetStateId}`);
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error(`[API ERROR] sanctions apply: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/sanctions/revoke", authenticate, (req: any, res) => {
+  const user = req.user;
+  const { sanctionId } = req.body;
+
+  const sanction = db.prepare("SELECT * FROM sanctions WHERE id = ?").get(sanctionId) as any;
+  if (!sanction) return res.status(404).json({ error: "Sanzione non trovata." });
+
+  // Check authority in the fromState
+  const region = db.prepare("SELECT ownerUserId, economicAdviserId FROM regions WHERE id = ?").get(sanction.fromStateId) as any;
+  const minister = db.prepare("SELECT id FROM ministers WHERE stateId = ? AND userId = ? AND role = 'economics' AND status = 'ACTIVE'").get(sanction.fromStateId, user.id);
+
+  if (region.ownerUserId !== user.id && region.economicAdviserId !== user.id && !minister) {
+    return res.status(403).json({ error: "Non hai l'autorità per revocare sanzioni." });
+  }
+
+  try {
+    db.prepare("UPDATE sanctions SET status = 'REVOKED', revokedAt = ?, revokedByUserId = ? WHERE id = ?")
+      .run(Date.now(), user.id, sanctionId);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ==============================================================
 // MARKET API (Player-Driven)
 // ==============================================================
 
@@ -2896,7 +3037,12 @@ app.post("/api/market/offer", authenticate, (req: any, res) => {
     const region = db.prepare("SELECT marketTaxRate, sanctionsActive, sanctionsScope FROM regions WHERE id = ?").get(user.regionId) as any;
     const taxRate = region?.marketTaxRate !== undefined ? region.marketTaxRate : 10;
 
-    // Sanctions Check
+    // Sanctions Check (Directional)
+    if (!canSellInState(user.regionId, user.originalNation)) {
+      return res.status(403).json({ error: "Sanzioni commerciali attive: non puoi vendere prodotti della tua nazione in questo Stato." });
+    }
+
+    // Sanctions Check (Old Scope System - Keeping for compatibility if needed)
     if (region?.sanctionsActive) {
       const scope = JSON.parse(region.sanctionsScope || '{}');
       const itemType = getItemType(itemId); // Helper to determine 'resources', 'weapons', or 'items'
@@ -2941,6 +3087,11 @@ app.post("/api/market/buy", authenticate, (req: any, res) => {
 
       if (offer.sellerId === user.id && !isStateBuy) {
         throw new Error("Non puoi comprare la tua stessa offerta a meno che non sia per lo Stato.");
+      }
+
+      // Sanctions Check
+      if (!canSellInState(offer.regionId, offer.originStateId)) {
+        throw new Error("Sanzioni commerciali attive: impossibile acquistare prodotti provenienti da questo Stato.");
       }
 
       const totalPrice = offer.price * quantity;

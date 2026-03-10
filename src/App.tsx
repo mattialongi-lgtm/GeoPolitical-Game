@@ -2103,6 +2103,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
   const [apps, setApps] = useState<any[]>([]);
   const [agreements, setAgreements] = useState<{ outgoing: any[]; incoming: any[] }>({ outgoing: [], incoming: [] });
   const [agreementTargetId, setAgreementTargetId] = useState("");
+  const [sanctions, setSanctions] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'info' | 'government' | 'leader'>('info');
 
   const fetchCountryDetail = async () => {
@@ -2137,9 +2138,21 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
     }
   };
 
+  const fetchSanctions = async () => {
+    try {
+      const res = await fetch(`/api/countries/${iso2}/sanctions`);
+      if (res.ok) {
+        setSanctions(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   useEffect(() => {
     fetchCountryDetail();
     fetchAgreements();
+    fetchSanctions();
   }, [iso2]);
 
   const COUNTRY_FLAGS: Record<string, string> = {
@@ -2291,6 +2304,26 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
                 <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Economia</p>
                 <p className="text-xl font-black text-amber-700">{region.economyLevel || 1}/10</p>
               </div>
+
+              {/* Sanctions List */}
+              {sanctions.length > 0 && (
+                <div className="col-span-2 mt-4 text-left">
+                  <h4 className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <AlertCircle className="w-3 h-3" /> Stati sanzionati da {region.name}
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {sanctions.map((s: any) => (
+                      <div key={s.id} className="flex items-center gap-2 p-3 bg-rose-50 rounded-2xl border border-rose-100">
+                        <span className="text-xl">{COUNTRY_FLAGS[s.targetStateId] || "🌍"}</span>
+                        <div className="flex-1">
+                          <p className="text-xs font-black text-rose-900 leading-none">{s.targetStateName || s.targetStateId}</p>
+                          <p className="text-[9px] font-bold text-rose-400 uppercase mt-0.5">Sanzioni Commerciali Attive</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

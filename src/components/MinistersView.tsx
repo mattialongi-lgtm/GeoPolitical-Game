@@ -24,7 +24,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 interface Minister {
     userId: string;
     username: string;
-    role: 'ECONOMIC_MINISTER' | 'FOREIGN_MINISTER';
+    role: 'economics' | 'foreign';
     title: string;
     assignedAt: number;
     wage: number;
@@ -35,6 +35,7 @@ interface Region {
     name: string;
     governmentForm: string;
     leaderUserId: string | null;
+    ownerUserId: string | null;
     sanctionsActive: number;
     sanctionsScope: string; // JSON
     economicAdviserId: string | null;
@@ -52,9 +53,10 @@ interface Application {
 
 export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const { iso2 } = useParams();
-    const routeStateId = (iso2 || '').toUpperCase();
-    const fallbackStateId = (user?.residenceId || user?.regionId || '').toUpperCase();
-    const stateId = /^[A-Z]{2}$/.test(routeStateId) ? routeStateId : fallbackStateId;
+    
+    // Robust stateId resolution: URL param > Residence > Region
+    const stateId = (iso2 || user?.residenceId || user?.regionId || "").toUpperCase();
+    
     const navigate = useNavigate();
     const [region, setRegion] = useState<Region | null>(null);
     const [ministers, setMinisters] = useState<Minister[]>([]);
@@ -62,7 +64,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState(false);
     const [targetUserId, setTargetUserId] = useState("");
-    const [selectedRole, setSelectedRole] = useState<'ECONOMIC_MINISTER' | 'FOREIGN_MINISTER'>('ECONOMIC_MINISTER');
+    const [selectedRole, setSelectedRole] = useState<'economics' | 'foreign'>('economics');
     const [activeSanctions, setActiveSanctions] = useState<any[]>([]);
     const [targetSanctionStateId, setTargetSanctionStateId] = useState("");
 
@@ -73,22 +75,29 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
             return;
         }
 
+        // Normalize stateId to ensure consistency with backend
+        const normalizedStateId = stateId.toUpperCase().replace('NATION_', '').replace('NATION_', '').replace('nation_', '');
+
         const token = localStorage.getItem('token');
         const authHeader = token ? { 'Authorization': `Bearer ${token}` } : {};
 
         try {
-            console.log(`[DEBUG] Fetching data for stateId: ${stateId}`);
+            console.log(`[DEBUG] MinistersView fetching data for: ${stateId} (normalized: ${normalizedStateId})`);
             
             // Execute all fetches in parallel
             const [rRes, mRes, aRes, sRes] = await Promise.all([
-                fetch(`/api/regions/${stateId}`, { headers: authHeader }),
-                fetch(`/api/ministers/${stateId}`, { headers: authHeader }),
-                fetch(`/api/actions/applications?regionId=${stateId}`, { headers: authHeader }),
-                fetch(`/api/countries/${stateId}/sanctions`, { headers: authHeader })
+                fetch(`/api/regions/${normalizedStateId}`, { headers: authHeader }),
+                fetch(`/api/ministers/${normalizedStateId}`, { headers: authHeader }),
+                fetch(`/api/actions/applications?regionId=${normalizedStateId}`, { headers: authHeader }),
+                fetch(`/api/countries/${normalizedStateId}/sanctions`, { headers: authHeader })
             ]);
 
             // Handle results individually to be robust
-            if (rRes.ok) setRegion(await rRes.json());
+            if (rRes.ok) {
+                const rData = await rRes.json();
+                console.log(`[DEBUG] Region data:`, rData);
+                setRegion(rData);
+            }
             
             if (mRes.ok) {
                 const mData = await mRes.json();
@@ -116,23 +125,24 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
         fetchData();
     }, [stateId]);
 
-    const isLeader = region?.leaderUserId === user?.id;
-    const isEconMinister = region?.economicAdviserId === user?.id;
-    const isForeignMinister = region?.foreignMinisterId === user?.id;
+    // Check authority using multiple possible field names (robustness)
+    const isLeader = region?.leaderUserId === user?.id || region?.ownerUserId === user?.id;
+    const isEconMinister = ministers.some((m: any) => m.role?.toLowerCase() === 'economics' && m.userId === user?.id);
+    const isForeignMinister = ministers.some((m: any) => m.role?.toLowerCase() === 'foreign' && m.userId === user?.id);
 
     const handleAssign = async () => {
-        if (!targetUserId) return;
+        if (!targetUserId || !selectedRole) return;
         setActionLoading(true);
+        const token = localStorage.getItem('token');
+        const authHeader = token ? { 'Authorization': `Bearer ${token}` } : {};
         try {
-            const token = localStorage.getItem('token');
-            const apiRole = selectedRole === 'ECONOMIC_MINISTER' ? 'economics' : 'foreign';
             const res = await fetch('/api/ministers/assign', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': token ? `Bearer ${token}` : ''
+                    ...authHeader 
                 },
-                body: JSON.stringify({ stateId, userId: targetUserId, role: apiRole })
+                body: JSON.stringify({ iso2: stateId, userId: targetUserId, role: selectedRole })
             });
             const data = await res.json();
             if (data.error) alert(data.error);
@@ -145,20 +155,25 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
         }
     };
 
-    const handleRevoke = async (role: string) => {
+    const handleRevoke = async (role: 'economics' | 'foreign') => {
         if (!window.confirm("Sei sicuro di voler revocare questo incarico ministeriale?")) return;
         setActionLoading(true);
+        const token = localStorage.getItem('token');
+        const authHeader = token ? { 'Authorization': `Bearer ${token}` } : {};
         try {
-            const token = localStorage.getItem('token');
             const res = await fetch('/api/ministers/revoke', {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': token ? `Bearer ${token}` : ''
+                    ...authHeader 
                 },
-                body: JSON.stringify({ stateId, role: role === 'ECONOMIC_MINISTER' ? 'economics' : 'foreign' })
+                body: JSON.stringify({ iso2: stateId, role })
             });
             if (res.ok) fetchData();
+            else {
+                const data = await res.json();
+                alert(data.error || "Errore nella revoca.");
+            }
         } finally {
             setActionLoading(false);
         }
@@ -234,24 +249,23 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     };
 
     if (loading) return <div className="p-12 text-center text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />Caricamento...</div>;
+    
     if (!region) return (
         <div className="p-12 text-center text-red-400 space-y-3">
-            <p>Stato non trovato.</p>
-            {fallbackStateId && (
+            <p>Stato non trovato per ID: {stateId}</p>
+            {user?.regionId && (
                 <button
-                    onClick={() => navigate(`/ministers/${fallbackStateId}`)}
+                    onClick={() => navigate(`/ministers/${user.regionId}`)}
                     className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase"
                 >
-                    Vai al tuo Stato ({fallbackStateId})
+                    Vai al tuo Stato ({user.regionId})
                 </button>
             )}
         </div>
     );
 
-    const econMin = ministers.find(m => m.role === 'ECONOMIC_MINISTER');
-    const foreignMin = ministers.find(m => m.role === 'FOREIGN_MINISTER');
-
-    const sanctionsScope = region.sanctionsScope ? JSON.parse(region.sanctionsScope) : { resources: true, weapons: true, items: true };
+    const econMin = ministers.find(m => m.role === 'economics');
+    const foreignMin = ministers.find(m => m.role === 'foreign');
 
     return (
         <div className="max-w-6xl mx-auto p-4 space-y-8 pb-24">
@@ -265,8 +279,10 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                             <Briefcase className="w-10 h-10 text-indigo-400" />
                         </div>
                         <div>
-                            <h1 className="text-3xl font-black text-white tracking-tight">Ministri di {region.name}</h1>
-                            <p className="text-slate-400 font-bold mt-1">Gestione delle cariche e poteri esecutivi</p>
+                            <h1 className="text-3xl font-black text-white tracking-tight">
+                                Ministri di {region.nation?.name || region.name}
+                            </h1>
+                            <p className="text-slate-400 font-bold mt-1">Gestione delle cariche e poteri esecutivi di {region.name === (region.nation?.name) ? region.id : region.name}</p>
                         </div>
                     </div>
                 </div>
@@ -288,7 +304,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                                     </h3>
                                 </div>
                                 {isLeader && econMin && (
-                                    <button onClick={() => handleRevoke('ECONOMIC_MINISTER')} className="text-rose-400 hover:text-rose-300 transition-colors">
+                                    <button onClick={() => handleRevoke('economics')} className="text-rose-400 hover:text-rose-300 transition-colors">
                                         <X className="w-5 h-5" />
                                     </button>
                                 )}
@@ -323,7 +339,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                                     <h3 className="font-black text-white uppercase tracking-wider text-sm">Ministro degli Esteri</h3>
                                 </div>
                                 {isLeader && foreignMin && (
-                                    <button onClick={() => handleRevoke('FOREIGN_MINISTER')} className="text-rose-400 hover:text-rose-300 transition-colors">
+                                    <button onClick={() => handleRevoke('foreign')} className="text-rose-400 hover:text-rose-300 transition-colors">
                                         <X className="w-5 h-5" />
                                     </button>
                                 )}
@@ -387,7 +403,6 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                                                     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-black text-xs">ISO</div>
                                                     <input
                                                         type="text"
-                                                        maxLength={2}
                                                         value={targetSanctionStateId}
                                                         onChange={e => setTargetSanctionStateId(e.target.value)}
                                                         placeholder="es. RU"
@@ -396,7 +411,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                                                 </div>
                                                 <button
                                                     onClick={handleApplySanction}
-                                                    disabled={actionLoading || targetSanctionStateId.length < 2}
+                                                    disabled={actionLoading || !targetSanctionStateId}
                                                     className="px-8 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-rose-500 disabled:opacity-30 shadow-lg shadow-rose-900/20 active:scale-95 transition-all flex items-center justify-center gap-2 group/btn"
                                                 >
                                                     {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
@@ -416,61 +431,71 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                                             </div>
                                         </div>
                                     </div>
-
-                                    {/* Active Sanctions List */}
-                                    <div className="flex-1 space-y-6">
-                                        <div className="flex justify-between items-center px-2">
-                                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Sanzioni Attive</h4>
-                                            <span className="text-[10px] font-black bg-rose-500/20 text-rose-400 px-2 py-0.5 rounded-lg border border-rose-500/20">{activeSanctions.length} Stati</span>
-                                        </div>
-                                        
-                                        <div className="space-y-3 max-h-[280px] overflow-y-auto pr-3 custom-scrollbar">
-                                            <AnimatePresence mode="popLayout">
-                                                {activeSanctions.map(s => (
-                                                    <motion.div 
-                                                        key={s.id} 
-                                                        layout
-                                                        initial={{ opacity: 0, x: 20 }}
-                                                        animate={{ opacity: 1, x: 0 }}
-                                                        exit={{ opacity: 0, scale: 0.9 }}
-                                                        className="flex items-center justify-between p-5 bg-slate-900/40 rounded-3xl border border-slate-700/50 hover:border-rose-500/30 transition-all group/item shadow-sm"
-                                                    >
-                                                        <div className="flex items-center gap-4">
-                                                            <div className="p-2.5 bg-rose-500/5 rounded-2xl border border-rose-500/10 group-hover/item:bg-rose-500/10 transition-colors">
-                                                                <Activity className="w-5 h-5 text-rose-500" />
-                                                            </div>
-                                                            <div>
-                                                                <p className="text-sm font-black text-white leading-none mb-1.5">{s.targetStateName}</p>
-                                                                <div className="flex items-center gap-2">
-                                                                    <span className="text-[9px] text-slate-500 font-black uppercase bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">{s.targetStateId}</span>
-                                                                    <span className="text-[9px] text-rose-400 font-bold uppercase tracking-wider">Mercato Bloccato</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => handleRevokeSanction(s.id)}
-                                                            className="p-3 opacity-0 group-hover/item:opacity-100 bg-rose-500/10 text-rose-400 rounded-xl hover:bg-rose-600 hover:text-white transition-all shadow-lg"
-                                                            title="Revoca Sanzione"
-                                                        >
-                                                            <Trash2 className="w-4 h-4" />
-                                                        </button>
-                                                    </motion.div>
-                                                ))}
-                                            </AnimatePresence>
-                                            
-                                            {activeSanctions.length === 0 && (
-                                                <div className="py-12 text-center space-y-4 bg-slate-900/20 rounded-[2rem] border-2 border-dashed border-slate-800/50">
-                                                    <div className="p-4 bg-slate-800/50 rounded-full w-fit mx-auto">
-                                                        <Unlock className="w-6 h-6 text-slate-700" />
-                                                    </div>
-                                                    <p className="text-slate-600 font-bold text-xs uppercase tracking-widest">Nessuna sanzione attiva</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         )}
+
+                        {/* Active Sanctions List - Public View */}
+                        <div className="bg-slate-800/40 p-8 rounded-[3rem] border border-slate-700/50 space-y-6 shadow-xl backdrop-blur-sm">
+                            <div className="flex justify-between items-center px-2">
+                                <div className="space-y-1">
+                                    <h4 className="text-lg font-black text-rose-50 flex items-center gap-3">
+                                        <div className="p-2 bg-rose-500/20 rounded-xl">
+                                            <ShieldAlert className="w-5 h-5 text-rose-500" />
+                                        </div>
+                                        Sanzioni Attive
+                                    </h4>
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Stati attualmente soggetti a restrizioni commerciali</p>
+                                </div>
+                                <span className="text-[10px] font-black bg-rose-500/20 text-rose-400 px-3 py-1 rounded-full border border-rose-500/20">{activeSanctions.length} Stati</span>
+                            </div>
+                            
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-3 custom-scrollbar">
+                                <AnimatePresence mode="popLayout">
+                                    {activeSanctions.map(s => (
+                                        <motion.div 
+                                            key={s.id} 
+                                            layout
+                                            initial={{ opacity: 0, scale: 0.95 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            exit={{ opacity: 0, scale: 0.9 }}
+                                            className="flex items-center justify-between p-5 bg-slate-900/60 rounded-3xl border border-slate-700/50 hover:border-rose-500/30 transition-all group/item shadow-sm"
+                                        >
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-2.5 bg-rose-500/5 rounded-2xl border border-rose-500/10 group-hover/item:bg-rose-500/10 transition-colors">
+                                                    <Activity className="w-5 h-5 text-rose-500" />
+                                                </div>
+                                                <div>
+                                                    <p className="text-sm font-black text-white leading-none mb-1.5">{s.targetStateName || s.targetStateId}</p>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-[9px] text-slate-500 font-black uppercase bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">{s.targetStateId}</span>
+                                                        <span className="text-[9px] text-rose-400 font-bold uppercase tracking-wider">Mercato Bloccato</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {(isLeader || isEconMinister) && (
+                                                <button
+                                                    onClick={() => handleRevokeSanction(s.id)}
+                                                    className="p-3 opacity-0 group-hover/item:opacity-100 bg-rose-500/10 text-rose-400 rounded-xl hover:bg-rose-600 hover:text-white transition-all shadow-lg"
+                                                    title="Revoca Sanzione"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            )}
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
+                                
+                                {activeSanctions.length === 0 && (
+                                    <div className="col-span-full py-16 text-center space-y-4 bg-slate-900/20 rounded-[3rem] border-2 border-dashed border-slate-800/50">
+                                        <div className="p-4 bg-slate-800/50 rounded-full w-fit mx-auto">
+                                            <Unlock className="w-6 h-6 text-slate-700" />
+                                        </div>
+                                        <p className="text-slate-600 font-bold text-xs uppercase tracking-widest">Nessuna sanzione attiva nel sistema</p>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
 
                         {/* Foreign Minister / Residency Panel */}
                         {(isLeader || isForeignMinister) && (
@@ -544,8 +569,8 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                                         onChange={e => setSelectedRole(e.target.value as any)}
                                         className="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-4 py-3 text-sm font-black text-white focus:outline-none focus:border-indigo-500 appearance-none transition-all"
                                     >
-                                        <option value="ECONOMIC_MINISTER">Economia / Consigliere</option>
-                                        <option value="FOREIGN_MINISTER">Esteri</option>
+                                        <option value="economics">Economia / Consigliere</option>
+                                        <option value="foreign">Esteri</option>
                                     </select>
                                 </div>
                                 <button
@@ -575,7 +600,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                             </li>
                             <li className="flex gap-2">
                                 <span className="text-indigo-500">•</span>
-                                I ministri possono "passare" leggi istantaneamente se rientrano nella loro competenza.
+                                I ministri possono "passare" leggi istantaneamente se rientrano nella loro competenza (es. Economia per tasse e costruzioni).
                             </li>
                         </ul>
                     </div>

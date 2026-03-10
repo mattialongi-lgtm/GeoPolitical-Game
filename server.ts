@@ -1177,6 +1177,7 @@ app.get("/api/regions", authenticate, (req, res) => {
 
 app.get("/api/regions/:id", authenticate, (req, res) => {
   try {
+    const regionId = (req.params.id || '').toUpperCase().replace('NATION_', '');
     const region = db.prepare(`
       SELECT r.*, u.username as ownerName, l.username as leaderName, l.level as leaderLevel,
              (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
@@ -1184,7 +1185,7 @@ app.get("/api/regions/:id", authenticate, (req, res) => {
       LEFT JOIN users u ON r.ownerUserId = u.id
       LEFT JOIN users l ON r.leaderUserId = l.id
       WHERE r.id = ?
-    `).get(req.params.id) as any;
+    `).get(regionId) as any;
 
     if (!region) return res.status(404).json({ error: "Regione non trovata" });
 
@@ -1797,7 +1798,8 @@ app.get("/api/budget/:ownerType/:ownerId", authenticate, (req: any, res) => {
 
 app.post("/api/ministers/assign", authenticate, (req: any, res) => {
   const leader = req.user;
-  const { userId, role, iso2 } = req.body; // iso2 is the state ID
+  const { userId, role, iso2: rawIso2 } = req.body; // iso2 is the state ID
+  const iso2 = rawIso2?.toUpperCase().replace('NATION_', '');
 
   if (!userId || !role || !iso2) return res.status(400).json({ error: "Dati mancanti." });
 
@@ -1848,7 +1850,8 @@ app.post("/api/ministers/assign", authenticate, (req: any, res) => {
 
 app.post("/api/ministers/revoke", authenticate, (req: any, res) => {
   const leader = req.user;
-  const { role, iso2 } = req.body;
+  const { role, iso2: rawIso2 } = req.body;
+  const iso2 = rawIso2?.toUpperCase().replace('NATION_', '');
 
   const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(iso2) as any;
   if (!region || region.ownerUserId !== leader.id) {
@@ -1871,13 +1874,13 @@ app.post("/api/ministers/revoke", authenticate, (req: any, res) => {
 });
 
 app.get("/api/ministers/:iso2", authenticate, (req: any, res) => {
-  const { iso2 } = req.params;
+  const iso2 = (req.params.iso2 || '').toUpperCase().replace('NATION_', '');
   const ministers = db.prepare(`
     SELECT m.*, u.username 
     FROM ministers m
     JOIN users u ON m.userId = u.id
-    WHERE m.stateId = ? AND m.status = 'ACTIVE'
-  `).all(iso2) as any[];
+    WHERE (m.stateId = ? OR m.stateId = ('nation_' || ?)) AND m.status = 'ACTIVE'
+  `).all(iso2, iso2) as any[];
 
   const wageEconomics = calculateMinisterWage(iso2, 'economics');
   const wageForeign = calculateMinisterWage(iso2, 'foreign');
@@ -1887,7 +1890,8 @@ app.get("/api/ministers/:iso2", authenticate, (req: any, res) => {
 
 app.post("/api/ministers/sanctions", authenticate, (req: any, res) => {
   const user = req.user;
-  const { iso2, active, scope } = req.body; // scope: { resources: bool, weapons: bool, items: bool }
+  const { iso2: rawIso2, active, scope } = req.body; // scope: { resources: bool, weapons: bool, items: bool }
+  const iso2 = rawIso2?.toUpperCase().replace('NATION_', '');
 
   // Check if user is Minister of Economics or Leader
   const region = db.prepare("SELECT ownerUserId, economicAdviserId FROM regions WHERE id = ?").get(iso2) as any;
@@ -1963,7 +1967,7 @@ app.post("/api/actions/apply", authenticate, (req: any, res) => {
 
 app.get("/api/applications/:regionId", authenticate, (req: any, res) => {
   const user = req.user;
-  const regionId = req.params.regionId;
+  const regionId = (req.params.regionId || '').toUpperCase().replace('NATION_', '');
   const region = db.prepare("SELECT ownerUserId, leaderUserId FROM regions WHERE id = ?").get(regionId) as any;
 
   if (!region || (region.ownerUserId !== user.id && region.leaderUserId !== user.id)) {
@@ -2898,16 +2902,19 @@ app.get("/api/countries/:iso2/sanctions", authenticate, (req: any, res) => {
     const stateId = (req.params.iso2 || '').toUpperCase();
     if (!stateId) return res.status(400).json({ error: "ISO2 parameter missing" });
 
-    // Use LEFT JOIN to ensure sanctions show up even if the target region name is missing
-    const sanctions = db.prepare(`
-      SELECT s.*, 
-             COALESCE(n.name, r.name, s.targetStateId) as targetStateName 
-      FROM sanctions s
-      LEFT JOIN nations n ON s.targetStateId = n.id OR ('nation_' || s.targetStateId) = n.id
-      LEFT JOIN regions r ON s.targetStateId = r.id
-      WHERE s.fromStateId = ? AND s.status = 'ACTIVE'
-    `).all(stateId);
+    const normalizedId = stateId.replace('NATION_', '').replace('nation_', '');
     
+    const sanctions = db.prepare(`
+        SELECT s.*, 
+               COALESCE(n.name, r.name, s.targetStateId) as targetStateName 
+        FROM sanctions s
+        LEFT JOIN nations n ON (s.targetStateId = n.id OR ('nation_' || s.targetStateId) = n.id OR s.targetStateId = REPLACE(n.id, 'nation_', ''))
+        LEFT JOIN regions r ON (s.targetStateId = r.id OR s.targetStateId = REPLACE(r.id, 'nation_', ''))
+        WHERE (s.fromStateId = ? OR s.fromStateId = ? OR s.fromStateId = ('nation_' || ?) OR s.fromStateId = ('NATION_' || ?))
+          AND s.status = 'ACTIVE'
+    `).all(stateId, normalizedId, normalizedId, normalizedId);
+    
+    console.log(`[API] GET /api/countries/${stateId}/sanctions => Found ${sanctions.length} active sanctions (normalized: ${normalizedId})`);
     res.json(sanctions);
   } catch (err: any) {
     console.error(`[CRITICAL] Error fetching sanctions for ${req.params.iso2}:`, err.message);
@@ -2919,8 +2926,8 @@ app.post("/api/sanctions/apply", authenticate, (req: any, res) => {
   const user = req.user;
   const { targetStateId: rawTarget, fromStateId: rawFrom } = req.body;
   
-  const targetStateId = rawTarget?.toUpperCase();
-  const finalFromStateId = (rawFrom || user.regionId)?.toUpperCase();
+  const targetStateId = rawTarget?.toUpperCase().replace('NATION_', '').replace('nation_', '');
+  const finalFromStateId = (rawFrom || user.regionId)?.toUpperCase().replace('NATION_', '').replace('nation_', '');
 
   console.log(`[API] Sanction Apply request: ${finalFromStateId} -> ${targetStateId} (By: ${user.username})`);
 

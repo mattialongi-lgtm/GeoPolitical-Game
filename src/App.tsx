@@ -3150,107 +3150,112 @@ export default function App() {
 
   const selectedRegion = regions.find(r => r.id === selectedRegionId);
 
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 font-sans pb-24">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-100 sticky top-0 z-40 px-4 py-3 flex justify-between items-center gap-2">
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
-            <Globe className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-black text-lg tracking-tight">Territorial</span>
-        </div>
-        <div className="flex items-center gap-2 overflow-x-auto flex-1 justify-end">
-          <div className="bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-100 flex items-center gap-1 shrink-0">
-            <span className="text-[10px] font-black text-emerald-600">${(user.money || 0).toLocaleString()}</span>
-          </div>
-          <div className="bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-100 flex items-center gap-1 shrink-0">
-            <span className="text-[10px] font-black text-amber-600">🏅{user.gold || 0}</span>
-          </div>
-          <div className="bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100 flex items-center gap-1 shrink-0">
-            <Zap className="w-3 h-3 text-indigo-500" />
-            <span className="text-[10px] font-black text-slate-600">{user.energy}</span>
-            <span className="text-[8px] font-bold text-slate-400 ml-1">{energyTimer}</span>
-          </div>
-          <button
-            onClick={handleUseDrink}
-            disabled={actionLoading}
-            title="Usa Drink Energetico"
-            className="bg-sky-50 px-2.5 py-1.5 rounded-xl border border-sky-100 flex items-center gap-1 shrink-0 hover:bg-sky-100 transition-colors disabled:opacity-50"
-          >
-            <span className="text-xs leading-none mt-0.5">🥤</span>
-            <span className="text-[10px] font-black text-sky-600">{user.energyDrinks || 0}</span>
-          </button>
-          <button
-            onClick={() => navigate("/profile")}
-            className="w-8 h-8 rounded-xl overflow-hidden bg-indigo-100 flex items-center justify-center shrink-0 border border-indigo-100"
-            title="Profilo"
-          >
-            {user.avatarData ? (
-              <img src={user.avatarData} alt="avatar" className="w-full h-full object-cover" />
-            ) : (
-              <UserIcon className="w-4 h-4 text-indigo-600" />
-            )}
-          </button>
-          <div className="relative">
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="p-2 text-slate-400 hover:text-indigo-600 transition-colors bg-slate-50 rounded-xl border border-slate-100"
-            >
-              <MoreVertical className="w-5 h-5" />
-            </button>
+  // Check if we are on a dashboard route that has its own sidebar/navigation
+  const isDashboardRoute = location.pathname.startsWith("/leader") || location.pathname.startsWith("/ministers");
 
-            <AnimatePresence>
-              {isMenuOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-[998]"
-                    onClick={() => setIsMenuOpen(false)}
-                  />
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95, y: -8 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -8 }}
-                    className="fixed right-4 top-16 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-[999] overflow-hidden"
-                  >
-                    <button onClick={() => { navigate("/"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                      <Globe className="w-4 h-4 text-indigo-500" /> MAPPA
-                    </button>
-                    <button onClick={() => { navigate("/market"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                      <ShoppingCart className="w-4 h-4 text-emerald-500" /> MERCATO
-                    </button>
-                    <button onClick={() => { navigate("/storage"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                      <Archive className="w-4 h-4 text-indigo-500" /> MAGAZZINO
-                    </button>
-                    <button onClick={() => { navigate("/nation"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                      <Shield className="w-4 h-4 text-rose-500" /> NAZIONE
-                    </button>
-                    <button onClick={() => { navigate("/parliament"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                      <Landmark className="w-4 h-4 text-blue-500" /> PARLAMENTO
-                    </button>
-                    <button onClick={() => { navigate("/party"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                      <Users className="w-4 h-4 text-purple-500" /> PARTITO
-                    </button>
-                    <button onClick={() => { navigate("/blocs"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                      <Shield className="w-4 h-4 text-indigo-500" /> BLOCCHI
-                    </button>
-                    <button onClick={() => { navigate("/produce"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                      <Hammer className="w-4 h-4 text-orange-500" /> PRODUCI ARMI
-                    </button>
-                    <div className="h-px bg-slate-100 my-1" />
-                    <button onClick={handleLogout} className="w-full px-4 py-3 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition-colors">
-                      <LogOut className="w-4 h-4" /> LOGOUT
-                    </button>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
+  return (
+    <div className={`min-h-screen ${isDashboardRoute ? 'bg-slate-900' : 'bg-slate-50'} text-slate-900 font-sans pb-24`}>
+      {/* Header - Hidden on Dashboards */}
+      {!isDashboardRoute && (
+        <header className="bg-white border-b border-slate-100 sticky top-0 z-40 px-4 py-3 flex justify-between items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
+              <Globe className="w-5 h-5 text-white" />
+            </div>
+            <span className="font-black text-lg tracking-tight">Territorial</span>
           </div>
-        </div>
-      </header>
+          <div className="flex items-center gap-2 overflow-x-auto flex-1 justify-end">
+            <div className="bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-100 flex items-center gap-1 shrink-0">
+              <span className="text-[10px] font-black text-emerald-600">${(user.money || 0).toLocaleString()}</span>
+            </div>
+            <div className="bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-100 flex items-center gap-1 shrink-0">
+              <span className="text-[10px] font-black text-amber-600">🏅{user.gold || 0}</span>
+            </div>
+            <div className="bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100 flex items-center gap-1 shrink-0">
+              <Zap className="w-3 h-3 text-indigo-500" />
+              <span className="text-[10px] font-black text-slate-600">{user.energy}</span>
+              <span className="text-[8px] font-bold text-slate-400 ml-1">{energyTimer}</span>
+            </div>
+            <button
+              onClick={handleUseDrink}
+              disabled={actionLoading}
+              title="Usa Drink Energetico"
+              className="bg-sky-50 px-2.5 py-1.5 rounded-xl border border-sky-100 flex items-center gap-1 shrink-0 hover:bg-sky-100 transition-colors disabled:opacity-50"
+            >
+              <span className="text-xs leading-none mt-0.5">🥤</span>
+              <span className="text-[10px] font-black text-sky-600">{user.energyDrinks || 0}</span>
+            </button>
+            <button
+              onClick={() => navigate("/profile")}
+              className="w-8 h-8 rounded-xl overflow-hidden bg-indigo-100 flex items-center justify-center shrink-0 border border-indigo-100"
+              title="Profilo"
+            >
+              {user.avatarData ? (
+                <img src={user.avatarData} alt="avatar" className="w-full h-full object-cover" />
+              ) : (
+                <UserIcon className="w-4 h-4 text-indigo-600" />
+              )}
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="p-2 text-slate-400 hover:text-indigo-600 transition-colors bg-slate-50 rounded-xl border border-slate-100"
+              >
+                <MoreVertical className="w-5 h-5" />
+              </button>
+
+              <AnimatePresence>
+                {isMenuOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-[998]"
+                      onClick={() => setIsMenuOpen(false)}
+                    />
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: -8 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: -8 }}
+                      className="fixed right-4 top-16 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-[999] overflow-hidden"
+                    >
+                      <button onClick={() => { navigate("/"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <Globe className="w-4 h-4 text-indigo-500" /> MAPPA
+                      </button>
+                      <button onClick={() => { navigate("/market"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <ShoppingCart className="w-4 h-4 text-emerald-500" /> MERCATO
+                      </button>
+                      <button onClick={() => { navigate("/storage"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <Archive className="w-4 h-4 text-indigo-500" /> MAGAZZINO
+                      </button>
+                      <button onClick={() => { navigate("/nation"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <Shield className="w-4 h-4 text-rose-500" /> NAZIONE
+                      </button>
+                      <button onClick={() => { navigate("/parliament"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <Landmark className="w-4 h-4 text-blue-500" /> PARLAMENTO
+                      </button>
+                      <button onClick={() => { navigate("/party"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <Users className="w-4 h-4 text-purple-500" /> PARTITO
+                      </button>
+                      <button onClick={() => { navigate("/blocs"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <Shield className="w-4 h-4 text-indigo-500" /> BLOCCHI
+                      </button>
+                      <button onClick={() => { navigate("/produce"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                        <Hammer className="w-4 h-4 text-orange-500" /> PRODUCI ARMI
+                      </button>
+                      <div className="h-px bg-slate-100 my-1" />
+                      <button onClick={handleLogout} className="w-full px-4 py-3 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition-colors">
+                        <LogOut className="w-4 h-4" /> LOGOUT
+                      </button>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          </div>
+        </header>
+      )}
 
       {/* Main Content */}
-      <main className="max-w-2xl mx-auto p-6">
+      <main className={`${isDashboardRoute ? 'max-w-none p-0' : 'max-w-2xl mx-auto p-6'}`}>
         <Routes>
           <Route path="/" element={<HomeView user={user} regions={regions} navigateToCountry={navigateToCountry} />} />
           <Route path="/market" element={<MarketView />} />

@@ -141,6 +141,7 @@ addColumnIfMissing("regions", "leaderTitle", "TEXT DEFAULT 'Leader'");
 addColumnIfMissing("regions", "stateColor", "TEXT DEFAULT '#334155'");
 addColumnIfMissing("regions", "stateHymn", "TEXT");
 addColumnIfMissing("regions", "nextLeaderElectionAt", "INTEGER");
+addColumnIfMissing("regions", "nationId", "TEXT");
 
 // Energy Drinks and War Medals migrations
 addColumnIfMissing("users", "energyDrinks", "INTEGER DEFAULT 0");
@@ -220,19 +221,18 @@ try {
 } catch (e) { }
 
 // Migration for Migration Agreements
+// Nations (Global States) table
 try {
-  db.exec(`CREATE TABLE IF NOT EXISTS migration_agreements (
+  db.exec(`CREATE TABLE IF NOT EXISTS nations (
     id TEXT PRIMARY KEY,
-    fromStateId TEXT,
-    toStateId TEXT,
-    status TEXT DEFAULT 'ACTIVE', -- 'ACTIVE', 'INACTIVE'
-    type TEXT,   -- 'UNILATERAL', 'BILATERAL'
+    name TEXT,
+    logo TEXT DEFAULT '🏛️',
+    capitalRegionId TEXT,
+    leaderUserId TEXT,
     createdAt INTEGER,
-    activatedAt INTEGER,
-    revokedAt INTEGER,
-    sourceLawId TEXT,
     updatedAt INTEGER,
-    UNIQUE(fromStateId, toStateId)
+    FOREIGN KEY(capitalRegionId) REFERENCES regions(id),
+    FOREIGN KEY(leaderUserId) REFERENCES users(id)
   )`);
 } catch (e) { }
 
@@ -344,7 +344,10 @@ db.exec(`
     economicAdviserId TEXT,
     foreignMinisterId TEXT,
     dictatorshipAttempts INTEGER DEFAULT 0,
-    FOREIGN KEY(ownerUserId) REFERENCES users(id)
+    nationId TEXT,
+    ownerUserId TEXT,
+    FOREIGN KEY(ownerUserId) REFERENCES users(id),
+    FOREIGN KEY(nationId) REFERENCES nations(id)
   );
 
   CREATE TABLE IF NOT EXISTS factories (
@@ -811,6 +814,28 @@ try {
   console.error("Migration error (budgets init):", e);
 }
 
+// Migration: Move regions into nations if they aren't already
+try {
+  const regionsWithLeader = db.prepare("SELECT id, name, leaderUserId FROM regions WHERE leaderUserId IS NOT NULL AND nationId IS NULL").all() as any[];
+  if (regionsWithLeader.length > 0) {
+    db.transaction(() => {
+      for (const r of regionsWithLeader) {
+        const nationId = `nation_${r.id}`;
+        // Create nation
+        db.prepare("INSERT OR IGNORE INTO nations (id, name, capitalRegionId, leaderUserId, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?)")
+          .run(nationId, `${r.name} Federation`, r.id, r.leaderUserId, Date.now(), Date.now());
+        // Map region
+        db.prepare("UPDATE regions SET nationId = ? WHERE id = ?").run(nationId, r.id);
+      }
+    })();
+  }
+} catch (e) { }
+
+// Default fallback for regions without a nation (belong to themselves)
+try {
+  db.prepare("UPDATE regions SET nationId = 'nation_' || id WHERE nationId IS NULL").run();
+} catch (e) { }
+
 app.use(express.json());
 app.use(cookieParser());
 
@@ -1110,23 +1135,38 @@ app.get("/api/me", authenticate, (req: any, res) => {
 
 app.get("/api/regions", authenticate, (req, res) => {
   const regions = db.prepare(`
-    SELECT r.*, u.username as ownerName,
+    SELECT r.*, u.username as ownerName, l.username as leaderName, l.level as leaderLevel,
            (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
     FROM regions r 
     LEFT JOIN users u ON r.ownerUserId = u.id
+    LEFT JOIN users l ON r.leaderUserId = l.id
   `).all();
   res.json(regions);
 });
 
 app.get("/api/regions/:id", authenticate, (req, res) => {
-  const region = db.prepare(`
-    SELECT r.*, u.username as ownerName,
-           (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
-    FROM regions r 
-    LEFT JOIN users u ON r.ownerUserId = u.id
-    WHERE r.id = ?
-  `).get(req.params.id);
-  res.json(region);
+  try {
+    const region = db.prepare(`
+      SELECT r.*, u.username as ownerName, l.username as leaderName, l.level as leaderLevel,
+             (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
+      FROM regions r 
+      LEFT JOIN users u ON r.ownerUserId = u.id
+      LEFT JOIN users l ON r.leaderUserId = l.id
+      WHERE r.id = ?
+    `).get(req.params.id) as any;
+
+    if (!region) return res.status(404).json({ error: "Regione non trovata" });
+
+    // Get nation info
+    const nation = db.prepare("SELECT * FROM nations WHERE id = ?").get(region.nationId) as any;
+
+    // Get sibling regions
+    const memberRegions = region.nationId ? db.prepare("SELECT id, name, population FROM regions WHERE nationId = ?").all(region.nationId) : [region];
+
+    res.json({ ...region, nation, memberRegions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get("/api/countries/:iso2", async (req: any, res) => {
@@ -1136,10 +1176,11 @@ app.get("/api/countries/:iso2", async (req: any, res) => {
   try {
     // 1. Get base data from SQLite
     let region = db.prepare(`
-      SELECT r.*, u.username as ownerName,
+      SELECT r.*, u.username as ownerName, l.username as leaderName, l.level as leaderLevel,
              (SELECT COUNT(*) FROM player_factories WHERE regionId = r.id) as factoriesCount
       FROM regions r 
       LEFT JOIN users u ON r.ownerUserId = u.id
+      LEFT JOIN users l ON r.leaderUserId = l.id
       WHERE r.id = ?
     `).get(iso2.toUpperCase()) as any;
 
@@ -1183,10 +1224,16 @@ app.get("/api/countries/:iso2", async (req: any, res) => {
       gameStats = generateGameStatsForCountry(iso2.toUpperCase());
     }
 
-    // 3. Construct response prioritizing DB attributes
+    // 3. Get nation info
+    const nation = region.nationId ? db.prepare("SELECT * FROM nations WHERE id = ?").get(region.nationId) as any : null;
+    const memberRegions = region.nationId ? db.prepare("SELECT id, name, population FROM regions WHERE nationId = ?").all(region.nationId) : [];
+
+    // 4. Construct response prioritizing DB attributes
     const response = {
       ...gameStats, // Base stats like resources
       ...region,    // Persistent stats like health, education, military, treasury, economyLevel
+      nation,
+      memberRegions,
       indicators: {
         ...(gameStats?.indicators || {}),
         health: region.health || 1,
@@ -1886,14 +1933,19 @@ app.post("/api/actions/apply", authenticate, (req: any, res) => {
 app.get("/api/applications/:regionId", authenticate, (req: any, res) => {
   const user = req.user;
   const regionId = req.params.regionId;
-  const region = db.prepare("SELECT ownerUserId FROM regions WHERE id = ?").get(regionId) as any;
+  const region = db.prepare("SELECT ownerUserId, leaderUserId FROM regions WHERE id = ?").get(regionId) as any;
 
-  if (!region || region.ownerUserId !== user.id) {
-    return res.status(403).json({ error: "Non sei il Governatore di questa regione." });
+  if (!region || (region.ownerUserId !== user.id && region.leaderUserId !== user.id)) {
+    return res.status(403).json({ error: "Non sei il Leader di questa regione." });
   }
 
   const apps = db.prepare("SELECT * FROM applications WHERE regionId = ? AND status = 'pending' ORDER BY createdAt DESC").all(regionId);
   res.json(apps);
+});
+
+app.get("/api/leader/orders/:regionId", authenticate, (req: any, res) => {
+  // Stub for military orders - can be expanded later
+  res.json([]);
 });
 
 app.post("/api/actions/resolve-application", authenticate, (req: any, res) => {
@@ -3082,6 +3134,43 @@ app.post("/api/produce/claim", authenticate, (req: any, res) => {
   }
 });
 
+// --- Nation Management API ---
+app.get("/api/nations/:id", authenticate, (req: any, res) => {
+  try {
+    const nation = db.prepare(`
+      SELECT n.*, u.username as leaderName 
+      FROM nations n 
+      JOIN users u ON n.leaderUserId = u.id 
+      WHERE n.id = ?
+    `).get(req.params.id) as any;
+
+    if (!nation) return res.status(404).json({ error: "Nazione non trovata." });
+
+    const regions = db.prepare("SELECT id, name, population, economyLevel FROM regions WHERE nationId = ?").all(nation.id);
+
+    res.json({ ...nation, regions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post("/api/leader/nation/branding", authenticate, (req: any, res) => {
+  const { name, logo, nationId } = req.body;
+  if (!name) return res.status(400).json({ error: "Nome nazione obbligatorio." });
+
+  const nation = db.prepare("SELECT * FROM nations WHERE id = ?").get(nationId) as any;
+  if (!nation) return res.status(404).json({ error: "Nazione non trovata." });
+  if (nation.leaderUserId !== req.user.id) return res.status(403).json({ error: "Azione riservata al Leader della Nazione." });
+
+  try {
+    db.prepare("UPDATE nations SET name = ?, logo = ?, updatedAt = ? WHERE id = ?")
+      .run(name, logo || '🏛️', Date.now(), nationId);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ==========================================
 // POLITICAL PARTIES API (Phase 7)
 // ==========================================
@@ -3956,8 +4045,13 @@ export const LawRegistry: Record<string, {
       }
       return null;
     },
-    execute: (region, params) => {
-      db.prepare("UPDATE regions SET dictatorship = 1 WHERE id = ?").run(region.id);
+    execute: (region, params, sourceLawId) => {
+      // Find the proposer from the law record
+      const law = db.prepare("SELECT proposerId FROM laws WHERE id = ?").get(sourceLawId) as any;
+      const proposerId = law ? law.proposerId : region.ownerUserId;
+
+      db.prepare("UPDATE regions SET dictatorship = 1, governmentForm = 'DICTATORSHIP', leaderUserId = ?, ownerUserId = ?, leaderTitle = 'Dittatore' WHERE id = ?")
+        .run(proposerId, proposerId, region.id);
     }
   },
   revoke_dictatorship: {
@@ -3972,7 +4066,7 @@ export const LawRegistry: Record<string, {
       return null;
     },
     execute: (region) => {
-      db.prepare("UPDATE regions SET dictatorship = 0 WHERE id = ?").run(region.id);
+      db.prepare("UPDATE regions SET dictatorship = 0, governmentForm = 'PRESIDENTIAL_REPUBLIC', leaderTitle = 'Presidente' WHERE id = ?").run(region.id);
     }
   },
   change_state_name: {
@@ -4691,11 +4785,60 @@ function budgetMaintenanceTick() {
   })();
 }
 
+// War Resolution Cronjob
+function checkAndResolveWars() {
+  const expiredWars = db.prepare("SELECT * FROM wars WHERE status = 'active' AND endsAt < ?").all(Date.now()) as any[];
+
+  if (expiredWars.length === 0) return;
+
+  for (const war of expiredWars) {
+    db.transaction(() => {
+      let winner = null;
+      let loser = null;
+
+      if (war.attackerScore > war.defenderScore) {
+        winner = war.attackerCountryIso2;
+        loser = war.defenderCountryIso2;
+      } else if (war.defenderScore > war.attackerScore) {
+        winner = war.defenderCountryIso2;
+        loser = war.attackerCountryIso2;
+      }
+
+      if (winner && loser) {
+        // Transfer Treasury (Loot)
+        const loserBudget = db.prepare("SELECT moneyEUR FROM budgets WHERE ownerType = 'REGION' AND ownerId = ?").get(loser) as any;
+        if (loserBudget && loserBudget.moneyEUR > 0) {
+          const loot = loserBudget.moneyEUR;
+          addBudgetTransaction('REGION', loser, 'WAR_LOOT', 'LOOT_LOST', -loot, {}, null, { to: winner, warId: war.id });
+          addBudgetTransaction('REGION', winner, 'WAR_LOOT', 'LOOT_WON', loot, {}, null, { from: loser, warId: war.id });
+          console.log(`[WAR] ${winner} looted ${loot} EUR from ${loser}`);
+        }
+
+        // Conquest Logic: If Attacker wins, they take over the region
+        if (winner === war.attackerCountryIso2) {
+          const attackerRegion = db.prepare("SELECT leaderUserId, nationId FROM regions WHERE id = ?").get(winner) as any;
+          if (attackerRegion && attackerRegion.leaderUserId) {
+            // Conquering means moving the region into the Attacker's Nation
+            db.prepare("UPDATE regions SET ownerUserId = ?, nationId = ?, stability = 30 WHERE id = ?")
+              .run(attackerRegion.leaderUserId, attackerRegion.nationId || `nation_${winner}`, loser);
+
+            console.log(`[WAR] ${winner} CONQUERED ${loser}. Region added to nation: ${attackerRegion.nationId}`);
+          }
+        }
+      }
+
+      // Mark war as ended
+      db.prepare("UPDATE wars SET status = 'ended', endsAt = ? WHERE id = ?").run(Date.now(), war.id);
+    })();
+  }
+}
+
 // Vite middleware for development
 async function startServer() {
   checkAndResolveElections();
   checkAndResolveLeaderElections();
   checkAndResolveLaws();
+  checkAndResolveWars();
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -4745,6 +4888,7 @@ async function startServer() {
   setInterval(() => {
     checkAndResolveElections();
     checkAndResolveLaws();
+    checkAndResolveWars();
   }, 60 * 1000); // Check every minute
 }
 

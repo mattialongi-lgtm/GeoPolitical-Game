@@ -48,6 +48,7 @@ export interface Region {
   ownerName: string | null;
   leaderUserId: string | null;
   leaderName: string | null;
+  leaderLevel: number | null;
   stateColor: string | null;
   stateHymn: string | null;
   factoriesCount: number;

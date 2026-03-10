@@ -170,6 +170,11 @@ addColumnIfMissing("regions", "sanctionsActive", "INTEGER DEFAULT 0");
 addColumnIfMissing("regions", "sanctionsScope", "TEXT DEFAULT '{}'");
 addColumnIfMissing("market_offers", "originStateId", "TEXT");
 addColumnIfMissing("bloc_regulations", "migrationOpen", "INTEGER DEFAULT 0");
+addColumnIfMissing("migration_agreements", "activatedAt", "INTEGER");
+addColumnIfMissing("migration_agreements", "revokedAt", "INTEGER");
+addColumnIfMissing("migration_agreements", "sourceLawId", "TEXT");
+addColumnIfMissing("laws", "targetStateId", "TEXT");
+addColumnIfMissing("laws", "decidedAt", "INTEGER");
 
 // Rename ownerId to ownerUserId if needed
 try {
@@ -220,9 +225,12 @@ try {
     id TEXT PRIMARY KEY,
     fromStateId TEXT,
     toStateId TEXT,
-    status TEXT DEFAULT 'ACTIVE', -- 'ACTIVE', 'REVOKED'
+    status TEXT DEFAULT 'ACTIVE', -- 'ACTIVE', 'INACTIVE'
     type TEXT,   -- 'UNILATERAL', 'BILATERAL'
     createdAt INTEGER,
+    activatedAt INTEGER,
+    revokedAt INTEGER,
+    sourceLawId TEXT,
     updatedAt INTEGER,
     UNIQUE(fromStateId, toStateId)
   )`);
@@ -690,6 +698,9 @@ db.exec(`
     status TEXT DEFAULT 'ACTIVE',
     type TEXT,
     createdAt INTEGER,
+    activatedAt INTEGER,
+    revokedAt INTEGER,
+    sourceLawId TEXT,
     updatedAt INTEGER,
     UNIQUE(fromStateId, toStateId)
   );
@@ -1195,15 +1206,34 @@ app.get("/api/countries/:iso2", async (req: any, res) => {
 app.get("/api/countries/:iso2/agreements", authenticate, (req: any, res) => {
   const { iso2 } = req.params;
   try {
+    const stateId = iso2.toUpperCase();
     const agreements = db.prepare(`
-      SELECT m.*, r.name as partnerName 
+      SELECT m.*, rf.name as fromStateName, rt.name as toStateName
       FROM migration_agreements m
-      JOIN regions r ON (m.fromStateId = r.id OR m.toStateId = r.id)
-      WHERE (m.fromStateId = ? OR m.toStateId = ?) 
+      JOIN regions rf ON rf.id = m.fromStateId
+      JOIN regions rt ON rt.id = m.toStateId
+      WHERE (m.fromStateId = ? OR m.toStateId = ?)
         AND m.status = 'ACTIVE'
-        AND r.id != ?
-    `).all(iso2.toUpperCase(), iso2.toUpperCase(), iso2.toUpperCase());
-    res.json(agreements);
+      ORDER BY m.activatedAt DESC, m.createdAt DESC
+    `).all(stateId, stateId) as any[];
+
+    const enriched = agreements.map((ag) => {
+      const partnerId = ag.fromStateId === stateId ? ag.toStateId : ag.fromStateId;
+      const partnerName = ag.fromStateId === stateId ? ag.toStateName : ag.fromStateName;
+      const inverse = db.prepare("SELECT id FROM migration_agreements WHERE fromStateId = ? AND toStateId = ? AND status = 'ACTIVE'").get(ag.toStateId, ag.fromStateId) as any;
+      return {
+        ...ag,
+        partnerId,
+        partnerName,
+        direction: ag.fromStateId === stateId ? 'OUTGOING' : 'INCOMING',
+        agreementType: inverse ? 'BILATERAL' : 'UNILATERAL'
+      };
+    });
+
+    res.json({
+      outgoing: enriched.filter(a => a.direction === 'OUTGOING'),
+      incoming: enriched.filter(a => a.direction === 'INCOMING')
+    });
   } catch (err) {
     console.error("Error fetching agreements:", err);
     res.status(500).json({ error: "Errore caricamento accordi." });
@@ -1538,8 +1568,10 @@ app.post("/api/actions/travel", authenticate, (req: any, res) => {
   let isRestricted = region.workRestrictions === 1;
   let travelFee = region.travelFee || 0;
 
+  const sourceStateId = user.residenceId || user.regionId;
+
   // Bloc Open Borders & Migration Check
-  const userBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(user.regionId) as any;
+  const userBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(sourceStateId) as any;
   const targetBloc = db.prepare("SELECT blocId FROM bloc_memberships WHERE stateId = ? AND status = 'active'").get(regionId) as any;
   if (userBloc && targetBloc && userBloc.blocId === targetBloc.blocId) {
     const blocReg = db.prepare("SELECT openBorders, migrationOpen FROM bloc_regulations WHERE blocId = ?").get(userBloc.blocId) as any;
@@ -1551,7 +1583,7 @@ app.post("/api/actions/travel", authenticate, (req: any, res) => {
 
   // State-to-State Migration Agreement Check (if not already opened by bloc)
   if (isRestricted || travelFee > 0) {
-    const agreement = db.prepare("SELECT type FROM migration_agreements WHERE fromStateId = ? AND toStateId = ? AND status = 'ACTIVE'").get(regionId, user.regionId) as any;
+    const agreement = db.prepare("SELECT id FROM migration_agreements WHERE fromStateId = ? AND toStateId = ? AND status = 'ACTIVE'").get(regionId, sourceStateId) as any;
     if (agreement) {
       isRestricted = false;
       travelFee = 0;
@@ -3839,7 +3871,7 @@ export const LawRegistry: Record<string, {
   threshold: number; // e.g. 0.5 for >50%, 0.8 for >=80%
   delayDays: number; // how long it stays in pending (e.g. 1)
   validate: (region: any, params: any, proposer: any) => string | null; // returns error string or null
-  execute: (region: any, params: any) => void;
+  execute: (region: any, params: any, sourceLawId?: string) => void;
 }> = {
   change_market_tax: {
     category: "Economia e Tasse",
@@ -4061,14 +4093,14 @@ export const LawRegistry: Record<string, {
       if (existing && existing.status === 'ACTIVE') return "Esiste già un accordo attivo con questa nazione.";
       return null;
     },
-    execute: (region, params) => {
+    execute: (region, params, sourceLawId) => {
       const id = Math.random().toString(36).substring(2, 11);
       const now = Date.now();
       db.prepare(`
-        INSERT INTO migration_agreements (id, fromStateId, toStateId, status, type, createdAt, updatedAt)
-        VALUES (?, ?, ?, 'ACTIVE', 'UNILATERAL', ?, ?)
-        ON CONFLICT(fromStateId, toStateId) DO UPDATE SET status = 'ACTIVE', updatedAt = ?
-      `).run(id, region.id, params.targetRegionId, now, now, now);
+        INSERT INTO migration_agreements (id, fromStateId, toStateId, status, type, createdAt, activatedAt, revokedAt, sourceLawId, updatedAt)
+        VALUES (?, ?, ?, 'ACTIVE', 'UNILATERAL', ?, ?, NULL, ?, ?)
+        ON CONFLICT(fromStateId, toStateId) DO UPDATE SET status = 'ACTIVE', type = 'UNILATERAL', activatedAt = ?, revokedAt = NULL, sourceLawId = ?, updatedAt = ?
+      `).run(id, region.id, params.targetRegionId, now, now, sourceLawId || null, now, now, sourceLawId || null, now);
 
       // Check if it's now BILATERAL
       const inverse = db.prepare("SELECT status FROM migration_agreements WHERE fromStateId = ? AND toStateId = ?").get(params.targetRegionId, region.id) as any;
@@ -4091,9 +4123,10 @@ export const LawRegistry: Record<string, {
       if (!existing || existing.status !== 'ACTIVE') return "Non c'è un accordo attivo da revocare.";
       return null;
     },
-    execute: (region, params) => {
-      db.prepare("UPDATE migration_agreements SET status = 'REVOKED', type = 'UNILATERAL', updatedAt = ? WHERE fromStateId = ? AND toStateId = ?")
-        .run(Date.now(), region.id, params.targetRegionId);
+    execute: (region, params, sourceLawId) => {
+      const now = Date.now();
+      db.prepare("UPDATE migration_agreements SET status = 'INACTIVE', type = 'UNILATERAL', revokedAt = ?, sourceLawId = ?, updatedAt = ? WHERE fromStateId = ? AND toStateId = ?")
+        .run(now, sourceLawId || null, now, region.id, params.targetRegionId);
       // Reset the other side to unilateral if it was bilateral
       db.prepare("UPDATE migration_agreements SET type = 'UNILATERAL' WHERE fromStateId = ? AND toStateId = ?").run(params.targetRegionId, region.id);
     }
@@ -4304,9 +4337,11 @@ app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
 
     const isMp = db.prepare("SELECT userId FROM parliament_members WHERE userId = ? AND regionId = ?").get(user.id, user.residenceId);
     const isLeader = region.ownerUserId === user.id;
+    const isForeignMinister = region.foreignMinisterId === user.id;
+    const isMigrationLaw = type === 'migration_agreement' || type === 'revoke_migration_agreement';
 
-    if (!isMp && !isLeader) {
-      return res.status(403).json({ error: "Solo i Parlamentari o il Leader possono proporre leggi." });
+    if (!isMp && !isLeader && !(isForeignMinister && isMigrationLaw)) {
+      return res.status(403).json({ error: "Solo Parlamentari, Leader o Ministro Esteri (per accordi migratori) possono proporre leggi." });
     }
 
     // specific dict check
@@ -4337,14 +4372,13 @@ app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
       db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'passed', ?, ?)")
         .run(lawId, region.id, user.id, type, paramsStr, Date.now(), Date.now());
 
-      lawDef.execute(region, params);
+      lawDef.execute(region, params, lawId);
       return res.json({ success: true, lawId, immediate: true });
     }
 
     // Normal Democracy / Executive Monarchy (goes to Parliament first)
     // Check if proposer is a minister with "Fast-Pass" power for this law type
     const isEconomicsMinister = region.economicAdviserId === user.id;
-    const isForeignMinister = region.foreignMinisterId === user.id;
     const lawCat = lawDef.category;
 
     const canFastPass = (isEconomicsMinister && (lawCat === "Economia e Tasse" || lawCat === "Costruzioni Statali")) ||
@@ -4353,7 +4387,7 @@ app.post("/api/parliament/laws/propose", authenticate, (req: any, res) => {
     if (canFastPass) {
       db.prepare("INSERT INTO laws (id, regionId, proposerId, type, params, status, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, 'passed', ?, ?)")
         .run(lawId, region.id, user.id, type, paramsStr, Date.now(), Date.now());
-      lawDef.execute(region, params);
+      lawDef.execute(region, params, lawId);
       return res.json({ success: true, lawId, immediate: true, message: "Legge approvata immediatamente grazie ai tuoi poteri ministeriali." });
     }
 
@@ -4396,7 +4430,7 @@ app.post("/api/parliament/laws/vote", authenticate, (req: any, res) => {
       db.prepare("UPDATE laws SET status = 'passed' WHERE id = ?").run(lawId);
       try {
         const params = law.params ? JSON.parse(law.params) : {};
-        LawRegistry[law.type]?.execute(region, params);
+        LawRegistry[law.type]?.execute(region, params, law.id);
       } catch (e) {
         console.error(`Error executing law ${law.type} after assent:`, e);
       }
@@ -4611,7 +4645,7 @@ function checkAndResolveLaws() {
         try {
           const region = db.prepare("SELECT * FROM regions WHERE id = ?").get(law.regionId);
           const params = law.params ? JSON.parse(law.params) : { newValue: law.newValue };
-          lawDef.execute(region, params);
+          lawDef.execute(region, params, law.id);
         } catch (e) {
           console.error(`Error executing law ${law.type} (${law.id}):`, e);
         }

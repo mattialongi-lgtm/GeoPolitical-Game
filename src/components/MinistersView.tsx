@@ -50,6 +50,9 @@ interface Application {
 
 export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const { iso2 } = useParams();
+    const routeStateId = (iso2 || '').toUpperCase();
+    const fallbackStateId = (user?.residenceId || user?.regionId || '').toUpperCase();
+    const stateId = /^[A-Z]{2}$/.test(routeStateId) ? routeStateId : fallbackStateId;
     const navigate = useNavigate();
     const [region, setRegion] = useState<Region | null>(null);
     const [ministers, setMinisters] = useState<Minister[]>([]);
@@ -60,11 +63,17 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const [selectedRole, setSelectedRole] = useState<'ECONOMIC_MINISTER' | 'FOREIGN_MINISTER'>('ECONOMIC_MINISTER');
 
     const fetchData = async () => {
+        if (!stateId) {
+            setLoading(false);
+            setRegion(null);
+            return;
+        }
+        const authHeader = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
         try {
             const [rRes, mRes, aRes] = await Promise.all([
-                fetch(`/api/regions/${iso2}`),
-                fetch(`/api/ministers/${iso2}`),
-                fetch(`/api/actions/applications?regionId=${iso2}`)
+                fetch(`/api/regions/${stateId}`, { headers: authHeader }),
+                fetch(`/api/ministers/${stateId}`, { headers: authHeader }),
+                fetch(`/api/actions/applications?regionId=${stateId}`, { headers: authHeader })
             ]);
             setRegion(await rRes.json());
             const mData = await mRes.json();
@@ -79,7 +88,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
 
     useEffect(() => {
         fetchData();
-    }, [iso2]);
+    }, [stateId]);
 
     const isLeader = region?.leaderUserId === user?.id;
     const isEconMinister = region?.economicAdviserId === user?.id;
@@ -89,10 +98,11 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
         if (!targetUserId) return;
         setActionLoading(true);
         try {
+            const apiRole = selectedRole === 'ECONOMIC_MINISTER' ? 'economics' : 'foreign';
             const res = await fetch('/api/ministers/assign', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                body: JSON.stringify({ stateId: iso2, userId: targetUserId, role: selectedRole })
+                body: JSON.stringify({ iso2: stateId, userId: targetUserId, role: apiRole })
             });
             const data = await res.json();
             if (data.error) alert(data.error);
@@ -112,7 +122,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
             const res = await fetch('/api/ministers/revoke', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-                body: JSON.stringify({ stateId: iso2, role })
+                body: JSON.stringify({ iso2: stateId, role: role === 'ECONOMIC_MINISTER' ? 'economics' : 'foreign' })
             });
             if (res.ok) fetchData();
         } finally {
@@ -127,7 +137,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    stateId: iso2,
+                    iso2: stateId,
                     active: !region?.sanctionsActive,
                     scope
                 })
@@ -153,7 +163,19 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     };
 
     if (loading) return <div className="p-12 text-center text-slate-400"><Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />Caricamento...</div>;
-    if (!region) return <div className="p-12 text-center text-red-400">Stato non trovato.</div>;
+    if (!region) return (
+        <div className="p-12 text-center text-red-400 space-y-3">
+            <p>Stato non trovato.</p>
+            {fallbackStateId && (
+                <button
+                    onClick={() => navigate(`/ministers/${fallbackStateId}`)}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase"
+                >
+                    Vai al tuo Stato ({fallbackStateId})
+                </button>
+            )}
+        </div>
+    );
 
     const econMin = ministers.find(m => m.role === 'ECONOMIC_MINISTER');
     const foreignMin = ministers.find(m => m.role === 'FOREIGN_MINISTER');

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     User,
@@ -49,7 +49,10 @@ interface Application {
 
 export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionId: propRegionId, user }) => {
     const { iso2 } = useParams();
-    const regionId = propRegionId || iso2;
+    const navigate = useNavigate();
+    const routeStateId = (propRegionId || iso2 || '').toUpperCase();
+    const fallbackStateId = (user?.residenceId || user?.regionId || '').toUpperCase();
+    const regionId = /^[A-Z]{2}$/.test(routeStateId) ? routeStateId : fallbackStateId;
     const [region, setRegion] = useState<Region | null>(null);
     const [orders, setOrders] = useState<Order[]>([]);
     const [applications, setApplications] = useState<Application[]>([]);
@@ -130,7 +133,19 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
     };
 
     if (loading) return <div className="p-8 text-center text-slate-400">Caricamento...</div>;
-    if (!region) return <div className="p-8 text-center text-red-400">Regione non trovata.</div>;
+    if (!region) return (
+        <div className="p-8 text-center text-red-400 space-y-3">
+            <p>Regione non trovata.</p>
+            {fallbackStateId && (
+                <button
+                    onClick={() => navigate(`/leader/${fallbackStateId}`)}
+                    className="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase"
+                >
+                    Vai al tuo Stato ({fallbackStateId})
+                </button>
+            )}
+        </div>
+    );
 
     return (
         <div className="max-w-6xl mx-auto p-4 space-y-6">
@@ -289,7 +304,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
                                 <h3 className="text-2xl font-black text-white uppercase tracking-tight">Gestione Ministri</h3>
                                 <p className="text-slate-400 font-medium mb-6">Nomina i tuoi ministri per gestire l'economia e la politica estera. I ministri possono approvare leggi istantaneamente.</p>
                                 <button
-                                    onClick={() => window.location.href = `/ministers/${regionId}`}
+                                    onClick={() => navigate(`/ministers/${regionId}`)}
                                     className="px-8 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-500/20 transition-all transform hover:scale-105"
                                 >
                                     Apri Gestione Ministri

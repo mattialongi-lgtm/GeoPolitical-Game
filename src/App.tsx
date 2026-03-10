@@ -3286,7 +3286,9 @@ export default function App() {
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
+          <Route path="/leader" element={<LeaderView user={user} regionId={user?.residenceId || user?.regionId} fetchData={fetchData} />} />
           <Route path="/leader/:iso2" element={<LeaderView user={user} fetchData={fetchData} />} />
+          <Route path="/ministers" element={<MinistersView user={user} fetchData={fetchData} />} />
           <Route path="/ministers/:iso2" element={<MinistersView user={user} fetchData={fetchData} />} />
           <Route path="/nation" element={<NationView user={user} fetchData={fetchData} />} />
           <Route path="/parliament" element={<ParliamentView user={user} />} />

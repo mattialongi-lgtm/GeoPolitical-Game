@@ -54,8 +54,8 @@ interface Application {
 export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const { iso2 } = useParams();
     
-    // Robust stateId resolution: URL param > Residence > Region
-    const stateId = (iso2 || user?.residenceId || user?.regionId || "").toUpperCase();
+    // Robust stateId resolution: URL param > Region > Residence
+    const stateId = (iso2 || user?.regionId || user?.residenceId || "").toUpperCase();
     
     const navigate = useNavigate();
     const [region, setRegion] = useState<Region | null>(null);
@@ -84,19 +84,36 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
         try {
             console.log(`[DEBUG] MinistersView fetching data for: ${stateId} (normalized: ${normalizedStateId})`);
             
+            // Helper to fetch and set sanctions for a given regionId
+            const fetchAndSetSanctions = async (regionId: string) => {
+                const res = await fetch(`/api/countries/${regionId}/sanctions`);
+                if (res.ok) {
+                    const data = await res.json();
+                    console.log(`[DEBUG] Received ${data.length} sanctions for ${regionId}`, data);
+                    setActiveSanctions(Array.isArray(data) ? data : []);
+                    return true;
+                }
+                return false;
+            };
+
             // Execute all fetches in parallel
             const [rRes, mRes, aRes, sRes] = await Promise.all([
                 fetch(`/api/regions/${normalizedStateId}`, { headers: authHeader }),
                 fetch(`/api/ministers/${normalizedStateId}`, { headers: authHeader }),
                 fetch(`/api/actions/applications?regionId=${normalizedStateId}`, { headers: authHeader }),
-                fetch(`/api/countries/${normalizedStateId}/sanctions`, { headers: authHeader })
+                fetch(`/api/countries/${normalizedStateId}/sanctions`)
             ]);
 
             // Handle results individually to be robust
+            let confirmedRegionId = normalizedStateId;
             if (rRes.ok) {
                 const rData = await rRes.json();
                 console.log(`[DEBUG] Region data:`, rData);
                 setRegion(rData);
+                // Update confirmed region ID from database (ground truth)
+                if (typeof rData.id === 'string' && rData.id.length > 0) {
+                    confirmedRegionId = rData.id;
+                }
             }
             
             if (mRes.ok) {
@@ -106,10 +123,19 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
             
             if (aRes.ok) setApplications(await aRes.json());
             
+            // Use initial sanctions response if successful, otherwise retry with confirmed region ID
             if (sRes.ok) {
                 const sData = await sRes.json();
                 console.log(`[DEBUG] Received ${sData.length} sanctions for ${stateId}`, sData);
                 setActiveSanctions(Array.isArray(sData) ? sData : []);
+            } else if (confirmedRegionId !== normalizedStateId) {
+                // Retry with confirmed region ID if it differs from the initial stateId
+                console.warn(`[DEBUG] Sanctions fetch failed (${sRes.status}), retrying with confirmed region ID: ${confirmedRegionId}`);
+                try {
+                    await fetchAndSetSanctions(confirmedRegionId);
+                } catch (retryErr) {
+                    console.error(`[DEBUG] Sanctions retry also failed:`, retryErr);
+                }
             } else {
                 console.error(`[DEBUG] Sanctions fetch failed: ${sRes.status}`);
             }

@@ -68,7 +68,6 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Migration: Add email and firebase_uid if they don't exist
 app.use(express.json());
 app.use(cookieParser());
 
@@ -271,7 +270,7 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
   }
 });
 
-app.get("/api/countries/:iso2", async (req: any, res) => {
+app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
   const { iso2 } = req.params;
   if (!iso2 || iso2 === "-99") return res.status(400).json({ error: "Regione non disponibile" });
 
@@ -883,7 +882,10 @@ app.post("/api/budget/clean-radiation", authenticate, async (req: any, res) => {
       p_created_by: user.id
     });
 
-    await supabase.rpc('update_region_radiation', { p_region_id: regionId, p_delta: -10 });
+    await supabase
+      .from('regions')
+      .update({ radiation: Math.max(0, (region.radiation || 0) - 10) })
+      .eq('id', regionId);
 
     res.json({ success: true });
   } catch (err: any) {
@@ -4142,9 +4144,9 @@ async function budgetMaintenanceTick() {
           await supabase.rpc('add_budget_transaction', {
             p_owner_type: 'REGION',
             p_owner_id: r.id,
-            p_source: 'SYSTEM_TICK',
-            p_category: 'BORDERS_MAINTENANCE',
-            p_amount: -maintenanceCost,
+            p_type: 'EXPENSE',
+            p_subtype: 'BORDERS_MAINTENANCE',
+            p_money_delta: -maintenanceCost,
             p_metadata: { reasons }
           });
         } catch (e) {
@@ -4191,18 +4193,18 @@ async function checkAndResolveWars() {
           await supabase.rpc('add_budget_transaction', {
             p_owner_type: 'REGION',
             p_owner_id: loser,
-            p_source: 'WAR_LOOT',
-            p_category: 'LOOT_LOST',
-            p_amount: -loot,
+            p_type: 'EXPENSE',
+            p_subtype: 'WAR_LOOT_LOST',
+            p_money_delta: -loot,
             p_metadata: { to: winner, warId: war.id }
           });
 
           await supabase.rpc('add_budget_transaction', {
             p_owner_type: 'REGION',
             p_owner_id: winner,
-            p_source: 'WAR_LOOT',
-            p_category: 'LOOT_WON',
-            p_amount: loot,
+            p_type: 'INCOME',
+            p_subtype: 'WAR_LOOT_WON',
+            p_money_delta: loot,
             p_metadata: { from: loser, warId: war.id }
           });
 

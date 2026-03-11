@@ -64,6 +64,10 @@ import WorldMap from "./components/WorldMap";
 const getTs = (val: any) => {
   if (!val) return 0;
   if (typeof val === "number") return val;
+  if (typeof val === "string") {
+    const d = new Date(val);
+    return isNaN(d.getTime()) ? (Number(val) || 0) : d.getTime();
+  }
   if (val._seconds) return val._seconds * 1000;
   if (val.seconds) return val.seconds * 1000;
   if (val.toDate) return val.toDate().getTime();
@@ -175,14 +179,16 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
     setError("");
     setLoading(true);
     try {
+      let session = null;
       if (isLogin) {
-        const { error: authError } = await supabase.auth.signInWithPassword({
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (authError) throw authError;
+        session = data.session;
       } else {
-        const { error: authError, data } = await supabase.auth.signUp({
+        const { data, error: authError } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -190,10 +196,11 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
           }
         });
         if (authError) throw authError;
-        
-        // After signup, we might need to sync the user to our 'users' table in public schema
-        // This is usually done via a trigger in Supabase, but we can also do a manual call here if needed.
-        // For now, let's assume we use the onAuthStateChange in App.tsx to handle the sync or backend auth.
+        session = data.session;
+      }
+      // Explicitly set cookie before fetching data to avoid race conditions
+      if (session) {
+        document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${604800}; SameSite=Lax`;
       }
       onLogin();
     } catch (err: any) {
@@ -2903,7 +2910,14 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchData();
+    // Check for existing session before initial data fetch to avoid race conditions
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${604800}; SameSite=Lax`;
+      }
+      fetchData();
+    });
+
     const interval = setInterval(fetchData, 10000); // Polling every 10s
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -2915,6 +2929,7 @@ export default function App() {
         // Clear cookie on logout
         document.cookie = "sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
         setUser(null);
+        setLoading(false);
       }
     });
 

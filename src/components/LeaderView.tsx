@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import {
     User,
     Crown,
@@ -37,8 +37,8 @@ interface Region {
     stateColor: string;
     stateHymn: string;
     nextLeaderElectionAt: number | null;
-    economicMinisterUserId: string | null;
-    foreignMinisterUserId: string | null;
+    economicAdviserId: string | null;
+    foreignMinisterId: string | null;
     nation: {
         id: string;
         name: string;
@@ -75,12 +75,11 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
 
     const fetchData = async () => {
         if (!regionId) return;
-        const authHeader = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
         try {
             const [rRes, oRes, aRes] = await Promise.all([
-                fetch(`/api/regions/${regionId}`, { headers: authHeader }),
-                fetch(`/api/leader/orders/${regionId}`, { headers: authHeader }),
-                fetch(`/api/applications/${regionId}`, { headers: authHeader })
+                fetch(`/api/regions/${regionId}`),
+                fetch(`/api/leader/orders/${regionId}`),
+                fetch(`/api/applications/${regionId}`)
             ]);
 
             const rData = rRes.ok ? await rRes.json() : { error: "Failed to fetch region" };
@@ -118,7 +117,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
         const promises = [
             fetch('/api/leader/update-state-ui', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ regionId, stateColor: branding.stateColor, stateHymn: branding.stateHymn })
             })
         ];
@@ -127,7 +126,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
             promises.push(
                 fetch('/api/leader/nation/branding', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ nationId: region.nation.id, name: branding.nationName, logo: branding.nationLogo })
                 })
             );
@@ -138,10 +137,10 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
     };
 
     const handlePostOrder = async () => {
-        const res = await fetch('/api/leader/orders', {
+        const res = await fetch('/api/ministers/orders', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-            body: JSON.stringify({ regionId, ...newOrder })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ regionId, title: newOrder.title, content: newOrder.body })
         });
         if (res.ok) {
             setNewOrder({ title: '', body: '', audience: 'ALL' });
@@ -152,7 +151,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
     const handleResolveApp = async (appId: string, action: 'accept' | 'reject') => {
         const res = await fetch(`/api/actions/resolve-application`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ applicationId: appId, action })
         });
         if (res.ok) fetchData();
@@ -161,7 +160,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
     const handleAssignMinister = async (role: string, ministerId: string | null) => {
         const res = await fetch('/api/government/assign-minister', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ regionId, role, ministerId })
         });
         if (res.ok) fetchData();
@@ -507,8 +506,8 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     {[
-                                        { label: 'Economia e Sviluppo', role: 'economics', current: region.economicMinisterUserId, desc: 'Gestione budget, tasse e produzioni.' },
-                                        { label: 'Geopolitica e Esteri', role: 'foreign', current: region.foreignMinisterUserId, desc: 'Gestione confini, visti e alleanze.' }
+                                        { label: 'Economia e Sviluppo', role: 'economics', current: region.economicAdviserId, desc: 'Gestione budget, tasse e produzioni.' },
+                                        { label: 'Geopolitica e Esteri', role: 'foreign', current: region.foreignMinisterId, desc: 'Gestione confini, visti e alleanze.' }
                                     ].map(m => (
                                         <div key={m.role} className="bg-slate-800/30 p-8 rounded-3xl border border-slate-700/30 hover:bg-slate-800/50 transition-all items-start flex flex-col gap-6">
                                             <div className="w-full flex justify-between items-center">

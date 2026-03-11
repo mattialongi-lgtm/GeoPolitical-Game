@@ -577,6 +577,63 @@ app.get("/api/factories", authenticate, async (req: any, res) => {
   res.json(factoriesWithCooldown);
 });
 
+// Create a new player-owned factory
+app.post("/api/factories/create", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { name, type, regionId } = req.body;
+
+  if (!name || !type || !regionId) return res.status(400).json({ error: "Dati mancanti." });
+
+  const validTypes = ['oil', 'minerals', 'uranium', 'diamonds'];
+  if (!validTypes.includes(type)) return res.status(400).json({ error: "Tipo di fabbrica non valido." });
+
+  const costs: Record<string, number> = { oil: 5000, minerals: 5000, uranium: 15000, diamonds: 25000 };
+  const cost = costs[type] || 5000;
+
+  if (user.money < cost) return res.status(400).json({ error: `Fondi insufficienti. Servono $${cost}.` });
+
+  try {
+    await supabase.from('users').update({ money: user.money - cost }).eq('id', user.id);
+
+    const { data: factory, error } = await supabase.from('factories').insert({
+      name,
+      type,
+      regionId: regionId.toUpperCase(),
+      ownerUserId: user.id,
+      wage: 50,
+      budget: 0,
+      level: 1,
+      cooldownSec: 600,
+      createdAt: new Date().toISOString()
+    }).select().single();
+
+    if (error) throw error;
+    res.json(factory);
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nella creazione: " + err.message });
+  }
+});
+
+// Deposit money into a factory's budget
+app.post("/api/factories/deposit", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { factoryId, amount } = req.body;
+
+  if (!factoryId || !amount || amount <= 0) return res.status(400).json({ error: "Parametri non validi." });
+
+  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
+  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
+  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
+  if (user.money < amount) return res.status(400).json({ error: "Fondi insufficienti." });
+
+  try {
+    await supabase.from('users').update({ money: user.money - amount }).eq('id', user.id);
+    await supabase.from('factories').update({ budget: (factory.budget || 0) + amount }).eq('id', factoryId);
+    res.json({ success: true, newBudget: (factory.budget || 0) + amount });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nel deposito: " + err.message });
+  }
+});
 
 
 app.post("/api/actions/propaganda", authenticate, async (req: any, res) => {
@@ -1185,9 +1242,17 @@ app.get("/api/applications/:regionId", authenticate, async (req: any, res) => {
   res.json(apps);
 });
 
-app.get("/api/leader/orders/:regionId", authenticate, (req: any, res) => {
-  // Stub for military orders - can be expanded later
-  res.json([]);
+app.get("/api/leader/orders/:regionId", authenticate, async (req: any, res) => {
+  try {
+    const { data: orders } = await supabase.from('leader_orders')
+      .select('*')
+      .eq('regionId', req.params.regionId)
+      .order('createdAt', { ascending: false })
+      .limit(20);
+    res.json(orders || []);
+  } catch (err) {
+    res.json([]);
+  }
 });
 
 app.post("/api/actions/resolve-application", authenticate, async (req: any, res) => {
@@ -2072,6 +2137,32 @@ app.post("/api/sanctions/revoke", authenticate, async (req: any, res) => {
 // ==============================================================
 // MARKET API (Player-Driven)
 // ==============================================================
+
+// Get state inventory (budget resources) for the leader's state
+app.get("/api/market/state-inventory", authenticate, async (req: any, res) => {
+  const user = req.user;
+  try {
+    // Find region where user is leader/owner
+    const { data: region } = await supabase
+      .from('regions')
+      .select('id')
+      .eq('ownerUserId', user.id)
+      .maybeSingle();
+
+    if (!region) return res.json({ resources: {}, moneyEUR: 0 });
+
+    const { data: budget } = await supabase
+      .from('budgets')
+      .select('moneyEUR, resources')
+      .eq('ownerType', 'REGION')
+      .eq('ownerId', region.id)
+      .maybeSingle();
+
+    res.json(budget || { resources: {}, moneyEUR: 0 });
+  } catch (err) {
+    res.status(500).json({ error: "Errore nel caricamento dell'inventario statale." });
+  }
+});
 
 app.get("/api/market/offers", authenticate, async (req: any, res) => {
   try {
@@ -3915,6 +4006,49 @@ app.post("/api/parliament/laws/withdraw", authenticate, async (req: any, res) =>
 
   if (uError) return res.status(500).json({ error: uError.message });
   res.json({ success: true });
+});
+
+// Minister Fast-Pass: approve a pending law immediately
+app.post("/api/parliament/laws/pass", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { lawId } = req.body;
+
+  try {
+    const { data: law, error: lawError } = await supabase.from('laws').select('*').eq('id', lawId).single();
+    if (lawError || !law) return res.status(404).json({ error: "Legge non trovata." });
+    if (law.status !== 'pending') return res.status(400).json({ error: "Solo leggi in votazione possono essere approvate via Fast-Pass." });
+
+    const { data: region, error: regionError } = await supabase.from('regions').select('*').eq('id', law.regionId).single();
+    if (regionError || !region) return res.status(404).json({ error: "Regione non trovata." });
+
+    const lawDef = LawRegistry[law.type];
+    if (!lawDef) return res.status(400).json({ error: "Tipo di legge sconosciuto." });
+
+    // Check if user has fast-pass authority
+    const isEconomicsMinister = region.economicAdviserId === user.id;
+    const isForeignMinister = region.foreignMinisterId === user.id;
+    const lawCat = lawDef.category;
+
+    const canFastPass = (isEconomicsMinister && (lawCat === "Economia e Tasse" || lawCat === "Costruzioni Statali")) ||
+      (isForeignMinister && (law.type === 'open_borders' || law.type === 'close_borders' || lawCat === 'Diplomacy' || lawCat === 'Residency'));
+
+    if (!canFastPass) {
+      return res.status(403).json({ error: "Non hai i poteri ministeriali per approvare questa legge via Fast-Pass." });
+    }
+
+    await supabase.from('laws').update({ status: 'passed', expiresAt: new Date().toISOString() }).eq('id', lawId);
+
+    try {
+      await lawDef.execute(region, law.params, law.id);
+    } catch (e) {
+      console.error(`Error executing fast-passed law ${law.type}:`, e);
+    }
+
+    res.json({ success: true, message: "Legge approvata via Fast-Pass ministeriale." });
+  } catch (err: any) {
+    console.error("Error in fast-pass:", err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.get("/api/leaderboard", authenticate, async (req, res) => {

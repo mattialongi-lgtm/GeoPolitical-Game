@@ -49,8 +49,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG } from "./types";
-import { auth, googleProvider, isFirebaseConfigured } from "./lib/firebase";
-import { signInWithPopup } from "firebase/auth";
+import { supabase } from "./lib/supabase";
 import { useNavigate, useLocation, Routes, Route, Link, useParams, Navigate } from "react-router-dom";
 import { MoreVertical, Settings, Box, Archive, Filter, ShoppingCart, RefreshCcw } from "lucide-react";
 import { BlocsList } from "./components/BlocsList";
@@ -164,8 +163,9 @@ const StatCard = ({ icon: Icon, label, value, color, subValue }: { icon: any, la
 
 const Auth = ({ onLogin }: { onLogin: () => void }) => {
   const [isLogin, setIsLogin] = useState(true);
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [username, setUsername] = useState(""); // Still needed for profile registration
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
@@ -174,49 +174,48 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    const endpoint = isLogin ? "/api/login" : "/api/register";
     try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
-      });
-      const data = await res.json();
-      if (data.success) onLogin();
-      else setError(data.error || "Something went wrong");
-    } catch (err) {
-      setError("Connection error");
+      if (isLogin) {
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
+        if (authError) throw authError;
+      } else {
+        const { error: authError, data } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { username }
+          }
+        });
+        if (authError) throw authError;
+        
+        // After signup, we might need to sync the user to our 'users' table in public schema
+        // This is usually done via a trigger in Supabase, but we can also do a manual call here if needed.
+        // For now, let's assume we use the onAuthStateChange in App.tsx to handle the sync or backend auth.
+      }
+      onLogin();
+    } catch (err: any) {
+      setError(err.message || "Authentication error");
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleLogin = async () => {
-    if (!auth || !isFirebaseConfigured) {
-      setError("Firebase non configurato. Imposta le chiavi nei segreti.");
-      return;
-    }
     setError("");
     setGoogleLoading(true);
     try {
-      const result = await signInWithPopup(auth, googleProvider);
-      const idToken = await result.user.getIdToken();
-
-      const res = await fetch("/api/auth/firebase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
+      const { error: authError } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
       });
-
-      const data = await res.json();
-      if (data.success) onLogin();
-      else setError(data.error || "Authentication failed");
+      if (authError) throw authError;
     } catch (err: any) {
-      if (err.code === "auth/popup-closed-by-user") {
-        setError("Login cancelled");
-      } else {
-        setError("Google login failed. Try again.");
-      }
+      setError(err.message || "Google login failed");
       console.error(err);
     } finally {
       setGoogleLoading(false);
@@ -242,7 +241,7 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
           </div>
 
           <div className="space-y-4">
-            {isFirebaseConfigured && (
+            {true && (
               <>
                 <button
                   onClick={handleGoogleLogin}
@@ -274,19 +273,35 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Username</label>
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Email</label>
                 <div className="relative">
-                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
                   <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
                     className="w-full pl-11 pr-4 py-3 rounded-2xl border border-slate-100 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-300"
-                    placeholder="Il tuo nome"
+                    placeholder="tua@email.com"
                     required
                   />
                 </div>
               </div>
+              {!isLogin && (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Username</label>
+                  <div className="relative">
+                    <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                    <input
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="w-full pl-11 pr-4 py-3 rounded-2xl border border-slate-100 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-300"
+                      placeholder="Il tuo nome"
+                      required
+                    />
+                  </div>
+                </div>
+              )}
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Password</label>
                 <div className="relative">
@@ -2890,7 +2905,23 @@ export default function App() {
   useEffect(() => {
     fetchData();
     const interval = setInterval(fetchData, 10000); // Polling every 10s
-    return () => clearInterval(interval);
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        // Set cookie for backend authentication
+        document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${604800}; SameSite=Lax`;
+        fetchData();
+      } else {
+        // Clear cookie on logout
+        document.cookie = "sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        setUser(null);
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -2951,7 +2982,7 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    await fetch("/api/logout", { method: "POST" });
+    await supabase.auth.signOut();
     setUser(null);
   };
 

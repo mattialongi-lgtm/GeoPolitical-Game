@@ -353,7 +353,7 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
 
           <div className="mt-8 text-center">
             <button
-              onClick={() => setIsLogin(!isLogin)}
+              onClick={() => { setIsLogin(!isLogin); setError(""); }}
               className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors"
             >
               {isLogin ? "Non hai un account? Registrati" : "Hai già un account? Accedi"}
@@ -1835,7 +1835,10 @@ const BudgetView = ({ regionId, user, isLeader }: { regionId: string, user: any,
   if (loading) return <div className="p-8 text-center"><Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-500" /></div>;
   if (!budgetData) return null;
 
-  const resources = JSON.parse(budgetData.resources || '{}');
+  // Check if budgetData.resources is already an object or needs parsing
+  const resources = typeof budgetData.resources === 'string' 
+    ? JSON.parse(budgetData.resources || '{}') 
+    : (budgetData.resources || {});
 
   return (
     <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
@@ -3206,6 +3209,7 @@ export default function App() {
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
+          <Route path="/regions/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
           <Route path="/leader" element={<LeaderView user={user} regionId={user?.residenceId || user?.regionId} fetchData={fetchData} />} />
           <Route path="/leader/:iso2" element={<LeaderView user={user} fetchData={fetchData} />} />
           <Route path="/ministers" element={<MinistersView user={user} fetchData={fetchData} />} />

@@ -147,13 +147,16 @@ const authenticate = async (req: any, res: any, next: any) => {
 
   try {
     // Verify token with Supabase
+    // We use the default client (anon/user) to verify the token
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !authUser) {
+      console.error("Token verification failed:", authError);
       return res.status(401).json({ error: "Unauthorized: Invalid session." });
     }
 
     // Fetch user data from 'users' table
+    // We use the service role client (global 'supabase') to bypass RLS and see all columns/users
     let { data: user, error: userError } = await supabase
       .from('users')
       .select('*')
@@ -161,44 +164,46 @@ const authenticate = async (req: any, res: any, next: any) => {
       .single();
 
     if (userError || !user) {
+      if (userError && userError.code !== 'PGRST116') {
+         console.error("Error fetching user from table:", userError);
+      }
+
       // Just-in-time provisioning: create user if they exist in Auth but not in public.users
-      console.log(`Provisioning new user: ${authUser.email} (${authUser.id})`);
+      console.log(`[JIT] Provisioning new user: ${authUser.email} (${authUser.id})`);
       const { data: newUser, error: createError } = await supabase
         .from('users')
         .insert({
           id: authUser.id,
-          username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || 'Unknown',
+          username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || `User_${authUser.id.substring(0, 5)}`,
           money: 5000,
           gold: 50,
           energy: 100,
           xp: 0,
           level: 1,
-          regionId: 'IT-RM', // Default region
+          regionId: 'IT-RM', // Default region (Ensure this exists in your regions table)
           residenceId: 'IT-RM',
-          lastEnergyUpdate: Date.now()
+          lastEnergyUpdate: Date.now(),
+          lastLogin: Date.now()
         })
         .select()
         .single();
       
       if (createError) {
-        console.error("Error provisioning user:", createError);
-        return res.status(500).json({ error: "Failed to create user profile." });
+        console.error("[JIT] Error provisioning user:", createError);
+        return res.status(500).json({ error: "Failed to create user profile. Please check if 'regions' table is populated." });
       }
+      console.log(`[JIT] Successfully provisioned user: ${newUser.username}`);
       user = newUser;
     }
 
     // Attach user to request
     req.user = user;
-
-    // TODO: The following logic (Booster, Energy, Perk Upgrades) should be 
-    // migrated to Supabase Database Triggers or RPCs for better scalability.
-    // For now, these properties will be available on req.user for backward compatibility.
-    req.user.perks = {}; // Fetch from 'perks' table if needed
+    req.user.perks = {}; 
     req.user.maxEnergy = GAME_CONFIG.ENERGY_MAX;
 
     next();
   } catch (err) {
-    console.error("Auth Middleware Error:", err);
+    console.error("Auth Middleware Critical Error:", err);
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

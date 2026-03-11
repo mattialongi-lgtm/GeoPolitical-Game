@@ -4478,7 +4478,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                     <input type="number" min="3" max="30" placeholder="Es: 5" value={paramsForm.days || ''} onChange={e => setParamsForm({ ...paramsForm, days: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
                   </div>
                 )}
-                {(selectedLaw === 'declare_war' || selectedLaw === 'peace_treaty' || selectedLaw === 'migration_agreement' || selectedLaw === 'revoke_migration_agreement') && (
+                {(selectedLaw === 'declare_war' || selectedLaw === 'peace_treaty' || selectedLaw === 'migration_agreement' || selectedLaw === 'revoke_migration_agreement' || selectedLaw === 'apply_sanctions' || selectedLaw === 'revoke_sanctions') && (
                   <div>
                     <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Nazione Bersaglio</label>
                     <input type="text" placeholder="Es: FR, DE, US..." value={paramsForm.targetRegionId || ''} onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500 uppercase" />
@@ -4497,7 +4497,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                   </div>
                 )}
                 {/* Fallback for laws with no params like proclaim_dictatorship */}
-                {['change_market_tax', 'change_salary_tax', 'change_state_name', 'change_parliament_size', 'change_parliament_duration', 'transfer_budget', 'declare_war', 'peace_treaty', 'migration_agreement', 'revoke_migration_agreement'].indexOf(selectedLaw) === -1 && (
+                {['change_market_tax', 'change_salary_tax', 'change_state_name', 'change_parliament_size', 'change_parliament_duration', 'transfer_budget', 'declare_war', 'peace_treaty', 'migration_agreement', 'revoke_migration_agreement', 'apply_sanctions', 'revoke_sanctions'].indexOf(selectedLaw) === -1 && (
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-500">
                     Questa legge non richiede parametri aggiuntivi.
                   </div>

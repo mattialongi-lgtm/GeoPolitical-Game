@@ -4588,6 +4588,56 @@ export const LawRegistry: Record<string, {
         db.prepare(`UPDATE wars SET status = 'ended', endsAt = ? WHERE id = ?`).run(Date.now(), existingWar?.id);
       })();
     }
+  },
+  apply_sanctions: {
+    category: "Diplomazia",
+    icon: "ShieldAlert",
+    title: "Applica Sanzioni",
+    description: "Impedisce il commercio e gli spostamenti da/verso la nazione bersaglio.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      if (!params || !params.targetRegionId) return "ID Nazione bersaglio obbligatorio.";
+      const target = db.prepare("SELECT id FROM regions WHERE id = ?").get(params.targetRegionId);
+      if (!target) return "Nazione bersaglio inesistente.";
+      if (params.targetRegionId === region.id) return "Non puoi sanzionare te stesso.";
+      
+      const existing = db.prepare("SELECT id FROM sanctions WHERE fromStateId = ? AND targetStateId = ? AND status = 'ACTIVE'").get(region.id, params.targetRegionId);
+      if (existing) return "Esiste già una sanzione attiva contro questa nazione.";
+      return null;
+    },
+    execute: (region, params, sourceLawId) => {
+      const now = Date.now();
+      const law = db.prepare("SELECT proposerId FROM laws WHERE id = ?").get(sourceLawId) as any;
+      const creatorId = law ? law.proposerId : region.ownerUserId;
+      
+      db.prepare(`
+        INSERT INTO sanctions (id, fromStateId, targetStateId, status, createdAt, createdByUserId)
+        VALUES (?, ?, ?, 'ACTIVE', ?, ?)
+      `).run(`sanc_${Date.now()}_${region.id}_${params.targetRegionId}`, region.id, params.targetRegionId, now, creatorId);
+    }
+  },
+  revoke_sanctions: {
+    category: "Diplomazia",
+    icon: "Unlock",
+    title: "Revoca Sanzioni",
+    description: "Annulla le sanzioni attive verso una nazione.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: (region, params) => {
+      if (!params || !params.targetRegionId) return "ID Nazione bersaglio obbligatorio.";
+      const existing = db.prepare("SELECT id FROM sanctions WHERE fromStateId = ? AND targetStateId = ? AND status = 'ACTIVE'").get(region.id, params.targetRegionId);
+      if (!existing) return "Non c'è una sanzione attiva da revocare.";
+      return null;
+    },
+    execute: (region, params, sourceLawId) => {
+      const now = Date.now();
+      const law = db.prepare("SELECT proposerId FROM laws WHERE id = ?").get(sourceLawId) as any;
+      const revokerId = law ? law.proposerId : region.ownerUserId;
+      
+      db.prepare("UPDATE sanctions SET status = 'REVOKED', revokedAt = ?, revokedByUserId = ? WHERE fromStateId = ? AND targetStateId = ? AND status = 'ACTIVE'")
+        .run(now, revokerId, region.id, params.targetRegionId);
+    }
   }
 };
 

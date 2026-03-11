@@ -65,8 +65,6 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const [actionLoading, setActionLoading] = useState(false);
     const [targetUserId, setTargetUserId] = useState("");
     const [selectedRole, setSelectedRole] = useState<'economics' | 'foreign'>('economics');
-    const [activeSanctions, setActiveSanctions] = useState<any[]>([]);
-    const [targetSanctionStateId, setTargetSanctionStateId] = useState("");
 
     const fetchData = async () => {
         if (!stateId) {
@@ -84,24 +82,12 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
         try {
             console.log(`[DEBUG] MinistersView fetching data for: ${stateId} (normalized: ${normalizedStateId})`);
             
-            // Helper to fetch and set sanctions for a given regionId
-            const fetchAndSetSanctions = async (regionId: string) => {
-                const res = await fetch(`/api/countries/${regionId}/sanctions`);
-                if (res.ok) {
-                    const data = await res.json();
-                    console.log(`[DEBUG] Received ${data.length} sanctions for ${regionId}`, data);
-                    setActiveSanctions(Array.isArray(data) ? data : []);
-                    return true;
-                }
-                return false;
-            };
 
             // Execute all fetches in parallel
-            const [rRes, mRes, aRes, sRes] = await Promise.all([
+            const [rRes, mRes, aRes] = await Promise.all([
                 fetch(`/api/regions/${normalizedStateId}`, { headers: authHeader }),
                 fetch(`/api/ministers/${normalizedStateId}`, { headers: authHeader }),
-                fetch(`/api/actions/applications?regionId=${normalizedStateId}`, { headers: authHeader }),
-                fetch(`/api/countries/${normalizedStateId}/sanctions`)
+                fetch(`/api/actions/applications?regionId=${normalizedStateId}`, { headers: authHeader })
             ]);
 
             // Handle results individually to be robust
@@ -122,24 +108,6 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
             }
             
             if (aRes.ok) setApplications(await aRes.json());
-            
-            // Use initial sanctions response if successful, otherwise retry with confirmed region ID
-            if (sRes.ok) {
-                const sData = await sRes.json();
-                console.log(`[DEBUG] Received ${sData.length} sanctions for ${stateId}`, sData);
-                setActiveSanctions(Array.isArray(sData) ? sData : []);
-            } else if (confirmedRegionId !== normalizedStateId) {
-                // Retry with confirmed region ID if it differs from the initial stateId
-                console.warn(`[DEBUG] Sanctions fetch failed (${sRes.status}), retrying with confirmed region ID: ${confirmedRegionId}`);
-                try {
-                    await fetchAndSetSanctions(confirmedRegionId);
-                } catch (retryErr) {
-                    console.error(`[DEBUG] Sanctions retry also failed:`, retryErr);
-                }
-            } else {
-                console.error(`[DEBUG] Sanctions fetch failed: ${sRes.status}`);
-            }
-
         } catch (err) {
             console.error("Error fetching ministers data:", err);
         } finally {
@@ -194,57 +162,6 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                     ...authHeader 
                 },
                 body: JSON.stringify({ iso2: stateId, role })
-            });
-            if (res.ok) fetchData();
-            else {
-                const data = await res.json();
-                alert(data.error || "Errore nella revoca.");
-            }
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
-    const handleApplySanction = async () => {
-        const targetId = targetSanctionStateId.toUpperCase().trim();
-        if (!targetId) return;
-        setActionLoading(true);
-        try {
-            const token = localStorage.getItem('token');
-            const res = await fetch('/api/sanctions/apply', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': token ? `Bearer ${token}` : ''
-                },
-                body: JSON.stringify({ 
-                    targetStateId: targetId,
-                    fromStateId: stateId
-                })
-            });
-            const data = await res.json();
-            if (data.error) alert(data.error);
-            else {
-                setTargetSanctionStateId("");
-                fetchData();
-            }
-        } finally {
-            setActionLoading(false);
-        }
-    };
-
-    const handleRevokeSanction = async (sanctionId: string) => {
-        if (!window.confirm("Sei sicuro di voler revocare questa sanzione?")) return;
-        setActionLoading(true);
-        try {
-            const token = localStorage.getItem('token');
-            const res = await fetch('/api/sanctions/revoke', {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': token ? `Bearer ${token}` : ''
-                },
-                body: JSON.stringify({ sanctionId })
             });
             if (res.ok) fetchData();
             else {
@@ -400,128 +317,6 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                             Poteri Esecutivi
                         </h2>
 
-                        {/* Sanctions Panel */}
-                        {(isLeader || isEconMinister) && (
-                            <div className="bg-slate-800/40 p-8 rounded-[3rem] border border-slate-700/50 space-y-8 shadow-2xl shadow-rose-900/10 backdrop-blur-sm">
-                                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-                                    <div className="space-y-1">
-                                        <h3 className="text-xl font-black text-rose-50 flex items-center gap-3">
-                                            <div className="p-2 bg-rose-500/20 rounded-xl">
-                                                <ShieldAlert className="w-5 h-5 text-rose-500" />
-                                            </div>
-                                            Sanzioni Commerciali
-                                        </h3>
-                                        <p className="text-sm text-slate-400 font-bold max-w-md">Vieta la vendita di prodotti provenienti da Stati specifici nel tuo mercato nazionale.</p>
-                                    </div>
-                                </div>
-
-                                <div className="flex flex-col lg:flex-row gap-8 items-stretch">
-                                    {/* Create Sanction Form */}
-                                    <div className="flex-1 bg-slate-900/60 p-8 rounded-3xl border border-slate-700/50 space-y-6 relative overflow-hidden group">
-                                        <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                                            <Globe className="w-20 h-20 text-rose-500" />
-                                        </div>
-                                        
-                                        <div className="relative space-y-4">
-                                            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.2em]">Applica Nuova Sanzione</h4>
-                                            <div className="flex flex-col sm:flex-row gap-3">
-                                                <div className="flex-1 relative">
-                                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-black text-xs">ISO</div>
-                                                    <input
-                                                        type="text"
-                                                        value={targetSanctionStateId}
-                                                        onChange={e => setTargetSanctionStateId(e.target.value)}
-                                                        placeholder="es. RU"
-                                                        className="w-full bg-slate-950 border border-slate-700 rounded-2xl pl-12 pr-4 py-4 text-sm font-black text-white focus:outline-none focus:border-rose-500 transition-all uppercase placeholder:text-slate-700 shadow-inner"
-                                                    />
-                                                </div>
-                                                <button
-                                                    onClick={handleApplySanction}
-                                                    disabled={actionLoading || !targetSanctionStateId}
-                                                    className="px-8 bg-rose-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-rose-500 disabled:opacity-30 shadow-lg shadow-rose-900/20 active:scale-95 transition-all flex items-center justify-center gap-2 group/btn"
-                                                >
-                                                    {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
-                                                        <>
-                                                            Applica
-                                                            <ChevronRight className="w-4 h-4 group-hover/btn:translate-x-1 transition-transform" />
-                                                        </>
-                                                    )}
-                                                </button>
-                                            </div>
-                                            
-                                            <div className="bg-rose-500/10 p-4 rounded-xl border border-rose-500/20 flex gap-3">
-                                                <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
-                                                <p className="text-[10px] text-rose-200/70 font-bold leading-relaxed">
-                                                    <span className="text-rose-400">ATTENZIONE:</span> L'applicazione di una sanzione cancellerà <span className="text-rose-400">ISTANTANEAMENTE</span> tutte le offerte esistenti provenienti dallo Stato target nel tuo mercato nazionale.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Active Sanctions List - Public View */}
-                        <div className="bg-slate-800/40 p-8 rounded-[3rem] border border-slate-700/50 space-y-6 shadow-xl backdrop-blur-sm">
-                            <div className="flex justify-between items-center px-2">
-                                <div className="space-y-1">
-                                    <h4 className="text-lg font-black text-rose-50 flex items-center gap-3">
-                                        <div className="p-2 bg-rose-500/20 rounded-xl">
-                                            <ShieldAlert className="w-5 h-5 text-rose-500" />
-                                        </div>
-                                        Sanzioni Attive
-                                    </h4>
-                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Stati attualmente soggetti a restrizioni commerciali</p>
-                                </div>
-                                <span className="text-[10px] font-black bg-rose-500/20 text-rose-400 px-3 py-1 rounded-full border border-rose-500/20">{activeSanctions.length} Stati</span>
-                            </div>
-                            
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-[400px] overflow-y-auto pr-3 custom-scrollbar">
-                                <AnimatePresence mode="popLayout">
-                                    {activeSanctions.map(s => (
-                                        <motion.div 
-                                            key={s.id} 
-                                            layout
-                                            initial={{ opacity: 0, scale: 0.95 }}
-                                            animate={{ opacity: 1, scale: 1 }}
-                                            exit={{ opacity: 0, scale: 0.9 }}
-                                            className="flex items-center justify-between p-5 bg-slate-900/60 rounded-3xl border border-slate-700/50 hover:border-rose-500/30 transition-all group/item shadow-sm"
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <div className="p-2.5 bg-rose-500/5 rounded-2xl border border-rose-500/10 group-hover/item:bg-rose-500/10 transition-colors">
-                                                    <Activity className="w-5 h-5 text-rose-500" />
-                                                </div>
-                                                <div>
-                                                    <p className="text-sm font-black text-white leading-none mb-1.5">{s.targetStateName || s.targetStateId}</p>
-                                                    <div className="flex items-center gap-2">
-                                                        <span className="text-[9px] text-slate-500 font-black uppercase bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">{s.targetStateId}</span>
-                                                        <span className="text-[9px] text-rose-400 font-bold uppercase tracking-wider">Mercato Bloccato</span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            {(isLeader || isEconMinister) && (
-                                                <button
-                                                    onClick={() => handleRevokeSanction(s.id)}
-                                                    className="p-3 opacity-0 group-hover/item:opacity-100 bg-rose-500/10 text-rose-400 rounded-xl hover:bg-rose-600 hover:text-white transition-all shadow-lg"
-                                                    title="Revoca Sanzione"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            )}
-                                        </motion.div>
-                                    ))}
-                                </AnimatePresence>
-                                
-                                {activeSanctions.length === 0 && (
-                                    <div className="col-span-full py-16 text-center space-y-4 bg-slate-900/20 rounded-[3rem] border-2 border-dashed border-slate-800/50">
-                                        <div className="p-4 bg-slate-800/50 rounded-full w-fit mx-auto">
-                                            <Unlock className="w-6 h-6 text-slate-700" />
-                                        </div>
-                                        <p className="text-slate-600 font-bold text-xs uppercase tracking-widest">Nessuna sanzione attiva nel sistema</p>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
 
                         {/* Foreign Minister / Residency Panel */}
                         {(isLeader || isForeignMinister) && (

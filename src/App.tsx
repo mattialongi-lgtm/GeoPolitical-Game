@@ -1481,9 +1481,16 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
             <div className="p-4 bg-slate-50 rounded-3xl col-span-1 border border-indigo-100 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-indigo-100 to-transparent rounded-bl-full opacity-50 pointer-events-none" />
               <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1 relative z-10 flex items-center gap-1">
-                <MapPin className="w-3 h-3" /> In Viaggio a...
+                <MapPin className="w-3 h-3" /> {user.travelingUntil && user.travelingTo && Date.now() < user.travelingUntil ? "In Viaggio verso..." : "Posizione"}
               </p>
-              <p className="text-xl font-black text-slate-900 relative z-10">{user.regionId}</p>
+              <p className="text-xl font-black text-slate-900 relative z-10">
+                {user.travelingUntil && user.travelingTo && Date.now() < user.travelingUntil ? user.travelingTo : user.regionId}
+              </p>
+              {user.travelingUntil && user.travelingTo && Date.now() < user.travelingUntil && (
+                <p className="text-[9px] font-bold text-indigo-400 mt-1 relative z-10">
+                  ✈️ Arrivo tra {Math.ceil((user.travelingUntil - Date.now()) / 60000)} min
+                </p>
+              )}
             </div>
 
             <div className="p-4 bg-slate-50 rounded-3xl col-span-1 border border-emerald-100 relative overflow-hidden">
@@ -2045,6 +2052,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
       else {
         if (data.autoAccepted) alert("Richiesta accettata automaticamente (Regione Neutrale)!");
         else if (endpoint.includes("apply")) alert("Richiesta inviata con successo all'ufficio immigrazione.");
+        else if (data.travelMinutes) alert(`✈️ Viaggio iniziato verso ${data.regionId}! Tempo stimato: ${data.travelMinutes} minuti.`);
         fetchCountryDetail();
       }
     } catch (err) {
@@ -2318,13 +2326,19 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <button
-                disabled={user.regionId === region.id}
+                disabled={user.regionId === region.id || !!(user.travelingUntil && Date.now() < user.travelingUntil)}
                 onClick={() => handleImmigrationAction("/api/actions/travel", { regionId: region.id })}
                 className="flex flex-col items-center justify-center p-4 bg-sky-50 rounded-2xl hover:bg-sky-100 transition-colors disabled:opacity-50 border border-sky-100"
               >
                 <span className="text-2xl mb-2">✈️</span>
-                <span className="text-[11px] font-black uppercase tracking-widest text-sky-700">Viaggia Qui</span>
-                <span className="text-[9px] font-bold text-sky-500 mt-1">Sposta la tua pedina fisica</span>
+                <span className="text-[11px] font-black uppercase tracking-widest text-sky-700">
+                  {user.travelingUntil && Date.now() < user.travelingUntil ? "In Viaggio..." : "Viaggia Qui"}
+                </span>
+                <span className="text-[9px] font-bold text-sky-500 mt-1">
+                  {user.travelingUntil && Date.now() < user.travelingUntil
+                    ? `Arrivo tra ${Math.ceil((user.travelingUntil - Date.now()) / 60000)} min`
+                    : "Sposta la tua pedina fisica"}
+                </span>
               </button>
 
               <button

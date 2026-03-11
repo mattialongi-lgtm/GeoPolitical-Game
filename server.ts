@@ -193,14 +193,19 @@ const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+// Travel time configuration
+const TRAVEL_MIN_MINUTES = 1;
+const TRAVEL_MAX_MINUTES = 60;
+const TRAVEL_KM_PER_MINUTE = 100;
+const TRAVEL_DEFAULT_MS = 2 * 60 * 1000; // 2 minutes fallback if coords unknown
+
 // Calculate travel time in milliseconds based on distance between two ISO2 regions
-// ~1 minute per 100 km, minimum 1 minute, maximum 60 minutes
 const calculateTravelTimeMs = (fromIso2: string, toIso2: string): number => {
   const from = COUNTRY_COORDS[fromIso2.toUpperCase()];
   const to = COUNTRY_COORDS[toIso2.toUpperCase()];
-  if (!from || !to) return 2 * 60 * 1000; // Default 2 minutes if coords unknown
+  if (!from || !to) return TRAVEL_DEFAULT_MS;
   const distKm = haversineDistance(from[0], from[1], to[0], to[1]);
-  const minutes = Math.max(1, Math.min(60, Math.round(distKm / 100)));
+  const minutes = Math.max(TRAVEL_MIN_MINUTES, Math.min(TRAVEL_MAX_MINUTES, Math.round(distKm / TRAVEL_KM_PER_MINUTE)));
   return minutes * 60 * 1000;
 };
 

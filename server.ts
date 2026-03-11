@@ -607,16 +607,27 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
 app.get("/api/factories", authenticate, async (req: any, res) => {
   const regionId = (req.query.regionId as string) || req.user.regionId || 'IT';
-  const { data: factories } = await supabase.from('factories').select('*').eq('regionId', regionId);
+  const { data: factories, error } = await supabase.from('factories').select('*').eq('regionId', regionId);
+
+  if (error) {
+    console.error("Error fetching factories:", error);
+    return res.status(500).json({ error: "Errore nel caricamento delle fabbriche." });
+  }
+
   const { data: cooldowns } = await supabase.from('user_factory_cooldowns').select('factoryId, lastUsed').eq('userId', req.user.id);
 
   const cooldownMap = new Map((cooldowns || []).map(c => [c.factoryId, c]));
-  const factoriesWithCooldown = (factories || []).map(f => {
+  const factoriesWithCooldown = await Promise.all((factories || []).map(async f => {
     const cd = cooldownMap.get(f.id);
     const lastUsed = cd ? new Date(cd.lastUsed).getTime() : 0;
     const remaining = cd ? Math.max(0, (f.cooldownSec * 1000) - (Date.now() - lastUsed)) : 0;
-    return { ...f, remainingCooldown: remaining };
-  });
+    let ownerName = 'Sconosciuto';
+    if (f.ownerUserId) {
+      const { data: owner } = await supabase.from('users').select('username').eq('id', f.ownerUserId).single();
+      if (owner) ownerName = owner.username;
+    }
+    return { ...f, ownerName, remainingCooldown: remaining };
+  }));
 
   res.json(factoriesWithCooldown);
 });
@@ -764,7 +775,7 @@ app.post("/api/actions/invest", authenticate, async (req: any, res) => {
 app.post("/api/actions/craft-drink", authenticate, async (req: any, res) => {
   const user = req.user;
   const cost = GAME_CONFIG.ENERGY_DRINK_COST_GOLD;
-  if (user.gold < cost) return res.status(400).json({ error: `Oro insufficiente. Ti servono 🏅 ${cost}.` });
+  if (user.gold < cost) return res.status(400).json({ error: `Oro insufficiente. Ti servono 🪙 ${cost}.` });
 
   try {
     const { data, error } = await supabase
@@ -827,10 +838,14 @@ app.post("/api/actions/claim-medal", authenticate, async (req: any, res) => {
       .select('warMedals')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error("Medal claim error:", error);
+      throw error;
+    }
     res.json({ success: true, warMedals: updatedUser.warMedals });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error("Medal claim exception:", err);
+    res.status(500).json({ error: err.message || "Errore nella riscossione della medaglia." });
   }
 });
 
@@ -2041,7 +2056,7 @@ app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {
   }
 
   if (useGold && user.gold < goldCost) {
-    return res.status(400).json({ error: `Gold insufficiente. Servono 🏅 ${goldCost}` });
+    return res.status(400).json({ error: `Gold insufficiente. Servono 🪙 ${goldCost}` });
   }
 
   const timeSec = useGold ? goldTimeSec : cashTimeSec;
@@ -2094,7 +2109,7 @@ app.post("/api/perks/booster", authenticate, async (req: any, res) => {
 
   const price = useGold ? BOOSTER_CONFIG.GOLD_PRICE : BOOSTER_CONFIG.CASH_PRICE;
   if (useGold) {
-    if (user.gold < price) return res.status(400).json({ error: `Oro insufficiente. Servono 🏅 ${price} Gold.` });
+    if (user.gold < price) return res.status(400).json({ error: `Oro insufficiente. Servono 🪙 ${price} Gold.` });
   } else {
     if (user.money < price) return res.status(400).json({ error: `Cash insufficiente. Costo: $${price.toLocaleString()}` });
   }
@@ -2236,14 +2251,16 @@ app.get("/api/market/state-inventory", authenticate, async (req: any, res) => {
 
 app.get("/api/market/offers", authenticate, async (req: any, res) => {
   try {
-    const { data: offers } = await supabase
+    const { data: offers, error } = await supabase
       .from('market_offers')
-      .select('*, minPrice:itemId(id)') // Simplified placeholder for minPrice logic if needed
+      .select('*')
       .order('createdAt', { ascending: false })
       .limit(100);
 
-    res.json(offers);
-  } catch (err) {
+    if (error) throw error;
+    res.json(offers || []);
+  } catch (err: any) {
+    console.error("Market offers error:", err);
     res.status(500).json({ error: "Errore nel caricamento del mercato." });
   }
 });
@@ -2606,16 +2623,26 @@ app.put("/api/parties/edit", authenticate, async (req: any, res) => {
 });
 
 app.get("/api/parties", authenticate, async (req: any, res) => {
-  const { data: parties } = await supabase
+  const { data: parties, error } = await supabase
     .from('parties')
-    .select('*, users!leaderUserId(username)')
+    .select('*')
     .order('createdAt', { ascending: false });
+
+  if (error) {
+    console.error("Error fetching parties:", error);
+    return res.status(500).json({ error: "Errore nel caricamento dei partiti." });
+  }
 
   const partiesWithCounts = await Promise.all((parties || []).map(async (p: any) => {
     const { count } = await supabase.from('party_members').select('*', { count: 'exact', head: true }).eq('partyId', p.id);
+    let leaderName = 'Sconosciuto';
+    if (p.leaderUserId) {
+      const { data: leader } = await supabase.from('users').select('username').eq('id', p.leaderUserId).single();
+      if (leader) leaderName = leader.username;
+    }
     return {
       ...p,
-      leaderName: p.users?.username,
+      leaderName,
       memberCount: count || 0
     };
   }));
@@ -2631,13 +2658,19 @@ app.get("/api/parties/my", authenticate, async (req: any, res) => {
 
 app.get("/api/parties/:id", authenticate, async (req: any, res) => {
   const { id } = req.params;
-  const { data: party } = await supabase
+  const { data: party, error: partyError } = await supabase
     .from('parties')
-    .select('*, users!leaderUserId(username)')
+    .select('*')
     .eq('id', id)
     .single();
 
-  if (!party) return res.status(404).json({ error: "Partito non trovato" });
+  if (partyError || !party) return res.status(404).json({ error: "Partito non trovato" });
+
+  let leaderName = 'Sconosciuto';
+  if (party.leaderUserId) {
+    const { data: leader } = await supabase.from('users').select('username').eq('id', party.leaderUserId).single();
+    if (leader) leaderName = leader.username;
+  }
 
   const { data: members } = await supabase
     .from('party_members')
@@ -2660,7 +2693,7 @@ app.get("/api/parties/:id", authenticate, async (req: any, res) => {
   ).length;
 
   res.json({
-    party: { ...party, leaderName: party.users?.username },
+    party: { ...party, leaderName },
     members: mappedMembers,
     activeMembersCount
   });

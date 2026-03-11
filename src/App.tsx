@@ -1476,7 +1476,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
             </div>
             <div className="p-4 bg-amber-50 rounded-3xl">
               <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Gold</p>
-              <p className="text-xl font-black text-amber-700">🏅{user.gold || 0}</p>
+              <p className="text-xl font-black text-amber-700">🪙{user.gold || 0}</p>
             </div>
             <div className="p-4 bg-slate-50 rounded-3xl col-span-1 border border-indigo-100 relative overflow-hidden">
               <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-indigo-100 to-transparent rounded-bl-full opacity-50 pointer-events-none" />
@@ -1537,7 +1537,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
               }}
               className="px-6 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-indigo-100 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 shrink-0 w-full sm:w-auto"
             >
-              Crea (10 🏅)
+              Crea (10 🪙)
             </button>
           </div>
         </div>
@@ -1710,7 +1710,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                               >
                                 <div className="flex flex-col items-start leading-none">
                                   <span className="text-[10px] font-black uppercase border-b-2 border-amber-400/30">Extended</span>
-                                  <span className="text-[9px] font-bold opacity-60 mt-1">🏅 {BOOSTER_CONFIG.GOLD_PRICE}</span>
+                                  <span className="text-[9px] font-bold opacity-60 mt-1">🪙 {BOOSTER_CONFIG.GOLD_PRICE}</span>
                                 </div>
                                 <div className="flex flex-col items-end">
                                   <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
@@ -1766,7 +1766,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         >
                           <Gem className="w-4 h-4" />
                           <span className="text-[10px] font-black uppercase">Apprendi (Gold)</span>
-                          <span className="text-[10px] font-bold opacity-80">🏅 {goldCost}</span>
+                          <span className="text-[10px] font-bold opacity-80">🪙 {goldCost}</span>
                           <span className="text-[9px] opacity-60">⚡ {formatDuration(goldTimeSec)}</span>
                         </button>
                       </div>
@@ -2715,7 +2715,11 @@ const MarketView = () => {
 
   const fetchOffers = () => {
     setLoading(true);
-    fetch("/api/market/offers").then(r => r.json()).then(setOffers).finally(() => setLoading(false));
+    fetch("/api/market/offers")
+      .then(r => r.json())
+      .then(data => setOffers(Array.isArray(data) ? data : []))
+      .catch(() => setOffers([]))
+      .finally(() => setLoading(false));
   };
   useEffect(() => { fetchOffers(); }, []);
 
@@ -3087,7 +3091,7 @@ export default function App() {
               <span className="text-[10px] font-black text-emerald-600">${(user.money || 0).toLocaleString()}</span>
             </div>
             <div className="bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-100 flex items-center gap-1 shrink-0">
-              <span className="text-[10px] font-black text-amber-600">🏅{user.gold || 0}</span>
+              <span className="text-[10px] font-black text-amber-600">🪙{user.gold || 0}</span>
             </div>
             <div className="bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100 flex items-center gap-1 shrink-0">
               <Zap className="w-3 h-3 text-indigo-500" />
@@ -3703,7 +3707,7 @@ const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, relo
                   <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Risorsa</label>
                   <select value={contributeForm.itemType} onChange={e => setContributeForm({ ...contributeForm, targetUserId: targetUser.userId, itemType: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold outline-none text-slate-700 focus:border-indigo-300">
                     <option value="cash">💵 Cash ($)</option>
-                    <option value="gold">🏅 Gold</option>
+                    <option value="gold">🪙 Gold</option>
                     <option value="oil">🛢️ Petrolio</option>
                     <option value="minerals">🪨 Minerali</option>
                     <option value="uranium">☢️ Uranio</option>

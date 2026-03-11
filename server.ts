@@ -994,10 +994,10 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
   const created = await ensureRegionExists(regionId);
   if (!created) return res.status(500).json({ error: "Errore nella creazione della regione." });
 
-  // 1. Fetch target region info
+  // 1. Fetch target region info (use * to avoid errors if optional columns are missing)
   const { data: targetRegion, error: regionError } = await supabase
     .from('regions')
-    .select('workRestrictions, travelFee')
+    .select('*')
     .eq('id', regionId.toUpperCase())
     .single();
 

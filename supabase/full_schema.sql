@@ -114,6 +114,7 @@ CREATE TABLE regions (
     "uraniumBonus" FLOAT DEFAULT 1.0,
     "diamondsBonus" FLOAT DEFAULT 1.0,
     "marketTaxRate" INT DEFAULT 10,
+    "travelFee" INT DEFAULT 0,
     "updatedAt" BIGINT
 );
 

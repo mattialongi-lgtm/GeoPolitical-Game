@@ -428,3 +428,16 @@ $$ LANGUAGE plpgsql;
 -- ==========================================
 -- FATTO! Se non ci sono errori rossi, tutto è andato a buon fine.
 -- ==========================================
+
+-- ==========================================
+-- 29. Add travelFee column to regions (if missing)
+-- ==========================================
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'regions' AND column_name = 'travelFee'
+    ) THEN
+        ALTER TABLE regions ADD COLUMN "travelFee" INT DEFAULT 0;
+    END IF;
+END $$;

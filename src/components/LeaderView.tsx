@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import {
     User,
     Crown,
@@ -37,8 +37,8 @@ interface Region {
     stateColor: string;
     stateHymn: string;
     nextLeaderElectionAt: number | null;
-    economicMinisterUserId: string | null;
-    foreignMinisterUserId: string | null;
+    economicAdviserId: string | null;
+    foreignMinisterId: string | null;
     nation: {
         id: string;
         name: string;
@@ -506,8 +506,8 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
 
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     {[
-                                        { label: 'Economia e Sviluppo', role: 'economics', current: region.economicMinisterUserId, desc: 'Gestione budget, tasse e produzioni.' },
-                                        { label: 'Geopolitica e Esteri', role: 'foreign', current: region.foreignMinisterUserId, desc: 'Gestione confini, visti e alleanze.' }
+                                        { label: 'Economia e Sviluppo', role: 'economics', current: region.economicAdviserId, desc: 'Gestione budget, tasse e produzioni.' },
+                                        { label: 'Geopolitica e Esteri', role: 'foreign', current: region.foreignMinisterId, desc: 'Gestione confini, visti e alleanze.' }
                                     ].map(m => (
                                         <div key={m.role} className="bg-slate-800/30 p-8 rounded-3xl border border-slate-700/30 hover:bg-slate-800/50 transition-all items-start flex flex-col gap-6">
                                             <div className="w-full flex justify-between items-center">

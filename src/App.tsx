@@ -4201,8 +4201,8 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
   };
 
   const isLeader = region?.ownerUserId === user.id;
-  const isEconomicMinister = region?.economicMinisterUserId === user.id;
-  const isForeignMinister = region?.foreignMinisterUserId === user.id;
+  const isEconomicMinister = region?.economicAdviserId === user.id;
+  const isForeignMinister = region?.foreignMinisterId === user.id;
   const canPropose = isMp || isLeader;
 
   return (

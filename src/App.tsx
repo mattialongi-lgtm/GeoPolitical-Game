@@ -985,6 +985,24 @@ const formatTime = (ms: number) => {
 };
 
 // Helper for live perk countdowns (mm:ss or hh:mm:ss)
+const TravelTimer = ({ endsAt, onComplete }: { endsAt: number | any; onComplete?: () => void }) => {
+  const ts = getTs(endsAt);
+  const [remaining, setRemaining] = useState(() => Math.max(0, ts - Date.now()));
+
+  useEffect(() => {
+    const tick = () => {
+      const r = Math.max(0, getTs(endsAt) - Date.now());
+      setRemaining(r);
+      if (r === 0) { onComplete?.(); }
+    };
+    if (Math.max(0, getTs(endsAt) - Date.now()) <= 0) { onComplete?.(); return; }
+    const iv = setInterval(tick, 1000);
+    return () => clearInterval(iv);
+  }, [endsAt]);
+
+  return <span className="tabular-nums">{remaining > 0 ? formatRemaining(remaining) : "Arrivato!"}</span>;
+};
+
 const PerkTimer = ({ willCompleteAt, onComplete }: { willCompleteAt: number | any; onComplete?: () => void }) => {
   const ts = getTs(willCompleteAt);
   const [remaining, setRemaining] = useState(() => Math.max(0, ts - Date.now()));
@@ -1488,7 +1506,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
               </p>
               {user.travelingUntil && user.travelingTo && Date.now() < user.travelingUntil && (
                 <p className="text-[9px] font-bold text-indigo-400 mt-1 relative z-10">
-                  ✈️ Arrivo tra {Math.ceil((user.travelingUntil - Date.now()) / 60000)} min
+                  ✈️ Arrivo tra <TravelTimer endsAt={user.travelingUntil} onComplete={fetchData} />
                 </p>
               )}
             </div>
@@ -2336,7 +2354,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, h
                 </span>
                 <span className="text-[9px] font-bold text-sky-500 mt-1">
                   {user.travelingUntil && Date.now() < user.travelingUntil
-                    ? `Arrivo tra ${Math.ceil((user.travelingUntil - Date.now()) / 60000)} min`
+                    ? <span>Arrivo tra <TravelTimer endsAt={user.travelingUntil} onComplete={fetchData} /></span>
                     : "Sposta la tua pedina fisica"}
                 </span>
               </button>

@@ -606,7 +606,8 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
 
 app.get("/api/factories", authenticate, async (req: any, res) => {
-  const { data: factories } = await supabase.from('factories').select('*');
+  const regionId = (req.query.regionId as string) || req.user.regionId || 'IT';
+  const { data: factories } = await supabase.from('factories').select('*').eq('regionId', regionId);
   const { data: cooldowns } = await supabase.from('user_factory_cooldowns').select('factoryId, lastUsed').eq('userId', req.user.id);
 
   const cooldownMap = new Map((cooldowns || []).map(c => [c.factoryId, c]));

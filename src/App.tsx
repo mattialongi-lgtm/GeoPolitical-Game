@@ -1953,7 +1953,7 @@ const BudgetView = ({ regionId, user, isLeader }: { regionId: string, user: any,
   );
 };
 
-const CountryDetailView = ({ user, handleAction, actionLoading }: { user: any, handleAction: (a: string, b: any) => void, actionLoading: boolean }) => {
+const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { user: any, handleAction: (a: string, b: any) => void, actionLoading: boolean, fetchData: () => void }) => {
   const { iso2 } = useParams();
   const navigate = useNavigate();
   const [region, setRegion] = useState<any | null>(null);
@@ -3245,8 +3245,8 @@ export default function App() {
           <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
-          <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
-          <Route path="/regions/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} />} />
+          <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} fetchData={fetchData} />} />
+          <Route path="/regions/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/leader" element={<LeaderView user={user} regionId={user?.residenceId || user?.regionId} fetchData={fetchData} />} />
           <Route path="/leader/:iso2" element={<LeaderView user={user} fetchData={fetchData} />} />
           <Route path="/ministers" element={<MinistersView user={user} fetchData={fetchData} />} />

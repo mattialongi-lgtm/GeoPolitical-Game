@@ -1112,7 +1112,7 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
   const [actionLoading, setActionLoading] = useState(false);
   const [depositAmounts, setDepositAmounts] = useState<Record<string, string>>({});
 
-  const regionId = iso2 ? iso2.toUpperCase() : "IT";
+  const regionId = iso2 ? iso2.toUpperCase() : (user?.regionId || "IT");
 
   const load = async () => {
     try {
@@ -3135,7 +3135,7 @@ export default function App() {
                       exit={{ opacity: 0, scale: 0.95, y: -8 }}
                       className="fixed right-4 top-16 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-[999] overflow-hidden"
                     >
-                      <button onClick={() => { navigate("/"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
+                      <button onClick={() => { navigate("/map"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
                         <Globe className="w-4 h-4 text-indigo-500" /> MAPPA
                       </button>
                       <button onClick={() => { navigate("/market"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
@@ -3176,6 +3176,7 @@ export default function App() {
       <main className={`${isDashboardRoute ? 'max-w-none p-0' : 'max-w-2xl mx-auto p-6'}`}>
         <Routes>
           <Route path="/" element={<HomeView user={user} regions={regions} navigateToCountry={navigateToCountry} />} />
+          <Route path="/map" element={<WorldMap onRegionClick={navigateToCountry} regions={regions} />} />
           <Route path="/market" element={<MarketView />} />
           <Route path="/storage" element={<StorageView user={user} />} />
           <Route path="/produce" element={<ProduceView user={user} />} />

@@ -218,19 +218,26 @@ const authenticate = async (req: any, res: any, next: any) => {
       if (upg.willCompleteAt && upg.willCompleteAt <= nowTs) {
         // Upgrade completed → increment perk level
         const newLevel = (req.user.perks[perkId] || 0) + 1;
-        await supabase.from('perks').upsert(
+        const { error: upsertErr } = await supabase.from('perks').upsert(
           { userId: user.id, perkId, level: newLevel },
           { onConflict: 'userId,perkId' }
         );
-        req.user.perks[perkId] = newLevel;
-        delete req.user.perkUpgrades[perkId];
-        upgradesChanged = true;
+        if (!upsertErr) {
+          req.user.perks[perkId] = newLevel;
+          delete req.user.perkUpgrades[perkId];
+          upgradesChanged = true;
+        } else {
+          console.error("Error finalizing perk upgrade:", upsertErr);
+        }
       }
     }
     if (upgradesChanged) {
-      await supabase.from('users').update({
+      const { error: updateErr } = await supabase.from('users').update({
         perkUpgradesJson: JSON.stringify(req.user.perkUpgrades)
       }).eq('id', user.id);
+      if (updateErr) {
+        console.error("Error updating perkUpgradesJson:", updateErr);
+      }
     }
 
     next();

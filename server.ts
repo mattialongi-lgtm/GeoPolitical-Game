@@ -616,18 +616,22 @@ app.get("/api/factories", authenticate, async (req: any, res) => {
 
   const { data: cooldowns } = await supabase.from('user_factory_cooldowns').select('factoryId, lastUsed').eq('userId', req.user.id);
 
+  // Batch fetch all owner usernames in a single query
+  const ownerIds = [...new Set((factories || []).map(f => f.ownerUserId).filter(Boolean))];
+  const ownerMap = new Map<string, string>();
+  if (ownerIds.length > 0) {
+    const { data: owners } = await supabase.from('users').select('id, username').in('id', ownerIds);
+    (owners || []).forEach((o: any) => ownerMap.set(o.id, o.username));
+  }
+
   const cooldownMap = new Map((cooldowns || []).map(c => [c.factoryId, c]));
-  const factoriesWithCooldown = await Promise.all((factories || []).map(async f => {
+  const factoriesWithCooldown = (factories || []).map(f => {
     const cd = cooldownMap.get(f.id);
     const lastUsed = cd ? new Date(cd.lastUsed).getTime() : 0;
     const remaining = cd ? Math.max(0, (f.cooldownSec * 1000) - (Date.now() - lastUsed)) : 0;
-    let ownerName = 'Sconosciuto';
-    if (f.ownerUserId) {
-      const { data: owner } = await supabase.from('users').select('username').eq('id', f.ownerUserId).single();
-      if (owner) ownerName = owner.username;
-    }
+    const ownerName = ownerMap.get(f.ownerUserId) || 'Sconosciuto';
     return { ...f, ownerName, remainingCooldown: remaining };
-  }));
+  });
 
   res.json(factoriesWithCooldown);
 });
@@ -2633,16 +2637,19 @@ app.get("/api/parties", authenticate, async (req: any, res) => {
     return res.status(500).json({ error: "Errore nel caricamento dei partiti." });
   }
 
+  // Batch fetch all leader usernames in a single query
+  const leaderIds = [...new Set((parties || []).map(p => p.leaderUserId).filter(Boolean))];
+  const leaderMap = new Map<string, string>();
+  if (leaderIds.length > 0) {
+    const { data: leaders } = await supabase.from('users').select('id, username').in('id', leaderIds);
+    (leaders || []).forEach((l: any) => leaderMap.set(l.id, l.username));
+  }
+
   const partiesWithCounts = await Promise.all((parties || []).map(async (p: any) => {
     const { count } = await supabase.from('party_members').select('*', { count: 'exact', head: true }).eq('partyId', p.id);
-    let leaderName = 'Sconosciuto';
-    if (p.leaderUserId) {
-      const { data: leader } = await supabase.from('users').select('username').eq('id', p.leaderUserId).single();
-      if (leader) leaderName = leader.username;
-    }
     return {
       ...p,
-      leaderName,
+      leaderName: leaderMap.get(p.leaderUserId) || 'Sconosciuto',
       memberCount: count || 0
     };
   }));

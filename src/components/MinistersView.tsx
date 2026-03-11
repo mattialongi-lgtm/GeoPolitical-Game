@@ -76,18 +76,15 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
         // Normalize stateId to ensure consistency with backend
         const normalizedStateId = stateId.toUpperCase().replace('NATION_', '').replace('NATION_', '').replace('nation_', '');
 
-        const token = localStorage.getItem('token');
-        const authHeader = token ? { 'Authorization': `Bearer ${token}` } : {};
-
         try {
             console.log(`[DEBUG] MinistersView fetching data for: ${stateId} (normalized: ${normalizedStateId})`);
             
 
             // Execute all fetches in parallel
             const [rRes, mRes, aRes] = await Promise.all([
-                fetch(`/api/regions/${normalizedStateId}`, { headers: authHeader }),
-                fetch(`/api/ministers/${normalizedStateId}`, { headers: authHeader }),
-                fetch(`/api/actions/applications?regionId=${normalizedStateId}`, { headers: authHeader })
+                fetch(`/api/regions/${normalizedStateId}`),
+                fetch(`/api/ministers/${normalizedStateId}`),
+                fetch(`/api/applications/${normalizedStateId}`)
             ]);
 
             // Handle results individually to be robust
@@ -127,15 +124,10 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const handleAssign = async () => {
         if (!targetUserId || !selectedRole) return;
         setActionLoading(true);
-        const token = localStorage.getItem('token');
-        const authHeader = token ? { 'Authorization': `Bearer ${token}` } : {};
         try {
             const res = await fetch('/api/ministers/assign', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    ...authHeader 
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ iso2: stateId, userId: targetUserId, role: selectedRole })
             });
             const data = await res.json();
@@ -152,15 +144,10 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const handleRevoke = async (role: 'economics' | 'foreign') => {
         if (!window.confirm("Sei sicuro di voler revocare questo incarico ministeriale?")) return;
         setActionLoading(true);
-        const token = localStorage.getItem('token');
-        const authHeader = token ? { 'Authorization': `Bearer ${token}` } : {};
         try {
             const res = await fetch('/api/ministers/revoke', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    ...authHeader 
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ iso2: stateId, role })
             });
             if (res.ok) fetchData();
@@ -176,13 +163,9 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
     const handleResolveApp = async (appId: string, action: 'accept' | 'reject') => {
         setActionLoading(true);
         try {
-            const token = localStorage.getItem('token');
             const res = await fetch(`/api/actions/resolve-application`, {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': token ? `Bearer ${token}` : ''
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ applicationId: appId, action })
             });
             if (res.ok) fetchData();

@@ -75,12 +75,11 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
 
     const fetchData = async () => {
         if (!regionId) return;
-        const authHeader = { 'Authorization': `Bearer ${localStorage.getItem('token')}` };
         try {
             const [rRes, oRes, aRes] = await Promise.all([
-                fetch(`/api/regions/${regionId}`, { headers: authHeader }),
-                fetch(`/api/leader/orders/${regionId}`, { headers: authHeader }),
-                fetch(`/api/applications/${regionId}`, { headers: authHeader })
+                fetch(`/api/regions/${regionId}`),
+                fetch(`/api/leader/orders/${regionId}`),
+                fetch(`/api/applications/${regionId}`)
             ]);
 
             const rData = rRes.ok ? await rRes.json() : { error: "Failed to fetch region" };
@@ -118,7 +117,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
         const promises = [
             fetch('/api/leader/update-state-ui', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ regionId, stateColor: branding.stateColor, stateHymn: branding.stateHymn })
             })
         ];
@@ -127,7 +126,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
             promises.push(
                 fetch('/api/leader/nation/branding', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ nationId: region.nation.id, name: branding.nationName, logo: branding.nationLogo })
                 })
             );
@@ -138,10 +137,10 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
     };
 
     const handlePostOrder = async () => {
-        const res = await fetch('/api/leader/orders', {
+        const res = await fetch('/api/ministers/orders', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
-            body: JSON.stringify({ regionId, ...newOrder })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ regionId, title: newOrder.title, content: newOrder.body })
         });
         if (res.ok) {
             setNewOrder({ title: '', body: '', audience: 'ALL' });
@@ -152,7 +151,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
     const handleResolveApp = async (appId: string, action: 'accept' | 'reject') => {
         const res = await fetch(`/api/actions/resolve-application`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ applicationId: appId, action })
         });
         if (res.ok) fetchData();
@@ -161,7 +160,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
     const handleAssignMinister = async (role: string, ministerId: string | null) => {
         const res = await fetch('/api/government/assign-minister', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ regionId, role, ministerId })
         });
         if (res.ok) fetchData();

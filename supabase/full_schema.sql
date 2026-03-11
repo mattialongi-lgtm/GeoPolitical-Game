@@ -62,6 +62,8 @@ CREATE TABLE users (
     "warMedals" INT DEFAULT 0,
     "lastMedalClaim" BIGINT DEFAULT 0,
     "lastLogin" BIGINT DEFAULT 0,
+    "perkUpgradesJson" TEXT DEFAULT '{}',
+    "boostersJson" TEXT DEFAULT '{}',
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" BIGINT
 );
@@ -209,6 +211,35 @@ CREATE TABLE migration_agreements (
     "toStateId" TEXT REFERENCES regions(id),
     status TEXT DEFAULT 'ACTIVE',
     "activatedAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- PERKS (livelli perk per utente)
+CREATE TABLE perks (
+    "userId" UUID REFERENCES users(id) ON DELETE CASCADE,
+    "perkId" TEXT NOT NULL,
+    level INT DEFAULT 0,
+    PRIMARY KEY ("userId", "perkId")
+);
+
+-- CHAT MESSAGES (chat globale)
+CREATE TABLE chat_messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "userId" UUID REFERENCES users(id) ON DELETE CASCADE,
+    username TEXT,
+    "regionId" TEXT,
+    message TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ARTICLES (giornale)
+CREATE TABLE articles (
+    id TEXT PRIMARY KEY,
+    "authorId" UUID REFERENCES users(id) ON DELETE CASCADE,
+    "authorName" TEXT,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 4. RPC FUNCTIONS (Crucial for atomicity)

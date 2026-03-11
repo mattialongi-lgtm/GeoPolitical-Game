@@ -198,8 +198,40 @@ const authenticate = async (req: any, res: any, next: any) => {
 
     // Attach user to request
     req.user = user;
-    req.user.perks = {}; 
     req.user.maxEnergy = GAME_CONFIG.ENERGY_MAX;
+
+    // Load perk levels from perks table
+    req.user.perks = await getUserPerks(user.id);
+
+    // Parse perkUpgrades and boosters from JSON columns
+    try {
+      req.user.perkUpgrades = JSON.parse(user.perkUpgradesJson || '{}');
+    } catch { req.user.perkUpgrades = {}; }
+    try {
+      req.user.boosters = JSON.parse(user.boostersJson || '{}');
+    } catch { req.user.boosters = {}; }
+
+    // Auto-finalize completed perk upgrades
+    const nowTs = Date.now();
+    let upgradesChanged = false;
+    for (const [perkId, upg] of Object.entries(req.user.perkUpgrades as Record<string, any>)) {
+      if (upg.willCompleteAt && upg.willCompleteAt <= nowTs) {
+        // Upgrade completed → increment perk level
+        const newLevel = (req.user.perks[perkId] || 0) + 1;
+        await supabase.from('perks').upsert(
+          { userId: user.id, perkId, level: newLevel },
+          { onConflict: 'userId,perkId' }
+        );
+        req.user.perks[perkId] = newLevel;
+        delete req.user.perkUpgrades[perkId];
+        upgradesChanged = true;
+      }
+    }
+    if (upgradesChanged) {
+      await supabase.from('users').update({
+        perkUpgradesJson: JSON.stringify(req.user.perkUpgrades)
+      }).eq('id', user.id);
+    }
 
     next();
   } catch (err) {
@@ -302,7 +334,6 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
           id: isoId,
           name: isoId,
           population: 1000000,
-          resources: 50,
           health: 1,
           education: 1,
           military: 1,
@@ -1656,7 +1687,11 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
 
 // Articles API
 app.get("/api/articles", authenticate, async (req, res) => {
-  const { data: articles } = await supabase.from('articles').select('*').order('createdAt', { ascending: false }).limit(50);
+  const { data: articles, error } = await supabase.from('articles').select('*').order('createdAt', { ascending: false }).limit(50);
+  if (error) {
+    console.error("Articles fetch error:", error);
+    return res.json([]);
+  }
   res.json(articles || []);
 });
 
@@ -1681,7 +1716,7 @@ app.post("/api/articles", authenticate, async (req: any, res) => {
 
   const id = Math.random().toString(36).substring(2, 9);
   const now = new Date().toISOString();
-  await supabase.from('articles').insert({
+  const { error: insertError } = await supabase.from('articles').insert({
     id,
     authorId: req.user.id,
     authorName: req.user.username,
@@ -1690,6 +1725,11 @@ app.post("/api/articles", authenticate, async (req: any, res) => {
     createdAt: now,
     updatedAt: now
   });
+
+  if (insertError) {
+    console.error("Article insert error:", insertError);
+    return res.status(500).json({ error: "Errore nella creazione dell'articolo." });
+  }
 
   res.json({ success: true, id });
 });
@@ -1720,10 +1760,15 @@ app.delete("/api/articles/:id", authenticate, async (req: any, res) => {
 
 // Chat API
 app.get("/api/chat", authenticate, async (req, res) => {
-  const { data: messages } = await supabase.from('chat_messages')
+  const { data: messages, error } = await supabase.from('chat_messages')
     .select('id, userId, username, regionId, message, createdAt')
     .order('createdAt', { ascending: false })
     .limit(50);
+
+  if (error) {
+    console.error("Chat fetch error:", error);
+    return res.json([]);
+  }
 
   res.json(messages ? messages.reverse() : []); // oldest first for display
 });
@@ -1750,13 +1795,18 @@ app.post("/api/chat", authenticate, async (req: any, res) => {
     return res.status(429).json({ error: "Aspetta qualche secondo prima di inviare un altro messaggio" });
   }
 
-  await supabase.from('chat_messages').insert({
+  const { error: insertError } = await supabase.from('chat_messages').insert({
     userId: user.id,
     username: user.username,
     regionId: user.regionId || "?",
     message: message.trim(),
     createdAt: new Date().toISOString()
   });
+
+  if (insertError) {
+    console.error("Chat insert error:", insertError);
+    return res.status(500).json({ error: "Errore nell'invio del messaggio." });
+  }
 
   res.json({ success: true });
 });
@@ -1988,6 +2038,13 @@ app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {
 
   const timeSec = useGold ? goldTimeSec : cashTimeSec;
   const willCompleteAt = nowTs + (timeSec * 1000);
+
+  // Store the new upgrade in existingUpgrades before saving
+  existingUpgrades[perkId] = {
+    startedAt: nowTs,
+    willCompleteAt,
+    targetLevel: targetLevel
+  };
 
   const updateData: any = { perkUpgradesJson: JSON.stringify(existingUpgrades) };
   if (useGold) {
@@ -2445,7 +2502,7 @@ app.get("/api/nations/:id", authenticate, async (req: any, res) => {
 
   if (!nation) return res.status(404).json({ error: "Nazione non trovata." });
 
-  const { data: regions } = await supabase.from('regions').select('id, name, population, economyLevel').eq('nationId', nation.id);
+  const { data: regions } = await supabase.from('regions').select('id, name, population, economyLevel').eq('nation_id', nation.id);
   res.json({ ...nation, leaderName: (nation as any).users?.username, regions: regions || [] });
 });
 

@@ -77,6 +77,8 @@ CREATE TABLE users (
     "lastLogin" BIGINT DEFAULT 0,
     "perkUpgradesJson" TEXT DEFAULT '{}',
     "boostersJson" TEXT DEFAULT '{}',
+    "travelingTo" TEXT DEFAULT NULL,
+    "travelingUntil" BIGINT DEFAULT NULL,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" BIGINT
 );

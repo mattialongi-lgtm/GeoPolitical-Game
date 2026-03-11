@@ -24,6 +24,8 @@ export interface User {
   lastEnergyDrink: number;
   warMedals: number;
   lastMedalClaim: number;
+  travelingTo: string | null; // ISO code of destination while traveling
+  travelingUntil: number | null; // Timestamp when travel completes
 }
 
 export interface Perk {

@@ -130,6 +130,115 @@ const calculateMinisterWage = async (stateId: string, role: string) => {
   return Math.floor(baseWage * devIndex * govMult * sizeMult);
 };
 
+// --- Travel Time System: Country coordinates and distance calculation ---
+const COUNTRY_COORDS: Record<string, [number, number]> = {
+  // Europe
+  IT: [41.87, 12.57], FR: [46.60, 2.35], DE: [51.17, 10.45], ES: [40.46, -3.75],
+  GB: [55.38, -3.44], PT: [39.40, -8.22], NL: [52.13, 4.89], BE: [50.50, 4.47],
+  CH: [46.82, 8.23], AT: [47.52, 14.55], PL: [51.92, 19.15], CZ: [49.82, 15.47],
+  SK: [48.67, 19.70], HU: [47.16, 19.50], RO: [45.94, 24.97], BG: [42.73, 25.49],
+  GR: [39.07, 21.82], HR: [45.10, 15.20], RS: [44.02, 21.01], BA: [43.92, 17.68],
+  SI: [46.15, 14.99], ME: [42.71, 19.37], MK: [41.51, 21.75], AL: [41.15, 20.17],
+  XK: [42.60, 20.90], SE: [60.13, 18.64], NO: [60.47, 8.47], FI: [61.92, 25.75],
+  DK: [56.26, 9.50], IS: [64.96, -19.02], IE: [53.41, -8.24], LT: [55.17, 23.88],
+  LV: [56.88, 24.60], EE: [58.60, 25.01], LU: [49.82, 6.13], MT: [35.94, 14.38],
+  CY: [35.13, 33.43], MD: [47.41, 28.37], BY: [53.71, 27.95], UA: [48.38, 31.17],
+  // Asia
+  RU: [61.52, 105.32], TR: [38.96, 35.24], CN: [35.86, 104.20], JP: [36.20, 138.25],
+  KR: [35.91, 127.77], KP: [40.34, 127.51], IN: [20.59, 78.96], PK: [30.38, 69.35],
+  BD: [23.68, 90.36], ID: [0.79, 113.92], MY: [4.21, 101.98], TH: [15.87, 100.99],
+  VN: [14.06, 108.28], PH: [12.88, 121.77], MM: [21.92, 95.96], KH: [12.57, 104.99],
+  LA: [19.86, 102.50], SG: [1.35, 103.82], TW: [23.70, 120.96], MN: [46.86, 103.85],
+  KZ: [48.02, 66.92], UZ: [41.38, 64.59], TM: [38.97, 59.56], KG: [41.20, 74.77],
+  TJ: [38.86, 71.28], AF: [33.94, 67.71], IQ: [33.22, 43.68], IR: [32.43, 53.69],
+  SA: [23.89, 45.08], AE: [23.42, 53.85], QA: [25.35, 51.18], KW: [29.31, 47.48],
+  OM: [21.51, 55.92], YE: [15.55, 48.52], JO: [30.59, 36.24], LB: [33.85, 35.86],
+  SY: [34.80, 38.99], IL: [31.05, 34.85], PS: [31.95, 35.23], GE: [42.32, 43.36],
+  AM: [40.07, 45.04], AZ: [40.14, 47.58], NP: [28.39, 84.12], LK: [7.87, 80.77],
+  BT: [27.51, 90.43], MV: [3.20, 73.22], BN: [4.54, 114.73], TL: [8.87, 125.73],
+  // Africa
+  EG: [26.82, 30.80], MA: [31.79, -7.09], DZ: [28.03, 1.66], TN: [33.89, 9.54],
+  LY: [26.34, 17.23], SD: [12.86, 30.22], SS: [6.88, 31.31], ET: [9.15, 40.49],
+  KE: [0.02, 37.91], TZ: [-6.37, 34.89], UG: [1.37, 32.29], RW: [-1.94, 29.87],
+  BI: [-3.37, 29.92], CD: [-4.04, 21.76], CG: [-0.23, 15.83], GA: [-0.80, 11.61],
+  CM: [7.37, 12.35], NG: [9.08, 8.68], GH: [7.95, -1.02], CI: [7.54, -5.55],
+  SN: [14.50, -14.45], ML: [17.57, -4.00], NE: [17.61, 8.08], BF: [12.24, -1.56],
+  TG: [8.62, 1.21], BJ: [9.31, 2.32], GM: [13.44, -15.31], GW: [11.80, -15.18],
+  GN: [9.95, -9.70], SL: [8.46, -11.78], LR: [6.43, -9.43], MR: [21.01, -10.94],
+  ZA: [-30.56, 22.94], NA: [-22.96, 18.49], BW: [-22.33, 24.68], ZW: [-19.02, 29.15],
+  MZ: [-18.67, 35.53], MG: [-18.77, 46.87], MW: [-13.25, 34.30], ZM: [-13.13, 27.85],
+  AO: [-11.20, 17.87], SO: [5.15, 46.20], DJ: [11.83, 42.59], ER: [15.18, 39.78],
+  ST: [0.19, 6.61], SC: [-4.68, 55.49], MU: [-20.35, 57.55], KM: [-11.88, 43.87],
+  // Americas
+  US: [37.09, -95.71], CA: [56.13, -106.35], MX: [23.63, -102.55], BR: [-14.24, -51.93],
+  AR: [-38.42, -63.62], CL: [-35.68, -71.54], CO: [4.57, -74.30], VE: [6.42, -66.59],
+  PE: [-9.19, -75.02], EC: [-1.83, -78.18], BO: [-16.29, -63.59], PY: [-23.44, -58.44],
+  UY: [-32.52, -55.77], GY: [4.86, -58.93], SR: [3.92, -56.03], CU: [21.52, -77.78],
+  HT: [18.97, -72.29], DO: [18.74, -70.16], JM: [18.11, -77.30], TT: [10.69, -61.22],
+  PR: [18.22, -66.59], GT: [15.78, -90.23], HN: [15.20, -86.24], SV: [13.79, -88.90],
+  NI: [12.87, -85.21], CR: [9.75, -83.75], PA: [8.54, -80.78], BZ: [17.19, -88.50],
+  // Oceania
+  AU: [-25.27, 133.78], NZ: [-40.90, 174.89], PG: [-6.31, 143.96], FJ: [-17.71, 178.07],
+  WS: [-13.76, -172.10], TO: [-21.18, -175.20], VU: [-15.38, 166.96],
+};
+
+// Haversine formula: calculates distance in km between two lat/lng points
+const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371; // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+};
+
+// Travel time configuration
+const TRAVEL_MIN_MINUTES = 1;
+const TRAVEL_MAX_MINUTES = 60;
+const TRAVEL_KM_PER_MINUTE = 100;
+const TRAVEL_DEFAULT_MS = 2 * 60 * 1000; // 2 minutes fallback if coords unknown
+
+// Calculate travel time in milliseconds based on distance between two ISO2 regions
+const calculateTravelTimeMs = (fromIso2: string, toIso2: string): number => {
+  const from = COUNTRY_COORDS[fromIso2.toUpperCase()];
+  const to = COUNTRY_COORDS[toIso2.toUpperCase()];
+  if (!from || !to) return TRAVEL_DEFAULT_MS;
+  const distKm = haversineDistance(from[0], from[1], to[0], to[1]);
+  const minutes = Math.max(TRAVEL_MIN_MINUTES, Math.min(TRAVEL_MAX_MINUTES, Math.round(distKm / TRAVEL_KM_PER_MINUTE)));
+  return minutes * 60 * 1000;
+};
+
+// Helper to auto-create a region in Supabase if it doesn't exist
+const ensureRegionExists = async (regionId: string) => {
+  const isoId = regionId.toUpperCase();
+  const { data: existing } = await supabase
+    .from('regions')
+    .select('id')
+    .eq('id', isoId)
+    .maybeSingle();
+
+  if (existing) return true;
+
+  const { error: createError } = await supabase
+    .from('regions')
+    .insert({
+      id: isoId,
+      name: isoId,
+      population: 1000000,
+      health: 1,
+      education: 1,
+      military: 1,
+      stability: 5
+    });
+
+  if (createError && createError.code !== '23505') { // 23505 = unique constraint (race condition)
+    console.error("Error auto-creating region:", createError);
+    return false;
+  }
+  return true;
+};
+
 // Middleware to verify Supabase JWT and update user state
 const authenticate = async (req: any, res: any, next: any) => {
   let token = null;
@@ -237,6 +346,20 @@ const authenticate = async (req: any, res: any, next: any) => {
       }).eq('id', user.id);
       if (updateErr) {
         console.error("Error updating perkUpgradesJson:", updateErr);
+      }
+    }
+
+    // Auto-complete travel if travelingUntil has passed
+    if (user.travelingUntil && user.travelingTo && Date.now() >= user.travelingUntil) {
+      const { error: travelErr } = await supabase.from('users').update({
+        regionId: user.travelingTo,
+        travelingUntil: null,
+        travelingTo: null
+      }).eq('id', user.id);
+      if (!travelErr) {
+        req.user.regionId = user.travelingTo;
+        req.user.travelingUntil = null;
+        req.user.travelingTo = null;
       }
     }
 
@@ -607,15 +730,30 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
 app.get("/api/factories", authenticate, async (req: any, res) => {
   const regionId = (req.query.regionId as string) || req.user.regionId || 'IT';
-  const { data: factories } = await supabase.from('factories').select('*').eq('regionId', regionId);
+  const { data: factories, error } = await supabase.from('factories').select('*').eq('regionId', regionId);
+
+  if (error) {
+    console.error("Error fetching factories:", error);
+    return res.status(500).json({ error: "Errore nel caricamento delle fabbriche." });
+  }
+
   const { data: cooldowns } = await supabase.from('user_factory_cooldowns').select('factoryId, lastUsed').eq('userId', req.user.id);
+
+  // Batch fetch all owner usernames in a single query
+  const ownerIds = [...new Set((factories || []).map(f => f.ownerUserId).filter(Boolean))];
+  const ownerMap = new Map<string, string>();
+  if (ownerIds.length > 0) {
+    const { data: owners } = await supabase.from('users').select('id, username').in('id', ownerIds);
+    (owners || []).forEach((o: any) => ownerMap.set(o.id, o.username));
+  }
 
   const cooldownMap = new Map((cooldowns || []).map(c => [c.factoryId, c]));
   const factoriesWithCooldown = (factories || []).map(f => {
     const cd = cooldownMap.get(f.id);
     const lastUsed = cd ? new Date(cd.lastUsed).getTime() : 0;
     const remaining = cd ? Math.max(0, (f.cooldownSec * 1000) - (Date.now() - lastUsed)) : 0;
-    return { ...f, remainingCooldown: remaining };
+    const ownerName = ownerMap.get(f.ownerUserId) || 'Sconosciuto';
+    return { ...f, ownerName, remainingCooldown: remaining };
   });
 
   res.json(factoriesWithCooldown);
@@ -764,7 +902,7 @@ app.post("/api/actions/invest", authenticate, async (req: any, res) => {
 app.post("/api/actions/craft-drink", authenticate, async (req: any, res) => {
   const user = req.user;
   const cost = GAME_CONFIG.ENERGY_DRINK_COST_GOLD;
-  if (user.gold < cost) return res.status(400).json({ error: `Oro insufficiente. Ti servono 🏅 ${cost}.` });
+  if (user.gold < cost) return res.status(400).json({ error: `Oro insufficiente. Ti servono 🪙 ${cost}.` });
 
   try {
     const { data, error } = await supabase
@@ -827,10 +965,14 @@ app.post("/api/actions/claim-medal", authenticate, async (req: any, res) => {
       .select('warMedals')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error("Medal claim error:", error);
+      throw error;
+    }
     res.json({ success: true, warMedals: updatedUser.warMedals });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    console.error("Medal claim exception:", err);
+    res.status(500).json({ error: err.message || "Errore nella riscossione della medaglia." });
   }
 });
 
@@ -842,14 +984,24 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
   if (!regionId) return res.status(400).json({ error: "Nessuna destinazione specificata." });
   if (user.regionId === regionId) return res.status(400).json({ error: "Sei già in questa regione." });
 
+  // Block travel if already traveling
+  if (user.travelingUntil && Date.now() < user.travelingUntil) {
+    const remainingMin = Math.ceil((user.travelingUntil - Date.now()) / 60000);
+    return res.status(400).json({ error: `Sei già in viaggio verso ${user.travelingTo}. Arrivo tra ${remainingMin} minuti.` });
+  }
+
+  // Auto-create region if it doesn't exist
+  const created = await ensureRegionExists(regionId);
+  if (!created) return res.status(500).json({ error: "Errore nella creazione della regione." });
+
   // 1. Fetch target region info
   const { data: targetRegion, error: regionError } = await supabase
     .from('regions')
     .select('workRestrictions, travelFee')
-    .eq('id', regionId)
+    .eq('id', regionId.toUpperCase())
     .single();
 
-  if (regionError || !targetRegion) return res.status(404).json({ error: "Regione inesistente." });
+  if (regionError || !targetRegion) return res.status(404).json({ error: "Regione non trovata." });
 
   let isRestricted = targetRegion.workRestrictions === 1;
   let travelFee = targetRegion.travelFee || 0;
@@ -889,9 +1041,21 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
   }
 
   try {
-    // 5. Atomic Travel Action via RPC (or sequential calls for now, but RPC is better for budget)
+    // 5. Calculate travel time
+    const travelTimeMs = calculateTravelTimeMs(user.regionId, regionId);
+    const travelingUntil = Date.now() + travelTimeMs;
+    const travelMinutes = Math.round(travelTimeMs / 60000);
+
+    // 6. Start travel (set travelingTo and travelingUntil instead of instant move)
+    const updateData: any = { travelingTo: regionId.toUpperCase(), travelingUntil };
     if (isRestricted && travelFee > 0) {
-      await supabase.from('users').update({ regionId, money: user.money - travelFee }).eq('id', user.id);
+      updateData.money = user.money - travelFee;
+    }
+
+    await supabase.from('users').update(updateData).eq('id', user.id);
+
+    // Budget transaction for travel fee
+    if (isRestricted && travelFee > 0) {
       await supabase.rpc('add_budget_transaction', {
         p_owner_type: 'REGION',
         p_owner_id: regionId,
@@ -902,11 +1066,9 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
         p_created_by: user.id,
         p_metadata: { fromRegion: user.regionId }
       });
-    } else {
-      await supabase.from('users').update({ regionId }).eq('id', user.id);
     }
 
-    res.json({ success: true, regionId });
+    res.json({ success: true, regionId, travelMinutes, travelingUntil });
   } catch (err: any) {
     console.error("Travel error:", err);
     res.status(500).json({ error: "Errore durante il viaggio" });
@@ -1243,13 +1405,16 @@ app.post("/api/actions/apply", authenticate, async (req: any, res) => {
 
   if (existing) return res.status(400).json({ error: "Hai già inviato una richiesta in attesa di approvazione." });
 
+  // Auto-create region if it doesn't exist
+  await ensureRegionExists(regionId);
+
   const { data: region } = await supabase
     .from('regions')
     .select('ownerUserId')
     .eq('id', regionId)
     .single();
 
-  if (!region) return res.status(404).json({ error: "Regione inesistente." });
+  if (!region) return res.status(404).json({ error: "Regione non trovata." });
 
   const id = Math.random().toString(36).substring(2, 9);
   const now = new Date().toISOString();
@@ -2041,7 +2206,7 @@ app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {
   }
 
   if (useGold && user.gold < goldCost) {
-    return res.status(400).json({ error: `Gold insufficiente. Servono 🏅 ${goldCost}` });
+    return res.status(400).json({ error: `Gold insufficiente. Servono 🪙 ${goldCost}` });
   }
 
   const timeSec = useGold ? goldTimeSec : cashTimeSec;
@@ -2094,7 +2259,7 @@ app.post("/api/perks/booster", authenticate, async (req: any, res) => {
 
   const price = useGold ? BOOSTER_CONFIG.GOLD_PRICE : BOOSTER_CONFIG.CASH_PRICE;
   if (useGold) {
-    if (user.gold < price) return res.status(400).json({ error: `Oro insufficiente. Servono 🏅 ${price} Gold.` });
+    if (user.gold < price) return res.status(400).json({ error: `Oro insufficiente. Servono 🪙 ${price} Gold.` });
   } else {
     if (user.money < price) return res.status(400).json({ error: `Cash insufficiente. Costo: $${price.toLocaleString()}` });
   }
@@ -2236,14 +2401,16 @@ app.get("/api/market/state-inventory", authenticate, async (req: any, res) => {
 
 app.get("/api/market/offers", authenticate, async (req: any, res) => {
   try {
-    const { data: offers } = await supabase
+    const { data: offers, error } = await supabase
       .from('market_offers')
-      .select('*, minPrice:itemId(id)') // Simplified placeholder for minPrice logic if needed
+      .select('*')
       .order('createdAt', { ascending: false })
       .limit(100);
 
-    res.json(offers);
-  } catch (err) {
+    if (error) throw error;
+    res.json(offers || []);
+  } catch (err: any) {
+    console.error("Market offers error:", err);
     res.status(500).json({ error: "Errore nel caricamento del mercato." });
   }
 });
@@ -2606,16 +2773,29 @@ app.put("/api/parties/edit", authenticate, async (req: any, res) => {
 });
 
 app.get("/api/parties", authenticate, async (req: any, res) => {
-  const { data: parties } = await supabase
+  const { data: parties, error } = await supabase
     .from('parties')
-    .select('*, users!leaderUserId(username)')
+    .select('*')
     .order('createdAt', { ascending: false });
+
+  if (error) {
+    console.error("Error fetching parties:", error);
+    return res.status(500).json({ error: "Errore nel caricamento dei partiti." });
+  }
+
+  // Batch fetch all leader usernames in a single query
+  const leaderIds = [...new Set((parties || []).map(p => p.leaderUserId).filter(Boolean))];
+  const leaderMap = new Map<string, string>();
+  if (leaderIds.length > 0) {
+    const { data: leaders } = await supabase.from('users').select('id, username').in('id', leaderIds);
+    (leaders || []).forEach((l: any) => leaderMap.set(l.id, l.username));
+  }
 
   const partiesWithCounts = await Promise.all((parties || []).map(async (p: any) => {
     const { count } = await supabase.from('party_members').select('*', { count: 'exact', head: true }).eq('partyId', p.id);
     return {
       ...p,
-      leaderName: p.users?.username,
+      leaderName: leaderMap.get(p.leaderUserId) || 'Sconosciuto',
       memberCount: count || 0
     };
   }));
@@ -2631,13 +2811,19 @@ app.get("/api/parties/my", authenticate, async (req: any, res) => {
 
 app.get("/api/parties/:id", authenticate, async (req: any, res) => {
   const { id } = req.params;
-  const { data: party } = await supabase
+  const { data: party, error: partyError } = await supabase
     .from('parties')
-    .select('*, users!leaderUserId(username)')
+    .select('*')
     .eq('id', id)
     .single();
 
-  if (!party) return res.status(404).json({ error: "Partito non trovato" });
+  if (partyError || !party) return res.status(404).json({ error: "Partito non trovato" });
+
+  let leaderName = 'Sconosciuto';
+  if (party.leaderUserId) {
+    const { data: leader } = await supabase.from('users').select('username').eq('id', party.leaderUserId).single();
+    if (leader) leaderName = leader.username;
+  }
 
   const { data: members } = await supabase
     .from('party_members')
@@ -2660,7 +2846,7 @@ app.get("/api/parties/:id", authenticate, async (req: any, res) => {
   ).length;
 
   res.json({
-    party: { ...party, leaderName: party.users?.username },
+    party: { ...party, leaderName },
     members: mappedMembers,
     activeMembersCount
   });

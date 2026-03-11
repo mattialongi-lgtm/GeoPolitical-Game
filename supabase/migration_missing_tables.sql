@@ -354,14 +354,23 @@ BEGIN
         'production_queue', 'ministers', 'market_transactions_log'
     ])
     LOOP
-        EXECUTE format(
-            'CREATE POLICY IF NOT EXISTS "Public read %s" ON %I FOR SELECT USING (true)',
-            tbl, tbl
-        );
-        EXECUTE format(
-            'CREATE POLICY IF NOT EXISTS "Server manage %s" ON %I FOR ALL USING (true)',
-            tbl, tbl
-        );
+        -- CREATE POLICY does not support IF NOT EXISTS, so check pg_policies first
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = tbl AND policyname = 'Public read ' || tbl
+        ) THEN
+            EXECUTE format(
+                'CREATE POLICY "Public read %s" ON %I FOR SELECT USING (true)',
+                tbl, tbl
+            );
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_policies WHERE schemaname = 'public' AND tablename = tbl AND policyname = 'Server manage ' || tbl
+        ) THEN
+            EXECUTE format(
+                'CREATE POLICY "Server manage %s" ON %I FOR ALL USING (true)',
+                tbl, tbl
+            );
+        END IF;
     END LOOP;
 END $$;
 

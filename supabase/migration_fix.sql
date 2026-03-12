@@ -35,8 +35,32 @@ CREATE TABLE IF NOT EXISTS articles (
     "authorName" TEXT,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
+    section TEXT DEFAULT 'global',
+    "likeCount" INT DEFAULT 0,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Backfill columns for databases where articles already existed before this migration.
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS section TEXT DEFAULT 'global';
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS "likeCount" INT DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS article_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "articleId" TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    "authorId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "authorName" TEXT NOT NULL,
+    content TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS article_votes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "articleId" TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vote TEXT NOT NULL CHECK (vote IN ('up', 'down')),
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE ("articleId", "userId")
 );
 
 -- 5. Disabilita RLS (Row Level Security) per queste tabelle
@@ -46,6 +70,8 @@ CREATE TABLE IF NOT EXISTS articles (
 ALTER TABLE perks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE article_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE article_votes ENABLE ROW LEVEL SECURITY;
 
 -- Policy: il server usa la Service Role Key che bypassa RLS,
 -- ma aggiungiamo policy di lettura pubblica per sicurezza.
@@ -73,6 +99,22 @@ BEGIN
     END IF;
     IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'articles' AND policyname = 'Server can manage articles') THEN
         CREATE POLICY "Server can manage articles" ON articles FOR ALL USING (true);
+    END IF;
+
+    -- Article Comments
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'article_comments' AND policyname = 'Article comments are viewable by everyone') THEN
+        CREATE POLICY "Article comments are viewable by everyone" ON article_comments FOR SELECT USING (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'article_comments' AND policyname = 'Server can manage article comments') THEN
+        CREATE POLICY "Server can manage article comments" ON article_comments FOR ALL USING (true);
+    END IF;
+
+    -- Article Votes
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'article_votes' AND policyname = 'Article votes are viewable by everyone') THEN
+        CREATE POLICY "Article votes are viewable by everyone" ON article_votes FOR SELECT USING (true);
+    END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'article_votes' AND policyname = 'Server can manage article votes') THEN
+        CREATE POLICY "Server can manage article votes" ON article_votes FOR ALL USING (true);
     END IF;
 END $$;
 

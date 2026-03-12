@@ -87,6 +87,15 @@ CREATE TABLE users (
     "updatedAt" BIGINT
 );
 
+-- NATIONS
+CREATE TABLE nations (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    logo TEXT DEFAULT '🏳️',
+    "leaderUserId" UUID REFERENCES users(id),
+    "updatedAt" BIGINT
+);
+
 -- REGIONS
 CREATE TABLE regions (
     id TEXT PRIMARY KEY, -- ISO Code (e.g., 'IT', 'US')
@@ -215,15 +224,6 @@ CREATE TABLE wars (
     "attackerScore" BIGINT DEFAULT 0,
     "defenderScore" BIGINT DEFAULT 0,
     "lastEventAt" TIMESTAMPTZ
-);
-
--- NATIONS
-CREATE TABLE nations (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    logo TEXT DEFAULT '🏳️',
-    "leaderUserId" UUID REFERENCES users(id),
-    "updatedAt" BIGINT
 );
 
 -- LEADER ORDERS
@@ -846,6 +846,7 @@ ON CONFLICT DO NOTHING;
 
 -- 6. RLS POLICIES
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE nations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE regions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wars ENABLE ROW LEVEL SECURITY;
@@ -879,6 +880,8 @@ ALTER TABLE market_transactions_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public profiles are viewable by everyone" ON users FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Regions are viewable by everyone" ON regions FOR SELECT USING (true);
+CREATE POLICY "Nations public read" ON nations FOR SELECT USING (true);
+CREATE POLICY "Nations server manage" ON nations FOR ALL USING (true);
 CREATE POLICY "Budgets are viewable by everyone" ON budgets FOR SELECT USING (true);
 CREATE POLICY "Wars public read" ON wars FOR SELECT USING (true);
 CREATE POLICY "Wars server manage" ON wars FOR ALL USING (true);

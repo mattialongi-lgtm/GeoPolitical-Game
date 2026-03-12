@@ -667,7 +667,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   // 2. Check Immigration/Work Restrictions
   const { data: regionRel, error: rError } = await supabase
     .from('regions')
-    .select('work_restrictions, market_tax_rate')
+    .select('work_restrictions, market_tax_rate, oilBonus, mineralsBonus, uraniumBonus, diamondsBonus')
     .eq('id', userRegion)
     .single();
 
@@ -706,6 +706,26 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   const taxes = Math.floor(earnings * (taxRate / 100));
   const netEarnings = earnings - taxes;
 
+  // 5. Resource output for resource-type factories (oil, minerals, uranium, diamonds)
+  const resourceTypes = ['oil', 'minerals', 'uranium', 'diamonds'];
+  let resourceOutput = 0;
+  let playerResourceOutput = 0;
+  let stateResourceOutput = 0;
+  const factoryType = factory.type || '';
+
+  if (resourceTypes.includes(factoryType)) {
+    const level = factory.level || 1;
+    let bonusMult = 1.0;
+    if (factoryType === 'oil') bonusMult = regionRel?.oilBonus || 1.0;
+    else if (factoryType === 'minerals') bonusMult = regionRel?.mineralsBonus || 1.0;
+    else if (factoryType === 'uranium') bonusMult = regionRel?.uraniumBonus || 1.0;
+    else if (factoryType === 'diamonds') bonusMult = regionRel?.diamondsBonus || 1.0;
+
+    resourceOutput = Math.max(1, Math.floor(level * 2 * bonusMult));
+    stateResourceOutput = Math.floor(resourceOutput * (taxRate / 100));
+    playerResourceOutput = resourceOutput - stateResourceOutput;
+  }
+
   try {
     // Perform updates via a custom RPC to ensure atomicity
     const { error: workError } = await supabase.rpc('process_work_action', {
@@ -719,12 +739,44 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
     if (workError) throw workError;
 
+    // Resource distribution: player gets resources minus state tax
+    if (playerResourceOutput > 0) {
+      const { data: existingInv } = await supabase.from('user_inventory')
+        .select('quantity').eq('userId', user.id).eq('itemId', factoryType).maybeSingle();
+      if (existingInv) {
+        await supabase.from('user_inventory')
+          .update({ quantity: existingInv.quantity + playerResourceOutput })
+          .eq('userId', user.id).eq('itemId', factoryType);
+      } else {
+        await supabase.from('user_inventory')
+          .insert({ userId: user.id, itemId: factoryType, quantity: playerResourceOutput });
+      }
+    }
+
+    // State gets resource tax via budget transaction
+    if (stateResourceOutput > 0) {
+      await supabase.rpc('add_budget_transaction', {
+        p_owner_type: 'REGION',
+        p_owner_id: userRegion,
+        p_type: 'INCOME',
+        p_subtype: 'RESOURCE_TAX',
+        p_money_delta: 0,
+        p_metadata: { resource: factoryType, quantity: stateResourceOutput, factoryId }
+      });
+    }
+
     // XP Gain (simplified, should ideally be in the RPC too)
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
-    // For now, мы call addXP helper if it's updated or just do it here
     await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: xpGain });
 
-    res.json({ success: true, earnings: netEarnings, taxes, energyCost, xpGain });
+    res.json({ 
+      success: true, 
+      earnings: netEarnings, 
+      taxes, 
+      energyCost, 
+      xpGain,
+      resourceOutput: playerResourceOutput > 0 ? { type: factoryType, player: playerResourceOutput, state: stateResourceOutput } : null
+    });
   } catch (err: any) {
     console.error("Work execution failed:", err);
     res.status(500).json({ error: "Errore durante il lavoro: " + err.message });
@@ -1848,8 +1900,15 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
 });
 
 // Articles API
-app.get("/api/articles", authenticate, async (req, res) => {
-  const { data: articles, error } = await supabase.from('articles').select('*').order('createdAt', { ascending: false }).limit(50);
+app.get("/api/articles", authenticate, async (req: any, res) => {
+  const section = req.query.section;
+  let query = supabase.from('articles').select('*').order('createdAt', { ascending: false }).limit(50);
+  if (section === 'local') {
+    query = query.eq('section', req.user.residenceId || req.user.regionId);
+  } else {
+    query = query.eq('section', 'global');
+  }
+  const { data: articles, error } = await query;
   if (error) {
     console.error("Articles fetch error:", error);
     return res.json([]);
@@ -1864,8 +1923,11 @@ app.get("/api/articles/:id", authenticate, async (req, res) => {
 });
 
 app.post("/api/articles", authenticate, async (req: any, res) => {
-  const { title, content } = req.body;
+  const { title, content, section } = req.body;
   if (!title || !content) return res.status(400).json({ error: "Title and content required" });
+
+  // section: 'global' or 'local' (stored as user's residenceId)
+  const resolvedSection = section === 'local' ? (req.user.residenceId || req.user.regionId || 'global') : 'global';
 
   // Rate limit: max 5 per hour
   const oneHourAgo = new Date(Date.now() - (60 * 60 * 1000)).toISOString();
@@ -1884,6 +1946,7 @@ app.post("/api/articles", authenticate, async (req: any, res) => {
     authorName: req.user.username,
     title,
     content,
+    section: resolvedSection,
     createdAt: now,
     updatedAt: now
   });

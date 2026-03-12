@@ -94,6 +94,7 @@ export interface Article {
   authorName: string;
   title: string;
   content: string;
+  section: 'global' | 'local';
   createdAt: number;
   updatedAt: number;
   likeCount: number;

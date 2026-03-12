@@ -302,11 +302,30 @@ const authenticate = async (req: any, res: any, next: any) => {
         .single();
       
       if (createError) {
-        console.error("[JIT] Error provisioning user:", createError);
-        return res.status(500).json({ error: "Failed to create user profile. Please check if 'regions' table is populated." });
+        if (createError.code === '23505') {
+          // Race condition: another request created the user concurrently.
+          // Re-fetch the newly created user record.
+          let { data: retryUser, error: retryError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', authUser.id)
+            .single();
+          
+          if (retryError || !retryUser) {
+            console.error("[JIT] Error re-fetching user after race condition:", retryError);
+            return res.status(500).json({ error: "Failed to retrieve user profile after concurrent creation." });
+          }
+          user = retryUser;
+        } else {
+          console.error("[JIT] Error provisioning user:", createError);
+          return res.status(500).json({ error: "Failed to create user profile. Please check if 'regions' table is populated." });
+        }
+      } else {
+        if (newUser) {
+          console.log(`[JIT] Successfully provisioned user: ${newUser.username}`);
+          user = newUser;
+        }
       }
-      console.log(`[JIT] Successfully provisioned user: ${newUser.username}`);
-      user = newUser;
     }
 
     // Attach user to request

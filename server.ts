@@ -1982,6 +1982,117 @@ app.delete("/api/articles/:id", authenticate, async (req: any, res) => {
   res.json({ success: true });
 });
 
+// Article Comments
+app.get("/api/articles/:id/comments", authenticate, async (req: any, res) => {
+  const { data: comments, error } = await supabase
+    .from('article_comments')
+    .select('id, articleId, authorId, authorName, content, createdAt')
+    .eq('articleId', req.params.id)
+    .order('createdAt', { ascending: true });
+  if (error) return res.json([]);
+  res.json(comments || []);
+});
+
+app.post("/api/articles/:id/comments", authenticate, async (req: any, res) => {
+  const { content } = req.body;
+  if (!content || !content.trim()) return res.status(400).json({ error: "Content required" });
+  const { data, error } = await supabase.from('article_comments').insert({
+    articleId: req.params.id,
+    authorId: req.user.id,
+    authorName: req.user.username,
+    content: content.trim(),
+  }).select().single();
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data);
+});
+
+// Article Voting (up/down, 1 vote per user, togglable)
+app.get("/api/articles/:id/vote", authenticate, async (req: any, res) => {
+  const articleId = req.params.id;
+  // Get user's vote
+  const { data: userVote } = await supabase
+    .from('article_votes')
+    .select('vote')
+    .eq('articleId', articleId)
+    .eq('userId', req.user.id)
+    .single();
+  // Get total score
+  const { data: upVotes } = await supabase
+    .from('article_votes')
+    .select('id', { count: 'exact' })
+    .eq('articleId', articleId)
+    .eq('vote', 'up');
+  const { data: downVotes } = await supabase
+    .from('article_votes')
+    .select('id', { count: 'exact' })
+    .eq('articleId', articleId)
+    .eq('vote', 'down');
+  const score = (upVotes?.length || 0) - (downVotes?.length || 0);
+  res.json({ vote: userVote?.vote || null, score });
+});
+
+app.post("/api/articles/:id/vote", authenticate, async (req: any, res) => {
+  const articleId = req.params.id;
+  const { vote } = req.body; // 'up', 'down', or null to remove
+  const userId = req.user.id;
+
+  if (vote === null || vote === undefined) {
+    // Remove vote
+    await supabase.from('article_votes').delete().eq('articleId', articleId).eq('userId', userId);
+  } else if (vote === 'up' || vote === 'down') {
+    // Upsert vote
+    const { data: existing } = await supabase
+      .from('article_votes')
+      .select('id')
+      .eq('articleId', articleId)
+      .eq('userId', userId)
+      .single();
+    if (existing) {
+      await supabase.from('article_votes').update({ vote }).eq('id', existing.id);
+    } else {
+      await supabase.from('article_votes').insert({ articleId, userId, vote });
+    }
+  }
+
+  // Return updated score
+  const { data: upVotes } = await supabase
+    .from('article_votes')
+    .select('id', { count: 'exact' })
+    .eq('articleId', articleId)
+    .eq('vote', 'up');
+  const { data: downVotes } = await supabase
+    .from('article_votes')
+    .select('id', { count: 'exact' })
+    .eq('articleId', articleId)
+    .eq('vote', 'down');
+  const score = (upVotes?.length || 0) - (downVotes?.length || 0);
+  // Update article likeCount
+  await supabase.from('articles').update({ likeCount: score }).eq('id', articleId);
+  res.json({ vote: vote || null, score });
+});
+
+// Military Training
+app.post("/api/actions/train", authenticate, async (req: any, res) => {
+  const user = req.user;
+  if (user.energy < 10) return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+
+  const newEnergy = user.energy - 10;
+  const militaryExp = (user.militaryExp || 0) + 5;
+
+  const { error } = await supabase.from('users').update({
+    energy: newEnergy,
+    militaryExp,
+    lastEnergyUpdate: Date.now(),
+  }).eq('id', user.id);
+
+  if (error) return res.status(500).json({ error: error.message });
+
+  // Grant XP
+  try { await supabase.rpc('add_user_xp', { p_user_id: user.id, p_xp: 5 }); } catch {}
+
+  res.json({ success: true, militaryExp, energy: newEnergy });
+});
+
 // Chat API
 app.get("/api/chat", authenticate, async (req: any, res) => {
   const channel = (req.query.channel as string) || 'global';

@@ -268,8 +268,29 @@ CREATE TABLE articles (
     title TEXT NOT NULL,
     content TEXT NOT NULL,
     section TEXT DEFAULT 'global',
+    "likeCount" INT DEFAULT 0,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ARTICLE COMMENTS
+CREATE TABLE article_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "articleId" TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    "authorId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "authorName" TEXT NOT NULL,
+    content TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ARTICLE VOTES
+CREATE TABLE article_votes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "articleId" TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vote TEXT NOT NULL CHECK (vote IN ('up', 'down')),
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE ("articleId", "userId")
 );
 
 -- PARTIES (partiti politici)
@@ -830,6 +851,8 @@ ALTER TABLE party_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE party_invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE party_primaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE article_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE article_votes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE elections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE election_votes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE parliament_members ENABLE ROW LEVEL SECURITY;
@@ -867,6 +890,10 @@ CREATE POLICY "Party primaries public read" ON party_primaries FOR SELECT USING 
 CREATE POLICY "Party primaries server manage" ON party_primaries FOR ALL USING (true);
 CREATE POLICY "User inventory public read" ON user_inventory FOR SELECT USING (true);
 CREATE POLICY "User inventory server manage" ON user_inventory FOR ALL USING (true);
+CREATE POLICY "Article comments public read" ON article_comments FOR SELECT USING (true);
+CREATE POLICY "Article comments server manage" ON article_comments FOR ALL USING (true);
+CREATE POLICY "Article votes public read" ON article_votes FOR SELECT USING (true);
+CREATE POLICY "Article votes server manage" ON article_votes FOR ALL USING (true);
 CREATE POLICY "Elections public read" ON elections FOR SELECT USING (true);
 CREATE POLICY "Elections server manage" ON elections FOR ALL USING (true);
 CREATE POLICY "Election votes public read" ON election_votes FOR SELECT USING (true);

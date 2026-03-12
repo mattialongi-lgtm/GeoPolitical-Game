@@ -3,8 +3,8 @@
 -- WARNING: This will DROP existing tables!
 -- Uso: per un database Supabase nuovo, copia/incolla TUTTO
 -- questo file nel SQL Editor e premi "Run".
--- Se hai già dati in produzione, usa invece le migration
--- nella cartella supabase/ per evitare un reset distruttivo.
+-- Se hai già dati in produzione, usa invece i file
+-- migration_*.sql presenti in questa directory per evitare un reset distruttivo.
 -- ==========================================
 
 -- 1. DROP EXISTING TABLES (Destructive Reset)

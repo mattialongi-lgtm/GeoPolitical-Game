@@ -929,7 +929,6 @@ app.post("/api/actions/propaganda", authenticate, async (req: any, res) => {
   try {
     // Perform updates
     await supabase.from('users').update({
-      influence: user.influence + influenceGain,
       energy: user.energy - energyCost
     }).eq('id', user.id);
 
@@ -1804,7 +1803,7 @@ app.post("/api/actions/attack", authenticate, async (req: any, res) => {
   if (resistenza >= 75) alphaBonus += 0.10;
   if (resistenza >= 100) alphaBonus += 0.15;
 
-  const winProbability = Math.min(0.9, 0.3 + (user.influence / 1000) + totalDmgBonus + alphaBonus);
+  const winProbability = Math.min(0.9, 0.3 + totalDmgBonus + alphaBonus);
   const success = Math.random() < winProbability;
 
   await supabase.from('users').update({ energy: user.energy - finalEnergyCost }).eq('id', user.id);
@@ -4749,17 +4748,21 @@ async function checkAndResolveWars() {
           console.log(`[WAR] ${winner} looted ${loot} EUR from ${loser}`);
         }
 
-        // Conquest Logic: If Attacker wins, they take over the region
+        // Conquest Logic: If Attacker wins, they take over the defender's region
         if (winner === war.attackerCountryIso2) {
-          const { data: attackerRegion } = await supabase.from('regions').select('leaderUserId, nationId').eq('id', winner).single();
-          if (attackerRegion && attackerRegion.leaderUserId) {
+          const { data: attackerRegion } = await supabase.from('regions').select('ownerUserId, leaderUserId, nationId, nation_id').eq('id', winner).single();
+          const conquestLeader = attackerRegion?.leaderUserId || attackerRegion?.ownerUserId;
+          const conquestNation = attackerRegion?.nationId || attackerRegion?.nation_id || `nation_${winner}`;
+          if (attackerRegion && conquestLeader) {
             await supabase.from('regions').update({
-              ownerUserId: attackerRegion.leaderUserId,
-              nationId: attackerRegion.nationId || `nation_${winner}`,
+              ownerUserId: conquestLeader,
+              leaderUserId: conquestLeader,
+              nationId: conquestNation,
+              nation_id: conquestNation,
               stability: 30
             }).eq('id', loser);
 
-            console.log(`[WAR] ${winner} CONQUERED ${loser}. Region added to nation: ${attackerRegion.nationId}`);
+            console.log(`[WAR] ${winner} CONQUERED ${loser}. Region added to nation: ${conquestNation}`);
           }
         }
       }

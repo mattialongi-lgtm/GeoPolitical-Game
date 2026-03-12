@@ -93,6 +93,18 @@ const formatRemaining = (ms: number): string => {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
+const COUNTRY_FLAGS: Record<string, string> = {
+  IT: "🇮🇹", FR: "🇫🇷", DE: "🇩🇪", ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", CA: "🇨🇦",
+  BR: "🇧🇷", JP: "🇯🇵", CN: "🇨🇳", IN: "🇮🇳", RU: "🇷🇺", AU: "🇦🇺", ZA: "🇿🇦",
+  MX: "🇲🇽", AR: "🇦🇷", EG: "🇪🇬", NG: "🇳🇬", TR: "🇹🇷", KR: "🇰🇷", SA: "🇸🇦",
+  ID: "🇮🇩", PK: "🇵🇰", PL: "🇵🇱", UA: "🇺🇦", SE: "🇸🇪", NO: "🇳🇴", NL: "🇳🇱",
+  BE: "🇧🇪", CH: "🇨🇭", PT: "🇵🇹", GR: "🇬🇷", AT: "🇦🇹", HU: "🇭🇺", CZ: "🇨🇿",
+  RO: "🇷🇴", FI: "🇫🇮", DK: "🇩🇰", IE: "🇮🇪", TH: "🇹🇭", VN: "🇻🇳", PH: "🇵🇭",
+  MY: "🇲🇾", SG: "🇸🇬", IR: "🇮🇷", IQ: "🇮🇶", IL: "🇮🇱", CO: "🇨🇴", CL: "🇨🇱",
+  PE: "🇵🇪", ET: "🇪🇹", KE: "🇰🇪", GH: "🇬🇭", TZ: "🇹🇿", MA: "🇲🇦", DZ: "🇩🇿",
+  NZ: "🇳🇿", AF: "🇦🇫",
+};
+
 const WarTimer = ({ endsAt }: { endsAt: number | any }) => {
   const ts = getTs(endsAt);
   const [remaining, setRemaining] = useState(() => Math.max(0, ts - Date.now()));
@@ -544,7 +556,7 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
     <div className="grid grid-cols-2 gap-4">
       <StatCard icon={DollarSign} label="Tesoro" value={`$${user.money.toLocaleString()}`} color="bg-emerald-500" />
       <StatCard icon={Zap} label="Energia" value={`${user.energy}/${user.maxEnergy}`} color="bg-amber-500" subValue={`Regen: +${GAME_CONFIG.ENERGY_REGEN_RATE + (user.perks?.['RESISTENZA'] || 0) * 5}/h`} />
-      <StatCard icon={TrendingUp} label="Influenza" value={user.influence} color="bg-indigo-500" />
+      <StatCard icon={Star} label="Livello" value={user.level} color="bg-indigo-500" />
       <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
         <div className="p-3 rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-100">
           <Globe className="w-5 h-5 text-white" />
@@ -1515,7 +1527,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
           <div className="flex justify-center items-center gap-2 mt-2">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Comandante di Livello {user.level}</p>
             <span className="text-[10px] font-black uppercase bg-rose-100 text-rose-600 px-2 py-0.5 rounded-lg flex items-center gap-1">
-              <Shield className="w-3 h-3" /> {user.displayedNation || 'ST'}
+              {COUNTRY_FLAGS[(user.displayedNation || '').toUpperCase()] || '🌍'} {user.displayedNation || 'ST'}
             </span>
           </div>
 
@@ -2070,18 +2082,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     fetchSanctions();
     fetchRegionFactories();
   }, [iso2]);
-
-  const COUNTRY_FLAGS: Record<string, string> = {
-    IT: "🇮🇹", FR: "🇫🇷", DE: "🇩🇪", ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", CA: "🇨🇦",
-    BR: "🇧🇷", JP: "🇯🇵", CN: "🇨🇳", IN: "🇮🇳", RU: "🇷🇺", AU: "🇦🇺", ZA: "🇿🇦",
-    MX: "🇲🇽", AR: "🇦🇷", EG: "🇪🇬", NG: "🇳🇬", TR: "🇹🇷", KR: "🇰🇷", SA: "🇸🇦",
-    ID: "🇮🇩", PK: "🇵🇰", PL: "🇵🇱", UA: "🇺🇦", SE: "🇸🇪", NO: "🇳🇴", NL: "🇳🇱",
-    BE: "🇧🇪", CH: "🇨🇭", PT: "🇵🇹", GR: "🇬🇷", AT: "🇦🇹", HU: "🇭🇺", CZ: "🇨🇿",
-    RO: "🇷🇴", FI: "🇫🇮", DK: "🇩🇰", IE: "🇮🇪", TH: "🇹🇭", VN: "🇻🇳", PH: "🇵🇭",
-    MY: "🇲🇾", SG: "🇸🇬", IR: "🇮🇷", IQ: "🇮🇶", IL: "🇮🇱", CO: "🇨🇴", CL: "🇨🇱",
-    PE: "🇵🇪", ET: "🇪🇹", KE: "🇰🇪", GH: "🇬🇭", TZ: "🇹🇿", MA: "🇲🇦", DZ: "🇩🇿",
-    NZ: "🇳🇿", AF: "🇦🇫",
-  };
 
   if (loading) return (
     <div className="min-h-[400px] flex items-center justify-center bg-white rounded-[2.5rem] border border-slate-100">

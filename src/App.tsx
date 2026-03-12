@@ -26,6 +26,7 @@ import {
   Swords,
   Star,
   ChevronUp,
+  ChevronDown,
   Info,
   Plus,
   Trash2,
@@ -45,7 +46,18 @@ import {
   Users,
   Crown,
   Landmark,
-  ArrowUpRight
+  ArrowUpRight,
+  Pickaxe,
+  Bomb,
+  Search,
+  ThumbsUp,
+  ThumbsDown,
+  MessageSquare,
+  ChevronLeft,
+  Target,
+  Dumbbell,
+  Award,
+  Flag
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG } from "./types";
@@ -137,8 +149,8 @@ const BottomNav = () => {
   const tabs = [
     { id: "/", label: "Home", icon: Home },
     { id: "/articles", label: "Articoli", icon: FileText },
-    { id: "/work", label: "Lavoro", icon: Briefcase },
-    { id: "/wars", label: "Guerre", icon: Swords },
+    { id: "/work", label: "Lavoro", icon: Pickaxe },
+    { id: "/wars", label: "Guerre", icon: Bomb },
     { id: "/profile", label: "Profilo", icon: UserIcon },
   ];
 
@@ -148,6 +160,8 @@ const BottomNav = () => {
         const Icon = tab.icon;
         const isActive = location.pathname === tab.id ||
           (tab.id === "/articles" && (location.pathname.startsWith("/articles"))) ||
+          (tab.id === "/work" && location.pathname.startsWith("/work")) ||
+          (tab.id === "/wars" && location.pathname.startsWith("/wars")) ||
           (tab.id === "/" && location.pathname.startsWith("/countries"));
         return (
           <button
@@ -174,6 +188,51 @@ const StatCard = ({ icon: Icon, label, value, color, subValue }: { icon: any, la
       <p className="text-xl font-black text-slate-900 leading-none mt-1">{value}</p>
       {subValue && <p className="text-[10px] font-bold text-slate-400 mt-1">{subValue}</p>}
     </div>
+  </div>
+);
+
+// --- Reusable Components ---
+
+const ResourceStrip = ({ user }: { user: any }) => (
+  <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100">
+    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Magazzino Risorse</p>
+    <div className="flex justify-between items-center gap-2 overflow-x-auto">
+      {[
+        { emoji: "🪙", label: "Oro", val: user.gold || 0, color: "text-amber-600" },
+        { emoji: "🛢️", label: "Petrolio", val: user.oil || 0, color: "text-orange-600" },
+        { emoji: "🪨", label: "Minerali", val: user.minerals || 0, color: "text-slate-600" },
+        { emoji: "☢️", label: "Uranio", val: user.uranium || 0, color: "text-cyan-600" },
+        { emoji: "💎", label: "Diamanti", val: user.diamonds || 0, color: "text-purple-600" },
+      ].map(r => (
+        <div key={r.label} className="flex flex-col items-center gap-1 min-w-[56px]">
+          <span className="text-xl">{r.emoji}</span>
+          <span className={`text-sm font-black ${r.color}`}>{r.val}</span>
+          <span className="text-[8px] font-bold text-slate-400 uppercase">{r.label}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const StatRow = ({ label, value, icon: Icon, onClick }: { label: string, value: string | number, icon?: any, onClick?: () => void }) => (
+  <button
+    onClick={onClick}
+    className="w-full bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between hover:border-indigo-200 transition-all group"
+  >
+    <div className="flex items-center gap-3">
+      {Icon && <Icon className="w-5 h-5 text-indigo-500" />}
+      <span className="font-bold text-slate-700">{label}</span>
+    </div>
+    <div className="flex items-center gap-2">
+      <span className="font-black text-slate-900">{value}</span>
+      <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+    </div>
+  </button>
+);
+
+const DarkCard = ({ children, className = "" }: { children: React.ReactNode, className?: string }) => (
+  <div className={`bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 ${className}`}>
+    {children}
   </div>
 );
 
@@ -546,39 +605,98 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
   );
 };
 
-const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Region[], navigateToCountry: (id: string) => void }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 10 }}
-    animate={{ opacity: 1, y: 0 }}
-    exit={{ opacity: 0, y: -10 }}
-    className="space-y-8"
-  >
-    <div className="grid grid-cols-2 gap-4">
-      <StatCard icon={DollarSign} label="Tesoro" value={`$${user.money.toLocaleString()}`} color="bg-emerald-500" />
-      <StatCard icon={Zap} label="Energia" value={`${user.energy}/${user.maxEnergy}`} color="bg-amber-500" subValue={`Regen: +${GAME_CONFIG.ENERGY_REGEN_RATE + (user.perks?.['RESISTENZA'] || 0) * 5}/h`} />
-      <StatCard icon={Star} label="Livello" value={user.level} color="bg-indigo-500" />
-      <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
-        <div className="p-3 rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-100">
-          <Globe className="w-5 h-5 text-white" />
-        </div>
-        <div>
-          <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Regione</p>
-          <p className="text-xl font-black text-slate-900 leading-none mt-1">{user.regionId}</p>
+const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Region[], navigateToCountry: (id: string) => void }) => {
+  const navigate = useNavigate();
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="space-y-6"
+    >
+      {/* Stats Grid */}
+      <div className="grid grid-cols-2 gap-4">
+        <StatCard icon={DollarSign} label="Tesoro" value={`$${user.money.toLocaleString()}`} color="bg-emerald-500" />
+        <StatCard icon={Zap} label="Energia" value={`${user.energy}/${user.maxEnergy}`} color="bg-amber-500" subValue={`Regen: +${GAME_CONFIG.ENERGY_REGEN_RATE + (user.perks?.['RESISTENZA'] || 0) * 5}/h`} />
+        <StatCard icon={Star} label="Livello" value={user.level} color="bg-indigo-500" />
+        <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
+          <div className="p-3 rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-100">
+            <Globe className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Regione</p>
+            <p className="text-xl font-black text-slate-900 leading-none mt-1">{user.regionId}</p>
+          </div>
         </div>
       </div>
-    </div>
 
-    <WorldMap onRegionClick={navigateToCountry} regions={regions} />
+      {/* CTA Cards */}
+      <div className="space-y-3">
+        <button onClick={() => navigate("/map")} className="w-full bg-gradient-to-r from-indigo-600 to-indigo-700 p-5 rounded-[2rem] shadow-lg shadow-indigo-200 flex items-center gap-4 text-left hover:scale-[1.01] active:scale-[0.99] transition-all">
+          <div className="p-3 rounded-2xl bg-white/20">
+            <Globe className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <p className="text-white font-black text-base">Mappa Globale</p>
+            <p className="text-indigo-200 text-xs font-medium">Esplora il mondo e le regioni</p>
+          </div>
+          <ChevronRight className="w-5 h-5 text-white/60" />
+        </button>
 
-    <GlobalChat currentUser={user} />
-  </motion.div>
-);
+        <div className="grid grid-cols-2 gap-3">
+          <button onClick={() => navigateToCountry(user.regionId)} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-200 transition-all group">
+            <div className="p-2.5 rounded-xl bg-emerald-50 w-fit mb-3">
+              <MapPin className="w-5 h-5 text-emerald-600" />
+            </div>
+            <p className="font-black text-slate-900 text-sm">La Tua Regione</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-1">{COUNTRY_FLAGS[(user.regionId || '').toUpperCase()] || '🌍'} {user.regionId}</p>
+          </button>
+
+          <button onClick={() => navigateToCountry(user.originalNation || user.regionId)} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-200 transition-all group">
+            <div className="p-2.5 rounded-xl bg-rose-50 w-fit mb-3">
+              <Flag className="w-5 h-5 text-rose-600" />
+            </div>
+            <p className="font-black text-slate-900 text-sm">Il Tuo Stato</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-1">{COUNTRY_FLAGS[(user.originalNation || '').toUpperCase()] || '🌍'} {user.originalNation || 'N/A'}</p>
+          </button>
+
+          <button onClick={() => navigate("/parliament")} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-200 transition-all group">
+            <div className="p-2.5 rounded-xl bg-blue-50 w-fit mb-3">
+              <Landmark className="w-5 h-5 text-blue-600" />
+            </div>
+            <p className="font-black text-slate-900 text-sm">Parlamento</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-1">Proponi e vota leggi</p>
+          </button>
+
+          <button onClick={() => navigate("/party")} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-200 transition-all group">
+            <div className="p-2.5 rounded-xl bg-purple-50 w-fit mb-3">
+              <Users className="w-5 h-5 text-purple-600" />
+            </div>
+            <p className="font-black text-slate-900 text-sm">Il Tuo Partito</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-1">Gestisci il partito</p>
+          </button>
+        </div>
+      </div>
+
+      {/* Resource Strip (Magazzino) */}
+      <ResourceStrip user={user} />
+
+      {/* World Map */}
+      <WorldMap onRegionClick={navigateToCountry} regions={regions} />
+
+      <GlobalChat currentUser={user} />
+    </motion.div>
+  );
+};
 
 const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles: Article[], setSelectedArticleId: (id: string) => void }) => {
   const navigate = useNavigate();
   const [section, setSection] = useState<'global' | 'local'>('global');
+  const [category, setCategory] = useState<'all' | 'best' | 'guides' | 'subscriptions'>('all');
   const [localArticles, setLocalArticles] = useState<Article[]>([]);
   const [loadingArticles, setLoadingArticles] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearch, setShowSearch] = useState(false);
 
   useEffect(() => {
     const fetchSectionArticles = async () => {
@@ -592,7 +710,29 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
     fetchSectionArticles();
   }, [section]);
 
-  const displayArticles = localArticles;
+  let displayArticles = localArticles;
+
+  // Filter by search
+  if (searchQuery.trim()) {
+    const q = searchQuery.toLowerCase();
+    displayArticles = displayArticles.filter(a =>
+      a.title.toLowerCase().includes(q) || a.authorName.toLowerCase().includes(q)
+    );
+  }
+
+  // Filter by category
+  if (category === 'best') {
+    displayArticles = [...displayArticles].sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
+  } else if (category === 'guides') {
+    displayArticles = displayArticles.filter(a => a.title.toLowerCase().includes('guida') || a.title.toLowerCase().includes('guide') || a.title.toLowerCase().includes('tutorial'));
+  }
+
+  const categories = [
+    { id: 'all' as const, label: 'Tutti' },
+    { id: 'best' as const, label: 'Migliori' },
+    { id: 'guides' as const, label: 'Guide' },
+    { id: 'subscriptions' as const, label: 'Iscrizioni' },
+  ];
 
   return (
     <motion.div
@@ -602,15 +742,43 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
       className="space-y-6"
     >
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Notiziario</h2>
-        <button
-          onClick={() => navigate("/articles/new")}
-          className="bg-indigo-600 text-white p-3 rounded-2xl shadow-lg shadow-indigo-100 hover:scale-105 transition-all"
-        >
-          <Plus className="w-6 h-6" />
-        </button>
+        <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Articoli</h2>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className="p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:bg-slate-50 transition-all"
+          >
+            <Search className="w-5 h-5 text-slate-500" />
+          </button>
+          <button
+            onClick={() => navigate("/articles/new")}
+            className="bg-emerald-600 text-white p-3 rounded-2xl shadow-lg shadow-emerald-100 hover:scale-105 transition-all"
+          >
+            <Plus className="w-6 h-6" />
+          </button>
+        </div>
       </div>
 
+      {/* Search bar */}
+      <AnimatePresence>
+        {showSearch && (
+          <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                autoFocus
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Cerca per titolo o autore..."
+                className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-100 focus:ring-4 focus:ring-indigo-50 outline-none text-sm font-bold text-slate-700"
+              />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Section tabs (global/local) */}
       <div className="bg-white rounded-[2.5rem] p-2 flex gap-2 shadow-sm border border-slate-100">
         <button onClick={() => setSection('global')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${section === 'global' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "text-slate-400 hover:bg-slate-50"}`}>
           🌍 Globale
@@ -618,6 +786,19 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
         <button onClick={() => setSection('local')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${section === 'local' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "text-slate-400 hover:bg-slate-50"}`}>
           🏠 Locale
         </button>
+      </div>
+
+      {/* Category tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1">
+        {categories.map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => setCategory(cat.id)}
+            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest whitespace-nowrap transition-all ${category === cat.id ? "bg-indigo-600 text-white shadow-md" : "bg-white text-slate-400 border border-slate-100 hover:bg-slate-50"}`}
+          >
+            {cat.label}
+          </button>
+        ))}
       </div>
 
       {loadingArticles ? (
@@ -639,13 +820,18 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
                   </div>
                   <span className="text-[10px] font-black text-slate-400 uppercase">{article.authorName}</span>
                 </div>
-                <span className="text-[10px] font-bold text-slate-300 uppercase">{new Date(article.createdAt).toLocaleDateString()}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-black text-indigo-500 flex items-center gap-1">
+                    <ThumbsUp className="w-3 h-3" /> {article.likeCount || 0}
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-300 uppercase">{new Date(article.createdAt).toLocaleDateString()}</span>
+                </div>
               </div>
             </button>
           ))}
           {displayArticles.length === 0 && (
             <div className="bg-white p-12 rounded-[2.5rem] text-center text-slate-400 font-medium border border-dashed border-slate-200">
-              {section === 'local' ? 'Nessun articolo locale pubblicato. Sii il primo!' : 'Nessun articolo pubblicato. Sii il primo!'}
+              {searchQuery ? 'Nessun risultato trovato.' : section === 'local' ? 'Nessun articolo locale pubblicato. Sii il primo!' : 'Nessun articolo pubblicato. Sii il primo!'}
             </div>
           )}
         </div>
@@ -658,9 +844,93 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
   const { id } = useParams();
   const navigate = useNavigate();
   const [actionLoading, setActionLoading] = useState(false);
-  const article = articles.find(a => a.id === id);
+  const [comments, setComments] = useState<any[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [userVote, setUserVote] = useState<'up' | 'down' | null>(null);
+  const [voteScore, setVoteScore] = useState(0);
+  const [allArticles, setAllArticles] = useState<Article[]>([]);
 
-  if (!article) return <div>Articolo non trovato</div>;
+  // Fetch all articles for prev/next navigation
+  useEffect(() => {
+    const fetchAll = async () => {
+      try {
+        const res = await fetch('/api/articles?section=global');
+        if (res.ok) setAllArticles(await res.json());
+      } catch { }
+    };
+    fetchAll();
+  }, []);
+
+  const article = articles.find(a => a.id === id) || allArticles.find(a => a.id === id);
+
+  // Fetch comments and vote status
+  useEffect(() => {
+    if (!id) return;
+    const fetchComments = async () => {
+      try {
+        const res = await fetch(`/api/articles/${id}/comments`);
+        if (res.ok) setComments(await res.json());
+      } catch { }
+    };
+    const fetchVote = async () => {
+      try {
+        const res = await fetch(`/api/articles/${id}/vote`);
+        if (res.ok) {
+          const data = await res.json();
+          setUserVote(data.vote || null);
+          setVoteScore(data.score || 0);
+        }
+      } catch { }
+    };
+    fetchComments();
+    fetchVote();
+  }, [id]);
+
+  // Find prev/next articles
+  const articlesList = allArticles.length > 0 ? allArticles : articles;
+  const currentIdx = articlesList.findIndex(a => a.id === id);
+  const prevArticle = currentIdx > 0 ? articlesList[currentIdx - 1] : null;
+  const nextArticle = currentIdx < articlesList.length - 1 ? articlesList[currentIdx + 1] : null;
+
+  const handleVote = async (direction: 'up' | 'down') => {
+    try {
+      const res = await fetch(`/api/articles/${id}/vote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vote: userVote === direction ? null : direction })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUserVote(data.vote || null);
+        setVoteScore(data.score || 0);
+      }
+    } catch { }
+  };
+
+  const handleComment = async () => {
+    if (!newComment.trim()) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch(`/api/articles/${id}/comments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newComment })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setComments(prev => [...prev, data]);
+        setNewComment('');
+      }
+    } catch { }
+    setActionLoading(false);
+  };
+
+  if (!article) return (
+    <div className="bg-white p-12 rounded-[2.5rem] text-center border border-slate-100">
+      <p className="text-slate-400 font-bold">Articolo non trovato</p>
+      <button onClick={() => navigate("/articles")} className="mt-4 text-indigo-600 font-black text-sm">← Torna al Feed</button>
+    </div>
+  );
 
   return (
     <motion.div
@@ -691,6 +961,39 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
           {article.content}
         </div>
 
+        {/* Vote section */}
+        <div className="flex items-center gap-4 pt-4 border-t border-slate-50">
+          <button
+            onClick={() => handleVote('up')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border transition-all ${userVote === 'up' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white border-slate-200 text-slate-400 hover:text-emerald-500 hover:border-emerald-200'}`}
+          >
+            <ThumbsUp className="w-4 h-4" />
+            <span className="text-xs font-black">Mi piace</span>
+          </button>
+          <span className="text-lg font-black text-slate-900">{voteScore || article.likeCount || 0}</span>
+          <button
+            onClick={() => handleVote('down')}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border transition-all ${userVote === 'down' ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-white border-slate-200 text-slate-400 hover:text-rose-500 hover:border-rose-200'}`}
+          >
+            <ThumbsDown className="w-4 h-4" />
+            <span className="text-xs font-black">Non mi piace</span>
+          </button>
+        </div>
+
+        {/* Prev/Next navigation */}
+        <div className="flex justify-between pt-4 border-t border-slate-50">
+          {prevArticle ? (
+            <button onClick={() => navigate(`/articles/${prevArticle.id}`)} className="text-xs font-black text-indigo-600 flex items-center gap-1 hover:underline">
+              <ChevronLeft className="w-4 h-4" /> Articolo precedente
+            </button>
+          ) : <div />}
+          {nextArticle ? (
+            <button onClick={() => navigate(`/articles/${nextArticle.id}`)} className="text-xs font-black text-indigo-600 flex items-center gap-1 hover:underline">
+              Prossimo articolo <ChevronRight className="w-4 h-4" />
+            </button>
+          ) : <div />}
+        </div>
+
         {article.authorId === user.id && (
           <div className="pt-6 border-t border-slate-50 flex gap-3">
             <button
@@ -715,6 +1018,47 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
             </button>
           </div>
         )}
+      </div>
+
+      {/* Comments Section */}
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+        <h3 className="font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
+          <MessageSquare className="w-5 h-5 text-indigo-500" />
+          Commenti ({comments.length})
+        </h3>
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {comments.map((c: any, i: number) => (
+            <div key={c.id || i} className="bg-slate-50 p-4 rounded-2xl">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center">
+                  <UserIcon className="w-3 h-3 text-indigo-600" />
+                </div>
+                <span className="text-xs font-black text-slate-700">{c.authorName || 'Utente'}</span>
+                <span className="text-[9px] font-bold text-slate-400">{c.createdAt ? new Date(c.createdAt).toLocaleString() : ''}</span>
+              </div>
+              <p className="text-sm text-slate-600 font-medium">{c.content}</p>
+            </div>
+          ))}
+          {comments.length === 0 && (
+            <p className="text-center text-slate-400 text-sm font-medium py-4">Nessun commento. Sii il primo!</p>
+          )}
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={newComment}
+            onChange={e => setNewComment(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleComment(); }}
+            placeholder="Lascia un commento…"
+            className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-100 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-100"
+          />
+          <button
+            onClick={handleComment}
+            disabled={actionLoading || !newComment.trim()}
+            className="px-4 py-3 bg-indigo-600 text-white rounded-xl font-black text-xs disabled:opacity-50 hover:bg-indigo-700 transition-all"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </motion.div>
   );
@@ -799,6 +1143,35 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
 
 
 const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: any, fetchData: () => void, actionLoading: boolean }) => {
+  const [training, setTraining] = useState(false);
+  const [militaryExp, setMilitaryExp] = useState(user?.militaryExp || 0);
+
+  const handleTrain = async () => {
+    if (user.energy < 10) { alert("Energia insufficiente!"); return; }
+    setTraining(true);
+    try {
+      const res = await fetch("/api/actions/train", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        setMilitaryExp(data.militaryExp || militaryExp + 5);
+        fetchData();
+      }
+    } catch {
+      // Fallback: simulate training locally
+      setMilitaryExp(prev => prev + 5);
+      fetchData();
+    } finally {
+      setTraining(false);
+    }
+  };
+
+  const handleJoinRevolution = () => {
+    alert("Funzionalità in arrivo! La rivoluzione sarà disponibile presto. (Placeholder)");
+  };
 
   return (
     <motion.div
@@ -813,6 +1186,56 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         </div>
         <h2 className="text-2xl font-black text-slate-900">Ministero della Guerra</h2>
         <p className="text-slate-400 text-sm font-medium mt-1">Conflitti globali e conquiste territoriali.</p>
+      </div>
+
+      {/* Military Training Section */}
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-2xl bg-amber-50">
+            <Dumbbell className="w-6 h-6 text-amber-600" />
+          </div>
+          <div>
+            <h3 className="font-black text-slate-900 uppercase tracking-tight">Addestramento Militare</h3>
+            <p className="text-xs text-slate-400 font-medium">Allenati per aumentare la tua esperienza militare</p>
+          </div>
+        </div>
+        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
+          <div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Exp Militare</p>
+            <p className="text-2xl font-black text-slate-900">{militaryExp}</p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Energia</p>
+            <p className="text-lg font-black text-amber-600">{user.energy}⚡</p>
+          </div>
+        </div>
+        <button
+          onClick={handleTrain}
+          disabled={training || user.energy < 10}
+          className="w-full py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-amber-100 hover:bg-amber-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+        >
+          {training ? <Loader2 className="w-4 h-4 animate-spin" /> : <Dumbbell className="w-4 h-4" />}
+          Allenati (-10⚡, +5 Exp)
+        </button>
+      </div>
+
+      {/* Revolution / Coup CTA */}
+      <div className="bg-gradient-to-r from-rose-600 to-rose-700 p-6 rounded-[2.5rem] shadow-lg shadow-rose-200 text-white space-y-3">
+        <div className="flex items-center gap-3">
+          <div className="p-3 rounded-2xl bg-white/20">
+            <Flag className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h3 className="font-black uppercase tracking-tight">Rivoluzione / Golpe</h3>
+            <p className="text-rose-200 text-xs font-medium">Unisciti o organizza un colpo di stato</p>
+          </div>
+        </div>
+        <button
+          onClick={handleJoinRevolution}
+          className="w-full py-3 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all border border-white/20"
+        >
+          🔥 Unisciti alla Rivoluzione (Placeholder)
+        </button>
       </div>
 
       {wars.active.length > 0 && (
@@ -1155,6 +1578,7 @@ const FACTORY_CREATE_COST = {
 
 const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => void }) => {
   const { iso2 } = useParams();
+  const navigate = useNavigate();
   const [factories, setFactories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
@@ -1162,6 +1586,8 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
   const [newType, setNewType] = useState("oil");
   const [actionLoading, setActionLoading] = useState(false);
   const [depositAmounts, setDepositAmounts] = useState<Record<string, string>>({});
+  const [factorySearch, setFactorySearch] = useState("");
+  const [showWorldFactories, setShowWorldFactories] = useState(false);
 
   const regionId = iso2 ? iso2.toUpperCase() : (user?.regionId || "IT");
 
@@ -1252,6 +1678,42 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
         </button>
       </div>
 
+      {/* Factory search */}
+      <div className="relative">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <input
+          type="text"
+          value={factorySearch}
+          onChange={e => setFactorySearch(e.target.value)}
+          placeholder="Cerca fabbrica..."
+          className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-100 focus:ring-4 focus:ring-indigo-50 outline-none text-sm font-bold text-slate-700"
+        />
+      </div>
+
+      {/* Scope buttons */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => setShowWorldFactories(false)}
+          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!showWorldFactories ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}
+        >
+          Fabbriche in {user.regionId}
+        </button>
+        <button
+          onClick={() => setShowWorldFactories(true)}
+          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${showWorldFactories ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}
+        >
+          🌍 Fabbriche nel mondo
+        </button>
+      </div>
+
+      {showWorldFactories && (
+        <div className="bg-white p-8 rounded-[2rem] text-center border border-dashed border-slate-200">
+          <Globe className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+          <p className="text-slate-400 font-bold text-sm">Visualizzazione globale in arrivo!</p>
+          <p className="text-[10px] text-slate-300 font-medium mt-1">Placeholder: lista fabbriche di tutte le regioni</p>
+        </div>
+      )}
+
       {creating && (
         <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-6 rounded-[2rem] shadow-lg text-white space-y-4">
           <h4 className="font-black">Nuova Azienda in {regionId}</h4>
@@ -1278,16 +1740,21 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
         </div>
       )}
 
-      {loading ? (
+      {!showWorldFactories && loading ? (
         <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-600 w-8 h-8" /></div>
-      ) : factories.length === 0 ? (
+      ) : !showWorldFactories && factories.length === 0 ? (
         <div className="bg-white p-10 rounded-[2rem] text-center border border-slate-100 shadow-sm">
           <span className="text-4xl">🏗️</span>
           <p className="text-slate-400 font-bold text-sm mt-3">Nessuna fabbrica in questa regione. Sii il primo ad investire qui!</p>
         </div>
-      ) : (
+      ) : !showWorldFactories ? (() => {
+        const searchLower = factorySearch.trim().toLowerCase();
+        const filteredFactories = searchLower
+          ? factories.filter(f => f.name.toLowerCase().includes(searchLower) || (f.ownerName || '').toLowerCase().includes(searchLower))
+          : factories;
+        return (
         <div className="grid gap-4">
-          {factories.map(f => {
+          {filteredFactories.map(f => {
             const isOwner = f.ownerUserId === user?.id;
             const needsBudget = f.budget < f.wage;
 
@@ -1367,7 +1834,8 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
             );
           })}
         </div>
-      )}
+        );
+      })() : null}
     </div>
   );
 };
@@ -1387,8 +1855,10 @@ const Toast = ({ message, onDismiss }: { key?: React.Key; message: string; onDis
 );
 
 const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoading, fetchData }: { user: any, handleUpgradePerk: (id: string, useGold: boolean) => void, handleActivateBooster: (id: string, useGold: boolean) => void, actionLoading: boolean, fetchData: () => void }) => {
+  const navigate = useNavigate();
   const [now, setNow] = useState(Date.now());
   const [toasts, setToasts] = useState<{ id: string; message: string }[]>([]);
+  const [selectedPerk, setSelectedPerk] = useState<string | null>(null);
   // Track which perk IDs we already fired completion for (avoids repeated fetchData)
   const notifiedRef = React.useRef<Set<string>>(new Set());
 
@@ -1460,6 +1930,27 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
         exit={{ opacity: 0, y: -10 }}
         className="space-y-8"
       >
+        {/* Profile Header with actions */}
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Il mio Profilo</h2>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => alert("Messaggi — Placeholder: funzionalità in arrivo!")}
+              className="p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:bg-indigo-50 transition-all"
+              title="Messaggi"
+            >
+              <Mail className="w-5 h-5 text-indigo-500" />
+            </button>
+            <button
+              onClick={() => alert("Impostazioni — Placeholder: cambio nome/foto costerà pochi G")}
+              className="p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:bg-slate-50 transition-all"
+              title="Impostazioni"
+            >
+              <Settings className="w-5 h-5 text-slate-500" />
+            </button>
+          </div>
+        </div>
+
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 text-center">
           {/* Clickable avatar with upload */}
           <div className="relative mx-auto w-24 h-24 mb-4">
@@ -1545,6 +2036,20 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
             </div>
           </div>
 
+          {/* Premium Badge */}
+          {user.premium ? (
+            <div className="mt-4 flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl p-3">
+              <Crown className="w-4 h-4 text-amber-500" />
+              <span className="text-xs font-black text-amber-700 uppercase">Premium Attivo</span>
+              {user.premiumExpiry && <span className="text-[9px] font-bold text-amber-500">Scade: {new Date(user.premiumExpiry).toLocaleDateString()}</span>}
+            </div>
+          ) : (
+            <div className="mt-4 flex items-center justify-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl p-3">
+              <Crown className="w-4 h-4 text-slate-300" />
+              <span className="text-xs font-bold text-slate-400">Diventa Premium per vantaggi esclusivi</span>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
             <div className="p-4 bg-emerald-50 rounded-3xl">
               <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Cash</p>
@@ -1587,6 +2092,108 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
           >
             Dev: Aggiungi 10k Cash/Gold
           </button>
+        </div>
+
+        {/* Missioni */}
+        <button
+          onClick={() => alert("Missioni — Placeholder: sistema missioni in arrivo!")}
+          className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 p-5 rounded-[2rem] shadow-lg shadow-emerald-200 flex items-center gap-4 text-left hover:scale-[1.01] active:scale-[0.99] transition-all"
+        >
+          <div className="p-3 rounded-2xl bg-white/20">
+            <Target className="w-6 h-6 text-white" />
+          </div>
+          <div className="flex-1">
+            <p className="text-white font-black text-base">Missioni Disponibili</p>
+            <p className="text-emerald-200 text-xs font-medium">Completa le missioni per ottenere ricompense</p>
+          </div>
+          <div className="bg-white/20 px-3 py-1.5 rounded-xl">
+            <span className="text-white font-black text-sm">3</span>
+          </div>
+          <ChevronRight className="w-5 h-5 text-white/60" />
+        </button>
+
+        {/* Perks Summary (Tappable) */}
+        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
+          <h3 className="text-xl font-black tracking-tight uppercase mb-2">Abilità</h3>
+          {PERKS_DEFS.map(perk => {
+            const currentLevel = (user.perks || {})[perk.id] || 0;
+            return (
+              <button
+                key={perk.id}
+                onClick={() => setSelectedPerk(selectedPerk === perk.id ? null : perk.id)}
+                className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition-all group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl">{perk.icon}</span>
+                  <div className="text-left">
+                    <p className="font-black text-slate-900">{perk.name}</p>
+                    <p className="text-[10px] text-slate-400 font-medium">{perk.description.split('.')[0]}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-lg font-black text-indigo-600">Lv {currentLevel}</span>
+                  <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform ${selectedPerk === perk.id ? 'rotate-90' : ''}`} />
+                </div>
+              </button>
+            );
+          })}
+          {/* Perk Detail Panel */}
+          <AnimatePresence>
+            {selectedPerk && (() => {
+              const perk = PERKS_DEFS.find(p => p.id === selectedPerk);
+              if (!perk) return null;
+              const currentLevel = (user.perks || {})[perk.id] || 0;
+              return (
+                <motion.div
+                  key={selectedPerk}
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <span className="text-3xl">{perk.icon}</span>
+                      <div>
+                        <h4 className="font-black text-indigo-900 text-lg">{perk.name} — Livello {currentLevel}</h4>
+                        <p className="text-xs text-indigo-600 font-medium">{perk.description}</p>
+                      </div>
+                    </div>
+                    {(perk as any).effects && (
+                      <ul className="space-y-1">
+                        {((perk as any).effects as string[]).map((e: string, i: number) => (
+                          <li key={i} className="text-xs font-bold text-indigo-700 flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full shrink-0" />
+                            {e}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <p className="text-[10px] text-indigo-400 font-medium">Per aumentarla, usa la sezione "Abilità del Comandante" qui sotto.</p>
+                  </div>
+                </motion.div>
+              );
+            })()}
+          </AnimatePresence>
+        </div>
+
+        {/* Future Placeholders */}
+        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
+          <h3 className="text-sm font-black tracking-widest uppercase text-slate-400">Prossimamente</h3>
+          {[
+            { label: "Permessi di lavoro", icon: "📋" },
+            { label: "Cariche politiche", icon: "🏛️" },
+            { label: "Residenza & Casa", icon: "🏠" },
+            { label: "Medaglie", icon: "🏅" },
+            { label: "Danno in guerra", icon: "⚔️" },
+            { label: "Exp lavorativa", icon: "📊" },
+          ].map(item => (
+            <div key={item.label} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100/50">
+              <span className="text-lg">{item.icon}</span>
+              <span className="text-sm font-bold text-slate-400">{item.label}</span>
+              <span className="ml-auto text-[9px] font-black text-slate-300 uppercase">In arrivo</span>
+            </div>
+          ))}
         </div>
 
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
@@ -3272,7 +3879,7 @@ export default function App() {
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Mercato del Lavoro</h2>
                   <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-2">
                     <Zap className="w-4 h-4 text-amber-500" />
-                    <span className="font-black text-slate-700">{user.energy}</span>
+                    <span className="font-black text-slate-700">{user.energy}/{user.maxEnergy}</span>
                   </div>
                 </div>
 
@@ -3284,6 +3891,89 @@ export default function App() {
                     </p>
                   </div>
                 )}
+
+                {/* Risorse estraibili nella regione */}
+                <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Risorse estraibili in {user.regionId}</h3>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[
+                      { emoji: "🪙", label: "Oro", color: "bg-amber-50" },
+                      { emoji: "🛢️", label: "Petrolio", color: "bg-orange-50" },
+                      { emoji: "🪨", label: "Minerali", color: "bg-slate-50" },
+                      { emoji: "☢️", label: "Uranio", color: "bg-cyan-50" },
+                      { emoji: "💎", label: "Diamanti", color: "bg-purple-50" },
+                    ].map(r => (
+                      <div key={r.label} className={`${r.color} p-2 rounded-xl flex flex-col items-center gap-1`}>
+                        <span className="text-lg">{r.emoji}</span>
+                        <span className="text-[8px] font-black text-slate-500 uppercase">{r.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Limiti giornalieri */}
+                <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Limite risorse giornaliero</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-amber-50 p-3 rounded-xl flex items-center justify-between">
+                      <span className="text-xs font-bold text-amber-700">Estratte oggi</span>
+                      <span className="text-sm font-black text-amber-800">{user.dailyExtracted || 0}</span>
+                    </div>
+                    <div className="bg-slate-50 p-3 rounded-xl flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-600">Limite</span>
+                      <span className="text-sm font-black text-slate-800">{user.dailyLimit || 100}</span>
+                    </div>
+                  </div>
+                  <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                    <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${Math.min(100, ((user.dailyExtracted || 0) / (user.dailyLimit || 100)) * 100)}%` }} />
+                  </div>
+                </div>
+
+                {/* Esperienza sulle risorse */}
+                <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Esperienza Lavorativa</h3>
+                  <div className="grid grid-cols-2 gap-3">
+                    {[
+                      { emoji: "🛢️", label: "Petrolio", exp: user.oilExp || 0 },
+                      { emoji: "🪨", label: "Minerali", exp: user.mineralsExp || 0 },
+                      { emoji: "☢️", label: "Uranio", exp: user.uraniumExp || 0 },
+                      { emoji: "💎", label: "Diamanti", exp: user.diamondsExp || 0 },
+                    ].map(r => (
+                      <div key={r.label} className="bg-slate-50 p-3 rounded-xl flex items-center gap-2">
+                        <span className="text-lg">{r.emoji}</span>
+                        <div>
+                          <span className="text-[9px] font-black text-slate-400 uppercase">{r.label}</span>
+                          <p className="text-sm font-black text-slate-800">{r.exp} XP</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Modalità automatica (solo premium) */}
+                <div className={`p-5 rounded-[2.5rem] shadow-sm border space-y-3 ${user.premium ? 'bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 rounded-xl bg-white shadow-sm">
+                        <Zap className="w-5 h-5 text-amber-500" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-slate-800">Modalità Automatica</h3>
+                        <p className="text-[10px] text-slate-400 font-medium">Lavora in automatico senza consumare tempo</p>
+                      </div>
+                    </div>
+                    {!user.premium && (
+                      <div className="flex items-center gap-1 bg-rose-100 px-3 py-1.5 rounded-xl">
+                        <Lock className="w-3 h-3 text-rose-600" />
+                        <span className="text-[10px] font-black text-rose-600 uppercase">Premium</span>
+                      </div>
+                    )}
+                  </div>
+                  {!user.premium && (
+                    <p className="text-xs text-slate-400 font-medium">Diventa Premium per sbloccare il lavoro automatico e ottenere vantaggi esclusivi!</p>
+                  )}
+                </div>
+
                 <PlayerFactoriesView user={user} fetchData={fetchData} />
               </motion.div>
             ) : <Navigate to="/" />

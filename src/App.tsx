@@ -1861,8 +1861,8 @@ const BudgetView = ({ regionId, user, isLeader }: { regionId: string, user: any,
   if (!budgetData) return null;
 
   // Check if budgetData.resources is already an object or needs parsing
-  const resources = typeof budgetData.resources === 'string' 
-    ? JSON.parse(budgetData.resources || '{}') 
+  const resources = typeof budgetData.resources === 'string'
+    ? JSON.parse(budgetData.resources || '{}')
     : (budgetData.resources || {});
 
   return (

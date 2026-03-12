@@ -260,7 +260,11 @@ const authenticate = async (req: any, res: any, next: any) => {
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !authUser) {
-      console.error("Token verification failed:", authError);
+      if (authError?.message?.includes("token is expired")) {
+        // Routine expiration, no need to log as error
+      } else {
+        console.error("Token verification failed:", authError);
+      }
       return res.status(401).json({ error: "Unauthorized: Invalid session." });
     }
 

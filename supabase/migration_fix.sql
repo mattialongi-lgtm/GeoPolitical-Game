@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS articles (
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Backfill columns for databases where articles already existed before this migration.
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS section TEXT DEFAULT 'global';
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS "likeCount" INT DEFAULT 0;
 

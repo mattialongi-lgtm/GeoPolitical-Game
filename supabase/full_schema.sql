@@ -267,6 +267,7 @@ CREATE TABLE articles (
     "authorName" TEXT,
     title TEXT NOT NULL,
     content TEXT NOT NULL,
+    section TEXT DEFAULT 'global',
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
 );

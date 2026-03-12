@@ -93,6 +93,18 @@ const formatRemaining = (ms: number): string => {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
+const COUNTRY_FLAGS: Record<string, string> = {
+  IT: "🇮🇹", FR: "🇫🇷", DE: "🇩🇪", ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", CA: "🇨🇦",
+  BR: "🇧🇷", JP: "🇯🇵", CN: "🇨🇳", IN: "🇮🇳", RU: "🇷🇺", AU: "🇦🇺", ZA: "🇿🇦",
+  MX: "🇲🇽", AR: "🇦🇷", EG: "🇪🇬", NG: "🇳🇬", TR: "🇹🇷", KR: "🇰🇷", SA: "🇸🇦",
+  ID: "🇮🇩", PK: "🇵🇰", PL: "🇵🇱", UA: "🇺🇦", SE: "🇸🇪", NO: "🇳🇴", NL: "🇳🇱",
+  BE: "🇧🇪", CH: "🇨🇭", PT: "🇵🇹", GR: "🇬🇷", AT: "🇦🇹", HU: "🇭🇺", CZ: "🇨🇿",
+  RO: "🇷🇴", FI: "🇫🇮", DK: "🇩🇰", IE: "🇮🇪", TH: "🇹🇭", VN: "🇻🇳", PH: "🇵🇭",
+  MY: "🇲🇾", SG: "🇸🇬", IR: "🇮🇷", IQ: "🇮🇶", IL: "🇮🇱", CO: "🇨🇴", CL: "🇨🇱",
+  PE: "🇵🇪", ET: "🇪🇹", KE: "🇰🇪", GH: "🇬🇭", TZ: "🇹🇿", MA: "🇲🇦", DZ: "🇩🇿",
+  NZ: "🇳🇿", AF: "🇦🇫",
+};
+
 const WarTimer = ({ endsAt }: { endsAt: number | any }) => {
   const ts = getTs(endsAt);
   const [remaining, setRemaining] = useState(() => Math.max(0, ts - Date.now()));
@@ -544,7 +556,7 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
     <div className="grid grid-cols-2 gap-4">
       <StatCard icon={DollarSign} label="Tesoro" value={`$${user.money.toLocaleString()}`} color="bg-emerald-500" />
       <StatCard icon={Zap} label="Energia" value={`${user.energy}/${user.maxEnergy}`} color="bg-amber-500" subValue={`Regen: +${GAME_CONFIG.ENERGY_REGEN_RATE + (user.perks?.['RESISTENZA'] || 0) * 5}/h`} />
-      <StatCard icon={TrendingUp} label="Influenza" value={user.influence} color="bg-indigo-500" />
+      <StatCard icon={Star} label="Livello" value={user.level} color="bg-indigo-500" />
       <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
         <div className="p-3 rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-100">
           <Globe className="w-5 h-5 text-white" />
@@ -562,8 +574,26 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
   </motion.div>
 );
 
-const ArticlesView = ({ articles, setSelectedArticleId }: { articles: Article[], setSelectedArticleId: (id: string) => void }) => {
+const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles: Article[], setSelectedArticleId: (id: string) => void }) => {
   const navigate = useNavigate();
+  const [section, setSection] = useState<'global' | 'local'>('global');
+  const [localArticles, setLocalArticles] = useState<Article[]>([]);
+  const [loadingArticles, setLoadingArticles] = useState(false);
+
+  useEffect(() => {
+    const fetchSectionArticles = async () => {
+      setLoadingArticles(true);
+      try {
+        const res = await fetch(`/api/articles?section=${section}`);
+        if (res.ok) setLocalArticles(await res.json());
+      } catch { }
+      setLoadingArticles(false);
+    };
+    fetchSectionArticles();
+  }, [section]);
+
+  const displayArticles = localArticles;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -572,7 +602,7 @@ const ArticlesView = ({ articles, setSelectedArticleId }: { articles: Article[],
       className="space-y-6"
     >
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Notiziario Globale</h2>
+        <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Notiziario</h2>
         <button
           onClick={() => navigate("/articles/new")}
           className="bg-indigo-600 text-white p-3 rounded-2xl shadow-lg shadow-indigo-100 hover:scale-105 transition-all"
@@ -581,32 +611,45 @@ const ArticlesView = ({ articles, setSelectedArticleId }: { articles: Article[],
         </button>
       </div>
 
-      <div className="space-y-4">
-        {articles.map(article => (
-          <button
-            key={article.id}
-            onClick={() => { navigate(`/articles/${article.id}`); }}
-            className="w-full bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 text-left hover:border-indigo-600 transition-all group"
-          >
-            <h3 className="text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{article.title}</h3>
-            <p className="text-slate-500 text-sm mt-2 line-clamp-2 leading-relaxed">{article.content}</p>
-            <div className="flex justify-between items-center mt-4">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center">
-                  <UserIcon className="w-3 h-3 text-slate-400" />
-                </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase">{article.authorName}</span>
-              </div>
-              <span className="text-[10px] font-bold text-slate-300 uppercase">{new Date(article.createdAt).toLocaleDateString()}</span>
-            </div>
-          </button>
-        ))}
-        {articles.length === 0 && (
-          <div className="bg-white p-12 rounded-[2.5rem] text-center text-slate-400 font-medium border border-dashed border-slate-200">
-            Nessun articolo pubblicato. Sii il primo!
-          </div>
-        )}
+      <div className="bg-white rounded-[2.5rem] p-2 flex gap-2 shadow-sm border border-slate-100">
+        <button onClick={() => setSection('global')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${section === 'global' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "text-slate-400 hover:bg-slate-50"}`}>
+          🌍 Globale
+        </button>
+        <button onClick={() => setSection('local')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${section === 'local' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "text-slate-400 hover:bg-slate-50"}`}>
+          🏠 Locale
+        </button>
       </div>
+
+      {loadingArticles ? (
+        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
+      ) : (
+        <div className="space-y-4">
+          {displayArticles.map(article => (
+            <button
+              key={article.id}
+              onClick={() => { navigate(`/articles/${article.id}`); }}
+              className="w-full bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 text-left hover:border-indigo-600 transition-all group"
+            >
+              <h3 className="text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{article.title}</h3>
+              <p className="text-slate-500 text-sm mt-2 line-clamp-2 leading-relaxed">{article.content}</p>
+              <div className="flex justify-between items-center mt-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center">
+                    <UserIcon className="w-3 h-3 text-slate-400" />
+                  </div>
+                  <span className="text-[10px] font-black text-slate-400 uppercase">{article.authorName}</span>
+                </div>
+                <span className="text-[10px] font-bold text-slate-300 uppercase">{new Date(article.createdAt).toLocaleDateString()}</span>
+              </div>
+            </button>
+          ))}
+          {displayArticles.length === 0 && (
+            <div className="bg-white p-12 rounded-[2.5rem] text-center text-slate-400 font-medium border border-dashed border-slate-200">
+              {section === 'local' ? 'Nessun articolo locale pubblicato. Sii il primo!' : 'Nessun articolo pubblicato. Sii il primo!'}
+            </div>
+          )}
+        </div>
+      )}
     </motion.div>
   );
 };
@@ -679,6 +722,7 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
 
 const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, fetchData: () => void }) => {
   const navigate = useNavigate();
+  const [articleSection, setArticleSection] = useState<'global' | 'local'>('global');
   return (
     <motion.div
       key="article-new"
@@ -695,6 +739,17 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
         <h2 className="text-2xl font-black text-slate-900">Nuovo Articolo</h2>
         <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Sezione</label>
+            <div className="flex gap-2">
+              <button onClick={() => setArticleSection('global')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${articleSection === 'global' ? "bg-indigo-600 text-white shadow-lg" : "bg-slate-50 text-slate-400 border border-slate-200"}`}>
+                🌍 Globale
+              </button>
+              <button onClick={() => setArticleSection('local')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${articleSection === 'local' ? "bg-indigo-600 text-white shadow-lg" : "bg-slate-50 text-slate-400 border border-slate-200"}`}>
+                🏠 Locale
+              </button>
+            </div>
+          </div>
           <input
             type="text"
             placeholder="Titolo dell'articolo"
@@ -717,7 +772,7 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
                 const res = await fetch("/api/articles", {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ title, content }),
+                  body: JSON.stringify({ title, content, section: articleSection }),
                 });
                 if (res.ok) {
                   fetchData();
@@ -1473,7 +1528,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
           <div className="flex justify-center items-center gap-2 mt-2">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Comandante di Livello {user.level}</p>
             <span className="text-[10px] font-black uppercase bg-rose-100 text-rose-600 px-2 py-0.5 rounded-lg flex items-center gap-1">
-              <Shield className="w-3 h-3" /> {user.displayedNation || 'ST'}
+              {COUNTRY_FLAGS[(user.displayedNation || '').toUpperCase()] || '🌍'} {user.displayedNation || 'ST'}
             </span>
           </div>
 
@@ -2028,18 +2083,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     fetchSanctions();
     fetchRegionFactories();
   }, [iso2]);
-
-  const COUNTRY_FLAGS: Record<string, string> = {
-    IT: "🇮🇹", FR: "🇫🇷", DE: "🇩🇪", ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", CA: "🇨🇦",
-    BR: "🇧🇷", JP: "🇯🇵", CN: "🇨🇳", IN: "🇮🇳", RU: "🇷🇺", AU: "🇦🇺", ZA: "🇿🇦",
-    MX: "🇲🇽", AR: "🇦🇷", EG: "🇪🇬", NG: "🇳🇬", TR: "🇹🇷", KR: "🇰🇷", SA: "🇸🇦",
-    ID: "🇮🇩", PK: "🇵🇰", PL: "🇵🇱", UA: "🇺🇦", SE: "🇸🇪", NO: "🇳🇴", NL: "🇳🇱",
-    BE: "🇧🇪", CH: "🇨🇭", PT: "🇵🇹", GR: "🇬🇷", AT: "🇦🇹", HU: "🇭🇺", CZ: "🇨🇿",
-    RO: "🇷🇴", FI: "🇫🇮", DK: "🇩🇰", IE: "🇮🇪", TH: "🇹🇭", VN: "🇻🇳", PH: "🇵🇭",
-    MY: "🇲🇾", SG: "🇸🇬", IR: "🇮🇷", IQ: "🇮🇶", IL: "🇮🇱", CO: "🇨🇴", CL: "🇨🇱",
-    PE: "🇵🇪", ET: "🇪🇹", KE: "🇰🇪", GH: "🇬🇭", TZ: "🇹🇿", MA: "🇲🇦", DZ: "🇩🇿",
-    NZ: "🇳🇿", AF: "🇦🇫",
-  };
 
   if (loading) return (
     <div className="min-h-[400px] flex items-center justify-center bg-white rounded-[2.5rem] border border-slate-100">
@@ -4158,6 +4201,8 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
   const [paramsForm, setParamsForm] = useState<any>({});
   const [acting, setActing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+
+  useEffect(() => { setParamsForm({}); }, [selectedLaw]);
 
   const activeLaws = (laws || []).filter((l: any) => l.status === 'pending');
   const historyLaws = (laws || []).filter((l: any) => l.status !== 'pending');

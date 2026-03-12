@@ -9,7 +9,6 @@ export interface User {
   money: number; // Acts as Cash
   gold: number;  // Premium currency
   energy: number;
-  influence: number;
   regionId: string; // ISO code (Physical location)
   residenceId: string; // ISO code (Legal residence)
   workPermitId: string | null; // ISO code (Work permit for a single foreign region)
@@ -94,6 +93,7 @@ export interface Article {
   authorName: string;
   title: string;
   content: string;
+  section: 'global' | 'local';
   createdAt: number;
   updatedAt: number;
   likeCount: number;

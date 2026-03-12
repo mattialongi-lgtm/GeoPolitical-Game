@@ -115,6 +115,8 @@ CREATE TABLE regions (
     "diamondsBonus" FLOAT DEFAULT 1.0,
     "marketTaxRate" INT DEFAULT 10,
     "travelFee" INT DEFAULT 0,
+    "parliamentSize" INT DEFAULT 20,
+    "parliamentDuration" INT DEFAULT 5,
     "updatedAt" BIGINT
 );
 
@@ -207,7 +209,8 @@ CREATE TABLE wars (
     "startedAt" TIMESTAMPTZ DEFAULT NOW(),
     "endsAt" TIMESTAMPTZ DEFAULT NOW(),
     "attackerScore" BIGINT DEFAULT 0,
-    "defenderScore" BIGINT DEFAULT 0
+    "defenderScore" BIGINT DEFAULT 0,
+    "lastEventAt" TIMESTAMPTZ
 );
 
 -- NATIONS
@@ -658,6 +661,145 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- RPC: update_region_stability
+CREATE OR REPLACE FUNCTION update_region_stability(
+  p_region_id TEXT,
+  p_delta INT
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE regions
+  SET stability = LEAST(100, GREATEST(0, stability + p_delta))
+  WHERE id = p_region_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC: process_invest_action
+CREATE OR REPLACE FUNCTION process_invest_action(
+  p_region_id TEXT,
+  p_stability_delta INT,
+  p_pop_delta INT,
+  p_economy_delta INT
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE regions
+  SET stability = LEAST(100, stability + p_stability_delta),
+      population = population + p_pop_delta,
+      "economyLevel" = LEAST(100, COALESCE("economyLevel", 0) + p_economy_delta)
+  WHERE id = p_region_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC: create_market_offer
+CREATE OR REPLACE FUNCTION create_market_offer(
+  p_user_id TEXT,
+  p_item_id TEXT,
+  p_quantity INT,
+  p_price BIGINT,
+  p_region_id TEXT,
+  p_tax_rate INT,
+  p_origin_state_id TEXT
+) RETURNS VOID AS $$
+DECLARE
+  v_offer_id TEXT;
+BEGIN
+  -- 1. Deduct Inventory
+  UPDATE user_inventory
+  SET quantity = quantity - p_quantity
+  WHERE "userId" = p_user_id AND "itemId" = p_item_id;
+
+  DELETE FROM user_inventory WHERE "userId" = p_user_id AND quantity <= 0;
+
+  -- 2. Create Offer
+  v_offer_id := encode(gen_random_bytes(6), 'hex');
+  INSERT INTO market_offers (id, "sellerId", "sellerName", "itemId", quantity, price, "regionId", "taxRate", "originStateId", "createdAt")
+  SELECT v_offer_id, id, username, p_item_id, p_quantity, p_price, p_region_id, p_tax_rate, p_origin_state_id, NOW()
+  FROM users WHERE id = p_user_id;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC: purchase_market_offer
+CREATE OR REPLACE FUNCTION purchase_market_offer(
+  p_buyer_id TEXT,
+  p_offer_id TEXT,
+  p_quantity INT,
+  p_is_state_buy BOOLEAN,
+  p_buyer_state_id TEXT
+) RETURNS VOID AS $$
+DECLARE
+  v_offer RECORD;
+  v_total_price BIGINT;
+  v_tax_amount BIGINT;
+  v_net_to_seller BIGINT;
+  v_txn_id TEXT;
+BEGIN
+  -- 1. Lock and Get Offer
+  SELECT * INTO v_offer FROM market_offers WHERE id = p_offer_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Offerta non trovata'; END IF;
+  IF v_offer.quantity < p_quantity THEN RAISE EXCEPTION 'Quantità insufficiente'; END IF;
+
+  v_total_price := v_offer.price * p_quantity;
+  v_tax_amount := floor(v_total_price * (COALESCE(v_offer."taxRate", 10)::float / 100));
+  v_net_to_seller := v_total_price - v_tax_amount;
+
+  -- 2. Deduct Funds
+  IF p_is_state_buy THEN
+    IF NOT EXISTS (SELECT 1 FROM regions WHERE id = p_buyer_state_id AND "ownerUserId" = p_buyer_id) THEN
+      RAISE EXCEPTION 'Non autorizzato a usare i fondi dello Stato';
+    END IF;
+
+    UPDATE budgets SET "moneyEUR" = "moneyEUR" - v_total_price
+    WHERE "ownerType" = 'REGION' AND "ownerId" = p_buyer_state_id;
+
+    PERFORM add_budget_transaction(
+      'REGION', p_buyer_state_id,
+      'EXPENSE', 'MARKET_BUY',
+      -v_total_price, jsonb_build_object(v_offer."itemId", p_quantity),
+      p_buyer_id, jsonb_build_object('offerId', p_offer_id)
+    );
+  ELSE
+    UPDATE users SET money = money - v_total_price WHERE id = p_buyer_id;
+
+    INSERT INTO user_inventory ("userId", "itemId", quantity)
+    VALUES (p_buyer_id, v_offer."itemId", p_quantity)
+    ON CONFLICT ("userId", "itemId") DO UPDATE SET quantity = user_inventory.quantity + EXCLUDED.quantity;
+  END IF;
+
+  -- 3. Pay Seller and Region Taxes
+  UPDATE users SET money = money + v_net_to_seller WHERE id = v_offer."sellerId";
+
+  PERFORM add_budget_transaction(
+    'REGION', v_offer."regionId",
+    'INCOME', 'MARKET_TAX',
+    v_tax_amount, '{}'::jsonb,
+    p_buyer_id, jsonb_build_object('offerId', p_offer_id)
+  );
+
+  -- 4. Update/Delete Offer
+  IF v_offer.quantity = p_quantity THEN
+    DELETE FROM market_offers WHERE id = p_offer_id;
+  ELSE
+    UPDATE market_offers SET quantity = quantity - p_quantity WHERE id = p_offer_id;
+  END IF;
+
+  -- 5. Log Transaction
+  v_txn_id := encode(gen_random_bytes(6), 'hex');
+  INSERT INTO market_transactions_log (id, "buyerId", "isStateBuy", "sellerId", "itemId", quantity, price, "taxPaid", timestamp)
+  VALUES (v_txn_id, p_buyer_id, CASE WHEN p_is_state_buy THEN 1 ELSE 0 END, v_offer."sellerId", v_offer."itemId", p_quantity, v_offer.price, v_tax_amount, EXTRACT(EPOCH FROM NOW()) * 1000);
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC: increment_candidate_votes
+CREATE OR REPLACE FUNCTION increment_candidate_votes(
+  p_region_id TEXT,
+  p_candidate_id TEXT
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE leader_candidates
+  SET votes = votes + 1
+  WHERE "regionId" = p_region_id AND "userId" = p_candidate_id;
+END;
+$$ LANGUAGE plpgsql;
+
 -- 5. SEED DATA
 INSERT INTO regions (id, name, population, stability, health, education, military)
 VALUES ('IT-RM', 'Rome', 2800000, 100, 10, 10, 10)
@@ -672,6 +814,7 @@ ON CONFLICT DO NOTHING;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE regions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE wars ENABLE ROW LEVEL SECURITY;
 ALTER TABLE parties ENABLE ROW LEVEL SECURITY;
 ALTER TABLE party_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE party_logs ENABLE ROW LEVEL SECURITY;
@@ -701,6 +844,8 @@ CREATE POLICY "Public profiles are viewable by everyone" ON users FOR SELECT USI
 CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Regions are viewable by everyone" ON regions FOR SELECT USING (true);
 CREATE POLICY "Budgets are viewable by everyone" ON budgets FOR SELECT USING (true);
+CREATE POLICY "Wars public read" ON wars FOR SELECT USING (true);
+CREATE POLICY "Wars server manage" ON wars FOR ALL USING (true);
 CREATE POLICY "Parties public read" ON parties FOR SELECT USING (true);
 CREATE POLICY "Parties server manage" ON parties FOR ALL USING (true);
 CREATE POLICY "Party members public read" ON party_members FOR SELECT USING (true);

@@ -227,7 +227,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
 
                 <div className="p-4 border-t border-slate-800/60 space-y-3 font-medium">
                     <button
-                        onClick={() => navigate(`/countries/${regionId}`)}
+                        onClick={() => navigate('/map')}
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/50 transition-all text-sm"
                     >
                         <Globe className="w-5 h-5" />

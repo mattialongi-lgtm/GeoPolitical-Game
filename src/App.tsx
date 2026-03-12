@@ -4159,6 +4159,8 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
   const [acting, setActing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
 
+  useEffect(() => { setParamsForm({}); }, [selectedLaw]);
+
   const activeLaws = (laws || []).filter((l: any) => l.status === 'pending');
   const historyLaws = (laws || []).filter((l: any) => l.status !== 'pending');
   const displayLaws = showHistory ? historyLaws : activeLaws;

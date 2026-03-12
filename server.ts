@@ -2150,7 +2150,11 @@ app.post("/api/work", authenticate, async (req: any, res) => {
       p_owner_id: owner.id
     });
 
-    res.json({ success: true, wage: finalWage, output: finalOutput });
+    // XP Gain
+    const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
+    await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: xpGain });
+
+    res.json({ success: true, earnings: finalWage, output: finalOutput, xpGain });
   } catch (err: any) {
     res.status(500).json({ error: "Errore durante il lavoro: " + err.message });
   }
@@ -3230,9 +3234,10 @@ app.get("/api/elections", authenticate, async (req: any, res) => {
   const user = req.user;
   const { data: election } = await supabase.from('elections').select('*').eq('regionId', user.residenceId).eq('status', 'active').order('createdAt', { ascending: false }).limit(1).single();
 
-  if (!election) return res.json({ election: null, parties: [], myVote: null });
-
   const { data: parties } = await supabase.from('parties').select('id, name, tag, logo, ideology').eq('regionId', user.residenceId);
+
+  if (!election) return res.json({ election: null, parties: parties || [], myVote: null });
+
   const { data: votes } = await supabase.from('election_votes').select('partyId').eq('electionId', election.id);
 
   const voteCounts: Record<string, number> = {};
@@ -3277,15 +3282,30 @@ app.get("/api/parliament", authenticate, async (req: any, res) => {
   const user = req.user;
   const { data: members } = await supabase
     .from('parliament_members')
-    .select('userId, electedAt, users(username, level), parties(name, tag)')
+    .select('userId, partyId, electedAt')
     .eq('regionId', user.residenceId);
 
-  const mapped = (members || []).map((m: any) => ({
+  if (!members || members.length === 0) return res.json([]);
+
+  const userIds = [...new Set(members.map((m: any) => m.userId))];
+  const partyIds = [...new Set(members.map((m: any) => m.partyId).filter(Boolean))];
+
+  const { data: users } = await supabase.from('users').select('id, username, level').in('id', userIds);
+  const { data: parties } = partyIds.length > 0
+    ? await supabase.from('parties').select('id, name, tag').in('id', partyIds)
+    : { data: [] };
+
+  const userMap: Record<string, any> = {};
+  (users || []).forEach((u: any) => { userMap[u.id] = u; });
+  const partyMap: Record<string, any> = {};
+  (parties || []).forEach((p: any) => { partyMap[p.id] = p; });
+
+  const mapped = members.map((m: any) => ({
     userId: m.userId,
-    username: m.users?.username,
-    level: m.users?.level,
-    partyName: m.parties?.name,
-    partyTag: m.parties?.tag,
+    username: userMap[m.userId]?.username,
+    level: userMap[m.userId]?.level,
+    partyName: partyMap[m.partyId]?.name,
+    partyTag: partyMap[m.partyId]?.tag,
     electedAt: m.electedAt
   }));
 

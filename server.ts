@@ -821,6 +821,32 @@ app.post("/api/factories/deposit", authenticate, async (req: any, res) => {
   }
 });
 
+// Upgrade factory level using Gold
+app.post("/api/factories/upgrade", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { factoryId } = req.body;
+
+  if (!factoryId) return res.status(400).json({ error: "Parametri non validi." });
+
+  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
+  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
+  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario di questa fabbrica." });
+
+  const currentLevel = factory.level || 1;
+  const goldCost = Math.ceil(50 * Math.pow(1.5, currentLevel - 1));
+
+  if (user.gold < goldCost) return res.status(400).json({ error: `Gold insufficiente. Servono 🪙 ${goldCost} Gold.` });
+
+  try {
+    const newLevel = currentLevel + 1;
+    await supabase.from('users').update({ gold: user.gold - goldCost }).eq('id', user.id);
+    await supabase.from('factories').update({ level: newLevel }).eq('id', factoryId);
+    res.json({ success: true, newLevel, goldCost });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
+  }
+});
+
 
 app.post("/api/actions/propaganda", authenticate, async (req: any, res) => {
   const user = req.user;
@@ -946,37 +972,6 @@ app.post("/api/actions/use-drink", authenticate, async (req: any, res) => {
     res.json({ success: true, newEnergy: GAME_CONFIG.ENERGY_MAX });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/actions/claim-medal", authenticate, async (req: any, res) => {
-  const user = req.user;
-  const now = Date.now();
-
-  if (now - (user.lastMedalClaim || 0) < GAME_CONFIG.MEDAL_CLAIM_COOLDOWN) {
-    const remainingMin = Math.ceil((GAME_CONFIG.MEDAL_CLAIM_COOLDOWN - (now - (user.lastMedalClaim || 0))) / 60000);
-    return res.status(400).json({ error: `La prossima medaglia sarà disponibile tra ${remainingMin} minuti.` });
-  }
-
-  try {
-    const { data: updatedUser, error } = await supabase
-      .from('users')
-      .update({
-        warMedals: (user.warMedals || 0) + 1,
-        lastMedalClaim: now
-      })
-      .eq('id', user.id)
-      .select('warMedals')
-      .single();
-
-    if (error) {
-      console.error("Medal claim error:", error);
-      throw error;
-    }
-    res.json({ success: true, warMedals: updatedUser.warMedals });
-  } catch (err: any) {
-    console.error("Medal claim exception:", err);
-    res.status(500).json({ error: err.message || "Errore nella riscossione della medaglia." });
   }
 });
 
@@ -1721,14 +1716,8 @@ app.post("/api/actions/attack", authenticate, async (req: any, res) => {
   const energyCost = Math.ceil(GAME_CONFIG.ATTACK_ENERGY_COST * (1 - energyReduction));
 
   let finalEnergyCost = energyCost;
-  let usedMedal = false;
 
-  if (user.warMedals > 0) {
-    finalEnergyCost = 0;
-    usedMedal = true;
-  } else {
-    if (user.energy < finalEnergyCost) return res.status(400).json({ error: "Not enough energy" });
-  }
+  if (user.energy < finalEnergyCost) return res.status(400).json({ error: "Not enough energy" });
 
   // Cooldown check via Supabase
   const { data: lastAttack } = await supabase
@@ -1766,11 +1755,7 @@ app.post("/api/actions/attack", authenticate, async (req: any, res) => {
   const winProbability = Math.min(0.9, 0.3 + (user.influence / 1000) + totalDmgBonus + alphaBonus);
   const success = Math.random() < winProbability;
 
-  if (usedMedal) {
-    await supabase.from('users').update({ warMedals: user.warMedals - 1 }).eq('id', user.id);
-  } else {
-    await supabase.from('users').update({ energy: user.energy - finalEnergyCost }).eq('id', user.id);
-  }
+  await supabase.from('users').update({ energy: user.energy - finalEnergyCost }).eq('id', user.id);
 
   if (success) {
     await supabase.from('regions').update({
@@ -1936,11 +1921,24 @@ app.delete("/api/articles/:id", authenticate, async (req: any, res) => {
 });
 
 // Chat API
-app.get("/api/chat", authenticate, async (req, res) => {
-  const { data: messages, error } = await supabase.from('chat_messages')
-    .select('id, userId, username, regionId, message, createdAt')
+app.get("/api/chat", authenticate, async (req: any, res) => {
+  const channel = (req.query.channel as string) || 'global';
+  const user = req.user;
+
+  let query = supabase.from('chat_messages')
+    .select('id, userId, username, regionId, channel, message, createdAt')
     .order('createdAt', { ascending: false })
     .limit(50);
+
+  if (channel === 'local') {
+    // Local chat: only messages from users in the same nation (originalNation)
+    const nation = user.originalNation || 'IT';
+    query = query.eq('channel', nation);
+  } else {
+    query = query.eq('channel', 'global');
+  }
+
+  const { data: messages, error } = await query;
 
   if (error) {
     console.error("Chat fetch error:", error);
@@ -1951,7 +1949,7 @@ app.get("/api/chat", authenticate, async (req, res) => {
 });
 
 app.post("/api/chat", authenticate, async (req: any, res) => {
-  const { message } = req.body;
+  const { message, channel: reqChannel } = req.body;
   const user = req.user;
   if (!message || typeof message !== "string" || message.trim().length === 0) {
     return res.status(400).json({ error: "Messaggio vuoto" });
@@ -1959,6 +1957,9 @@ app.post("/api/chat", authenticate, async (req: any, res) => {
   if (message.trim().length > 280) {
     return res.status(400).json({ error: "Messaggio troppo lungo (max 280 caratteri)" });
   }
+
+  // Determine channel: 'global' or the user's nation code for local chat
+  const channel = reqChannel === 'local' ? (user.originalNation || 'IT') : 'global';
 
   // Rate limit: 1 message per 5 seconds
   const { data: lastMsg } = await supabase.from('chat_messages')
@@ -1976,6 +1977,7 @@ app.post("/api/chat", authenticate, async (req: any, res) => {
     userId: user.id,
     username: user.username,
     regionId: user.regionId || "?",
+    channel,
     message: message.trim(),
     createdAt: new Date().toISOString()
   });
@@ -2397,7 +2399,13 @@ app.get("/api/market/state-inventory", authenticate, async (req: any, res) => {
       .eq('ownerId', region.id)
       .maybeSingle();
 
-    res.json(budget || { resources: {}, moneyEUR: 0 });
+    // Convert resources object to array format for frontend compatibility
+    const resources = budget?.resources || {};
+    const resourcesArray = Object.entries(resources)
+      .filter(([_, qty]) => (qty as number) > 0)
+      .map(([itemId, quantity]) => ({ itemId, quantity }));
+
+    res.json(resourcesArray);
   } catch (err) {
     res.status(500).json({ error: "Errore nel caricamento dell'inventario statale." });
   }
@@ -2471,7 +2479,7 @@ app.post("/api/market/offer", authenticate, async (req: any, res) => {
     }
 
     // Transaction via RPC
-    await supabase.rpc('create_market_offer', {
+    const { error: rpcError } = await supabase.rpc('create_market_offer', {
       p_user_id: user.id,
       p_item_id: itemId,
       p_quantity: quantity,
@@ -2480,6 +2488,8 @@ app.post("/api/market/offer", authenticate, async (req: any, res) => {
       p_tax_rate: taxRate,
       p_origin_state_id: user.originalNation || user.regionId
     });
+
+    if (rpcError) throw rpcError;
 
     res.json({ success: true });
   } catch (err: any) {
@@ -2810,7 +2820,58 @@ app.get("/api/parties", authenticate, async (req: any, res) => {
 app.get("/api/parties/my", authenticate, async (req: any, res) => {
   const { data: membership } = await supabase.from('party_members').select('partyId').eq('userId', req.user.id).maybeSingle();
   if (!membership) return res.status(404).json({ error: "Non sei in nessun partito." });
-  res.json({ partyId: membership.partyId }); // Usually better to return JSON than redirect in API
+
+  // Fetch full party data (same logic as /api/parties/:id)
+  const { data: party, error: partyError } = await supabase
+    .from('parties')
+    .select('*')
+    .eq('id', membership.partyId)
+    .single();
+
+  if (partyError || !party) return res.status(404).json({ error: "Partito non trovato" });
+
+  let leaderName = 'Sconosciuto';
+  if (party.leaderUserId) {
+    const { data: leader } = await supabase.from('users').select('username').eq('id', party.leaderUserId).single();
+    if (leader) leaderName = leader.username;
+  }
+
+  const { data: members } = await supabase
+    .from('party_members')
+    .select('*')
+    .eq('partyId', membership.partyId)
+    .order('joinedAt', { ascending: true });
+
+  // Batch fetch member usernames
+  const memberUserIds = [...new Set((members || []).map((m: any) => m.userId).filter(Boolean))];
+  const userMap = new Map<string, any>();
+  if (memberUserIds.length > 0) {
+    const { data: usersData } = await supabase.from('users').select('id, username, level, lastLogin').in('id', memberUserIds);
+    (usersData || []).forEach((u: any) => userMap.set(u.id, u));
+  }
+
+  const mappedMembers = (members || []).map((m: any) => {
+    const userData = userMap.get(m.userId);
+    return {
+      ...m,
+      username: userData?.username || 'Sconosciuto',
+      level: userData?.level || 0,
+      lastLogin: userData?.lastLogin || 0
+    };
+  });
+
+  const now = Date.now();
+  const activeMembersCount = mappedMembers.filter((m: any) =>
+    m.level >= 60 &&
+    now - (m.lastLogin || 0) <= 24 * 60 * 60 * 1000 &&
+    now - (new Date(m.joinedAt).getTime()) >= 72 * 60 * 60 * 1000
+  ).length;
+
+  res.json({
+    party: { ...party, leaderName },
+    members: mappedMembers,
+    activeMembersCount
+  });
 });
 
 app.get("/api/parties/:id", authenticate, async (req: any, res) => {
@@ -4314,8 +4375,8 @@ app.post("/api/parliament/laws/pass", authenticate, async (req: any, res) => {
 app.get("/api/leaderboard", authenticate, async (req, res) => {
   const { data: leaders, error } = await supabase
     .from('users')
-    .select('username, influence, money')
-    .order('influence', { ascending: false })
+    .select('username, level, money')
+    .order('level', { ascending: false })
     .limit(10);
 
   if (error) return res.status(500).json({ error: error.message });

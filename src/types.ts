@@ -169,7 +169,7 @@ export const BOOSTER_CONFIG = {
   EXCLUDED_EFFECTS: ['storage', 'xpCap'],
 };
 
-// Perk upgrade times: cash is slow (hours), gold is 3x faster.
+// Perk upgrade times: cash starts fast and increases progressively, gold is 3x faster.
 // Perks are UNLIMITED in level. Only one upgrade active at a time.
 export const PERKS_DEFS = [
   {
@@ -183,10 +183,10 @@ export const PERKS_DEFS = [
       "Riduce costo crafting (formula condivisa con Istruzione)",
     ],
     baseEffect: 0.05,
-    baseCashCost: 2000,
-    baseGoldCost: 20,
-    baseTimeCashSec: 3600,
-    baseTimeGoldSec: 1200,
+    baseCashCost: 500,
+    baseGoldCost: 5,
+    baseTimeCashSec: 60,
+    baseTimeGoldSec: 20,
   },
   {
     id: "ISTRUZIONE",
@@ -200,10 +200,10 @@ export const PERKS_DEFS = [
       "Lv 100 → Dipartimenti di Stato",
     ],
     baseEffect: 0.02,
-    baseCashCost: 2000,
-    baseGoldCost: 20,
-    baseTimeCashSec: 3600,
-    baseTimeGoldSec: 1200,
+    baseCashCost: 500,
+    baseGoldCost: 5,
+    baseTimeCashSec: 60,
+    baseTimeGoldSec: 20,
   },
   {
     id: "RESISTENZA",
@@ -217,10 +217,10 @@ export const PERKS_DEFS = [
       "Alpha-damage bonus a Lv 50, 75, 100",
     ],
     baseEffect: 0.03,
-    baseCashCost: 2000,
-    baseGoldCost: 20,
-    baseTimeCashSec: 3600,
-    baseTimeGoldSec: 1200,
+    baseCashCost: 500,
+    baseGoldCost: 5,
+    baseTimeCashSec: 60,
+    baseTimeGoldSec: 20,
   },
 ];
 

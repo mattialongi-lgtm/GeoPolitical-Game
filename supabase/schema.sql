@@ -102,26 +102,13 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- RPC: add_user_xp
+-- RPC: add_user_xp (TEXT version delegates to UUID version)
 CREATE OR REPLACE FUNCTION add_user_xp(
   p_user_id TEXT,
   p_amount INT
 ) RETURNS VOID AS $$
-DECLARE
-  v_current_xp INT;
-  v_current_level INT;
-  v_next_level_xp INT;
 BEGIN
-  UPDATE users 
-  SET xp = xp + p_amount
-  WHERE id = p_user_id
-  RETURNING xp, level INTO v_current_xp, v_current_level;
-
-  -- Simple level up logic (can be adjusted)
-  v_next_level_xp := v_current_level * 1000;
-  IF v_current_xp >= v_next_level_xp THEN
-    UPDATE users SET level = level + 1 WHERE id = p_user_id;
-  END IF;
+  PERFORM add_user_xp(p_user_id::UUID, p_amount);
 END;
 $$ LANGUAGE plpgsql;
 

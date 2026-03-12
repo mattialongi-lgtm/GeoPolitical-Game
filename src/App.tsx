@@ -374,6 +374,7 @@ interface ChatMessage {
   userId: string;
   username: string;
   regionId: string;
+  channel?: string;
   message: string;
   createdAt: number;
 }

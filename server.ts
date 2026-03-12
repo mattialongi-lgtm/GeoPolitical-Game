@@ -1931,7 +1931,7 @@ app.get("/api/chat", authenticate, async (req: any, res) => {
     .limit(50);
 
   if (channel === 'local') {
-    // Local chat: only messages from users in the same nation (originalNation)
+    // Local chat: messages stored with nation code as channel (e.g., 'IT', 'US')
     const nation = user.originalNation || 'IT';
     query = query.eq('channel', nation);
   } else {

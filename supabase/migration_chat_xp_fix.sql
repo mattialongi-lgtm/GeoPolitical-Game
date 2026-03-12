@@ -38,29 +38,12 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 3. Also support TEXT-typed user id for compatibility
+-- 3. Also support TEXT-typed user id for compatibility (delegates to UUID version)
 CREATE OR REPLACE FUNCTION add_user_xp(
   p_user_id TEXT,
   p_amount INT
 ) RETURNS VOID AS $$
-DECLARE
-  v_current_xp INT;
-  v_current_level INT;
-  v_next_level_xp INT;
 BEGIN
-  UPDATE users 
-  SET xp = xp + p_amount
-  WHERE id = p_user_id::UUID
-  RETURNING xp, level INTO v_current_xp, v_current_level;
-
-  v_next_level_xp := FLOOR(100 * POWER(1.5, v_current_level - 1));
-  
-  WHILE v_current_xp >= v_next_level_xp LOOP
-    v_current_xp := v_current_xp - v_next_level_xp;
-    v_current_level := v_current_level + 1;
-    v_next_level_xp := FLOOR(100 * POWER(1.5, v_current_level - 1));
-  END LOOP;
-  
-  UPDATE users SET xp = v_current_xp, level = v_current_level WHERE id = p_user_id::UUID;
+  PERFORM add_user_xp(p_user_id::UUID, p_amount);
 END;
 $$ LANGUAGE plpgsql;

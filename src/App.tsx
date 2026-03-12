@@ -580,16 +580,17 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
   const [localArticles, setLocalArticles] = useState<Article[]>([]);
   const [loadingArticles, setLoadingArticles] = useState(false);
 
-  const fetchSectionArticles = async () => {
-    setLoadingArticles(true);
-    try {
-      const res = await fetch(`/api/articles?section=${section}`);
-      if (res.ok) setLocalArticles(await res.json());
-    } catch { }
-    setLoadingArticles(false);
-  };
-
-  useEffect(() => { fetchSectionArticles(); }, [section]);
+  useEffect(() => {
+    const fetchSectionArticles = async () => {
+      setLoadingArticles(true);
+      try {
+        const res = await fetch(`/api/articles?section=${section}`);
+        if (res.ok) setLocalArticles(await res.json());
+      } catch { }
+      setLoadingArticles(false);
+    };
+    fetchSectionArticles();
+  }, [section]);
 
   const displayArticles = localArticles;
 

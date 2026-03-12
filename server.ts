@@ -3353,9 +3353,9 @@ app.get("/api/parliament", authenticate, async (req: any, res) => {
   const partyIds = [...new Set(members.map((m: any) => m.partyId).filter(Boolean))];
 
   const { data: users } = await supabase.from('users').select('id, username, level').in('id', userIds);
-  const { data: parties } = partyIds.length > 0
-    ? await supabase.from('parties').select('id, name, tag').in('id', partyIds)
-    : { data: [] };
+  const parties = partyIds.length > 0
+    ? (await supabase.from('parties').select('id, name, tag').in('id', partyIds)).data
+    : [];
 
   const userMap: Record<string, any> = {};
   (users || []).forEach((u: any) => { userMap[u.id] = u; });

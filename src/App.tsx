@@ -374,6 +374,7 @@ interface ChatMessage {
   userId: string;
   username: string;
   regionId: string;
+  channel?: string;
   message: string;
   createdAt: number;
 }
@@ -383,12 +384,13 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [channel, setChannel] = useState<'global' | 'local'>('global');
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
 
   const fetchMessages = async () => {
     try {
-      const res = await fetch("/api/chat");
+      const res = await fetch(`/api/chat?channel=${channel}`);
       if (res.ok) {
         const data = await res.json();
         setMessages(data);
@@ -400,7 +402,7 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
     fetchMessages();
     const iv = setInterval(fetchMessages, 4000);
     return () => clearInterval(iv);
-  }, []);
+  }, [channel]);
 
   // Auto-scroll to bottom only inside the container
   useEffect(() => {
@@ -418,7 +420,7 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: input.trim() }),
+        body: JSON.stringify({ message: input.trim(), channel }),
       });
       const data = await res.json();
       if (data.error) {
@@ -441,10 +443,23 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
 
   return (
     <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-      {/* Header */}
+      {/* Header with channel toggle */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-50">
         <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-        <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Chat Globale</h3>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setChannel('global')}
+            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all ${channel === 'global' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+          >
+            🌍 Globale
+          </button>
+          <button
+            onClick={() => setChannel('local')}
+            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all ${channel === 'local' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+          >
+            🏠 {currentUser.originalNation || 'IT'}
+          </button>
+        </div>
         <span className="ml-auto text-[10px] font-black text-slate-300 uppercase">{messages.length} messaggi</span>
       </div>
 
@@ -729,22 +744,6 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
 
 
 const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: any, fetchData: () => void, actionLoading: boolean }) => {
-  const [claiming, setClaiming] = useState(false);
-  const handleClaimMedal = async () => {
-    setClaiming(true);
-    try {
-      const res = await fetch("/api/actions/claim-medal", { method: "POST" });
-      const data = await res.json();
-      if (data.error) alert(data.error);
-      else fetchData();
-    } catch { alert("Errore nella riscossione della medaglia"); }
-    finally { setClaiming(false); }
-  };
-
-  const now = Date.now();
-  const medalCooldown = GAME_CONFIG.MEDAL_CLAIM_COOLDOWN || 3600000;
-  const canClaimMedal = now - (user?.lastMedalClaim || 0) >= medalCooldown;
-  const remainingMins = Math.ceil((medalCooldown - (now - (user?.lastMedalClaim || 0))) / 60000);
 
   return (
     <motion.div
@@ -759,27 +758,6 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         </div>
         <h2 className="text-2xl font-black text-slate-900">Ministero della Guerra</h2>
         <p className="text-slate-400 text-sm font-medium mt-1">Conflitti globali e conquiste territoriali.</p>
-      </div>
-
-      {/* Section Medaglie */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center shadow-sm shrink-0 border border-amber-100">
-            <span className="text-2xl">🎖️</span>
-          </div>
-          <div className="text-left">
-            <h4 className="font-black text-amber-900 text-lg leading-tight">Medaglie di Guerra</h4>
-            <p className="text-xs font-bold text-amber-600 mt-0.5">Una Medaglia annulla il costo in Energia del prossimo attacco.</p>
-            <p className="text-[10px] font-black uppercase text-amber-500 mt-1">Possedute: {user.warMedals || 0}</p>
-          </div>
-        </div>
-        <button
-          disabled={actionLoading || claiming || !canClaimMedal}
-          onClick={handleClaimMedal}
-          className="px-6 py-4 bg-amber-500 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-amber-200 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 shrink-0 w-full sm:w-auto"
-        >
-          {claiming ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : canClaimMedal ? "Riscatta (Oraria)" : `Tra ${remainingMins} min`}
-        </button>
       </div>
 
       {wars.active.length > 0 && (
@@ -1189,6 +1167,24 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
     } catch { alert("Errore"); } finally { setActionLoading(false); }
   };
 
+  const handleUpgrade = async (id: string, currentLevel: number) => {
+    const goldCost = Math.ceil(50 * Math.pow(1.5, currentLevel - 1));
+    if (!window.confirm(`Vuoi potenziare la fabbrica al livello ${currentLevel + 1}? Costo: 🪙 ${goldCost} Gold`)) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/factories/upgrade", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factoryId: id }),
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        alert(`Fabbrica potenziata al livello ${data.newLevel}! Costo: 🪙 ${data.goldCost} Gold`);
+        fetchData(); load();
+      }
+    } catch { alert("Errore"); } finally { setActionLoading(false); }
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
@@ -1303,6 +1299,13 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
                         Versa Budget
                       </button>
                     </div>
+                    <button
+                      onClick={() => handleUpgrade(f.id, f.level || 1)}
+                      disabled={actionLoading}
+                      className="w-full py-3 bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md shadow-amber-100 hover:bg-amber-600 hover:scale-[1.02] transition-all disabled:opacity-50"
+                    >
+                      ⬆️ Potenzia Livello (🪙 {Math.ceil(50 * Math.pow(1.5, (f.level || 1) - 1))} Gold)
+                    </button>
                   </div>
                 )}
               </div>
@@ -3427,7 +3430,7 @@ const Leaderboard = () => {
           <tr className="border-b border-slate-100">
             <th className="pb-4 font-bold text-slate-400 uppercase text-xs">Rank</th>
             <th className="pb-4 font-bold text-slate-400 uppercase text-xs">Player</th>
-            <th className="pb-4 font-bold text-slate-400 uppercase text-xs">Influence</th>
+            <th className="pb-4 font-bold text-slate-400 uppercase text-xs">Livello</th>
             <th className="pb-4 font-bold text-slate-400 uppercase text-xs">Wealth</th>
           </tr>
         </thead>
@@ -3436,7 +3439,7 @@ const Leaderboard = () => {
             <tr key={leader.username} className="border-b border-slate-50 last:border-0">
               <td className="py-4 font-bold text-slate-400">#{i + 1}</td>
               <td className="py-4 font-bold text-slate-900">{leader.username}</td>
-              <td className="py-4 font-bold text-indigo-600">{leader.influence}</td>
+              <td className="py-4 font-bold text-indigo-600">Lv {leader.level}</td>
               <td className="py-4 font-bold text-emerald-600">${leader.money.toLocaleString()}</td>
             </tr>
           ))}

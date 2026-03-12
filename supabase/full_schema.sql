@@ -255,6 +255,7 @@ CREATE TABLE chat_messages (
     "userId" UUID REFERENCES users(id) ON DELETE CASCADE,
     username TEXT,
     "regionId" TEXT,
+    channel TEXT DEFAULT 'global',
     message TEXT NOT NULL,
     "createdAt" TIMESTAMPTZ DEFAULT NOW()
 );
@@ -624,10 +625,17 @@ BEGIN
   WHERE id = p_user_id
   RETURNING xp, level INTO v_current_xp, v_current_level;
 
-  v_next_level_xp := v_current_level * 1000;
-  IF v_current_xp >= v_next_level_xp THEN
-    UPDATE users SET level = level + 1 WHERE id = p_user_id;
-  END IF;
+  -- Formula matches frontend: 100 * 1.5^(level-1)
+  v_next_level_xp := FLOOR(100 * POWER(1.5, v_current_level - 1));
+  
+  -- Level up loop (handles multiple level ups from large XP gains)
+  WHILE v_current_xp >= v_next_level_xp LOOP
+    v_current_xp := v_current_xp - v_next_level_xp;
+    v_current_level := v_current_level + 1;
+    v_next_level_xp := FLOOR(100 * POWER(1.5, v_current_level - 1));
+  END LOOP;
+  
+  UPDATE users SET xp = v_current_xp, level = v_current_level WHERE id = p_user_id;
 END;
 $$ LANGUAGE plpgsql;
 

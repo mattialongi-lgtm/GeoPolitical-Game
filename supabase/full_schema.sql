@@ -1,6 +1,10 @@
 -- ==========================================
 -- FULL DATABASE RESET & SCHEMA (Supabase)
 -- WARNING: This will DROP existing tables!
+-- Uso: per un database Supabase nuovo, copia/incolla TUTTO
+-- questo file nel SQL Editor e premi "Run".
+-- Se hai già dati in produzione, usa invece i file
+-- migration_*.sql presenti in questa directory per evitare un reset distruttivo.
 -- ==========================================
 
 -- 1. DROP EXISTING TABLES (Destructive Reset)
@@ -80,6 +84,15 @@ CREATE TABLE users (
     "travelingTo" TEXT DEFAULT NULL,
     "travelingUntil" BIGINT DEFAULT NULL,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "updatedAt" BIGINT
+);
+
+-- NATIONS
+CREATE TABLE nations (
+    id TEXT PRIMARY KEY,
+    name TEXT,
+    logo TEXT DEFAULT '🏳️',
+    "leaderUserId" UUID REFERENCES users(id),
     "updatedAt" BIGINT
 );
 
@@ -213,15 +226,6 @@ CREATE TABLE wars (
     "lastEventAt" TIMESTAMPTZ
 );
 
--- NATIONS
-CREATE TABLE nations (
-    id TEXT PRIMARY KEY,
-    name TEXT,
-    logo TEXT DEFAULT '🏳️',
-    "leaderUserId" UUID REFERENCES users(id),
-    "updatedAt" BIGINT
-);
-
 -- LEADER ORDERS
 CREATE TABLE leader_orders (
     id SERIAL PRIMARY KEY,
@@ -268,8 +272,29 @@ CREATE TABLE articles (
     title TEXT NOT NULL,
     content TEXT NOT NULL,
     section TEXT DEFAULT 'global',
+    "likeCount" INT DEFAULT 0,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ARTICLE COMMENTS
+CREATE TABLE article_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "articleId" TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    "authorId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "authorName" TEXT NOT NULL,
+    content TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ARTICLE VOTES
+CREATE TABLE article_votes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "articleId" TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vote TEXT NOT NULL CHECK (vote IN ('up', 'down')),
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE ("articleId", "userId")
 );
 
 -- PARTIES (partiti politici)
@@ -821,6 +846,7 @@ ON CONFLICT DO NOTHING;
 
 -- 6. RLS POLICIES
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE nations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE regions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE wars ENABLE ROW LEVEL SECURITY;
@@ -830,6 +856,8 @@ ALTER TABLE party_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE party_invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE party_primaries ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE article_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE article_votes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE elections ENABLE ROW LEVEL SECURITY;
 ALTER TABLE election_votes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE parliament_members ENABLE ROW LEVEL SECURITY;
@@ -852,6 +880,8 @@ ALTER TABLE market_transactions_log ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Public profiles are viewable by everyone" ON users FOR SELECT USING (true);
 CREATE POLICY "Users can update own profile" ON users FOR UPDATE USING (auth.uid() = id);
 CREATE POLICY "Regions are viewable by everyone" ON regions FOR SELECT USING (true);
+CREATE POLICY "Nations public read" ON nations FOR SELECT USING (true);
+CREATE POLICY "Nations server manage" ON nations FOR ALL USING (true);
 CREATE POLICY "Budgets are viewable by everyone" ON budgets FOR SELECT USING (true);
 CREATE POLICY "Wars public read" ON wars FOR SELECT USING (true);
 CREATE POLICY "Wars server manage" ON wars FOR ALL USING (true);
@@ -867,6 +897,10 @@ CREATE POLICY "Party primaries public read" ON party_primaries FOR SELECT USING 
 CREATE POLICY "Party primaries server manage" ON party_primaries FOR ALL USING (true);
 CREATE POLICY "User inventory public read" ON user_inventory FOR SELECT USING (true);
 CREATE POLICY "User inventory server manage" ON user_inventory FOR ALL USING (true);
+CREATE POLICY "Article comments public read" ON article_comments FOR SELECT USING (true);
+CREATE POLICY "Article comments server manage" ON article_comments FOR ALL USING (true);
+CREATE POLICY "Article votes public read" ON article_votes FOR SELECT USING (true);
+CREATE POLICY "Article votes server manage" ON article_votes FOR ALL USING (true);
 CREATE POLICY "Elections public read" ON elections FOR SELECT USING (true);
 CREATE POLICY "Elections server manage" ON elections FOR ALL USING (true);
 CREATE POLICY "Election votes public read" ON election_votes FOR SELECT USING (true);

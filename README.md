@@ -8,6 +8,16 @@ This contains everything you need to run your app locally.
 
 View your app in AI Studio: https://ai.studio/apps/300c5164-3f3f-46f8-940b-7c494de9896a
 
+## SQL da incollare su Supabase
+
+Se ti serve il codice SQL da eseguire su Supabase, usa i file già presenti in `supabase/`:
+
+- **Nuovo database / reset completo:** copia tutto il contenuto di `supabase/full_schema.sql` nel SQL Editor di Supabase e premi **Run**.
+- **Database già esistente:** esegui solo le migration necessarie presenti in `supabase/`, partendo dai file `migration_*.sql` pertinenti al problema che devi allineare, senza usare il reset completo.
+- **Fix dati Italia:** usa `fix_it_region.sql` solo se devi riallineare i dati seed di Italia/regioni.
+
+`full_schema.sql` è il file principale “pronto da incollare” su Supabase: crea tutte le tabelle, le policy e le funzioni RPC usate dal server.
+
 ## Run Locally
 
 **Prerequisites:**  Node.js

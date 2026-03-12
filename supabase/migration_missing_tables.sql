@@ -309,7 +309,31 @@ CREATE TABLE IF NOT EXISTS market_transactions_log (
 );
 
 -- ==========================================
--- 26. RLS POLICIES (Row Level Security)
+-- 26. TABELLE ARTICLE_COMMENTS e ARTICLE_VOTES
+-- ==========================================
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS section TEXT DEFAULT 'global';
+ALTER TABLE articles ADD COLUMN IF NOT EXISTS "likeCount" INT DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS article_comments (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "articleId" TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    "authorId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "authorName" TEXT NOT NULL,
+    content TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS article_votes (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "articleId" TEXT NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vote TEXT NOT NULL CHECK (vote IN ('up', 'down')),
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE ("articleId", "userId")
+);
+
+-- ==========================================
+-- 27. RLS POLICIES (Row Level Security)
 -- ==========================================
 -- Abilita RLS per le nuove tabelle e aggiungi policy di lettura pubblica.
 -- Il server usa la Service Role Key che bypassa RLS.
@@ -338,6 +362,8 @@ ALTER TABLE bloc_votes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE production_queue ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ministers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE market_transactions_log ENABLE ROW LEVEL SECURITY;
+ALTER TABLE article_comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE article_votes ENABLE ROW LEVEL SECURITY;
 
 -- Policy di accesso completo (il server usa Service Role Key che bypassa RLS,
 -- ma queste policy garantiscono che le query di SELECT funzionino anche con anon key)
@@ -351,7 +377,8 @@ BEGIN
         'laws', 'law_votes', 'leader_candidates', 'leader_votes', 'work_permits',
         'sanctions', 'blocs', 'bloc_memberships', 'bloc_applications',
         'bloc_regulations', 'bloc_regulation_proposals', 'bloc_votes',
-        'production_queue', 'ministers', 'market_transactions_log'
+        'production_queue', 'ministers', 'market_transactions_log',
+        'article_comments', 'article_votes'
     ])
     LOOP
         -- CREATE POLICY does not support IF NOT EXISTS, so check pg_policies first
@@ -375,7 +402,7 @@ BEGIN
 END $$;
 
 -- ==========================================
--- 27. RPC: execute_factory_work (se non esiste già)
+-- 28. RPC: execute_factory_work (se non esiste già)
 -- Gestisce il lavoro manuale nelle fabbriche dei giocatori
 -- ==========================================
 CREATE OR REPLACE FUNCTION execute_factory_work(
@@ -412,7 +439,7 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- ==========================================
--- 28. RPC: get_election_votes_count
+-- 29. RPC: get_election_votes_count
 -- ==========================================
 CREATE OR REPLACE FUNCTION get_election_votes_count(p_election_id TEXT)
 RETURNS TABLE("partyId" TEXT, count BIGINT) AS $$

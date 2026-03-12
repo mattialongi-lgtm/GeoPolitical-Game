@@ -649,7 +649,7 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
               <MapPin className="w-5 h-5 text-emerald-600" />
             </div>
             <p className="font-black text-slate-900 text-sm">La Tua Regione</p>
-            <p className="text-[10px] font-bold text-slate-400 mt-1">{COUNTRY_FLAGS[user.regionId] || '🌍'} {user.regionId}</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-1">{COUNTRY_FLAGS[(user.regionId || '').toUpperCase()] || '🌍'} {user.regionId}</p>
           </button>
 
           <button onClick={() => navigateToCountry(user.originalNation || user.regionId)} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-200 transition-all group">
@@ -1747,9 +1747,14 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
           <span className="text-4xl">🏗️</span>
           <p className="text-slate-400 font-bold text-sm mt-3">Nessuna fabbrica in questa regione. Sii il primo ad investire qui!</p>
         </div>
-      ) : !showWorldFactories ? (
+      ) : !showWorldFactories ? (() => {
+        const searchLower = factorySearch.trim().toLowerCase();
+        const filteredFactories = searchLower
+          ? factories.filter(f => f.name.toLowerCase().includes(searchLower) || (f.ownerName || '').toLowerCase().includes(searchLower))
+          : factories;
+        return (
         <div className="grid gap-4">
-          {factories.filter(f => !factorySearch.trim() || f.name.toLowerCase().includes(factorySearch.toLowerCase()) || (f.ownerName || '').toLowerCase().includes(factorySearch.toLowerCase())).map(f => {
+          {filteredFactories.map(f => {
             const isOwner = f.ownerUserId === user?.id;
             const needsBudget = f.budget < f.wage;
 
@@ -1829,7 +1834,8 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
             );
           })}
         </div>
-      ) : null}
+        );
+      })() : null}
     </div>
   );
 };

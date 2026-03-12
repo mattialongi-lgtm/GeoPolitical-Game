@@ -1989,7 +1989,10 @@ app.get("/api/articles/:id/comments", authenticate, async (req: any, res) => {
     .select('id, articleId, authorId, authorName, content, createdAt')
     .eq('articleId', req.params.id)
     .order('createdAt', { ascending: true });
-  if (error) return res.json([]);
+  if (error) {
+    console.error("Article comments fetch error:", error);
+    return res.json([]);
+  }
   res.json(comments || []);
 });
 
@@ -2017,17 +2020,17 @@ app.get("/api/articles/:id/vote", authenticate, async (req: any, res) => {
     .eq('userId', req.user.id)
     .single();
   // Get total score
-  const { data: upVotes } = await supabase
+  const { count: upCount } = await supabase
     .from('article_votes')
-    .select('id', { count: 'exact' })
+    .select('*', { count: 'exact', head: true })
     .eq('articleId', articleId)
     .eq('vote', 'up');
-  const { data: downVotes } = await supabase
+  const { count: downCount } = await supabase
     .from('article_votes')
-    .select('id', { count: 'exact' })
+    .select('*', { count: 'exact', head: true })
     .eq('articleId', articleId)
     .eq('vote', 'down');
-  const score = (upVotes?.length || 0) - (downVotes?.length || 0);
+  const score = (upCount || 0) - (downCount || 0);
   res.json({ vote: userVote?.vote || null, score });
 });
 
@@ -2055,17 +2058,17 @@ app.post("/api/articles/:id/vote", authenticate, async (req: any, res) => {
   }
 
   // Return updated score
-  const { data: upVotes } = await supabase
+  const { count: upCount } = await supabase
     .from('article_votes')
-    .select('id', { count: 'exact' })
+    .select('*', { count: 'exact', head: true })
     .eq('articleId', articleId)
     .eq('vote', 'up');
-  const { data: downVotes } = await supabase
+  const { count: downCount } = await supabase
     .from('article_votes')
-    .select('id', { count: 'exact' })
+    .select('*', { count: 'exact', head: true })
     .eq('articleId', articleId)
     .eq('vote', 'down');
-  const score = (upVotes?.length || 0) - (downVotes?.length || 0);
+  const score = (upCount || 0) - (downCount || 0);
   // Update article likeCount
   await supabase.from('articles').update({ likeCount: score }).eq('id', articleId);
   res.json({ vote: vote || null, score });

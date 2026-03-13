@@ -59,12 +59,119 @@ export interface Region {
   economicAdviserId: string | null;
   foreignMinisterId: string | null;
   dictatorshipAttempts: number;
+  // Autonomy fields
+  isCapital?: boolean;
+  isAutonomous?: boolean;
+  isBorderRegion?: boolean;
+  governorPlayerId?: string | null;
+  governorName?: string | null;
+  regionalParliamentEnabled?: boolean;
+  regionalBudget?: number;
+  nationalProfitSharePercent?: number;
+  regionalProfitSharePercent?: number;
+  workerTaxPercent?: number;
+  industryTaxPercent?: number;
+  healthIndex?: number;
+  militaryIndex?: number;
+  educationIndex?: number;
+  developmentIndex?: number;
+  pollution?: number;
+  energyGeneration?: number;
+  energyConsumption?: number;
+  energyEfficiency?: number;
+  dailyExtractionLimitGold?: number;
+  dailyExtractionLimitOil?: number;
+  dailyExtractionLimitMinerals?: number;
+  dailyExtractionLimitUranium?: number;
+  dailyExtractionLimitDiamonds?: number;
+  dailyExtractedGold?: number;
+  dailyExtractedOil?: number;
+  dailyExtractedMinerals?: number;
+  dailyExtractedUranium?: number;
+  dailyExtractedDiamonds?: number;
+  nextExtractionResetAt?: string;
+  autonomyGrantedAt?: string;
+  autonomyRevokedAt?: string;
   // Game Stats (legacy or from Firestore)
   power?: number;
   economy?: number;
   resources?: { type: string, amount: number }[] | any;
   taxRate?: number;
   marketTaxRate?: number;
+}
+
+// ── Regional Autonomy Types ──────────────────────────────
+export type BuildingType =
+  | 'hospital'
+  | 'military_base'
+  | 'school'
+  | 'military_academy'
+  | 'missile_system'
+  | 'airport'
+  | 'naval_port'
+  | 'space_port'
+  | 'real_estate_fund'
+  | 'power_plant';
+
+export interface RegionalBuilding {
+  id: string;
+  regionId: string;
+  buildingType: BuildingType;
+  quantity: number;
+  level: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EnergyStatus {
+  generation: number;
+  consumption: number;
+  efficiency: number;
+  surplusPowerPlants: number;
+  supportableBuildings: number;
+  excessBuildings: number;
+  isDeficit: boolean;
+  stateCompensation: number;
+  netEfficiency: number;
+}
+
+export interface RegionalEconomy {
+  workerTaxIncome: number;
+  marketTaxIncome: number;
+  industryTaxIncome: number;
+  totalIncome: number;
+  regionalShare: number;
+  nationalShare: number;
+  regionalBudget: number;
+}
+
+export interface MilitaryStats {
+  initialAttackDamage: number;
+  initialDefensePoints: number;
+  academies: number;
+  bases: number;
+  hospitals: number;
+  schools: number;
+  missileSystems: number;
+  airports: number;
+  navalPorts: number;
+  spacePorts: number;
+  powerPlants: number;
+}
+
+export interface AutonomyProposal {
+  id: string;
+  regionId: string;
+  proposerId: string;
+  proposerName: string;
+  type: 'grant_autonomy' | 'revoke_autonomy' | 'change_profit_share' | 'change_regional_tax';
+  params: Record<string, any>;
+  status: 'pending' | 'passed' | 'rejected' | 'withdrawn';
+  createdAt: string;
+  expiresAt: string;
+  yesVotes?: number;
+  noVotes?: number;
+  myVote?: string | null;
 }
 
 export interface Factory {
@@ -153,6 +260,99 @@ export const GAME_CONFIG = {
   STORAGE_BASE_CAPACITY: 10000,
   MARKET_OFFER_COOLDOWN_MS: 5 * 60 * 1000, // 5 minutes
   MARKET_ANTI_ABUSE_PERCENTAGE: 1.10, // 110%
+};
+
+// ── Regional Autonomy Configuration ──────────────────────
+export const AUTONOMY_CONFIG = {
+  // Military formula coefficients
+  ATTACK_BASE_COEFFICIENT: 450000,
+  DEFENSE_STRUCTURAL_COEFFICIENT: 50000,
+
+  // Energy per building (mW)
+  ENERGY_CONSUMPTION: {
+    hospital: 2,
+    military_base: 2,
+    school: 2,
+    military_academy: 0,
+    missile_system: 2,
+    airport: 2,
+    naval_port: 2,
+    space_port: 2,
+    real_estate_fund: 0,
+    power_plant: 0,
+  } as Record<string, number>,
+  ENERGY_PRODUCTION_PER_PLANT: 10, // mW per power plant
+  BUILDINGS_PER_PLANT: 5, // how many buildings one power plant can support
+
+  // Building costs (EUR)
+  BUILDING_COSTS: {
+    hospital: 25000,
+    military_base: 50000,
+    school: 20000,
+    military_academy: 80000,
+    missile_system: 100000,
+    airport: 75000,
+    naval_port: 75000,
+    space_port: 150000,
+    real_estate_fund: 40000,
+    power_plant: 60000,
+  } as Record<string, number>,
+
+  // Daily extraction limits (defaults)
+  EXTRACTION_DEFAULTS: {
+    gold: 2500,
+    oil: 600,
+    minerals: 500,
+    uranium: 60,
+    diamonds: 75,
+  },
+
+  // Pollution malus per point (percentage reduction to health effectiveness)
+  POLLUTION_MALUS_PER_POINT: 0.5,
+
+  // Energy deficit malus (percentage reduction to economic efficiency)
+  ENERGY_DEFICIT_MALUS: 0.1,
+
+  // Index weights for buildings
+  INDEX_WEIGHTS: {
+    health: { hospital: 1.0 },
+    military: {
+      military_base: 1.0,
+      military_academy: 1.5,
+      missile_system: 0.8,
+      airport: 0.6,
+      naval_port: 0.6,
+      space_port: 0.4,
+    },
+    education: { school: 1.0 },
+    development: { real_estate_fund: 1.0 },
+  } as Record<string, Record<string, number>>,
+};
+
+export const BUILDING_LABELS: Record<string, string> = {
+  hospital: 'Ospedali',
+  military_base: 'Basi Militari',
+  school: 'Scuole',
+  military_academy: 'Accademie Militari',
+  missile_system: 'Sistemi Missilistici',
+  airport: 'Aeroporti',
+  naval_port: 'Porti Navali',
+  space_port: 'Porti Spaziali',
+  real_estate_fund: 'Fondi Immobiliari',
+  power_plant: 'Centrali Elettriche',
+};
+
+export const BUILDING_ICONS: Record<string, string> = {
+  hospital: '🏥',
+  military_base: '🏛️',
+  school: '🏫',
+  military_academy: '🎖️',
+  missile_system: '🚀',
+  airport: '✈️',
+  naval_port: '⚓',
+  space_port: '🛸',
+  real_estate_fund: '🏘️',
+  power_plant: '⚡',
 };
 
 // Booster config

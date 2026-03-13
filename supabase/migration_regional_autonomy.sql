@@ -1,0 +1,113 @@
+-- ============================================================
+-- Migration: Regional Autonomy System
+-- Adds autonomy, buildings, energy, indices, taxes, extraction
+-- ============================================================
+
+-- 1. Add autonomy columns to regions table
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "isCapital" BOOLEAN DEFAULT FALSE;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "isAutonomous" BOOLEAN DEFAULT FALSE;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "isBorderRegion" BOOLEAN DEFAULT FALSE;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "governorPlayerId" UUID REFERENCES users(id);
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "regionalParliamentEnabled" BOOLEAN DEFAULT FALSE;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "regionalBudget" BIGINT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "nationalProfitSharePercent" INT DEFAULT 100;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "regionalProfitSharePercent" INT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "workerTaxPercent" INT DEFAULT 10;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "industryTaxPercent" INT DEFAULT 10;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "healthIndex" FLOAT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "militaryIndex" FLOAT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "educationIndex" FLOAT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "developmentIndex" FLOAT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "pollution" INT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "energyGeneration" FLOAT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "energyConsumption" FLOAT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "energyEfficiency" FLOAT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitGold" INT DEFAULT 2500;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitOil" INT DEFAULT 600;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitMinerals" INT DEFAULT 500;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitUranium" INT DEFAULT 60;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitDiamonds" INT DEFAULT 75;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractedGold" INT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractedOil" INT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractedMinerals" INT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractedUranium" INT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractedDiamonds" INT DEFAULT 0;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "nextExtractionResetAt" TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '1 day');
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "autonomyGrantedAt" TIMESTAMPTZ;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "autonomyRevokedAt" TIMESTAMPTZ;
+
+-- 2. Regional buildings table
+CREATE TABLE IF NOT EXISTS regional_buildings (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "regionId" TEXT NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    "buildingType" TEXT NOT NULL,
+    quantity INT DEFAULT 0,
+    level INT DEFAULT 1,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE("regionId", "buildingType")
+);
+
+-- 3. Regional parliament members table
+CREATE TABLE IF NOT EXISTS regional_parliament_members (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "regionId" TEXT NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    "userId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    "partyId" UUID,
+    "electedAt" TIMESTAMPTZ DEFAULT NOW(),
+    "termEndsAt" TIMESTAMPTZ,
+    UNIQUE("regionId", "userId")
+);
+
+-- 4. Regional laws table (for autonomy-specific proposals)
+CREATE TABLE IF NOT EXISTS regional_laws (
+    id TEXT PRIMARY KEY,
+    "regionId" TEXT NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    "proposerId" UUID NOT NULL REFERENCES users(id),
+    type TEXT NOT NULL,
+    params JSONB DEFAULT '{}'::jsonb,
+    status TEXT DEFAULT 'pending',
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "expiresAt" TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS regional_law_votes (
+    "lawId" TEXT NOT NULL REFERENCES regional_laws(id) ON DELETE CASCADE,
+    "voterId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vote TEXT NOT NULL,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY ("lawId", "voterId")
+);
+
+-- 5. Regional budget transactions
+CREATE TABLE IF NOT EXISTS regional_budget_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "regionId" TEXT NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    subtype TEXT,
+    "moneyDelta" BIGINT DEFAULT 0,
+    description TEXT,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+    "createdByUserId" UUID REFERENCES users(id),
+    metadata JSONB DEFAULT '{}'::jsonb
+);
+
+-- 6. Autonomy history log
+CREATE TABLE IF NOT EXISTS autonomy_history (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    "regionId" TEXT NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
+    action TEXT NOT NULL,
+    "performedByUserId" UUID REFERENCES users(id),
+    details JSONB DEFAULT '{}'::jsonb,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 7. Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_regional_buildings_region ON regional_buildings("regionId");
+CREATE INDEX IF NOT EXISTS idx_regional_parliament_region ON regional_parliament_members("regionId");
+CREATE INDEX IF NOT EXISTS idx_regional_laws_region ON regional_laws("regionId");
+CREATE INDEX IF NOT EXISTS idx_regional_laws_status ON regional_laws(status);
+CREATE INDEX IF NOT EXISTS idx_regional_budget_tx_region ON regional_budget_transactions("regionId");
+CREATE INDEX IF NOT EXISTS idx_autonomy_history_region ON autonomy_history("regionId");
+CREATE INDEX IF NOT EXISTS idx_regions_autonomous ON regions("isAutonomous") WHERE "isAutonomous" = TRUE;
+CREATE INDEX IF NOT EXISTS idx_regions_nation ON regions("nation_id");

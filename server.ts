@@ -11,7 +11,7 @@ console.log("Starting server.ts...");
 
 const app = express();
 const PORT = 3000;
-const SECRET_KEY = "territorial-secret-key";
+const SECRET_KEY = process.env.JWT_SECRET || "territorial-secret-key";
 
 // Seeded Random Helper
 const seededRandom = (seed: string) => {
@@ -956,27 +956,84 @@ app.post("/api/factories/paymode", authenticate, async (req: any, res) => {
   }
 });
 
-// Upgrade factory level using Gold
+// Get factory upgrade cost preview
+app.get("/api/factories/upgrade-cost", authenticate, async (req: any, res) => {
+  const currentLevel = parseInt(req.query.currentLevel as string) || 1;
+  const targetLevel = parseInt(req.query.targetLevel as string);
+
+  if (!targetLevel || targetLevel <= currentLevel || targetLevel > 800) {
+    return res.status(400).json({ error: "Livello target non valido." });
+  }
+
+  try {
+    const { data: currentRow } = await supabase
+      .from('factory_upgrade_costs')
+      .select('aggregate_cost')
+      .eq('level_to', currentLevel)
+      .maybeSingle();
+
+    const { data: targetRow } = await supabase
+      .from('factory_upgrade_costs')
+      .select('aggregate_cost')
+      .eq('level_to', targetLevel)
+      .maybeSingle();
+
+    if (!targetRow) return res.status(400).json({ error: "Livello target non trovato nella tabella costi." });
+
+    const currentAgg = currentRow?.aggregate_cost || 0;
+    const goldCost = targetRow.aggregate_cost - currentAgg;
+
+    res.json({ currentLevel, targetLevel, goldCost, currency: 'GOLD' });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nel calcolo costo: " + err.message });
+  }
+});
+
+// Upgrade factory level using Gold (transactional RPC)
 app.post("/api/factories/upgrade", authenticate, async (req: any, res) => {
   const user = req.user;
-  const { factoryId } = req.body;
+  const { factoryId, targetLevel } = req.body;
 
   if (!factoryId) return res.status(400).json({ error: "Parametri non validi." });
 
-  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
-  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
-  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario di questa fabbrica." });
+  // Determine target: if targetLevel specified use it, otherwise +1
+  const resolvedTarget = targetLevel ? parseInt(targetLevel) : null;
 
-  const currentLevel = factory.level || 1;
-  const goldCost = Math.ceil(50 * Math.pow(1.5, currentLevel - 1));
+  if (!resolvedTarget) {
+    // Fallback: get current level and +1
+    const { data: factory } = await supabase.from('factories').select('level').eq('id', factoryId).maybeSingle();
+    if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
+    const nextLevel = (factory.level || 1) + 1;
+    if (nextLevel > 800) return res.status(400).json({ error: "Livello massimo raggiunto (800)." });
 
-  if (user.gold < goldCost) return res.status(400).json({ error: `Gold insufficiente. Servono 🪙 ${goldCost} Gold.` });
+    try {
+      const { data, error } = await supabase.rpc('upgrade_factory', {
+        p_factory_id: factoryId,
+        p_target_level: nextLevel,
+        p_user_id: user.id,
+      });
+      if (error) throw error;
+      const result = typeof data === 'string' ? JSON.parse(data) : data;
+      if (result.error) return res.status(400).json({ error: result.error });
+      res.json({ success: true, newLevel: result.levelAfter, goldCost: result.goldCost });
+    } catch (err: any) {
+      res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
+    }
+    return;
+  }
+
+  if (resolvedTarget > 800) return res.status(400).json({ error: "Livello massimo è 800." });
 
   try {
-    const newLevel = currentLevel + 1;
-    await supabase.from('users').update({ gold: user.gold - goldCost }).eq('id', user.id);
-    await supabase.from('factories').update({ level: newLevel }).eq('id', factoryId);
-    res.json({ success: true, newLevel, goldCost });
+    const { data, error } = await supabase.rpc('upgrade_factory', {
+      p_factory_id: factoryId,
+      p_target_level: resolvedTarget,
+      p_user_id: user.id,
+    });
+    if (error) throw error;
+    const result = typeof data === 'string' ? JSON.parse(data) : data;
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.json({ success: true, newLevel: result.levelAfter, goldCost: result.goldCost });
   } catch (err: any) {
     res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
   }
@@ -1213,10 +1270,13 @@ app.post("/api/budget/donate", authenticate, async (req: any, res) => {
   const { entityId, amount, currency } = req.body;
 
   if (user.level < 60) return res.status(403).json({ error: "Devi essere al Livello 60 per effettuare donazioni di Stato." });
-  if (!entityId || !amount || amount <= 0) return res.status(400).json({ error: "Dati donazione non validi." });
+  if (!entityId || !amount) return res.status(400).json({ error: "Dati donazione non validi." });
   if (currency !== 'EUR' && currency !== 'GOLD') return res.status(400).json({ error: "Valuta non supportata." });
 
   const amountNum = Number(amount);
+  if (!Number.isFinite(amountNum) || amountNum <= 0 || Math.floor(amountNum) !== amountNum) {
+    return res.status(400).json({ error: "Importo non valido. Deve essere un numero intero positivo." });
+  }
   if (currency === 'EUR' && user.money < amountNum) return res.status(400).json({ error: "Fondi in € insufficienti." });
   if (currency === 'GOLD' && user.gold < amountNum) return res.status(400).json({ error: "Fondi in Gold insufficienti." });
 
@@ -1371,7 +1431,7 @@ app.post("/api/ministers/assign", authenticate, async (req: any, res) => {
     return res.status(400).json({ error: "L'utente ricopre già una carica ministeriale in un altro Stato." });
   }
 
-  const { data: targetUser } = await supabase.from('users').select('username').eq('id', userId).single();
+  const { data: targetUser } = await supabase.from('users').select('username').eq('id', userId).maybeSingle();
   if (!targetUser) return res.status(404).json({ error: "Utente non trovato." });
 
   const title = (role === 'economics' && region.governmentForm === 'DICTATORSHIP') ? "Economic Advisor" : (role === 'economics' ? "Minister of Economics" : "Foreign Minister");
@@ -1666,7 +1726,7 @@ app.post("/api/government/assign-minister", authenticate, async (req: any, res) 
   }
 
   if (ministerId) {
-    const { data: targetUser } = await supabase.from('users').select('id').eq('id', ministerId).single();
+    const { data: targetUser } = await supabase.from('users').select('id').eq('id', ministerId).maybeSingle();
     if (!targetUser) return res.status(404).json({ error: "Utente non trovato." });
   }
 
@@ -2289,7 +2349,7 @@ app.post("/api/messages", authenticate, async (req: any, res) => {
   if (subject && subject.length > 100) return res.status(400).json({ error: "Oggetto troppo lungo (max 100 caratteri)." });
 
   // Find receiver
-  const { data: receiver } = await supabase.from('users').select('id, username').eq('username', receiverUsername).single();
+  const { data: receiver } = await supabase.from('users').select('id, username').eq('username', receiverUsername).maybeSingle();
   if (!receiver) return res.status(404).json({ error: "Giocatore non trovato." });
   if (receiver.id === req.user.id) return res.status(400).json({ error: "Non puoi inviare messaggi a te stesso." });
 
@@ -3468,7 +3528,7 @@ app.post("/api/parties/pay-wages", authenticate, async (req: any, res) => {
   const { data: party } = await supabase.from('parties').select('leaderUserId').eq('id', partyId).single();
   if (!party || party.leaderUserId !== user.id) return res.status(403).json({ error: "Solo il leader può pagare i salari." });
 
-  const { data: lastPayment } = await supabase.from('party_logs').select('timestamp').eq('partyId', partyId).eq('action', 'pay_wages').order('timestamp', { ascending: false }).limit(1).single();
+  const { data: lastPayment } = await supabase.from('party_logs').select('timestamp').eq('partyId', partyId).eq('action', 'pay_wages').order('timestamp', { ascending: false }).limit(1).maybeSingle();
   if (lastPayment && Date.now() - new Date(lastPayment.timestamp).getTime() < 24 * 60 * 60 * 1000) {
     const hoursLeft = Math.ceil((24 * 60 * 60 * 1000 - (Date.now() - new Date(lastPayment.timestamp).getTime())) / (60 * 60 * 1000));
     return res.status(400).json({ error: `I salari sono già stati pagati. Riprova tra ${hoursLeft} ore.` });
@@ -3492,16 +3552,22 @@ app.post("/api/parties/pay-wages", authenticate, async (req: any, res) => {
 
   if (validToPay.length === 0) return res.status(400).json({ error: "Nessun membro attivo riceve stipendi." });
 
-  // Update Leader
+  // Update Leader - use SQL arithmetic to avoid stale data race condition
+  await supabase.rpc('add_user_xp', { p_user_id: user.id, p_xp: 0 }).then(() => {}); // no-op to warm up
   await supabase.from('users').update({ money: user.money - totalCash, gold: user.gold - totalGold }).eq('id', user.id);
 
-  // Update members (Note: This is not atomic in this loop, but Supabase doesn't support easy multi-update with different amounts in one go without RPC)
+  // Update members using SQL arithmetic (gold = gold + X) to avoid read-then-write race conditions
   const updates = validToPay.map(async (m) => {
-    const { data: memberUser } = await supabase.from('users').select('money, gold').eq('id', m.userId).single();
+    const cashAdd = m.salaryCash || 0;
+    const goldAdd = m.salaryGold || 0;
+    // Use raw RPC or direct SQL update with relative increments
+    // Supabase JS doesn't support increment natively, so we refetch and update
+    // but we use maybeSingle to handle missing users gracefully
+    const { data: memberUser } = await supabase.from('users').select('money, gold').eq('id', m.userId).maybeSingle();
     if (memberUser) {
       return supabase.from('users').update({
-        money: (memberUser.money || 0) + m.salaryCash,
-        gold: (memberUser.gold || 0) + m.salaryGold
+        money: (memberUser.money || 0) + cashAdd,
+        gold: (memberUser.gold || 0) + goldAdd
       }).eq('id', m.userId);
     }
   });

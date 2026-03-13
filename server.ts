@@ -92,6 +92,9 @@ const getUserPerks = async (userId: string, boosterInfo?: Record<string, any>) =
   return perkMap;
 };
 
+// Helper to validate ISO2 country codes (prevents injection in .or() queries)
+const isValidIso2 = (code: string): boolean => /^[A-Z]{2,4}$/.test(code);
+
 // Helper to calculate XP and Level Up
 const addXP = async (userId: string, amount: number) => {
   try {
@@ -580,6 +583,7 @@ app.get("/api/countries/:iso2/agreements", authenticate, async (req: any, res) =
   const { iso2 } = req.params;
   try {
     const stateId = iso2.toUpperCase();
+    if (!isValidIso2(stateId)) return res.status(400).json({ error: "Codice paese non valido." });
 
     const { data: agreements, error } = await supabase
       .from('migration_agreements')
@@ -893,7 +897,16 @@ app.post("/api/factories/create", authenticate, async (req: any, res) => {
   if (user.money < cost) return res.status(400).json({ error: `Fondi insufficienti. Servono $${cost}.` });
 
   try {
-    await supabase.from('users').update({ money: user.money - cost }).eq('id', user.id);
+    // Atomic currency deduction to prevent race conditions
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: cost,
+      p_gold_cost: 0,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
     const { data: factory, error } = await supabase.from('factories').insert({
       name,
@@ -919,17 +932,30 @@ app.post("/api/factories/deposit", authenticate, async (req: any, res) => {
   const user = req.user;
   const { factoryId, amount } = req.body;
 
-  if (!factoryId || !amount || amount <= 0) return res.status(400).json({ error: "Parametri non validi." });
+  const numAmount = Number(amount);
+  if (!factoryId || !Number.isFinite(numAmount) || numAmount <= 0 || Math.floor(numAmount) !== numAmount) {
+    return res.status(400).json({ error: "Parametri non validi." });
+  }
 
   const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
   if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
   if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
-  if (user.money < amount) return res.status(400).json({ error: "Fondi insufficienti." });
+  if (user.money < numAmount) return res.status(400).json({ error: "Fondi insufficienti." });
 
   try {
-    await supabase.from('users').update({ money: user.money - amount }).eq('id', user.id);
-    await supabase.from('factories').update({ budget: (factory.budget || 0) + amount }).eq('id', factoryId);
-    res.json({ success: true, newBudget: (factory.budget || 0) + amount });
+    // Atomic currency deduction
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: numAmount,
+      p_gold_cost: 0,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
+
+    await supabase.from('factories').update({ budget: (factory.budget || 0) + numAmount }).eq('id', factoryId);
+    res.json({ success: true, newBudget: (factory.budget || 0) + numAmount });
   } catch (err: any) {
     res.status(500).json({ error: "Errore nel deposito: " + err.message });
   }
@@ -1101,10 +1127,16 @@ app.post("/api/actions/invest", authenticate, async (req: any, res) => {
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
   try {
-    await supabase.from('users').update({
-      money: user.money - moneyCost,
-      energy: user.energy - energyCost
-    }).eq('id', user.id);
+    // Atomic currency + energy deduction
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: moneyCost,
+      p_gold_cost: 0,
+      p_energy_cost: energyCost,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
     // Update region stats (stability, population, economy)
     await supabase.rpc('process_invest_action', {
@@ -1126,10 +1158,21 @@ app.post("/api/actions/craft-drink", authenticate, async (req: any, res) => {
   if (user.gold < cost) return res.status(400).json({ error: `Oro insufficiente. Ti servono 🪙 ${cost}.` });
 
   try {
+    // Atomic gold deduction to prevent race conditions
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: 0,
+      p_gold_cost: cost,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
+
+    // Now add the drink
     const { data, error } = await supabase
       .from('users')
       .update({
-        gold: user.gold - cost,
         energyDrinks: (user.energyDrinks || 0) + 1
       })
       .eq('id', user.id)
@@ -1284,11 +1327,16 @@ app.post("/api/budget/donate", authenticate, async (req: any, res) => {
   const moneyDelta = currency === 'GOLD' ? amountNum * conversionRate : amountNum;
 
   try {
-    if (currency === 'EUR') {
-      await supabase.from('users').update({ money: user.money - amountNum }).eq('id', user.id);
-    } else {
-      await supabase.from('users').update({ gold: user.gold - amountNum }).eq('id', user.id);
-    }
+    // Atomic currency deduction to prevent race conditions
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: currency === 'EUR' ? amountNum : 0,
+      p_gold_cost: currency === 'GOLD' ? amountNum : 0,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
     await supabase.rpc('add_budget_transaction', {
       p_owner_type: 'REGION',
@@ -1490,6 +1538,7 @@ app.post("/api/ministers/revoke", authenticate, async (req: any, res) => {
 
 app.get("/api/ministers/:iso2", authenticate, async (req: any, res) => {
   const iso2 = (req.params.iso2 || '').toUpperCase().replace('NATION_', '');
+  if (!isValidIso2(iso2)) return res.status(400).json({ error: "Codice paese non valido." });
 
   const { data: ministers, error } = await supabase
     .from('ministers')
@@ -2703,12 +2752,22 @@ app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {
   };
 
   const updateData: any = { perkUpgradesJson: JSON.stringify(existingUpgrades) };
-  if (useGold) {
-    updateData.money = (user.money || 0) - cashCost;
-    updateData.gold = (user.gold || 0) - goldCost;
-  } else {
-    updateData.money = (user.money || 0) - cashCost;
+  
+  // Atomic currency deduction for perk upgrades
+  const moneyCost2 = cashCost;
+  const goldCost2 = useGold ? goldCost : 0;
+  
+  const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+    p_user_id: user.id,
+    p_money_cost: moneyCost2,
+    p_gold_cost: goldCost2,
+    p_energy_cost: 0,
+  });
+  if (deductError) {
+    return res.status(500).json({ error: "Errore nella deduzione: " + deductError.message });
   }
+  const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+  if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
   await supabase.from('users').update(updateData).eq('id', user.id);
 
@@ -2759,11 +2818,19 @@ app.post("/api/perks/booster", authenticate, async (req: any, res) => {
   };
 
   const updateData: any = { boostersJson: JSON.stringify(activeBoosters) };
-  if (useGold) {
-    updateData.gold = (user.gold || 0) - price;
-  } else {
-    updateData.money = (user.money || 0) - price;
+  
+  // Atomic currency deduction for booster
+  const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+    p_user_id: user.id,
+    p_money_cost: useGold ? 0 : price,
+    p_gold_cost: useGold ? price : 0,
+    p_energy_cost: 0,
+  });
+  if (deductError) {
+    return res.status(500).json({ error: "Errore nella deduzione: " + deductError.message });
   }
+  const deductData2 = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+  if (deductData2?.error) return res.status(400).json({ error: deductData2.error });
 
   await supabase.from('users').update(updateData).eq('id', user.id);
 
@@ -3080,8 +3147,17 @@ app.post("/api/produce", authenticate, async (req: any, res) => {
     const willCompleteAt = startedAt + weapon.timeMin * 60 * 1000 * amount;
     const prodId = Math.random().toString(36).substring(2, 11);
 
-    // Atomicity: We should really use a transaction but for simplicity we'll do sequential calls
-    // In production, an RPC is better.
+    // Atomic currency deduction first (before inserting to queue)
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: totalCost,
+      p_gold_cost: 0,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
+
     await supabase.from('production_queue').insert({
       id: prodId,
       userId: user.id,
@@ -3092,8 +3168,6 @@ app.post("/api/produce", authenticate, async (req: any, res) => {
       willCompleteAt: new Date(willCompleteAt).toISOString(),
       createdAt: new Date(now).toISOString()
     });
-
-    await supabase.from('users').update({ money: (userData?.money || 0) - totalCost }).eq('id', user.id);
 
     // Deduct resources
     const resourceUpdates = [];
@@ -3224,8 +3298,16 @@ app.post("/api/parties/create", authenticate, async (req: any, res) => {
       joinedAt: now
     });
 
-    // 3. Deduct gold
-    await supabase.from('users').update({ gold: user.gold - 100 }).eq('id', user.id);
+    // 3. Deduct gold atomically
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: 0,
+      p_gold_cost: 100,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
     // 4. Log creation
     await supabase.from('party_logs').insert({

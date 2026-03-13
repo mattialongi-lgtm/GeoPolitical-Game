@@ -4,7 +4,8 @@ import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
-import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG } from "./src/types";
+import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, RESOURCE_TYPES } from "./src/types";
+import type { ResourceType, DeepCostPreview } from "./src/types";
 
 console.log("Starting server.ts...");
 
@@ -4553,6 +4554,79 @@ export const LawRegistry: Record<string, {
       await supabase.from('sanctions').update({ status: 'REVOKED', revokedAt: new Date().toISOString(), revokedByUserId: revokerId })
         .eq('fromStateId', region.id).eq('targetStateId', params.targetRegionId).eq('status', 'ACTIVE');
     }
+  },
+  deep_exploration: {
+    category: "Economia e Tasse",
+    icon: "Pickaxe",
+    title: "Deep Exploration",
+    description: "Attiva l'estrazione in profondità per una risorsa. Aumenta i cap di ricarica in tutte le regioni per 7 giorni. Costa diamanti e fondi dal tesoro.",
+    threshold: 0.5,
+    delayDays: 0,
+    validate: async (region, params) => {
+      if (!params?.resourceType) return "Tipo di risorsa obbligatorio.";
+      if (!params?.level) return "Livello Deep obbligatorio.";
+      const nationId = region.nation_id;
+      if (!nationId) return "Nazione non trovata per questa regione.";
+
+      // Check no active Deep
+      const nowStr = new Date().toISOString();
+      const { data: existing } = await supabase
+        .from('deep_explorations')
+        .select('id')
+        .eq('nationId', nationId)
+        .eq('isActive', true)
+        .gte('endsAt', nowStr)
+        .limit(1);
+      if (existing && existing.length > 0) return "Una Deep Exploration è già attiva per questa nazione.";
+
+      return null;
+    },
+    execute: async (region, params, sourceLawId) => {
+      // This law triggers deep exploration activation via the region's nation
+      const nationId = region.nation_id;
+      if (!nationId) return;
+
+      const { data: law } = await supabase.from('laws').select('proposerId').eq('id', sourceLawId).single();
+      const activatorId = law ? law.proposerId : region.ownerUserId;
+
+      try {
+        const preview = await computeDeepCost(nationId, params.resourceType, parseInt(params.level));
+        const durationDays = parseInt(await getSetting('deep_duration_days')) || 7;
+        const startsAt = new Date();
+        const endsAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
+        const deepId = 'deep_' + Math.random().toString(36).substring(2, 11);
+
+        // Deduct costs from region budget
+        if (preview.costEur > 0) {
+          await supabase.rpc('add_budget_transaction', {
+            p_owner_type: 'REGION',
+            p_owner_id: region.id,
+            p_type: 'EXPENSE',
+            p_subtype: 'DEEP_EXPLORATION',
+            p_money_delta: -preview.costEur,
+            p_created_by: activatorId,
+            p_metadata: { resourceType: params.resourceType, level: params.level },
+          });
+        }
+
+        await supabase.from('deep_explorations').insert({
+          id: deepId,
+          nationId,
+          resourceType: params.resourceType,
+          level: parseInt(params.level),
+          targetCap: preview.targetCap,
+          activatedByUserId: activatorId,
+          startsAt: startsAt.toISOString(),
+          endsAt: endsAt.toISOString(),
+          isActive: true,
+          costDiamonds: preview.costDiamonds,
+          costEur: preview.costEur,
+          costGold: preview.costGold,
+        });
+      } catch (e) {
+        console.error("Failed to execute deep_exploration law:", e);
+      }
+    }
   }
 };
 
@@ -4825,6 +4899,733 @@ app.post("/api/parliament/laws/pass", authenticate, async (req: any, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// ══════════════════════════════════════════════════════════════════
+// ██ REGIONAL RESOURCES SYSTEM
+// ══════════════════════════════════════════════════════════════════
+
+// Helper: read a single game_settings value
+async function getSetting(key: string): Promise<any> {
+  const { data } = await supabase.from('game_settings').select('value').eq('key', key).single();
+  return data?.value;
+}
+
+// Helper: get nation_id for a region
+async function getNationForRegion(regionId: string): Promise<string | null> {
+  const { data } = await supabase.from('regions').select('nation_id').eq('id', regionId).single();
+  return data?.nation_id ?? null;
+}
+
+// Helper: get active Deep Exploration for nation+resource
+async function getActiveDeep(nationId: string, resourceType: string, now?: Date) {
+  const nowStr = (now || new Date()).toISOString();
+  const { data } = await supabase
+    .from('deep_explorations')
+    .select('*')
+    .eq('nationId', nationId)
+    .eq('resourceType', resourceType)
+    .eq('isActive', true)
+    .lte('startsAt', nowStr)
+    .gte('endsAt', nowStr)
+    .limit(1)
+    .maybeSingle();
+  return data;
+}
+
+// Helper: compute effective cap
+function computeEffectiveCap(baseCap: number, deep: any, capMaxGlobal: number): number {
+  if (!deep) return Math.min(baseCap, capMaxGlobal);
+  const targetCap = deep.targetCap || baseCap;
+  return Math.min(capMaxGlobal, Math.max(baseCap, targetCap));
+}
+
+// ── GET /api/regions/:id/resources ──────────────────────────────
+// Returns resource data for a region (with effective caps)
+app.get("/api/regions/:id/resources", authenticate, async (req: any, res) => {
+  const regionId = req.params.id;
+  try {
+    const { data: resources, error } = await supabase
+      .from('region_resources')
+      .select('*')
+      .eq('regionId', regionId);
+
+    if (error) throw error;
+    if (!resources || resources.length === 0) {
+      return res.json({ resources: [], deepActive: null });
+    }
+
+    const nationId = await getNationForRegion(regionId);
+    const capMaxGlobal = parseInt(await getSetting('cap_max_global')) || 2000;
+
+    // Check deep for each resource
+    const enriched = await Promise.all(resources.map(async (r: any) => {
+      const deep = nationId ? await getActiveDeep(nationId, r.resourceType) : null;
+      const effectiveCap = computeEffectiveCap(r.baseCapPerRecharge, deep, capMaxGlobal);
+      return {
+        ...r,
+        effectiveCapPerRecharge: effectiveCap,
+        deepActive: !!deep,
+        deepTargetCap: deep?.targetCap || null,
+        deepEndsAt: deep?.endsAt || null,
+        remainingDaily: Math.max(0, r.dailyAvailable - r.dailyExtracted),
+      };
+    }));
+
+    res.json({ resources: enriched });
+  } catch (err: any) {
+    console.error("Error fetching region resources:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/resources/player-state ─────────────────────────────
+// Returns player extraction state for a specific region
+app.get("/api/resources/player-state", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const regionId = (req.query.regionId as string) || user.regionId;
+  try {
+    const { data: states, error } = await supabase
+      .from('player_extraction_state')
+      .select('*')
+      .eq('playerId', user.id)
+      .eq('regionId', regionId);
+
+    if (error) throw error;
+    res.json({ states: states || [] });
+  } catch (err: any) {
+    console.error("Error fetching player extraction state:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/resources/work-extract ────────────────────────────
+// Player works to extract a resource from a region
+app.post("/api/resources/work-extract", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { regionId, resourceType } = req.body;
+
+  if (!regionId || !resourceType) {
+    return res.status(400).json({ error: "regionId e resourceType sono obbligatori." });
+  }
+  if (!RESOURCE_TYPES.includes(resourceType)) {
+    return res.status(400).json({ error: "Tipo di risorsa non valido." });
+  }
+
+  try {
+    // 1. Energy check
+    const energyCost = parseInt(await getSetting('work_energy_cost_extract')) || 10;
+    const perks = user.perks || {};
+    const resistenza = perks['RESISTENZA'] || 0;
+    // Max 50% energy reduction at RESISTENZA level 50+ (same formula as factory work)
+    const energyReduction = Math.min(0.5, resistenza / 100);
+    const actualEnergyCost = Math.ceil(energyCost * (1 - energyReduction));
+
+    if (user.energy < actualEnergyCost) {
+      return res.status(400).json({ error: "Energia insufficiente.", reason: "no_energy" });
+    }
+
+    // 2. Get region resource
+    const { data: regionRes, error: rrError } = await supabase
+      .from('region_resources')
+      .select('*')
+      .eq('regionId', regionId)
+      .eq('resourceType', resourceType)
+      .single();
+
+    if (rrError || !regionRes) {
+      return res.status(404).json({ error: "Risorsa non disponibile in questa regione." });
+    }
+
+    // 3. Get effective cap
+    const nationId = await getNationForRegion(regionId);
+    const capMaxGlobal = parseInt(await getSetting('cap_max_global')) || 2000;
+    const deep = nationId ? await getActiveDeep(nationId, resourceType) : null;
+    const effectiveCap = computeEffectiveCap(regionRes.baseCapPerRecharge, deep, capMaxGlobal);
+
+    // 4. Get player extraction state
+    const { data: playerState } = await supabase
+      .from('player_extraction_state')
+      .select('*')
+      .eq('playerId', user.id)
+      .eq('regionId', regionId)
+      .eq('resourceType', resourceType)
+      .maybeSingle();
+
+    const extractedSoFar = playerState?.extractedSinceLastRecharge || 0;
+    const remainingCycle = Math.max(0, effectiveCap - extractedSoFar);
+    const remainingDaily = Math.max(0, regionRes.dailyAvailable - regionRes.dailyExtracted);
+
+    // 5. Calculate extraction amount
+    const K = parseFloat(await getSetting('extraction_k')) || 0.02;
+    const baseAmount = Math.max(1, Math.round(effectiveCap * K));
+    const finalAmount = Math.min(baseAmount, remainingCycle, remainingDaily);
+
+    if (finalAmount <= 0) {
+      let reason = "unknown";
+      if (remainingCycle <= 0) reason = "cycle_cap_reached";
+      else if (remainingDaily <= 0) reason = "daily_exhausted";
+      return res.status(400).json({
+        error: reason === "cycle_cap_reached"
+          ? "Cap del ciclo raggiunto. Serve una ricarica amministrativa."
+          : "Risorsa giornaliera esaurita per questa regione.",
+        reason,
+      });
+    }
+
+    // 6. Deduct energy
+    const { error: energyErr } = await supabase
+      .from('users')
+      .update({ energy: user.energy - actualEnergyCost })
+      .eq('id', user.id);
+    if (energyErr) throw energyErr;
+
+    // 7. Update daily extracted (region)
+    const { error: dailyErr } = await supabase
+      .from('region_resources')
+      .update({
+        dailyExtracted: regionRes.dailyExtracted + finalAmount,
+        updatedAt: new Date().toISOString(),
+      })
+      .eq('regionId', regionId)
+      .eq('resourceType', resourceType);
+    if (dailyErr) throw dailyErr;
+
+    // 8. Upsert player extraction state
+    if (playerState) {
+      const { error: psErr } = await supabase
+        .from('player_extraction_state')
+        .update({
+          extractedSinceLastRecharge: extractedSoFar + finalAmount,
+          updatedAt: new Date().toISOString(),
+        })
+        .eq('playerId', user.id)
+        .eq('regionId', regionId)
+        .eq('resourceType', resourceType);
+      if (psErr) throw psErr;
+    } else {
+      const { error: psErr } = await supabase
+        .from('player_extraction_state')
+        .insert({
+          playerId: user.id,
+          regionId,
+          resourceType,
+          extractedSinceLastRecharge: finalAmount,
+          updatedAt: new Date().toISOString(),
+        });
+      if (psErr) throw psErr;
+    }
+
+    // 9. Add to player inventory
+    const { data: existingInv } = await supabase.from('user_inventory')
+      .select('quantity').eq('userId', user.id).eq('itemId', resourceType).maybeSingle();
+    if (existingInv) {
+      await supabase.from('user_inventory')
+        .update({ quantity: existingInv.quantity + finalAmount })
+        .eq('userId', user.id).eq('itemId', resourceType);
+    } else {
+      await supabase.from('user_inventory')
+        .insert({ userId: user.id, itemId: resourceType, quantity: finalAmount });
+    }
+
+    // 10. Log extraction
+    await supabase.from('resource_extraction_logs').insert({
+      playerId: user.id,
+      regionId,
+      resourceType,
+      amount: finalAmount,
+    });
+
+    // 11. XP
+    const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
+    await addXP(user.id, xpGain);
+
+    res.json({
+      success: true,
+      amount: finalAmount,
+      resourceType,
+      remainingCycle: remainingCycle - finalAmount,
+      remainingDaily: remainingDaily - finalAmount,
+      xpGain,
+      energyCost: actualEnergyCost,
+    });
+  } catch (err: any) {
+    console.error("Error in work-extract:", err);
+    res.status(500).json({ error: "Errore durante l'estrazione: " + err.message });
+  }
+});
+
+// ── POST /api/resources/recharge ────────────────────────────────
+// Admin (dictator/economy minister) recharges a resource for a region
+app.post("/api/resources/recharge", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { regionId, resourceType } = req.body;
+
+  if (!regionId || !resourceType) {
+    return res.status(400).json({ error: "regionId e resourceType sono obbligatori." });
+  }
+
+  try {
+    // 1. Get region
+    const { data: region, error: regErr } = await supabase
+      .from('regions')
+      .select('*')
+      .eq('id', regionId)
+      .single();
+    if (regErr || !region) return res.status(404).json({ error: "Regione non trovata." });
+
+    // 2. Check role: must be dictator/leader or economy minister
+    const isLeader = region.ownerUserId === user.id;
+    const isEconomyMinister = region.economicAdviserId === user.id;
+
+    if (!isLeader && !isEconomyMinister) {
+      return res.status(403).json({ error: "Solo il Dittatore/Leader o il Ministro dell'Economia possono ricaricare." });
+    }
+
+    // 3. Cooldown check
+    const cooldownSec = parseInt(await getSetting('recharge_cooldown_seconds')) || 7200;
+    const { data: rechargeData } = await supabase
+      .from('resource_recharges')
+      .select('*')
+      .eq('regionId', regionId)
+      .eq('resourceType', resourceType)
+      .maybeSingle();
+
+    if (rechargeData?.lastRechargeAt) {
+      const elapsed = (Date.now() - new Date(rechargeData.lastRechargeAt).getTime()) / 1000;
+      if (elapsed < cooldownSec) {
+        const remaining = Math.ceil(cooldownSec - elapsed);
+        return res.status(400).json({
+          error: `Cooldown attivo. Riprova tra ${Math.ceil(remaining / 60)} minuti.`,
+          cooldownRemaining: remaining,
+        });
+      }
+    }
+
+    // 4. Deduct cost from country treasury (budget)
+    const costEur = parseInt(await getSetting('recharge_cost_eur')) || 50000;
+    const costGold = parseInt(await getSetting('recharge_cost_gold')) || 0;
+    const costDiamonds = parseInt(await getSetting('recharge_cost_diamonds')) || 0;
+
+    // Use budget transaction for EUR
+    if (costEur > 0) {
+      try {
+        await supabase.rpc('add_budget_transaction', {
+          p_owner_type: 'REGION',
+          p_owner_id: regionId,
+          p_type: 'EXPENSE',
+          p_subtype: 'RESOURCE_RECHARGE',
+          p_money_delta: -costEur,
+          p_created_by: user.id,
+          p_metadata: { resourceType, costEur, costGold, costDiamonds },
+        });
+      } catch (budgetErr: any) {
+        return res.status(400).json({ error: "Fondi del tesoro insufficienti per la ricarica. Servono €" + costEur.toLocaleString() });
+      }
+    }
+
+    // 5. Reset ALL player extraction states for this region+resource (GLOBAL recharge)
+    const { error: resetErr } = await supabase
+      .from('player_extraction_state')
+      .update({ extractedSinceLastRecharge: 0, updatedAt: new Date().toISOString() })
+      .eq('regionId', regionId)
+      .eq('resourceType', resourceType);
+    if (resetErr) throw resetErr;
+
+    // 6. Update/upsert recharge tracker
+    const nowIso = new Date().toISOString();
+    if (rechargeData) {
+      await supabase
+        .from('resource_recharges')
+        .update({ lastRechargeAt: nowIso, rechargedByUserId: user.id })
+        .eq('regionId', regionId)
+        .eq('resourceType', resourceType);
+    } else {
+      await supabase
+        .from('resource_recharges')
+        .insert({ regionId, resourceType, lastRechargeAt: nowIso, rechargedByUserId: user.id });
+    }
+
+    res.json({
+      success: true,
+      message: `Ricarica completata per ${resourceType} nella regione ${regionId}.`,
+      costEur,
+      cooldownSeconds: cooldownSec,
+    });
+  } catch (err: any) {
+    console.error("Error in resource recharge:", err);
+    res.status(500).json({ error: "Errore durante la ricarica: " + err.message });
+  }
+});
+
+// ── GET /api/resources/recharge-info ────────────────────────────
+// Get recharge status for a region+resource (cooldown, cost, role check)
+app.get("/api/resources/recharge-info", authenticate, async (req: any, res) => {
+  const regionId = req.query.regionId as string;
+  const resourceType = req.query.resourceType as string;
+  if (!regionId || !resourceType) return res.status(400).json({ error: "regionId e resourceType obbligatori" });
+
+  try {
+    const cooldownSec = parseInt(await getSetting('recharge_cooldown_seconds')) || 7200;
+    const costEur = parseInt(await getSetting('recharge_cost_eur')) || 50000;
+
+    const { data: rechargeData } = await supabase
+      .from('resource_recharges')
+      .select('*')
+      .eq('regionId', regionId)
+      .eq('resourceType', resourceType)
+      .maybeSingle();
+
+    let cooldownRemaining = 0;
+    if (rechargeData?.lastRechargeAt) {
+      const elapsed = (Date.now() - new Date(rechargeData.lastRechargeAt).getTime()) / 1000;
+      cooldownRemaining = Math.max(0, cooldownSec - elapsed);
+    }
+
+    // Check budget
+    const { data: budget } = await supabase.from('budgets').select('moneyEUR').eq('ownerType', 'REGION').eq('ownerId', regionId).maybeSingle();
+
+    res.json({
+      cooldownRemaining: Math.ceil(cooldownRemaining),
+      cooldownTotal: cooldownSec,
+      costEur,
+      lastRechargeAt: rechargeData?.lastRechargeAt || null,
+      treasuryEur: budget?.moneyEUR || 0,
+      canAfford: (budget?.moneyEUR || 0) >= costEur,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── POST /api/resources/deep-exploration/cost ───────────────────
+// Preview cost for Deep Exploration (called by frontend before activation)
+app.post("/api/resources/deep-exploration/cost", authenticate, async (req: any, res) => {
+  const { nationId, resourceType, level } = req.body;
+  if (!nationId || !resourceType || !level) {
+    return res.status(400).json({ error: "nationId, resourceType e level sono obbligatori." });
+  }
+
+  try {
+    const preview = await computeDeepCost(nationId, resourceType, parseInt(level));
+    res.json(preview);
+  } catch (err: any) {
+    console.error("Error computing deep cost:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Helper: compute Deep Exploration cost
+async function computeDeepCost(nationId: string, resourceType: string, level: number): Promise<DeepCostPreview> {
+  // Get deep level config
+  const { data: deepLevel } = await supabase
+    .from('deep_levels')
+    .select('*')
+    .eq('level', level)
+    .eq('enabled', true)
+    .single();
+
+  if (!deepLevel) throw new Error("Livello Deep non valido o disabilitato.");
+
+  const targetCap = deepLevel.targetCap;
+  const capTargetMaxRecommended = parseInt(await getSetting('cap_target_max_recommended')) || 637;
+  const capMaxGlobal = parseInt(await getSetting('cap_max_global')) || 2000;
+
+  if (targetCap > Math.min(capTargetMaxRecommended, capMaxGlobal)) {
+    throw new Error("targetCap supera il limite consentito.");
+  }
+
+  // Get all regions for this nation
+  const { data: regions } = await supabase
+    .from('regions')
+    .select('id')
+    .eq('nation_id', nationId);
+
+  if (!regions || regions.length === 0) throw new Error("Nessuna regione trovata per questa nazione.");
+
+  const regionIds = regions.map((r: any) => r.id);
+
+  // Get region_resources for this resource type in all regions
+  const { data: regionResources } = await supabase
+    .from('region_resources')
+    .select('regionId, baseCapPerRecharge')
+    .in('regionId', regionIds)
+    .eq('resourceType', resourceType);
+
+  const N = regionResources?.length || 0;
+  if (N === 0) throw new Error("Nessuna regione ha questa risorsa configurata.");
+
+  // Compute deltas
+  let sumDelta = 0;
+  let sumBaseCap = 0;
+  for (const rr of regionResources!) {
+    const delta = Math.max(0, targetCap - rr.baseCapPerRecharge);
+    sumDelta += delta;
+    sumBaseCap += rr.baseCapPerRecharge;
+  }
+  const avgDelta = sumDelta / N;
+  const avgBaseCap = sumBaseCap / N;
+
+  // Read cost settings
+  const baseCostDiamonds = parseInt(await getSetting('deep_base_cost_diamonds')) || 500;
+  const baseCostEur = parseInt(await getSetting('deep_base_cost_eur')) || 100000;
+  const baseCostGold = parseInt(await getSetting('deep_base_cost_gold')) || 0;
+  const perDeltaDiamonds = parseFloat(await getSetting('deep_cost_per_delta_diamonds')) || 2;
+  const perDeltaEur = parseFloat(await getSetting('deep_cost_per_delta_eur')) || 500;
+  const perDeltaGold = parseFloat(await getSetting('deep_cost_per_delta_gold')) || 0;
+  const perRegionDiamonds = parseInt(await getSetting('deep_cost_per_region_diamonds')) || 50;
+  const perRegionEur = parseInt(await getSetting('deep_cost_per_region_eur')) || 10000;
+  const perRegionGold = parseInt(await getSetting('deep_cost_per_region_gold')) || 0;
+  const discountStrength = parseFloat(await getSetting('deep_cost_cap_discount_strength')) || 0;
+
+  // Calculate raw costs
+  let costDiamonds = Math.round(baseCostDiamonds + (sumDelta * perDeltaDiamonds) + (N * perRegionDiamonds));
+  let costEur = Math.round(baseCostEur + (sumDelta * perDeltaEur) + (N * perRegionEur));
+  let costGold = Math.round(baseCostGold + (sumDelta * perDeltaGold) + (N * perRegionGold));
+
+  // Optional discount based on avg base cap
+  if (discountStrength > 0 && targetCap > 0) {
+    let discountFactor = 1 - discountStrength * (avgBaseCap / targetCap);
+    discountFactor = Math.max(0.6, Math.min(1.0, discountFactor));
+    costDiamonds = Math.round(costDiamonds * discountFactor);
+    costEur = Math.round(costEur * discountFactor);
+    costGold = Math.round(costGold * discountFactor);
+  }
+
+  // Clamp minimums
+  costDiamonds = Math.max(baseCostDiamonds, costDiamonds);
+  costEur = Math.max(baseCostEur, costEur);
+  costGold = Math.max(baseCostGold, costGold);
+
+  return {
+    targetCap,
+    numRegions: N,
+    sumDelta,
+    avgDelta: Math.round(avgDelta * 100) / 100,
+    costDiamonds,
+    costEur,
+    costGold,
+  };
+}
+
+// ── POST /api/resources/deep-exploration/activate ───────────────
+// Activate Deep Exploration law (leader/dictator or parliamentary flow)
+app.post("/api/resources/deep-exploration/activate", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { nationId, resourceType, level } = req.body;
+
+  if (!nationId || !resourceType || !level) {
+    return res.status(400).json({ error: "nationId, resourceType e level sono obbligatori." });
+  }
+
+  try {
+    // 1. Check user is leader of a region in this nation
+    const { data: leaderRegions } = await supabase
+      .from('regions')
+      .select('id, ownerUserId, economicAdviserId, nation_id')
+      .eq('nation_id', nationId);
+
+    if (!leaderRegions || leaderRegions.length === 0) {
+      return res.status(404).json({ error: "Nazione non trovata." });
+    }
+
+    const isLeaderOfNation = leaderRegions.some((r: any) => r.ownerUserId === user.id);
+    const isEconomyMinisterOfNation = leaderRegions.some((r: any) => r.economicAdviserId === user.id);
+
+    if (!isLeaderOfNation && !isEconomyMinisterOfNation) {
+      return res.status(403).json({ error: "Solo il Leader/Dittatore o il Ministro dell'Economia può attivare Deep Exploration." });
+    }
+
+    // 2. Check no active Deep for this nation (only 1 at a time)
+    const nowStr = new Date().toISOString();
+    const { data: existingDeep } = await supabase
+      .from('deep_explorations')
+      .select('id, resourceType, endsAt')
+      .eq('nationId', nationId)
+      .eq('isActive', true)
+      .gte('endsAt', nowStr)
+      .limit(1);
+
+    if (existingDeep && existingDeep.length > 0) {
+      return res.status(400).json({
+        error: `Deep Exploration già attiva per ${existingDeep[0].resourceType}. Scade il ${new Date(existingDeep[0].endsAt).toLocaleString('it-IT')}.`,
+      });
+    }
+
+    // 3. Compute cost server-side
+    const preview = await computeDeepCost(nationId, resourceType, parseInt(level));
+
+    // 4. Check & deduct treasury (EUR from budget of first region in nation)
+    // Use the first region's budget as the national treasury
+    const primaryRegionId = leaderRegions[0].id;
+
+    // Helper: rollback already-deducted costs on failure
+    const rollbackCosts = async (refundEur: boolean, refundDiamonds: boolean, reason: string) => {
+      if (refundEur && preview.costEur > 0) {
+        await supabase.rpc('add_budget_transaction', {
+          p_owner_type: 'REGION',
+          p_owner_id: primaryRegionId,
+          p_type: 'INCOME',
+          p_subtype: 'DEEP_EXPLORATION_REFUND',
+          p_money_delta: preview.costEur,
+          p_created_by: user.id,
+          p_metadata: { reason },
+        });
+      }
+      if (refundDiamonds && preview.costDiamonds > 0) {
+        const { data: dInv } = await supabase.from('user_inventory')
+          .select('quantity').eq('userId', user.id).eq('itemId', 'diamonds').maybeSingle();
+        await supabase.from('user_inventory')
+          .update({ quantity: (dInv?.quantity || 0) + preview.costDiamonds })
+          .eq('userId', user.id).eq('itemId', 'diamonds');
+      }
+    };
+
+    if (preview.costEur > 0) {
+      try {
+        await supabase.rpc('add_budget_transaction', {
+          p_owner_type: 'REGION',
+          p_owner_id: primaryRegionId,
+          p_type: 'EXPENSE',
+          p_subtype: 'DEEP_EXPLORATION',
+          p_money_delta: -preview.costEur,
+          p_created_by: user.id,
+          p_metadata: {
+            resourceType,
+            level,
+            targetCap: preview.targetCap,
+            costDiamonds: preview.costDiamonds,
+            costGold: preview.costGold,
+          },
+        });
+      } catch (budgetErr: any) {
+        return res.status(400).json({ error: "Fondi EUR insufficienti nel tesoro nazionale. Servono €" + preview.costEur.toLocaleString() });
+      }
+    }
+
+    // Deduct diamonds from user inventory (premium currency)
+    if (preview.costDiamonds > 0) {
+      const { data: diamondInv } = await supabase.from('user_inventory')
+        .select('quantity').eq('userId', user.id).eq('itemId', 'diamonds').maybeSingle();
+      const currentDiamonds = diamondInv?.quantity || 0;
+
+      if (currentDiamonds < preview.costDiamonds) {
+        await rollbackCosts(true, false, 'diamond_insufficient');
+        return res.status(400).json({ error: `Diamanti insufficienti. Servono ${preview.costDiamonds}, hai ${currentDiamonds}.` });
+      }
+
+      await supabase.from('user_inventory')
+        .update({ quantity: currentDiamonds - preview.costDiamonds })
+        .eq('userId', user.id).eq('itemId', 'diamonds');
+    }
+
+    // Deduct gold from user if needed
+    if (preview.costGold > 0) {
+      if (user.gold < preview.costGold) {
+        await rollbackCosts(true, true, 'gold_insufficient');
+        return res.status(400).json({ error: `Gold insufficiente. Servono ${preview.costGold}, hai ${user.gold}.` });
+      }
+      await supabase.from('users').update({ gold: user.gold - preview.costGold }).eq('id', user.id);
+    }
+
+    // 5. Create Deep Exploration record
+    const durationDays = parseInt(await getSetting('deep_duration_days')) || 7;
+    const startsAt = new Date();
+    const endsAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
+    const deepId = 'deep_' + Math.random().toString(36).substring(2, 11);
+
+    await supabase.from('deep_explorations').insert({
+      id: deepId,
+      nationId,
+      resourceType,
+      level: parseInt(level),
+      targetCap: preview.targetCap,
+      activatedByUserId: user.id,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+      isActive: true,
+      costDiamonds: preview.costDiamonds,
+      costEur: preview.costEur,
+      costGold: preview.costGold,
+    });
+
+    res.json({
+      success: true,
+      deepId,
+      targetCap: preview.targetCap,
+      endsAt: endsAt.toISOString(),
+      costs: {
+        diamonds: preview.costDiamonds,
+        eur: preview.costEur,
+        gold: preview.costGold,
+      },
+      message: `Deep Exploration Livello ${level} attivata per ${resourceType}! Durata: ${durationDays} giorni.`,
+    });
+  } catch (err: any) {
+    console.error("Error activating deep exploration:", err);
+    res.status(500).json({ error: "Errore nell'attivazione: " + err.message });
+  }
+});
+
+// ── GET /api/resources/deep-exploration/status ──────────────────
+// Get active Deep Exploration for a nation
+app.get("/api/resources/deep-exploration/status", authenticate, async (req: any, res) => {
+  const nationId = req.query.nationId as string;
+  if (!nationId) return res.status(400).json({ error: "nationId obbligatorio" });
+
+  try {
+    const nowStr = new Date().toISOString();
+    const { data: active } = await supabase
+      .from('deep_explorations')
+      .select('*')
+      .eq('nationId', nationId)
+      .eq('isActive', true)
+      .gte('endsAt', nowStr)
+      .order('startsAt', { ascending: false })
+      .limit(1);
+
+    // Get deep levels
+    const { data: levels } = await supabase
+      .from('deep_levels')
+      .select('*')
+      .eq('enabled', true)
+      .order('level', { ascending: true });
+
+    res.json({
+      active: active && active.length > 0 ? active[0] : null,
+      levels: levels || [],
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Daily Reset Cron (resource extraction) ──────────────────────
+async function dailyResourceReset() {
+  try {
+    console.log("[ResourceReset] Running daily resource extraction reset...");
+    // Reset daily_extracted to 0 for all region_resources
+    const { error } = await supabase
+      .from('region_resources')
+      .update({ dailyExtracted: 0, updatedAt: new Date().toISOString() })
+      .gte('dailyExtracted', 0); // matches all rows
+
+    if (error) console.error("[ResourceReset] Error resetting daily extracted:", error);
+    else console.log("[ResourceReset] Daily extracted reset complete.");
+
+    // Expire old deep explorations
+    const nowStr = new Date().toISOString();
+    await supabase
+      .from('deep_explorations')
+      .update({ isActive: false })
+      .eq('isActive', true)
+      .lt('endsAt', nowStr);
+
+  } catch (err) {
+    console.error("[ResourceReset] Error in daily reset:", err);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
 
 app.get("/api/leaderboard", authenticate, async (req, res) => {
   const { data: leaders, error } = await supabase
@@ -5198,6 +5999,16 @@ async function startServer() {
     checkAndResolveLaws();
     checkAndResolveWars();
   }, 60 * 1000); // Check every minute
+
+  // Daily Resource Reset (check every 5 minutes, run once per day at UTC midnight)
+  let lastDailyReset = '';
+  setInterval(async () => {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+    if (today !== lastDailyReset) {
+      lastDailyReset = today;
+      await dailyResourceReset();
+    }
+  }, 5 * 60 * 1000);
 }
 
 startServer();

@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Globe,
   User as UserIcon,
@@ -711,22 +711,26 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
     fetchSectionArticles();
   }, [section]);
 
-  let displayArticles = localArticles;
+  const displayArticles = useMemo(() => {
+    let result = localArticles;
 
-  // Filter by search
-  if (searchQuery.trim()) {
-    const q = searchQuery.toLowerCase();
-    displayArticles = displayArticles.filter(a =>
-      a.title.toLowerCase().includes(q) || a.authorName.toLowerCase().includes(q)
-    );
-  }
+    // Filter by search
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(a =>
+        a.title.toLowerCase().includes(q) || a.authorName.toLowerCase().includes(q)
+      );
+    }
 
-  // Filter by category
-  if (category === 'best') {
-    displayArticles = [...displayArticles].sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
-  } else if (category === 'guides') {
-    displayArticles = displayArticles.filter(a => a.title.toLowerCase().includes('guida') || a.title.toLowerCase().includes('guide') || a.title.toLowerCase().includes('tutorial'));
-  }
+    // Filter by category
+    if (category === 'best') {
+      result = [...result].sort((a, b) => (b.likeCount || 0) - (a.likeCount || 0));
+    } else if (category === 'guides') {
+      result = result.filter(a => a.title.toLowerCase().includes('guida') || a.title.toLowerCase().includes('guide') || a.title.toLowerCase().includes('tutorial'));
+    }
+
+    return result;
+  }, [localArticles, searchQuery, category]);
 
   const categories = [
     { id: 'all' as const, label: 'Tutti' },
@@ -2563,14 +2567,15 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
           })()}
 
           <div className="grid grid-cols-1 gap-5">
-            {PERKS_DEFS.map(perk => {
-              const currentLevel = (user.perks || {})[perk.id] || 0;
-              const upgrade = user.perkUpgrades?.[perk.id];
-              const isThisUpgrading = !!upgrade && getTs(upgrade.willCompleteAt) > now;
+            {(() => {
               const anyUpgrading = PERKS_DEFS.some(p => {
                 const u = user.perkUpgrades?.[p.id];
                 return u && getTs(u.willCompleteAt) > now;
               });
+              return PERKS_DEFS.map(perk => {
+              const currentLevel = (user.perks || {})[perk.id] || 0;
+              const upgrade = user.perkUpgrades?.[perk.id];
+              const isThisUpgrading = !!upgrade && getTs(upgrade.willCompleteAt) > now;
               const blocked = anyUpgrading && !isThisUpgrading;
 
               // Costs scale with level (1.5x per level)
@@ -2740,7 +2745,8 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                   </div>
                 </div>
               );
-            })}
+            });
+            })()}
           </div>
         </div>
 
@@ -3982,6 +3988,8 @@ export default function App() {
     }
   };
 
+  const pollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     // Check for existing session before initial data fetch to avoid race conditions
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -3991,7 +3999,19 @@ export default function App() {
       fetchData();
     });
 
-    const interval = setInterval(fetchData, 10000); // Polling every 10s
+    pollIntervalRef.current = setInterval(fetchData, 10000); // Polling every 10s
+
+    // Pause polling when tab is hidden, resume when visible
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      } else {
+        fetchData(); // Refresh immediately on return
+        pollIntervalRef.current = setInterval(fetchData, 10000);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
@@ -4007,7 +4027,8 @@ export default function App() {
     });
 
     return () => {
-      clearInterval(interval);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       subscription.unsubscribe();
     };
   }, []);

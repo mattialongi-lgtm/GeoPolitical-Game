@@ -125,6 +125,25 @@ const addXP = async (userId: string, amount: number) => {
 const PRIMARIES_CYCLE_MS = 5 * 24 * 60 * 60 * 1000;
 const getPrimariesCycleStart = () => new Date(Math.floor(Date.now() / PRIMARIES_CYCLE_MS) * PRIMARIES_CYCLE_MS).toISOString();
 
+// In-memory cache for deep_levels configuration (rarely changes, queried frequently).
+// Suitable for single-instance deployments; for multi-instance, consider a shared cache.
+let deepLevelsCache: any[] | null = null;
+let deepLevelsCacheTs = 0;
+const DEEP_LEVELS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+async function getCachedDeepLevels() {
+  const now = Date.now();
+  if (!deepLevelsCache || now - deepLevelsCacheTs > DEEP_LEVELS_CACHE_TTL) {
+    const { data } = await supabase
+      .from('deep_levels')
+      .select('*')
+      .eq('enabled', true)
+      .order('level', { ascending: true });
+    deepLevelsCache = data || [];
+    deepLevelsCacheTs = now;
+  }
+  return deepLevelsCache;
+}
+
 const calculateMinisterWage = async (stateId: string, role: string) => {
   const { data: region } = await supabase
     .from('regions')
@@ -594,26 +613,25 @@ app.get("/api/countries/:iso2/agreements", authenticate, async (req: any, res) =
 
     if (error) throw error;
 
-    const enriched = await Promise.all((agreements || []).map(async (ag: any) => {
+    // Determine bilateral status locally: an agreement is bilateral if an inverse
+    // (fromStateId ↔ toStateId swapped) active agreement also exists in the result set.
+    const inverseSet = new Set(
+      (agreements || []).map((ag: any) => `${ag.fromStateId}|${ag.toStateId}`)
+    );
+
+    const enriched = (agreements || []).map((ag: any) => {
       const partnerId = ag.fromStateId === stateId ? ag.toStateId : ag.fromStateId;
       const partnerName = ag.fromStateId === stateId ? ag.rt?.name : ag.rf?.name;
-
-      const { data: inverse } = await supabase
-        .from('migration_agreements')
-        .select('id')
-        .eq('fromStateId', ag.toStateId)
-        .eq('toStateId', ag.fromStateId)
-        .eq('status', 'ACTIVE')
-        .maybeSingle();
+      const hasBilateral = inverseSet.has(`${ag.toStateId}|${ag.fromStateId}`);
 
       return {
         ...ag,
         partnerId,
         partnerName,
         direction: ag.fromStateId === stateId ? 'OUTGOING' : 'INCOMING',
-        agreementType: inverse ? 'BILATERAL' : 'UNILATERAL'
+        agreementType: hasBilateral ? 'BILATERAL' : 'UNILATERAL'
       };
-    }));
+    });
 
     res.json({
       outgoing: enriched.filter(a => a.direction === 'OUTGOING'),
@@ -1241,8 +1259,10 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
   const sourceStateId = user.residenceId || user.regionId;
 
   // 2. Bloc check
-  const { data: userBloc } = await supabase.from('bloc_memberships').select('blocId').eq('stateId', sourceStateId).eq('status', 'active').maybeSingle();
-  const { data: targetBloc } = await supabase.from('bloc_memberships').select('blocId').eq('stateId', regionId).eq('status', 'active').maybeSingle();
+  const [{ data: userBloc }, { data: targetBloc }] = await Promise.all([
+    supabase.from('bloc_memberships').select('blocId').eq('stateId', sourceStateId).eq('status', 'active').maybeSingle(),
+    supabase.from('bloc_memberships').select('blocId').eq('stateId', regionId).eq('status', 'active').maybeSingle()
+  ]);
 
   if (userBloc && targetBloc && userBloc.blocId === targetBloc.blocId) {
     const { data: blocReg } = await supabase.from('bloc_regulations').select('openBorders, migrationOpen').eq('blocId', userBloc.blocId).maybeSingle();
@@ -1978,8 +1998,10 @@ app.post("/api/actions/attack", authenticate, async (req: any, res) => {
   if (!region) return res.status(404).json({ error: "Region not found" });
 
   // Bloc restriction
-  const { data: attackerBloc } = await supabase.from('bloc_memberships').select('blocId').eq('stateId', user.regionId).eq('status', 'active').maybeSingle();
-  const { data: defenderBloc } = await supabase.from('bloc_memberships').select('blocId').eq('stateId', regionId).eq('status', 'active').maybeSingle();
+  const [{ data: attackerBloc }, { data: defenderBloc }] = await Promise.all([
+    supabase.from('bloc_memberships').select('blocId').eq('stateId', user.regionId).eq('status', 'active').maybeSingle(),
+    supabase.from('bloc_memberships').select('blocId').eq('stateId', regionId).eq('status', 'active').maybeSingle()
+  ]);
 
   if (attackerBloc && defenderBloc && attackerBloc.blocId === defenderBloc.blocId) {
     return res.status(403).json({ error: "Non puoi dichiarare guerra a un membro dello stesso Blocco Geopolitico." });
@@ -3364,13 +3386,20 @@ app.get("/api/parties", authenticate, async (req: any, res) => {
     (leaders || []).forEach((l: any) => leaderMap.set(l.id, l.username));
   }
 
-  const partiesWithCounts = await Promise.all((parties || []).map(async (p: any) => {
-    const { count } = await supabase.from('party_members').select('*', { count: 'exact', head: true }).eq('partyId', p.id);
-    return {
-      ...p,
-      leaderName: leaderMap.get(p.leaderUserId) || 'Sconosciuto',
-      memberCount: count || 0
-    };
+  // Batch fetch all member counts in a single query instead of one per party
+  const partyIds = (parties || []).map((p: any) => p.id);
+  const countMap = new Map<string, number>();
+  if (partyIds.length > 0) {
+    const { data: allMembers } = await supabase.from('party_members').select('partyId').in('partyId', partyIds);
+    for (const m of (allMembers || [])) {
+      countMap.set(m.partyId, (countMap.get(m.partyId) || 0) + 1);
+    }
+  }
+
+  const partiesWithCounts = (parties || []).map((p: any) => ({
+    ...p,
+    leaderName: leaderMap.get(p.leaderUserId) || 'Sconosciuto',
+    memberCount: countMap.get(p.id) || 0
   }));
 
   res.json(partiesWithCounts.sort((a, b) => b.memberCount - a.memberCount));
@@ -3906,23 +3935,31 @@ app.get("/api/parliament", authenticate, async (req: any, res) => {
 app.get("/api/blocs", authenticate, async (req: any, res) => {
   const { data: blocs } = await supabase.from('blocs').select('*, users!ownerUserId(username)');
 
-  const mapped = await Promise.all((blocs || []).map(async (b: any) => {
-    const { count: memberCount } = await supabase.from('bloc_memberships').select('*', { count: 'exact', head: true }).eq('blocId', b.id).eq('status', 'active');
-    const { count: isMyBloc } = await supabase.from('bloc_memberships')
-      .select('*, regions!stateId(ownerUserId)', { count: 'exact', head: true })
-      .eq('blocId', b.id)
-      .eq('status', 'active');
-    // Note: The logic for 'isMyBloc' in the original SQL was a bit complex. 
-    // Simplified: check if user is leader of any member state.
-    const { data: myMemberStates } = await supabase.from('bloc_memberships').select('stateId, regions!stateId(ownerUserId)').eq('blocId', b.id).eq('status', 'active');
-    const isUserMember = myMemberStates?.some((m: any) => m.regions?.ownerUserId === req.user.id);
+  // Batch-load all active memberships with region owner info in a single query
+  const blocIds = (blocs || []).map((b: any) => b.id);
+  const memberCountMap = new Map<string, number>();
+  const userMemberSet = new Set<string>();
 
-    return {
-      ...b,
-      ownerName: b.users?.username,
-      memberCount: memberCount || 0,
-      isMyBloc: isUserMember ? 1 : 0
-    };
+  if (blocIds.length > 0) {
+    const { data: allMemberships } = await supabase
+      .from('bloc_memberships')
+      .select('blocId, stateId, regions!stateId(ownerUserId)')
+      .in('blocId', blocIds)
+      .eq('status', 'active');
+
+    for (const m of (allMemberships || [])) {
+      memberCountMap.set(m.blocId, (memberCountMap.get(m.blocId) || 0) + 1);
+      if ((m as any).regions?.ownerUserId === req.user.id) {
+        userMemberSet.add(m.blocId);
+      }
+    }
+  }
+
+  const mapped = (blocs || []).map((b: any) => ({
+    ...b,
+    ownerName: b.users?.username,
+    memberCount: memberCountMap.get(b.id) || 0,
+    isMyBloc: userMemberSet.has(b.id) ? 1 : 0
   }));
 
   const filtered = mapped.filter(b => b.memberCount >= 2 || b.isMyBloc > 0);
@@ -3963,16 +4000,27 @@ app.get("/api/blocs/:id", authenticate, async (req: any, res) => {
   let proposals = [];
 
   if (isMemberLeader) {
-    const { data: apps } = await supabase.from('bloc_applications').select('*, regions!stateId(name, ownerUserId, users!ownerUserId(username))').eq('blocId', blocId).eq('status', 'pending');
-    for (const a of (apps || [])) {
-      const { data: votes } = await supabase.from('bloc_votes').select('*').eq('targetId', a.id);
-      applications.push({ ...a, stateName: a.regions?.name, leaderName: a.regions?.users?.username, votes: votes || [] });
+    const [{ data: apps }, { data: props }] = await Promise.all([
+      supabase.from('bloc_applications').select('*, regions!stateId(name, ownerUserId, users!ownerUserId(username))').eq('blocId', blocId).eq('status', 'pending'),
+      supabase.from('bloc_regulation_proposals').select('*').eq('blocId', blocId).eq('status', 'pending')
+    ]);
+
+    // Batch-load all votes for applications and proposals in a single query
+    const allTargetIds = [...(apps || []).map((a: any) => a.id), ...(props || []).map((p: any) => p.id)];
+    let voteMap = new Map<string, any[]>();
+    if (allTargetIds.length > 0) {
+      const { data: allVotes } = await supabase.from('bloc_votes').select('*').in('targetId', allTargetIds);
+      for (const v of (allVotes || [])) {
+        if (!voteMap.has(v.targetId)) voteMap.set(v.targetId, []);
+        voteMap.get(v.targetId)!.push(v);
+      }
     }
 
-    const { data: props } = await supabase.from('bloc_regulation_proposals').select('*').eq('blocId', blocId).eq('status', 'pending');
+    for (const a of (apps || [])) {
+      applications.push({ ...a, stateName: a.regions?.name, leaderName: a.regions?.users?.username, votes: voteMap.get(a.id) || [] });
+    }
     for (const p of (props || [])) {
-      const { data: votes } = await supabase.from('bloc_votes').select('*').eq('targetId', p.id);
-      proposals.push({ ...p, votes: votes || [] });
+      proposals.push({ ...p, votes: voteMap.get(p.id) || [] });
     }
   }
 
@@ -5484,13 +5532,9 @@ app.post("/api/resources/deep-exploration/cost", authenticate, async (req: any, 
 
 // Helper: compute Deep Exploration cost
 async function computeDeepCost(nationId: string, resourceType: string, level: number): Promise<DeepCostPreview> {
-  // Get deep level config
-  const { data: deepLevel } = await supabase
-    .from('deep_levels')
-    .select('*')
-    .eq('level', level)
-    .eq('enabled', true)
-    .single();
+  // Get deep level config from cache
+  const cachedLevels = await getCachedDeepLevels();
+  const deepLevel = cachedLevels.find((l: any) => l.level === level);
 
   if (!deepLevel) throw new Error("Livello Deep non valido o disabilitato.");
 
@@ -5742,21 +5786,18 @@ app.get("/api/resources/deep-exploration/status", authenticate, async (req: any,
 
   try {
     const nowStr = new Date().toISOString();
-    const { data: active } = await supabase
-      .from('deep_explorations')
-      .select('*')
-      .eq('nationId', nationId)
-      .eq('isActive', true)
-      .gte('endsAt', nowStr)
-      .order('startsAt', { ascending: false })
-      .limit(1);
-
-    // Get deep levels
-    const { data: levels } = await supabase
-      .from('deep_levels')
-      .select('*')
-      .eq('enabled', true)
-      .order('level', { ascending: true });
+    // Run active exploration query and cached levels lookup in parallel
+    const [{ data: active }, levels] = await Promise.all([
+      supabase
+        .from('deep_explorations')
+        .select('*')
+        .eq('nationId', nationId)
+        .eq('isActive', true)
+        .gte('endsAt', nowStr)
+        .order('startsAt', { ascending: false })
+        .limit(1),
+      getCachedDeepLevels()
+    ]);
 
     res.json({
       active: active && active.length > 0 ? active[0] : null,

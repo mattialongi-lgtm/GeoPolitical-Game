@@ -18,6 +18,33 @@ Se ti serve il codice SQL da eseguire su Supabase, usa i file già presenti in `
 
 `full_schema.sql` è il file principale “pronto da incollare” su Supabase: crea tutte le tabelle, le policy e le funzioni RPC usate dal server.
 
+### 🆕 Migration per Factory Upgrade + Security Fixes
+
+Per applicare il sistema di upgrade fabbriche (800 livelli con costi) e le fix di sicurezza (race condition, CHECK constraints, deduzioni atomiche), esegui **un solo file**:
+
+    supabase/migration_consolidated.sql
+
+Questo file consolida tutto in un unica esecuzione:
+- **Parte 1 — Factory Upgrade Costs:** tabella `factory_upgrade_costs` (800 livelli seed), tabella `factory_upgrade_log`, RPC `upgrade_factory()` transazionale, policy RLS
+- **Parte 2 — Security Fixes:** CHECK constraints su `users.gold`, `users.money`, `users.energy` (>= 0), RPC `safe_deduct_currency()` atomica, constraint su `user_inventory.quantity` e `factories.budget`
+
+> **Nota:** Se hai già eseguito `migration_factory_upgrades.sql` e/o `migration_security_fixes.sql` separatamente, il file consolidato è idempotente (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`, `CREATE OR REPLACE`) e può essere rieseguito senza errori.
+
+### Ordine di esecuzione consigliato (database esistente)
+
+| # | File | Cosa fa |
+|---|------|---------|
+| 1 | `migration_missing_tables.sql` | Tabelle mancanti (partiti, elezioni, parlamento, leggi, permessi, ecc.) |
+| 2 | `migration_fix.sql` | Fix colonne e tabelle (articoli, commenti, voti) |
+| 3 | `migration_fixes_v2.sql` | Fix payMode e militaryExp |
+| 4 | `migration_wars_laws_fix.sql` | Fix guerre, leggi, RPCs mancanti |
+| 5 | `migration_chat_xp_fix.sql` | Chat channels + XP formula |
+| 6 | `migration_messages.sql` | Messaggi privati |
+| 7 | `migration_travel_time.sql` | Colonne tempo di viaggio |
+| 8 | `migration_resources.sql` | Sistema risorse regionali + Deep Exploration |
+| 9 | **`migration_consolidated.sql`** | **Factory Upgrade (800 livelli) + Security Fixes** |
+
+
 ## Run Locally
 
 **Prerequisites:**  Node.js

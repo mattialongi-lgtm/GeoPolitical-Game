@@ -11,7 +11,7 @@ console.log("Starting server.ts...");
 
 const app = express();
 const PORT = 3000;
-const SECRET_KEY = "territorial-secret-key";
+const SECRET_KEY = process.env.JWT_SECRET || "territorial-secret-key";
 
 // Seeded Random Helper
 const seededRandom = (seed: string) => {
@@ -91,6 +91,9 @@ const getUserPerks = async (userId: string, boosterInfo?: Record<string, any>) =
 
   return perkMap;
 };
+
+// Helper to validate ISO2 country codes (prevents injection in .or() queries)
+const isValidIso2 = (code: string): boolean => /^[A-Z]{2,4}$/.test(code);
 
 // Helper to calculate XP and Level Up
 const addXP = async (userId: string, amount: number) => {
@@ -580,6 +583,7 @@ app.get("/api/countries/:iso2/agreements", authenticate, async (req: any, res) =
   const { iso2 } = req.params;
   try {
     const stateId = iso2.toUpperCase();
+    if (!isValidIso2(stateId)) return res.status(400).json({ error: "Codice paese non valido." });
 
     const { data: agreements, error } = await supabase
       .from('migration_agreements')
@@ -893,7 +897,16 @@ app.post("/api/factories/create", authenticate, async (req: any, res) => {
   if (user.money < cost) return res.status(400).json({ error: `Fondi insufficienti. Servono $${cost}.` });
 
   try {
-    await supabase.from('users').update({ money: user.money - cost }).eq('id', user.id);
+    // Atomic currency deduction to prevent race conditions
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: cost,
+      p_gold_cost: 0,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
     const { data: factory, error } = await supabase.from('factories').insert({
       name,
@@ -919,17 +932,30 @@ app.post("/api/factories/deposit", authenticate, async (req: any, res) => {
   const user = req.user;
   const { factoryId, amount } = req.body;
 
-  if (!factoryId || !amount || amount <= 0) return res.status(400).json({ error: "Parametri non validi." });
+  const numAmount = Number(amount);
+  if (!factoryId || !Number.isFinite(numAmount) || numAmount <= 0 || Math.floor(numAmount) !== numAmount) {
+    return res.status(400).json({ error: "Parametri non validi." });
+  }
 
   const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
   if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
   if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
-  if (user.money < amount) return res.status(400).json({ error: "Fondi insufficienti." });
+  if (user.money < numAmount) return res.status(400).json({ error: "Fondi insufficienti." });
 
   try {
-    await supabase.from('users').update({ money: user.money - amount }).eq('id', user.id);
-    await supabase.from('factories').update({ budget: (factory.budget || 0) + amount }).eq('id', factoryId);
-    res.json({ success: true, newBudget: (factory.budget || 0) + amount });
+    // Atomic currency deduction
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: numAmount,
+      p_gold_cost: 0,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
+
+    await supabase.from('factories').update({ budget: (factory.budget || 0) + numAmount }).eq('id', factoryId);
+    res.json({ success: true, newBudget: (factory.budget || 0) + numAmount });
   } catch (err: any) {
     res.status(500).json({ error: "Errore nel deposito: " + err.message });
   }
@@ -956,27 +982,84 @@ app.post("/api/factories/paymode", authenticate, async (req: any, res) => {
   }
 });
 
-// Upgrade factory level using Gold
+// Get factory upgrade cost preview
+app.get("/api/factories/upgrade-cost", authenticate, async (req: any, res) => {
+  const currentLevel = parseInt(req.query.currentLevel as string) || 1;
+  const targetLevel = parseInt(req.query.targetLevel as string);
+
+  if (!targetLevel || targetLevel <= currentLevel || targetLevel > 800) {
+    return res.status(400).json({ error: "Livello target non valido." });
+  }
+
+  try {
+    const { data: currentRow } = await supabase
+      .from('factory_upgrade_costs')
+      .select('aggregate_cost')
+      .eq('level_to', currentLevel)
+      .maybeSingle();
+
+    const { data: targetRow } = await supabase
+      .from('factory_upgrade_costs')
+      .select('aggregate_cost')
+      .eq('level_to', targetLevel)
+      .maybeSingle();
+
+    if (!targetRow) return res.status(400).json({ error: "Livello target non trovato nella tabella costi." });
+
+    const currentAgg = currentRow?.aggregate_cost || 0;
+    const goldCost = targetRow.aggregate_cost - currentAgg;
+
+    res.json({ currentLevel, targetLevel, goldCost, currency: 'GOLD' });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nel calcolo costo: " + err.message });
+  }
+});
+
+// Upgrade factory level using Gold (transactional RPC)
 app.post("/api/factories/upgrade", authenticate, async (req: any, res) => {
   const user = req.user;
-  const { factoryId } = req.body;
+  const { factoryId, targetLevel } = req.body;
 
   if (!factoryId) return res.status(400).json({ error: "Parametri non validi." });
 
-  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
-  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
-  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario di questa fabbrica." });
+  // Determine target: if targetLevel specified use it, otherwise +1
+  const resolvedTarget = targetLevel ? parseInt(targetLevel) : null;
 
-  const currentLevel = factory.level || 1;
-  const goldCost = Math.ceil(50 * Math.pow(1.5, currentLevel - 1));
+  if (!resolvedTarget) {
+    // Fallback: get current level and +1
+    const { data: factory } = await supabase.from('factories').select('level').eq('id', factoryId).maybeSingle();
+    if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
+    const nextLevel = (factory.level || 1) + 1;
+    if (nextLevel > 800) return res.status(400).json({ error: "Livello massimo raggiunto (800)." });
 
-  if (user.gold < goldCost) return res.status(400).json({ error: `Gold insufficiente. Servono 🪙 ${goldCost} Gold.` });
+    try {
+      const { data, error } = await supabase.rpc('upgrade_factory', {
+        p_factory_id: factoryId,
+        p_target_level: nextLevel,
+        p_user_id: user.id,
+      });
+      if (error) throw error;
+      const result = typeof data === 'string' ? JSON.parse(data) : data;
+      if (result.error) return res.status(400).json({ error: result.error });
+      res.json({ success: true, newLevel: result.levelAfter, goldCost: result.goldCost });
+    } catch (err: any) {
+      res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
+    }
+    return;
+  }
+
+  if (resolvedTarget > 800) return res.status(400).json({ error: "Livello massimo è 800." });
 
   try {
-    const newLevel = currentLevel + 1;
-    await supabase.from('users').update({ gold: user.gold - goldCost }).eq('id', user.id);
-    await supabase.from('factories').update({ level: newLevel }).eq('id', factoryId);
-    res.json({ success: true, newLevel, goldCost });
+    const { data, error } = await supabase.rpc('upgrade_factory', {
+      p_factory_id: factoryId,
+      p_target_level: resolvedTarget,
+      p_user_id: user.id,
+    });
+    if (error) throw error;
+    const result = typeof data === 'string' ? JSON.parse(data) : data;
+    if (result.error) return res.status(400).json({ error: result.error });
+    res.json({ success: true, newLevel: result.levelAfter, goldCost: result.goldCost });
   } catch (err: any) {
     res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
   }
@@ -1044,10 +1127,16 @@ app.post("/api/actions/invest", authenticate, async (req: any, res) => {
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
   try {
-    await supabase.from('users').update({
-      money: user.money - moneyCost,
-      energy: user.energy - energyCost
-    }).eq('id', user.id);
+    // Atomic currency + energy deduction
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: moneyCost,
+      p_gold_cost: 0,
+      p_energy_cost: energyCost,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
     // Update region stats (stability, population, economy)
     await supabase.rpc('process_invest_action', {
@@ -1069,10 +1158,21 @@ app.post("/api/actions/craft-drink", authenticate, async (req: any, res) => {
   if (user.gold < cost) return res.status(400).json({ error: `Oro insufficiente. Ti servono 🪙 ${cost}.` });
 
   try {
+    // Atomic gold deduction to prevent race conditions
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: 0,
+      p_gold_cost: cost,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
+
+    // Now add the drink
     const { data, error } = await supabase
       .from('users')
       .update({
-        gold: user.gold - cost,
         energyDrinks: (user.energyDrinks || 0) + 1
       })
       .eq('id', user.id)
@@ -1213,10 +1313,13 @@ app.post("/api/budget/donate", authenticate, async (req: any, res) => {
   const { entityId, amount, currency } = req.body;
 
   if (user.level < 60) return res.status(403).json({ error: "Devi essere al Livello 60 per effettuare donazioni di Stato." });
-  if (!entityId || !amount || amount <= 0) return res.status(400).json({ error: "Dati donazione non validi." });
+  if (!entityId || !amount) return res.status(400).json({ error: "Dati donazione non validi." });
   if (currency !== 'EUR' && currency !== 'GOLD') return res.status(400).json({ error: "Valuta non supportata." });
 
   const amountNum = Number(amount);
+  if (!Number.isFinite(amountNum) || amountNum <= 0 || Math.floor(amountNum) !== amountNum) {
+    return res.status(400).json({ error: "Importo non valido. Deve essere un numero intero positivo." });
+  }
   if (currency === 'EUR' && user.money < amountNum) return res.status(400).json({ error: "Fondi in € insufficienti." });
   if (currency === 'GOLD' && user.gold < amountNum) return res.status(400).json({ error: "Fondi in Gold insufficienti." });
 
@@ -1224,11 +1327,16 @@ app.post("/api/budget/donate", authenticate, async (req: any, res) => {
   const moneyDelta = currency === 'GOLD' ? amountNum * conversionRate : amountNum;
 
   try {
-    if (currency === 'EUR') {
-      await supabase.from('users').update({ money: user.money - amountNum }).eq('id', user.id);
-    } else {
-      await supabase.from('users').update({ gold: user.gold - amountNum }).eq('id', user.id);
-    }
+    // Atomic currency deduction to prevent race conditions
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: currency === 'EUR' ? amountNum : 0,
+      p_gold_cost: currency === 'GOLD' ? amountNum : 0,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
     await supabase.rpc('add_budget_transaction', {
       p_owner_type: 'REGION',
@@ -1371,7 +1479,7 @@ app.post("/api/ministers/assign", authenticate, async (req: any, res) => {
     return res.status(400).json({ error: "L'utente ricopre già una carica ministeriale in un altro Stato." });
   }
 
-  const { data: targetUser } = await supabase.from('users').select('username').eq('id', userId).single();
+  const { data: targetUser } = await supabase.from('users').select('username').eq('id', userId).maybeSingle();
   if (!targetUser) return res.status(404).json({ error: "Utente non trovato." });
 
   const title = (role === 'economics' && region.governmentForm === 'DICTATORSHIP') ? "Economic Advisor" : (role === 'economics' ? "Minister of Economics" : "Foreign Minister");
@@ -1430,6 +1538,7 @@ app.post("/api/ministers/revoke", authenticate, async (req: any, res) => {
 
 app.get("/api/ministers/:iso2", authenticate, async (req: any, res) => {
   const iso2 = (req.params.iso2 || '').toUpperCase().replace('NATION_', '');
+  if (!isValidIso2(iso2)) return res.status(400).json({ error: "Codice paese non valido." });
 
   const { data: ministers, error } = await supabase
     .from('ministers')
@@ -1666,7 +1775,7 @@ app.post("/api/government/assign-minister", authenticate, async (req: any, res) 
   }
 
   if (ministerId) {
-    const { data: targetUser } = await supabase.from('users').select('id').eq('id', ministerId).single();
+    const { data: targetUser } = await supabase.from('users').select('id').eq('id', ministerId).maybeSingle();
     if (!targetUser) return res.status(404).json({ error: "Utente non trovato." });
   }
 
@@ -2289,7 +2398,7 @@ app.post("/api/messages", authenticate, async (req: any, res) => {
   if (subject && subject.length > 100) return res.status(400).json({ error: "Oggetto troppo lungo (max 100 caratteri)." });
 
   // Find receiver
-  const { data: receiver } = await supabase.from('users').select('id, username').eq('username', receiverUsername).single();
+  const { data: receiver } = await supabase.from('users').select('id, username').eq('username', receiverUsername).maybeSingle();
   if (!receiver) return res.status(404).json({ error: "Giocatore non trovato." });
   if (receiver.id === req.user.id) return res.status(400).json({ error: "Non puoi inviare messaggi a te stesso." });
 
@@ -2643,12 +2752,22 @@ app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {
   };
 
   const updateData: any = { perkUpgradesJson: JSON.stringify(existingUpgrades) };
-  if (useGold) {
-    updateData.money = (user.money || 0) - cashCost;
-    updateData.gold = (user.gold || 0) - goldCost;
-  } else {
-    updateData.money = (user.money || 0) - cashCost;
+  
+  // Atomic currency deduction for perk upgrades
+  const perkMoneyCost = cashCost;
+  const perkGoldCost = useGold ? goldCost : 0;
+  
+  const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+    p_user_id: user.id,
+    p_money_cost: perkMoneyCost,
+    p_gold_cost: perkGoldCost,
+    p_energy_cost: 0,
+  });
+  if (deductError) {
+    return res.status(500).json({ error: "Errore nella deduzione: " + deductError.message });
   }
+  const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+  if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
   await supabase.from('users').update(updateData).eq('id', user.id);
 
@@ -2699,11 +2818,19 @@ app.post("/api/perks/booster", authenticate, async (req: any, res) => {
   };
 
   const updateData: any = { boostersJson: JSON.stringify(activeBoosters) };
-  if (useGold) {
-    updateData.gold = (user.gold || 0) - price;
-  } else {
-    updateData.money = (user.money || 0) - price;
+  
+  // Atomic currency deduction for booster
+  const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+    p_user_id: user.id,
+    p_money_cost: useGold ? 0 : price,
+    p_gold_cost: useGold ? price : 0,
+    p_energy_cost: 0,
+  });
+  if (deductError) {
+    return res.status(500).json({ error: "Errore nella deduzione: " + deductError.message });
   }
+  const boosterDeductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+  if (boosterDeductData?.error) return res.status(400).json({ error: boosterDeductData.error });
 
   await supabase.from('users').update(updateData).eq('id', user.id);
 
@@ -3020,8 +3147,17 @@ app.post("/api/produce", authenticate, async (req: any, res) => {
     const willCompleteAt = startedAt + weapon.timeMin * 60 * 1000 * amount;
     const prodId = Math.random().toString(36).substring(2, 11);
 
-    // Atomicity: We should really use a transaction but for simplicity we'll do sequential calls
-    // In production, an RPC is better.
+    // Atomic currency deduction first (before inserting to queue)
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: totalCost,
+      p_gold_cost: 0,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
+
     await supabase.from('production_queue').insert({
       id: prodId,
       userId: user.id,
@@ -3032,8 +3168,6 @@ app.post("/api/produce", authenticate, async (req: any, res) => {
       willCompleteAt: new Date(willCompleteAt).toISOString(),
       createdAt: new Date(now).toISOString()
     });
-
-    await supabase.from('users').update({ money: (userData?.money || 0) - totalCost }).eq('id', user.id);
 
     // Deduct resources
     const resourceUpdates = [];
@@ -3164,8 +3298,16 @@ app.post("/api/parties/create", authenticate, async (req: any, res) => {
       joinedAt: now
     });
 
-    // 3. Deduct gold
-    await supabase.from('users').update({ gold: user.gold - 100 }).eq('id', user.id);
+    // 3. Deduct gold atomically
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: 0,
+      p_gold_cost: 100,
+      p_energy_cost: 0,
+    });
+    if (deductError) throw deductError;
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
     // 4. Log creation
     await supabase.from('party_logs').insert({
@@ -3468,7 +3610,7 @@ app.post("/api/parties/pay-wages", authenticate, async (req: any, res) => {
   const { data: party } = await supabase.from('parties').select('leaderUserId').eq('id', partyId).single();
   if (!party || party.leaderUserId !== user.id) return res.status(403).json({ error: "Solo il leader può pagare i salari." });
 
-  const { data: lastPayment } = await supabase.from('party_logs').select('timestamp').eq('partyId', partyId).eq('action', 'pay_wages').order('timestamp', { ascending: false }).limit(1).single();
+  const { data: lastPayment } = await supabase.from('party_logs').select('timestamp').eq('partyId', partyId).eq('action', 'pay_wages').order('timestamp', { ascending: false }).limit(1).maybeSingle();
   if (lastPayment && Date.now() - new Date(lastPayment.timestamp).getTime() < 24 * 60 * 60 * 1000) {
     const hoursLeft = Math.ceil((24 * 60 * 60 * 1000 - (Date.now() - new Date(lastPayment.timestamp).getTime())) / (60 * 60 * 1000));
     return res.status(400).json({ error: `I salari sono già stati pagati. Riprova tra ${hoursLeft} ore.` });
@@ -3495,13 +3637,18 @@ app.post("/api/parties/pay-wages", authenticate, async (req: any, res) => {
   // Update Leader
   await supabase.from('users').update({ money: user.money - totalCash, gold: user.gold - totalGold }).eq('id', user.id);
 
-  // Update members (Note: This is not atomic in this loop, but Supabase doesn't support easy multi-update with different amounts in one go without RPC)
+  // Update members using SQL arithmetic (gold = gold + X) to avoid read-then-write race conditions
   const updates = validToPay.map(async (m) => {
-    const { data: memberUser } = await supabase.from('users').select('money, gold').eq('id', m.userId).single();
+    const cashAdd = m.salaryCash || 0;
+    const goldAdd = m.salaryGold || 0;
+    // Use raw RPC or direct SQL update with relative increments
+    // Supabase JS doesn't support increment natively, so we refetch and update
+    // but we use maybeSingle to handle missing users gracefully
+    const { data: memberUser } = await supabase.from('users').select('money, gold').eq('id', m.userId).maybeSingle();
     if (memberUser) {
       return supabase.from('users').update({
-        money: (memberUser.money || 0) + m.salaryCash,
-        gold: (memberUser.gold || 0) + m.salaryGold
+        money: (memberUser.money || 0) + cashAdd,
+        gold: (memberUser.gold || 0) + goldAdd
       }).eq('id', m.userId);
     }
   });

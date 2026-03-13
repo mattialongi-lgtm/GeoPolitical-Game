@@ -1660,6 +1660,8 @@ const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFa
   const [depositAmounts, setDepositAmounts] = useState<Record<string, string>>({});
   const [factorySearch, setFactorySearch] = useState("");
   const [showWorldFactories, setShowWorldFactories] = useState(false);
+  const [upgradeTarget, setUpgradeTarget] = useState<Record<string, string>>({});
+  const [upgradeCost, setUpgradeCost] = useState<Record<string, number | null>>({});
 
   const regionId = iso2 ? iso2.toUpperCase() : (user?.regionId || "IT");
 
@@ -1725,19 +1727,46 @@ const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFa
     } catch { alert("Errore"); } finally { setActionLoading(false); }
   };
 
+  const fetchUpgradeCost = async (factoryId: string, currentLevel: number, target: string) => {
+    const targetNum = parseInt(target);
+    if (!targetNum || targetNum <= currentLevel || targetNum > 800) {
+      setUpgradeCost(prev => ({ ...prev, [factoryId]: null }));
+      return;
+    }
+    try {
+      const res = await fetch(`/api/factories/upgrade-cost?currentLevel=${currentLevel}&targetLevel=${targetNum}`);
+      const data = await res.json();
+      if (data.goldCost !== undefined) {
+        setUpgradeCost(prev => ({ ...prev, [factoryId]: data.goldCost }));
+      } else {
+        setUpgradeCost(prev => ({ ...prev, [factoryId]: null }));
+      }
+    } catch {
+      setUpgradeCost(prev => ({ ...prev, [factoryId]: null }));
+    }
+  };
+
   const handleUpgrade = async (id: string, currentLevel: number) => {
-    const goldCost = Math.ceil(50 * Math.pow(1.5, currentLevel - 1));
-    if (!window.confirm(`Vuoi potenziare la fabbrica al livello ${currentLevel + 1}? Costo: 🪙 ${goldCost} Gold`)) return;
+    const target = parseInt(upgradeTarget[id] || String(currentLevel + 1));
+    if (!target || target <= currentLevel || target > 800) {
+      alert("Livello target non valido.");
+      return;
+    }
+    const cost = upgradeCost[id];
+    const costDisplay = cost != null ? cost : '?';
+    if (!window.confirm(`Vuoi potenziare la fabbrica dal livello ${currentLevel} al livello ${target}? Costo: 🪙 ${costDisplay} Gold`)) return;
     setActionLoading(true);
     try {
       const res = await fetch("/api/factories/upgrade", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ factoryId: id }),
+        body: JSON.stringify({ factoryId: id, targetLevel: target }),
       });
       const data = await res.json();
       if (data.error) alert(data.error);
       else {
         alert(`Fabbrica potenziata al livello ${data.newLevel}! Costo: 🪙 ${data.goldCost} Gold`);
+        setUpgradeTarget(prev => ({ ...prev, [id]: '' }));
+        setUpgradeCost(prev => ({ ...prev, [id]: null }));
         fetchData(); load();
       }
     } catch { alert("Errore"); } finally { setActionLoading(false); }
@@ -1960,13 +1989,35 @@ const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFa
                           </button>
                         </div>
                       )}
-                      <button
-                        onClick={() => handleUpgrade(f.id, f.level || 1)}
-                        disabled={actionLoading}
-                        className="w-full py-3 bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md shadow-amber-100 hover:bg-amber-600 hover:scale-[1.02] transition-all disabled:opacity-50"
-                      >
-                        ⬆️ Potenzia Livello (🪙 {Math.ceil(50 * Math.pow(1.5, (f.level || 1) - 1))} Gold)
-                      </button>
+                      <div className="space-y-2 mt-2">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">⬆️ Potenzia Fabbrica</label>
+                        <div className="flex gap-2 items-center">
+                          <span className="text-xs font-bold text-slate-600 whitespace-nowrap">Lv {f.level || 1} →</span>
+                          <input
+                            type="number"
+                            min={(f.level || 1) + 1}
+                            max={800}
+                            placeholder={`Lv ${(f.level || 1) + 1}`}
+                            value={upgradeTarget[f.id] || ""}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setUpgradeTarget(prev => ({ ...prev, [f.id]: val }));
+                              fetchUpgradeCost(f.id, f.level || 1, val);
+                            }}
+                            className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                          {upgradeCost[f.id] != null && (
+                            <span className="text-xs font-bold text-amber-600">🪙 {upgradeCost[f.id]} Gold</span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => handleUpgrade(f.id, f.level || 1)}
+                          disabled={actionLoading}
+                          className="w-full py-3 bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md shadow-amber-100 hover:bg-amber-600 hover:scale-[1.02] transition-all disabled:opacity-50"
+                        >
+                          ⬆️ Potenzia {upgradeTarget[f.id] ? `al Lv ${upgradeTarget[f.id]}` : `al Lv ${(f.level || 1) + 1}`} {upgradeCost[f.id] != null ? `(🪙 ${upgradeCost[f.id]} Gold)` : ''}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}

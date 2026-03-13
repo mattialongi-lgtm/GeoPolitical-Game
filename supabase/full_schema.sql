@@ -359,6 +359,22 @@ CREATE TABLE user_inventory (
     PRIMARY KEY ("userId", "itemId")
 );
 
+-- PRIVATE MESSAGES
+CREATE TABLE messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    "senderId" UUID REFERENCES users(id) ON DELETE CASCADE,
+    "senderName" TEXT NOT NULL,
+    "receiverId" UUID REFERENCES users(id) ON DELETE CASCADE,
+    "receiverName" TEXT NOT NULL,
+    subject TEXT DEFAULT '',
+    body TEXT NOT NULL,
+    read BOOLEAN DEFAULT false,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages("receiverId", "createdAt" DESC);
+CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages("senderId", "createdAt" DESC);
+
 -- ELECTIONS
 CREATE TABLE elections (
     id TEXT PRIMARY KEY,

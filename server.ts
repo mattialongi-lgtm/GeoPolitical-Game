@@ -94,9 +94,26 @@ const getUserPerks = async (userId: string, boosterInfo?: Record<string, any>) =
 // Helper to calculate XP and Level Up
 const addXP = async (userId: string, amount: number) => {
   try {
-    await supabase.rpc('add_user_xp', { p_user_id: userId, p_amount: amount });
-  } catch (error) {
-    console.error("Error adding XP:", error);
+    const { error } = await supabase.rpc('add_user_xp', { p_user_id: userId, p_amount: amount });
+    if (error) throw error;
+  } catch (rpcError) {
+    console.error("RPC add_user_xp failed, using fallback:", rpcError);
+    // Fallback: direct SQL update with level-up logic
+    try {
+      const { data: u } = await supabase.from('users').select('xp, level').eq('id', userId).single();
+      if (!u) return;
+      let xp = (u.xp || 0) + amount;
+      let level = u.level || 1;
+      let nextXp = Math.floor(100 * Math.pow(1.5, level - 1));
+      while (xp >= nextXp) {
+        xp -= nextXp;
+        level++;
+        nextXp = Math.floor(100 * Math.pow(1.5, level - 1));
+      }
+      await supabase.from('users').update({ xp, level }).eq('id', userId);
+    } catch (fallbackErr) {
+      console.error("Fallback XP update also failed:", fallbackErr);
+    }
   }
 };
 
@@ -711,11 +728,11 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   // 2. Check Immigration/Work Restrictions
   const { data: regionRel, error: rError } = await supabase
     .from('regions')
-    .select('work_restrictions, market_tax_rate, oilBonus, mineralsBonus, uraniumBonus, diamondsBonus')
+    .select('*')
     .eq('id', userRegion)
     .single();
 
-  const restrictionsActive = regionRel?.work_restrictions === 1;
+  const restrictionsActive = regionRel?.workRestrictions === 1;
   const isResident = user.residence_id === userRegion;
   const hasWorkPermit = user.work_permit_id === userRegion;
 
@@ -746,7 +763,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   const forzaBoost = (perks['FORZA'] || 0) * 0.03;
   const earnings = Math.floor(factory.payout_money * (1 + forzaBoost));
 
-  const taxRate = regionRel?.market_tax_rate || 10;
+  const taxRate = regionRel?.marketTaxRate !== undefined ? regionRel.marketTaxRate : 10;
   const taxes = Math.floor(earnings * (taxRate / 100));
   const netEarnings = earnings - taxes;
 
@@ -811,7 +828,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
     // XP Gain (simplified, should ideally be in the RPC too)
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
-    await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: xpGain });
+    await addXP(user.id, xpGain);
 
     res.json({ 
       success: true, 
@@ -1005,7 +1022,7 @@ app.post("/api/actions/propaganda", authenticate, async (req: any, res) => {
       last_used: new Date().toISOString()
     });
 
-    await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: GAME_CONFIG.XP_PER_PROPAGANDA });
+    await addXP(user.id, GAME_CONFIG.XP_PER_PROPAGANDA);
 
     res.json({ success: true, influenceGain });
   } catch (err: any) {
@@ -1893,9 +1910,9 @@ app.post("/api/actions/attack", authenticate, async (req: any, res) => {
       defenderScore: 0
     });
 
-    await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: GAME_CONFIG.XP_PER_ATTACK });
+    await addXP(user.id, GAME_CONFIG.XP_PER_ATTACK);
   } else {
-    await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: Math.floor(GAME_CONFIG.XP_PER_ATTACK / 2) });
+    await addXP(user.id, Math.floor(GAME_CONFIG.XP_PER_ATTACK / 2));
   }
 
   await supabase.from('cooldowns').upsert({
@@ -2156,7 +2173,7 @@ app.post("/api/actions/train", authenticate, async (req: any, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   // Grant XP
-  try { await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: 5 }); } catch (e) { console.error("[train] XP grant error:", e); }
+  await addXP(user.id, 5);
 
   res.json({ success: true, militaryExp, energy: newEnergy });
 });
@@ -2231,7 +2248,96 @@ app.post("/api/chat", authenticate, async (req: any, res) => {
   res.json({ success: true });
 });
 
-// Profile Avatar
+// ==========================================
+// PRIVATE MESSAGES API
+// ==========================================
+
+// Get inbox/sent messages
+app.get("/api/messages", authenticate, async (req: any, res) => {
+  const userId = req.user.id;
+  const folder = req.query.folder || 'inbox'; // 'inbox' or 'sent'
+
+  let query = supabase.from('messages').select('*');
+  if (folder === 'sent') {
+    query = query.eq('senderId', userId);
+  } else {
+    query = query.eq('receiverId', userId);
+  }
+  query = query.order('createdAt', { ascending: false }).limit(50);
+
+  const { data, error } = await query;
+  if (error) return res.status(500).json({ error: error.message });
+  res.json(data || []);
+});
+
+// Get unread count
+app.get("/api/messages/unread-count", authenticate, async (req: any, res) => {
+  const { count, error } = await supabase.from('messages')
+    .select('*', { count: 'exact', head: true })
+    .eq('receiverId', req.user.id)
+    .eq('read', false);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ count: count || 0 });
+});
+
+// Send a message
+app.post("/api/messages", authenticate, async (req: any, res) => {
+  const { receiverUsername, subject, body } = req.body;
+  if (!receiverUsername || !body) return res.status(400).json({ error: "Destinatario e messaggio obbligatori." });
+  if (body.length > 2000) return res.status(400).json({ error: "Messaggio troppo lungo (max 2000 caratteri)." });
+  if (subject && subject.length > 100) return res.status(400).json({ error: "Oggetto troppo lungo (max 100 caratteri)." });
+
+  // Find receiver
+  const { data: receiver } = await supabase.from('users').select('id, username').eq('username', receiverUsername).single();
+  if (!receiver) return res.status(404).json({ error: "Giocatore non trovato." });
+  if (receiver.id === req.user.id) return res.status(400).json({ error: "Non puoi inviare messaggi a te stesso." });
+
+  // Rate limit: max 1 message per 30 seconds
+  const { data: lastMsg } = await supabase.from('messages')
+    .select('createdAt')
+    .eq('senderId', req.user.id)
+    .order('createdAt', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (lastMsg && Date.now() - new Date(lastMsg.createdAt).getTime() < 30000) {
+    return res.status(429).json({ error: "Attendi 30 secondi tra un messaggio e l'altro." });
+  }
+
+  const { error } = await supabase.from('messages').insert({
+    senderId: req.user.id,
+    senderName: req.user.username,
+    receiverId: receiver.id,
+    receiverName: receiver.username,
+    subject: subject || '',
+    body,
+    read: false,
+    createdAt: new Date().toISOString()
+  });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// Mark message as read
+app.put("/api/messages/:id/read", authenticate, async (req: any, res) => {
+  const { id } = req.params;
+  const { error } = await supabase.from('messages')
+    .update({ read: true })
+    .eq('id', id)
+    .eq('receiverId', req.user.id);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
+
+// Delete a message
+app.delete("/api/messages/:id", authenticate, async (req: any, res) => {
+  const { id } = req.params;
+  const { error } = await supabase.from('messages')
+    .delete()
+    .eq('id', id)
+    .or(`senderId.eq.${req.user.id},receiverId.eq.${req.user.id}`);
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ success: true });
+});
 app.post("/api/profile/avatar", authenticate, async (req: any, res) => {
   const { avatarData } = req.body;
   if (!avatarData || typeof avatarData !== "string") {
@@ -2351,22 +2457,20 @@ app.post("/api/work", authenticate, async (req: any, res) => {
   // Calculate Output Amount
   let outputBase = factory.level * 2;
   let bonusMult = 1.0;
-  if (factory.type === 'oil') bonusMult = currentRegion.oilBonus || 1.0;
-  else if (factory.type === 'minerals') bonusMult = currentRegion.mineralsBonus || 1.0;
-  else if (factory.type === 'uranium') bonusMult = currentRegion.uraniumBonus || 1.0;
-  else if (factory.type === 'diamonds') bonusMult = currentRegion.diamondsBonus || 1.0;
+  if (factory.type === 'oil') bonusMult = currentRegion?.oilBonus || 1.0;
+  else if (factory.type === 'minerals') bonusMult = currentRegion?.mineralsBonus || 1.0;
+  else if (factory.type === 'uranium') bonusMult = currentRegion?.uraniumBonus || 1.0;
+  else if (factory.type === 'diamonds') bonusMult = currentRegion?.diamondsBonus || 1.0;
 
   const finalOutput = Math.max(1, Math.floor(outputBase * bonusMult));
 
   if (payMode === 'resource') {
     // Resource-based work: player mines resources, split between player/owner/state
     const RESOURCE_MODE_OWNER_SHARE_PCT = 0.3; // 30% of net output goes to factory owner
-    const taxRate = currentRegion?.market_tax_rate || 10;
-    const stateShare = Math.max(1, Math.floor(finalOutput * (taxRate / 100)));
-    const ownerShare = Math.max(1, Math.floor((finalOutput - stateShare) * RESOURCE_MODE_OWNER_SHARE_PCT));
-    const playerShare = finalOutput - stateShare - ownerShare;
-
-    if (playerShare <= 0) return res.status(400).json({ error: "Output troppo basso per lavorare in modalità risorse." });
+    const taxRate = currentRegion?.marketTaxRate !== undefined ? currentRegion.marketTaxRate : 10;
+    const stateShare = Math.floor(finalOutput * (taxRate / 100));
+    const ownerShare = Math.floor((finalOutput - stateShare) * RESOURCE_MODE_OWNER_SHARE_PCT);
+    const playerShare = Math.max(1, finalOutput - stateShare - ownerShare);
 
     // EXECUTE RESOURCE WORK
     try {
@@ -2412,7 +2516,7 @@ app.post("/api/work", authenticate, async (req: any, res) => {
 
       // XP Gain
       const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
-      await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: xpGain });
+      await addXP(user.id, xpGain);
 
       res.json({ success: true, earnings: 0, output: playerShare, ownerShare, stateShare, xpGain, payMode: 'resource' });
     } catch (err: any) {
@@ -2457,7 +2561,7 @@ app.post("/api/work", authenticate, async (req: any, res) => {
 
     // XP Gain
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
-    await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: xpGain });
+    await addXP(user.id, xpGain);
 
     res.json({ success: true, earnings: finalWage, output: finalOutput, xpGain });
   } catch (err: any) {

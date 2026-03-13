@@ -1149,6 +1149,38 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
   const [training, setTraining] = useState(false);
   const [militaryExp, setMilitaryExp] = useState(user?.militaryExp || 0);
 
+  // Auto-attack state: { warId, side, weaponId } or null
+  const [autoAttack, setAutoAttack] = useState<{ warId: string, side: string, weaponId: string } | null>(null);
+  const autoAttackRef = React.useRef(autoAttack);
+  autoAttackRef.current = autoAttack;
+
+  // Auto-attack interval
+  useEffect(() => {
+    if (!autoAttack) return;
+    const doAutoAttack = async () => {
+      if (!autoAttackRef.current) return;
+      try {
+        const res = await fetch("/api/wars/deploy", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ warId: autoAttackRef.current.warId, side: autoAttackRef.current.side, weaponId: autoAttackRef.current.weaponId })
+        });
+        const data = await res.json();
+        if (data.error) {
+          // Stop auto if error (energy/money insufficient)
+          setAutoAttack(null);
+        }
+        fetchData();
+      } catch {
+        setAutoAttack(null);
+      }
+    };
+    // Execute immediately, then every 10 minutes
+    doAutoAttack();
+    const iv = setInterval(doAutoAttack, 10 * 60 * 1000);
+    return () => clearInterval(iv);
+  }, [autoAttack]);
+
   const handleTrain = async () => {
     if (user.energy < 10) { alert("Energia insufficiente!"); return; }
     setTraining(true);
@@ -1386,6 +1418,42 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                             </button>
                           </div>
                         </div>
+
+                        {/* Auto-Attack Toggle */}
+                        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="font-black text-amber-800 text-sm uppercase">⚡ Modalità Automatica</p>
+                              <p className="text-[10px] font-bold text-amber-600">Attacca ogni 10 min (consuma energia e cash)</p>
+                            </div>
+                            {autoAttack?.warId === war.id && (
+                              <button onClick={() => setAutoAttack(null)} className="px-4 py-2 bg-red-500 text-white rounded-xl font-black text-xs uppercase hover:bg-red-600">
+                                ⏹ Ferma
+                              </button>
+                            )}
+                          </div>
+                          {autoAttack?.warId === war.id ? (
+                            <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
+                              <span className="animate-pulse text-lg">⚔️</span>
+                              <span className="text-xs font-black text-amber-800">
+                                Auto-attacco attivo: {autoAttack.side === 'attacker' ? 'Attaccante' : 'Difensore'} con {autoAttack.weaponId === 'infantry' ? 'Fanteria' : autoAttack.weaponId === 'tank' ? 'Corazzata' : 'Aereo'}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-2 gap-2">
+                              {(['attacker', 'defender'] as const).map(side => (
+                                <div key={side} className="space-y-1">
+                                  <p className="text-[9px] font-black text-center uppercase text-amber-700">{side === 'attacker' ? 'Attaccante' : 'Difensore'}</p>
+                                  {(['infantry', 'tank', 'airstrike'] as const).map(wep => (
+                                    <button key={wep} onClick={() => setAutoAttack({ warId: war.id, side, weaponId: wep })} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
+                                      {wep === 'infantry' ? '🪖 Fanteria' : wep === 'tank' ? '🛡️ Corazzata' : '✈️ Aereo'}
+                                    </button>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -1579,7 +1647,7 @@ const FACTORY_CREATE_COST = {
   diamonds: 25000
 };
 
-const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => void }) => {
+const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFactoryId }: { user: any; fetchData: () => void; autoWorkFactoryId?: string | null; setAutoWorkFactoryId?: (id: string | null) => void }) => {
   const { iso2 } = useParams();
   const navigate = useNavigate();
   const [factories, setFactories] = useState<any[]>([]);
@@ -1830,6 +1898,25 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
                   >
                     {isResourceMode ? `🪨 Scava ${RESOURCE_NAMES[f.type]} (-10⚡)` : '💼 Lavora Qui (-10⚡)'}
                   </button>
+                  {setAutoWorkFactoryId && (
+                    autoWorkFactoryId === f.id ? (
+                      <button
+                        onClick={() => setAutoWorkFactoryId(null)}
+                        className="py-3 px-4 bg-red-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-red-600 transition-all"
+                      >
+                        ⏹ Stop
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setAutoWorkFactoryId(f.id)}
+                        disabled={!!autoWorkFactoryId}
+                        className="py-3 px-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-amber-600 transition-all disabled:opacity-50"
+                        title="Attiva lavoro automatico ogni 10 minuti"
+                      >
+                        🤖 Auto
+                      </button>
+                    )
+                  )}
                 </div>
 
                 {isOwner && (
@@ -1914,6 +2001,22 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
   // Track which perk IDs we already fired completion for (avoids repeated fetchData)
   const notifiedRef = React.useRef<Set<string>>(new Set());
 
+  // Messages state
+  const [showMessages, setShowMessages] = useState(false);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [msgFolder, setMsgFolder] = useState<'inbox' | 'sent'>('inbox');
+  const [msgLoading, setMsgLoading] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
+  const [composeReceiver, setComposeReceiver] = useState('');
+  const [composeSubject, setComposeSubject] = useState('');
+  const [composeBody, setComposeBody] = useState('');
+  const [composeSending, setComposeSending] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [selectedMessage, setSelectedMessage] = useState<any>(null);
+
+  // Settings state
+  const [showSettings, setShowSettings] = useState(false);
+
   const addToast = (message: string, id: string) => {
     setToasts(prev => prev.some(t => t.id === id) ? prev : [...prev, { id, message }]);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
@@ -1926,6 +2029,50 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
     const iv = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(iv);
   }, []);
+
+  // Fetch unread count on mount
+  useEffect(() => {
+    fetch("/api/messages/unread-count").then(r => r.json()).then(d => setUnreadCount(d.count || 0)).catch(() => {});
+  }, []);
+
+  const loadMessages = async (folder: 'inbox' | 'sent') => {
+    setMsgLoading(true);
+    try {
+      const r = await fetch(`/api/messages?folder=${folder}`);
+      const data = await r.json();
+      setMessages(Array.isArray(data) ? data : []);
+    } catch { setMessages([]); }
+    setMsgLoading(false);
+  };
+
+  const sendMessage = async () => {
+    if (!composeReceiver.trim() || !composeBody.trim()) { alert("Compilare destinatario e messaggio."); return; }
+    setComposeSending(true);
+    try {
+      const r = await fetch("/api/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ receiverUsername: composeReceiver.trim(), subject: composeSubject.trim(), body: composeBody.trim() })
+      });
+      const data = await r.json();
+      if (data.error) alert(data.error);
+      else {
+        setShowCompose(false);
+        setComposeReceiver(''); setComposeSubject(''); setComposeBody('');
+        loadMessages(msgFolder);
+        alert("Messaggio inviato!");
+      }
+    } catch { alert("Errore nell'invio."); }
+    setComposeSending(false);
+  };
+
+  const markAsRead = async (msg: any) => {
+    if (!msg.read && msg.receiverId === user.id) {
+      await fetch(`/api/messages/${msg.id}/read`, { method: "PUT" });
+      setUnreadCount(prev => Math.max(0, prev - 1));
+    }
+    setSelectedMessage(msg);
+  };
 
   // Reset notifiedRef when perkUpgrades changes (new upgrade started)
   useEffect(() => {
@@ -1987,14 +2134,17 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
           <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Il mio Profilo</h2>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => alert("Messaggi — Placeholder: funzionalità in arrivo!")}
-              className="p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:bg-indigo-50 transition-all"
+              onClick={() => { setShowMessages(true); setShowSettings(false); loadMessages('inbox'); setMsgFolder('inbox'); setSelectedMessage(null); }}
+              className="p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:bg-indigo-50 transition-all relative"
               title="Messaggi"
             >
               <Mail className="w-5 h-5 text-indigo-500" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-5 h-5 flex items-center justify-center rounded-full">{unreadCount}</span>
+              )}
             </button>
             <button
-              onClick={() => alert("Impostazioni — Placeholder: cambio nome/foto costerà pochi G")}
+              onClick={() => { setShowSettings(true); setShowMessages(false); }}
               className="p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:bg-slate-50 transition-all"
               title="Impostazioni"
             >
@@ -2002,6 +2152,179 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
             </button>
           </div>
         </div>
+
+        {/* Messages Panel */}
+        {showMessages && (
+          <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black tracking-tight uppercase">Messaggi</h3>
+              <button onClick={() => setShowMessages(false)} className="text-slate-400 hover:text-slate-600 text-lg font-black">✕</button>
+            </div>
+
+            {/* Tabs + Compose */}
+            <div className="flex items-center gap-2">
+              <button onClick={() => { setMsgFolder('inbox'); loadMessages('inbox'); setSelectedMessage(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${msgFolder === 'inbox' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                Ricevuti
+              </button>
+              <button onClick={() => { setMsgFolder('sent'); loadMessages('sent'); setSelectedMessage(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${msgFolder === 'sent' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                Inviati
+              </button>
+              <button onClick={() => { setShowCompose(true); setSelectedMessage(null); }} className="ml-auto px-4 py-2 rounded-xl text-xs font-black uppercase bg-emerald-500 text-white hover:bg-emerald-600">
+                ✉️ Nuovo
+              </button>
+            </div>
+
+            {/* Compose Form */}
+            {showCompose && (
+              <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 space-y-3">
+                <h4 className="font-black text-indigo-900 text-sm uppercase">Nuovo Messaggio</h4>
+                <input
+                  type="text"
+                  placeholder="Username destinatario"
+                  value={composeReceiver}
+                  onChange={e => setComposeReceiver(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold"
+                />
+                <input
+                  type="text"
+                  placeholder="Oggetto (opzionale)"
+                  value={composeSubject}
+                  onChange={e => setComposeSubject(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold"
+                />
+                <textarea
+                  placeholder="Scrivi il tuo messaggio..."
+                  value={composeBody}
+                  onChange={e => setComposeBody(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold h-24 resize-none"
+                  maxLength={2000}
+                />
+                <div className="flex gap-2">
+                  <button onClick={sendMessage} disabled={composeSending} className="flex-1 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase disabled:opacity-50">
+                    {composeSending ? 'Invio...' : 'Invia'}
+                  </button>
+                  <button onClick={() => setShowCompose(false)} className="px-4 py-2 bg-slate-100 text-slate-500 rounded-xl font-black text-xs uppercase">
+                    Annulla
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Selected Message Detail */}
+            {selectedMessage && (
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-black text-slate-900 text-sm">{selectedMessage.subject || '(Nessun oggetto)'}</h4>
+                  <button onClick={() => setSelectedMessage(null)} className="text-slate-400 text-xs font-black">← Torna</button>
+                </div>
+                <p className="text-[10px] font-bold text-slate-400">
+                  {msgFolder === 'inbox' ? `Da: ${selectedMessage.senderName}` : `A: ${selectedMessage.receiverName}`} — {new Date(selectedMessage.createdAt).toLocaleString()}
+                </p>
+                <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap">{selectedMessage.body}</p>
+                {msgFolder === 'inbox' && (
+                  <button
+                    onClick={() => { setShowCompose(true); setComposeReceiver(selectedMessage.senderName); setComposeSubject(`Re: ${selectedMessage.subject || ''}`); setSelectedMessage(null); }}
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase"
+                  >
+                    ↩️ Rispondi
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Message List */}
+            {!selectedMessage && (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {msgLoading ? (
+                  <p className="text-center text-xs font-bold text-slate-400 py-4">Caricamento...</p>
+                ) : messages.length === 0 ? (
+                  <p className="text-center text-xs font-bold text-slate-400 py-4">Nessun messaggio.</p>
+                ) : messages.map((msg: any) => (
+                  <button
+                    key={msg.id}
+                    onClick={() => markAsRead(msg)}
+                    className={`w-full text-left p-3 rounded-2xl border transition-all hover:bg-slate-50 ${!msg.read && msgFolder === 'inbox' ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-100'}`}
+                  >
+                    <div className="flex justify-between items-center">
+                      <span className="font-black text-sm text-slate-900">
+                        {msgFolder === 'inbox' ? msg.senderName : msg.receiverName}
+                        {!msg.read && msgFolder === 'inbox' && <span className="ml-2 w-2 h-2 bg-indigo-500 rounded-full inline-block" />}
+                      </span>
+                      <span className="text-[9px] font-bold text-slate-400">{new Date(msg.createdAt).toLocaleDateString()}</span>
+                    </div>
+                    <p className="text-xs font-bold text-slate-500 truncate mt-0.5">{msg.subject || '(Nessun oggetto)'}</p>
+                    <p className="text-[10px] text-slate-400 truncate">{msg.body}</p>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xl font-black tracking-tight uppercase">Impostazioni</h3>
+              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 text-lg font-black">✕</button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                <div>
+                  <p className="font-black text-slate-900 text-sm">Cambio Nome</p>
+                  <p className="text-[10px] font-bold text-slate-400">Modifica il tuo username (costo: 5 🪙)</p>
+                </div>
+                <button
+                  onClick={() => {
+                    const newName = prompt("Nuovo username (3-20 caratteri, solo lettere/numeri/_):");
+                    if (!newName) return;
+                    fetch("/api/profile/username", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ username: newName.trim() })
+                    }).then(r => r.json()).then(d => {
+                      if (d.error) alert(d.error);
+                      else { alert("Username aggiornato!"); fetchData(); }
+                    }).catch(() => alert("Errore"));
+                  }}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase"
+                >
+                  Modifica
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                <div>
+                  <p className="font-black text-slate-900 text-sm">Foto Profilo</p>
+                  <p className="text-[10px] font-bold text-slate-400">Cambia la tua immagine profilo</p>
+                </div>
+                <button
+                  onClick={() => (document.getElementById("avatar-file-input") as HTMLInputElement)?.click()}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase"
+                >
+                  Cambia
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                <div>
+                  <p className="font-black text-slate-900 text-sm">Nazione Visualizzata</p>
+                  <p className="text-[10px] font-bold text-slate-400">Attuale: {user.displayedNation || 'N/A'}</p>
+                </div>
+                <span className="text-2xl">{COUNTRY_FLAGS[(user.displayedNation || '').toUpperCase()] || '🌍'}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
+                <div>
+                  <p className="font-black text-slate-900 text-sm">Account</p>
+                  <p className="text-[10px] font-bold text-slate-400">{user.email || 'Email non disponibile'}</p>
+                </div>
+                <span className="text-[10px] font-black text-slate-400 uppercase">Livello {user.level}</span>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 text-center">
           {/* Clickable avatar with upload */}
@@ -2164,69 +2487,209 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
           <ChevronRight className="w-5 h-5 text-white/60" />
         </button>
 
-        {/* Perks Summary (Tappable) */}
-        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
-          <h3 className="text-xl font-black tracking-tight uppercase mb-2">Abilità</h3>
-          {PERKS_DEFS.map(perk => {
-            const currentLevel = (user.perks || {})[perk.id] || 0;
-            return (
-              <button
-                key={perk.id}
-                onClick={() => setSelectedPerk(selectedPerk === perk.id ? null : perk.id)}
-                className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-slate-50 transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <span className="text-2xl">{perk.icon}</span>
-                  <div className="text-left">
-                    <p className="font-black text-slate-900">{perk.name}</p>
-                    <p className="text-[10px] text-slate-400 font-medium">{perk.description.split('.')[0]}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-lg font-black text-indigo-600">Lv {currentLevel}</span>
-                  <ChevronRight className={`w-4 h-4 text-slate-300 transition-transform ${selectedPerk === perk.id ? 'rotate-90' : ''}`} />
-                </div>
-              </button>
-            );
-          })}
-          {/* Perk Detail Panel */}
-          <AnimatePresence>
-            {selectedPerk && (() => {
-              const perk = PERKS_DEFS.find(p => p.id === selectedPerk);
-              if (!perk) return null;
+        {/* Abilità del Comandante — Full Upgrade Section */}
+        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-black tracking-tight uppercase">Abilità del Comandante</h3>
+          </div>
+
+          {/* Slot occupato banner */}
+          {(() => {
+            const activeUpgrade = PERKS_DEFS.find(p => {
+              const u = user.perkUpgrades?.[p.id];
+              return u && getTs(u.willCompleteAt) > now;
+            });
+            return activeUpgrade ? (
+              <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                <Timer className="w-4 h-4 text-amber-500 shrink-0" />
+                <p className="text-xs font-black text-amber-700">
+                  Slot di apprendimento occupato — stai potenziando {activeUpgrade.icon} {activeUpgrade.name}.
+                  <span className="font-medium text-amber-500"> Una sola abilità alla volta.</span>
+                </p>
+              </div>
+            ) : null;
+          })()}
+
+          <div className="grid grid-cols-1 gap-5">
+            {PERKS_DEFS.map(perk => {
               const currentLevel = (user.perks || {})[perk.id] || 0;
+              const upgrade = user.perkUpgrades?.[perk.id];
+              const isThisUpgrading = !!upgrade && getTs(upgrade.willCompleteAt) > now;
+              const anyUpgrading = PERKS_DEFS.some(p => {
+                const u = user.perkUpgrades?.[p.id];
+                return u && getTs(u.willCompleteAt) > now;
+              });
+              const blocked = anyUpgrading && !isThisUpgrading;
+
+              // Costs scale with level (1.5x per level)
+              const cashCost = Math.round(perk.baseCashCost * Math.pow(1.5, currentLevel));
+              const goldCost = Math.ceil(perk.baseGoldCost * Math.pow(1.4, currentLevel));
+              const cashTimeSec = Math.round(perk.baseTimeCashSec * Math.pow(1.3, currentLevel));
+              const goldTimeSec = Math.round(perk.baseTimeGoldSec * Math.pow(1.3, currentLevel));
+
+              const canAffordCash = (user.money || 0) >= cashCost;
+              const canAffordGold = (user.gold || 0) >= goldCost;
+
               return (
-                <motion.div
-                  key={selectedPerk}
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="bg-indigo-50 p-5 rounded-2xl border border-indigo-100 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <span className="text-3xl">{perk.icon}</span>
-                      <div>
-                        <h4 className="font-black text-indigo-900 text-lg">{perk.name} — Livello {currentLevel}</h4>
-                        <p className="text-xs text-indigo-600 font-medium">{perk.description}</p>
+                <div key={perk.id} id={`perk-card-${perk.id}`} className={`bg-white rounded-[2.5rem] border transition-all overflow-hidden ${isThisUpgrading ? "border-amber-200 shadow-amber-50 shadow-md" : blocked ? "border-slate-100 opacity-60" : "border-slate-100 shadow-sm"}`}>
+                  {/* Header */}
+                  <div className="p-6 pb-4">
+                    <div className="flex items-start justify-between mb-3 gap-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-3xl shrink-0">{perk.icon}</span>
+                        <div>
+                          <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">{perk.name}</h4>
+                          <p className="text-[10px] text-slate-500 font-medium leading-snug mt-0.5">{perk.description}</p>
+                          {(perk as any).effects && (
+                            <ul className="mt-2 space-y-0.5">
+                              {((perk as any).effects as string[]).map((e, i) => (
+                                <li key={i} className="text-[9px] font-bold text-indigo-500 flex items-center gap-1">
+                                  <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
+                                  {e}
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <span className="text-2xl font-black text-slate-900">Lv {currentLevel}</span>
                       </div>
                     </div>
-                    {(perk as any).effects && (
-                      <ul className="space-y-1">
-                        {((perk as any).effects as string[]).map((e: string, i: number) => (
-                          <li key={i} className="text-xs font-bold text-indigo-700 flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-indigo-400 rounded-full shrink-0" />
-                            {e}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <p className="text-[10px] text-indigo-400 font-medium">Per aumentarla, usa la sezione "Abilità del Comandante" qui sotto.</p>
+
+                    {/* Level bar */}
+                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-700 rounded-full"
+                        style={{ width: `${isThisUpgrading && upgrade?.startedAt ? (1 - (getTs(upgrade.willCompleteAt) - Date.now()) / (getTs(upgrade.willCompleteAt) - getTs(upgrade.startedAt))) * 100 : currentLevel > 0 ? 100 : 0}%` }}
+                      />
+                    </div>
                   </div>
-                </motion.div>
+
+                  {/* Action area */}
+                  <div id={`perk-actions-${perk.id}`} className="px-6 pb-6 space-y-4">
+                    {/* Booster Section */}
+                    <div className="pt-2 border-t border-slate-50">
+                      {(() => {
+                        const booster = user.boosters?.[perk.id];
+                        const isActive = booster && getTs(booster.expiresAt) > now;
+                        const inCooldown = booster && now < getTs(booster.lastActivatedAt) + BOOSTER_CONFIG.COOLDOWN_MS;
+
+                        if (isActive) {
+                          return (
+                            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3 flex flex-col gap-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Zap className="w-4 h-4 text-indigo-500 fill-indigo-500" />
+                                  <span className="text-[10px] font-black uppercase text-indigo-700">Booster Attivo (+100)</span>
+                                </div>
+                                <div className="text-[10px] font-black text-indigo-600 bg-white px-2 py-0.5 rounded-lg border border-indigo-100">
+                                  <PerkTimer willCompleteAt={booster.expiresAt} onComplete={fetchData} />
+                                </div>
+                              </div>
+                              <div className="w-full bg-indigo-100 h-1.5 rounded-full overflow-hidden">
+                                <motion.div
+                                  initial={{ width: 0 }}
+                                  animate={{ width: `${(1 - (getTs(booster.expiresAt) - now) / (getTs(booster.expiresAt) - getTs(booster.lastActivatedAt))) * 100}%` }}
+                                  className="h-full bg-indigo-500"
+                                />
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center justify-between px-1">
+                              <span className="text-[10px] font-black uppercase text-slate-400">Boosters (+100 Lv)</span>
+                              {inCooldown && (
+                                <span className="text-[9px] font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-lg">
+                                  In ricarica: <PerkTimer willCompleteAt={getTs(booster.lastActivatedAt) + BOOSTER_CONFIG.COOLDOWN_MS} onComplete={fetchData} />
+                                </span>
+                              )}
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <button
+                                onClick={() => handleActivateBooster(perk.id, false)}
+                                disabled={actionLoading || inCooldown || user.money < BOOSTER_CONFIG.CASH_PRICE}
+                                className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${!inCooldown && user.money >= BOOSTER_CONFIG.CASH_PRICE ? "bg-white border-slate-200 hover:border-indigo-300 hover:bg-slate-50 text-slate-700" : "bg-slate-50 border-slate-100 text-slate-300"}`}
+                              >
+                                <div className="flex flex-col items-start leading-none">
+                                  <span className="text-[10px] font-black uppercase border-b-2 border-emerald-400/30">Standard</span>
+                                  <span className="text-[9px] font-bold opacity-60 mt-1">${BOOSTER_CONFIG.CASH_PRICE.toLocaleString()}</span>
+                                </div>
+                                <ChevronRight className="w-3 h-3" />
+                              </button>
+                              <button
+                                onClick={() => handleActivateBooster(perk.id, true)}
+                                disabled={actionLoading || inCooldown || user.gold < BOOSTER_CONFIG.GOLD_PRICE}
+                                className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${!inCooldown && user.gold >= BOOSTER_CONFIG.GOLD_PRICE ? "bg-white border-slate-200 hover:border-amber-300 hover:bg-slate-50 text-slate-700" : "bg-slate-50 border-slate-100 text-slate-300"}`}
+                              >
+                                <div className="flex flex-col items-start leading-none">
+                                  <span className="text-[10px] font-black uppercase border-b-2 border-amber-400/30">Extended</span>
+                                  <span className="text-[9px] font-bold opacity-60 mt-1">🪙 {BOOSTER_CONFIG.GOLD_PRICE}</span>
+                                </div>
+                                <div className="flex flex-col items-end">
+                                  <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
+                                  <span className="text-[8px] font-black text-amber-600">10x</span>
+                                </div>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Upgrade Section */}
+                    {isThisUpgrading ? (
+                      <div className="space-y-3 pt-2">
+                        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Timer className="w-4 h-4 text-amber-500" />
+                            <span className="text-xs font-black text-amber-700 uppercase">In apprendimento → Lv {upgrade!.targetLevel}</span>
+                          </div>
+                          <PerkTimer willCompleteAt={upgrade!.willCompleteAt} onComplete={fetchData} />
+                        </div>
+                        {upgrade!.startedAt && (
+                          <div className="w-full bg-amber-100 h-2 rounded-full overflow-hidden">
+                            <PerkProgressBar startedAt={upgrade!.startedAt} willCompleteAt={upgrade!.willCompleteAt} />
+                          </div>
+                        )}
+                      </div>
+                    ) : blocked ? (
+                      <div className="flex items-center justify-center gap-2 py-3 bg-slate-50 rounded-2xl border border-slate-100">
+                        <Lock className="w-4 h-4 text-slate-300" />
+                        <span className="text-xs font-bold text-slate-400">Slot occupato da un altro potenziamento</span>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-3 pt-2">
+                        <button
+                          onClick={() => handleUpgradePerk(perk.id, false)}
+                          disabled={actionLoading || !canAffordCash}
+                          className={`flex flex-col items-center gap-1.5 py-4 px-3 rounded-[1.5rem] border transition-all ${canAffordCash ? "bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100" : "bg-slate-50 border-slate-100 text-slate-300"}`}
+                        >
+                          <TrendingUp className="w-4 h-4" />
+                          <span className="text-[10px] font-black uppercase">Apprendi (Cash)</span>
+                          <span className="text-[10px] font-bold opacity-80">${cashCost.toLocaleString()}</span>
+                          <span className="text-[9px] opacity-60">⏱ {formatDuration(cashTimeSec)}</span>
+                        </button>
+                        <button
+                          onClick={() => handleUpgradePerk(perk.id, true)}
+                          disabled={actionLoading || !canAffordGold || !canAffordCash}
+                          className={`flex flex-col items-center gap-1.5 py-4 px-3 rounded-[1.5rem] border transition-all ${canAffordGold && canAffordCash ? "bg-amber-400 border-amber-400 text-white hover:bg-amber-500 shadow-lg shadow-amber-100" : "bg-slate-50 border-slate-100 text-slate-300"}`}
+                        >
+                          <Gem className="w-4 h-4" />
+                          <span className="text-[10px] font-black uppercase">Apprendi (Gold)</span>
+                          <span className="text-[10px] font-bold opacity-80">🪙 {goldCost}</span>
+                          <span className="text-[9px] opacity-60">⚡ {formatDuration(goldTimeSec)}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               );
-            })()}
-          </AnimatePresence>
+            })}
+          </div>
         </div>
 
         {/* Future Placeholders */}
@@ -2310,218 +2773,6 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
           </div>
         </div>
 
-        {/* Perks Section */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-black tracking-tight uppercase">Abilità del Comandante</h3>
-          </div>
-
-          {/* Slot occupato banner */}
-          {(() => {
-            const activeUpgrade = PERKS_DEFS.find(p => {
-              const u = user.perkUpgrades?.[p.id];
-              return u && getTs(u.willCompleteAt) > now;
-            });
-            return activeUpgrade ? (
-              <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-                <Timer className="w-4 h-4 text-amber-500 shrink-0" />
-                <p className="text-xs font-black text-amber-700">
-                  Slot di apprendimento occupato — stai potenziando {activeUpgrade.icon} {activeUpgrade.name}.
-                  <span className="font-medium text-amber-500"> Una sola abilità alla volta.</span>
-                </p>
-              </div>
-            ) : null;
-          })()}
-
-          <div className="grid grid-cols-1 gap-5">
-            {PERKS_DEFS.map(perk => {
-              const currentLevel = (user.perks || {})[perk.id] || 0;
-              const upgrade = user.perkUpgrades?.[perk.id];
-              const isThisUpgrading = !!upgrade && getTs(upgrade.willCompleteAt) > now;
-              const anyUpgrading = PERKS_DEFS.some(p => {
-                const u = user.perkUpgrades?.[p.id];
-                return u && getTs(u.willCompleteAt) > now;
-              });
-              const blocked = anyUpgrading && !isThisUpgrading;
-
-              // Costs scale with level (1.5x per level)
-              const cashCost = Math.round(perk.baseCashCost * Math.pow(1.5, currentLevel));
-              const goldCost = Math.ceil(perk.baseGoldCost * Math.pow(1.4, currentLevel));
-              const cashTimeSec = Math.round(perk.baseTimeCashSec * Math.pow(1.3, currentLevel));
-              const goldTimeSec = Math.round(perk.baseTimeGoldSec * Math.pow(1.3, currentLevel));
-
-              const canAffordCash = (user.money || 0) >= cashCost;
-              const canAffordGold = (user.gold || 0) >= goldCost;
-
-              return (
-                <div key={perk.id} id={`perk-card-${perk.id}`} className={`bg-white rounded-[2.5rem] border transition-all overflow-hidden ${isThisUpgrading ? "border-amber-200 shadow-amber-50 shadow-md" : blocked ? "border-slate-100 opacity-60" : "border-slate-100 shadow-sm"}`}>
-                  {/* Header */}
-                  <div className="p-6 pb-4 cursor-pointer" onClick={() => {
-                    const el = document.getElementById(`perk-actions-${perk.id}`);
-                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }}>
-                    <div className="flex items-start justify-between mb-3 gap-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-3xl shrink-0">{perk.icon}</span>
-                        <div>
-                          <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">{perk.name}</h4>
-                          <p className="text-[10px] text-slate-500 font-medium leading-snug mt-0.5">{perk.description}</p>
-                          {(perk as any).effects && (
-                            <ul className="mt-2 space-y-0.5">
-                              {((perk as any).effects as string[]).map((e, i) => (
-                                <li key={i} className="text-[9px] font-bold text-indigo-500 flex items-center gap-1">
-                                  <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
-                                  {e}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="text-2xl font-black text-slate-900">Lv {currentLevel}</span>
-                      </div>
-                    </div>
-
-                    {/* Level bar — shows relative progress within the current upgrade cycle */}
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-700 rounded-full"
-                        style={{ width: `${isThisUpgrading && upgrade?.startedAt ? (1 - (getTs(upgrade.willCompleteAt) - Date.now()) / (getTs(upgrade.willCompleteAt) - getTs(upgrade.startedAt))) * 100 : currentLevel > 0 ? 100 : 0}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Action area */}
-                  <div id={`perk-actions-${perk.id}`} className="px-6 pb-6 space-y-4">
-                    {/* Booster Section */}
-                    <div className="pt-2 border-t border-slate-50">
-                      {(() => {
-                        const booster = user.boosters?.[perk.id];
-                        const isActive = booster && getTs(booster.expiresAt) > now;
-                        const inCooldown = booster && now < getTs(booster.lastActivatedAt) + BOOSTER_CONFIG.COOLDOWN_MS;
-
-                        // Active booster view
-                        if (isActive) {
-                          return (
-                            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3 flex flex-col gap-2">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <Zap className="w-4 h-4 text-indigo-500 fill-indigo-500" />
-                                  <span className="text-[10px] font-black uppercase text-indigo-700">Booster Attivo (+100)</span>
-                                </div>
-                                <div className="text-[10px] font-black text-indigo-600 bg-white px-2 py-0.5 rounded-lg border border-indigo-100">
-                                  <PerkTimer willCompleteAt={booster.expiresAt} onComplete={fetchData} />
-                                </div>
-                              </div>
-                              <div className="w-full bg-indigo-100 h-1.5 rounded-full overflow-hidden">
-                                <motion.div
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${(1 - (getTs(booster.expiresAt) - now) / (getTs(booster.expiresAt) - getTs(booster.lastActivatedAt))) * 100}%` }}
-                                  className="h-full bg-indigo-500"
-                                />
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        // Activation buttons or cooldown
-                        return (
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center justify-between px-1">
-                              <span className="text-[10px] font-black uppercase text-slate-400">Boosters (+100 Lv)</span>
-                              {inCooldown && (
-                                <span className="text-[9px] font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-lg">
-                                  In ricarica: <PerkTimer willCompleteAt={getTs(booster.lastActivatedAt) + BOOSTER_CONFIG.COOLDOWN_MS} onComplete={fetchData} />
-                                </span>
-                              )}
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <button
-                                onClick={() => handleActivateBooster(perk.id, false)}
-                                disabled={actionLoading || inCooldown || user.money < BOOSTER_CONFIG.CASH_PRICE}
-                                className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${!inCooldown && user.money >= BOOSTER_CONFIG.CASH_PRICE ? "bg-white border-slate-200 hover:border-indigo-300 hover:bg-slate-50 text-slate-700" : "bg-slate-50 border-slate-100 text-slate-300"}`}
-                              >
-                                <div className="flex flex-col items-start leading-none">
-                                  <span className="text-[10px] font-black uppercase border-b-2 border-emerald-400/30">Standard</span>
-                                  <span className="text-[9px] font-bold opacity-60 mt-1">${BOOSTER_CONFIG.CASH_PRICE.toLocaleString()}</span>
-                                </div>
-                                <ChevronRight className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={() => handleActivateBooster(perk.id, true)}
-                                disabled={actionLoading || inCooldown || user.gold < BOOSTER_CONFIG.GOLD_PRICE}
-                                className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${!inCooldown && user.gold >= BOOSTER_CONFIG.GOLD_PRICE ? "bg-white border-slate-200 hover:border-amber-300 hover:bg-slate-50 text-slate-700" : "bg-slate-50 border-slate-100 text-slate-300"}`}
-                              >
-                                <div className="flex flex-col items-start leading-none">
-                                  <span className="text-[10px] font-black uppercase border-b-2 border-amber-400/30">Extended</span>
-                                  <span className="text-[9px] font-bold opacity-60 mt-1">🪙 {BOOSTER_CONFIG.GOLD_PRICE}</span>
-                                </div>
-                                <div className="flex flex-col items-end">
-                                  <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                  <span className="text-[8px] font-black text-amber-600">10x</span>
-                                </div>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Upgrade Section */}
-                    {isThisUpgrading ? (
-                      <div className="space-y-3 pt-2">
-                        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Timer className="w-4 h-4 text-amber-500" />
-                            <span className="text-xs font-black text-amber-700 uppercase">In apprendimento → Lv {upgrade!.targetLevel}</span>
-                          </div>
-                          <PerkTimer willCompleteAt={upgrade!.willCompleteAt} onComplete={fetchData} />
-                        </div>
-                        {upgrade!.startedAt && (
-                          <div className="w-full bg-amber-100 h-2 rounded-full overflow-hidden">
-                            <PerkProgressBar startedAt={upgrade!.startedAt} willCompleteAt={upgrade!.willCompleteAt} />
-                          </div>
-                        )}
-                      </div>
-                    ) : blocked ? (
-                      <div className="flex items-center justify-center gap-2 py-3 bg-slate-50 rounded-2xl border border-slate-100">
-                        <Lock className="w-4 h-4 text-slate-300" />
-                        <span className="text-xs font-bold text-slate-400">Slot occupato da un altro potenziamento</span>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3 pt-2">
-                        {/* Cash button — slow */}
-                        <button
-                          onClick={() => handleUpgradePerk(perk.id, false)}
-                          disabled={actionLoading || !canAffordCash}
-                          className={`flex flex-col items-center gap-1.5 py-4 px-3 rounded-[1.5rem] border transition-all ${canAffordCash ? "bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100" : "bg-slate-50 border-slate-100 text-slate-300"}`}
-                        >
-                          <TrendingUp className="w-4 h-4" />
-                          <span className="text-[10px] font-black uppercase">Apprendi (Cash)</span>
-                          <span className="text-[10px] font-bold opacity-80">${cashCost.toLocaleString()}</span>
-                          <span className="text-[9px] opacity-60">⏱ {formatDuration(cashTimeSec)}</span>
-                        </button>
-
-                        {/* Gold button — faster (not instant) */}
-                        <button
-                          onClick={() => handleUpgradePerk(perk.id, true)}
-                          disabled={actionLoading || !canAffordGold || !canAffordCash}
-                          className={`flex flex-col items-center gap-1.5 py-4 px-3 rounded-[1.5rem] border transition-all ${canAffordGold && canAffordCash ? "bg-amber-400 border-amber-400 text-white hover:bg-amber-500 shadow-lg shadow-amber-100" : "bg-slate-50 border-slate-100 text-slate-300"}`}
-                        >
-                          <Gem className="w-4 h-4" />
-                          <span className="text-[10px] font-black uppercase">Apprendi (Gold)</span>
-                          <span className="text-[10px] font-bold opacity-80">🪙 {goldCost}</span>
-                          <span className="text-[9px] opacity-60">⚡ {formatDuration(goldTimeSec)}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </motion.div>
     </>
   );
@@ -3632,6 +3883,11 @@ export default function App() {
   const [actionLoading, setActionLoading] = useState(false);
   const [energyTimer, setEnergyTimer] = useState("");
 
+  // Auto-work state
+  const [autoWorkFactoryId, setAutoWorkFactoryId] = useState<string | null>(null);
+  const autoWorkFactoryIdRef = React.useRef(autoWorkFactoryId);
+  autoWorkFactoryIdRef.current = autoWorkFactoryId;
+
   const fetchData = async () => {
     try {
       const [userRes, regionsRes, articlesRes, warsRes] = await Promise.all([
@@ -3708,6 +3964,31 @@ export default function App() {
     const iv = setInterval(updateTimer, 1000);
     return () => clearInterval(iv);
   }, [user]);
+
+  // Auto-work interval
+  useEffect(() => {
+    if (!autoWorkFactoryId) return;
+    const doAutoWork = async () => {
+      if (!autoWorkFactoryIdRef.current) return;
+      try {
+        const res = await fetch("/api/work", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ factoryId: autoWorkFactoryIdRef.current })
+        });
+        const data = await res.json();
+        if (data.error) {
+          setAutoWorkFactoryId(null);
+        }
+        fetchData();
+      } catch {
+        setAutoWorkFactoryId(null);
+      }
+    };
+    doAutoWork();
+    const iv = setInterval(doAutoWork, 10 * 60 * 1000);
+    return () => clearInterval(iv);
+  }, [autoWorkFactoryId]);
 
   const handleUseDrink = async () => {
     setActionLoading(true);
@@ -4005,8 +4286,8 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Modalità automatica (solo premium) */}
-                <div className={`p-5 rounded-[2.5rem] shadow-sm border space-y-3 ${user.premium ? 'bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200' : 'bg-slate-50 border-slate-200'}`}>
+                {/* Modalità automatica */}
+                <div className="p-5 rounded-[2.5rem] shadow-sm border space-y-3 bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-xl bg-white shadow-sm">
@@ -4014,22 +4295,26 @@ export default function App() {
                       </div>
                       <div>
                         <h3 className="text-sm font-black text-slate-800">Modalità Automatica</h3>
-                        <p className="text-[10px] text-slate-400 font-medium">Lavora in automatico senza consumare tempo</p>
+                        <p className="text-[10px] text-slate-400 font-medium">Lavora ogni 10 min automaticamente (consuma energia)</p>
                       </div>
                     </div>
-                    {!user.premium && (
-                      <div className="flex items-center gap-1 bg-rose-100 px-3 py-1.5 rounded-xl">
-                        <Lock className="w-3 h-3 text-rose-600" />
-                        <span className="text-[10px] font-black text-rose-600 uppercase">Premium</span>
-                      </div>
+                    {autoWorkFactoryId && (
+                      <button onClick={() => setAutoWorkFactoryId(null)} className="px-4 py-2 bg-red-500 text-white rounded-xl font-black text-xs uppercase hover:bg-red-600">
+                        ⏹ Ferma
+                      </button>
                     )}
                   </div>
-                  {!user.premium && (
-                    <p className="text-xs text-slate-400 font-medium">Diventa Premium per sbloccare il lavoro automatico e ottenere vantaggi esclusivi!</p>
+                  {autoWorkFactoryId ? (
+                    <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
+                      <span className="animate-pulse text-lg">⚙️</span>
+                      <span className="text-xs font-black text-amber-800">Auto-lavoro attivo! Prossimo turno tra 10 minuti.</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-600 font-medium">Seleziona una fabbrica qui sotto e clicca "🤖 Auto" per attivare il lavoro automatico.</p>
                   )}
                 </div>
 
-                <PlayerFactoriesView user={user} fetchData={fetchData} />
+                <PlayerFactoriesView user={user} fetchData={fetchData} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />
               </motion.div>
             ) : <Navigate to="/" />
           } />

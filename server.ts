@@ -100,6 +100,10 @@ const addXP = async (userId: string, amount: number) => {
   }
 };
 
+// Helper to get the start of the current primaries cycle (5-day cycle)
+const PRIMARIES_CYCLE_MS = 5 * 24 * 60 * 60 * 1000;
+const getPrimariesCycleStart = () => new Date(Math.floor(Date.now() / PRIMARIES_CYCLE_MS) * PRIMARIES_CYCLE_MS).toISOString();
+
 const calculateMinisterWage = async (stateId: string, role: string) => {
   const { data: region } = await supabase
     .from('regions')
@@ -2152,7 +2156,7 @@ app.post("/api/actions/train", authenticate, async (req: any, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   // Grant XP
-  try { await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: 5 }); } catch {}
+  try { await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: 5 }); } catch (e) { console.error("[train] XP grant error:", e); }
 
   res.json({ success: true, militaryExp, energy: newEnergy });
 });
@@ -2356,9 +2360,10 @@ app.post("/api/work", authenticate, async (req: any, res) => {
 
   if (payMode === 'resource') {
     // Resource-based work: player mines resources, split between player/owner/state
+    const RESOURCE_MODE_OWNER_SHARE_PCT = 0.3; // 30% of net output goes to factory owner
     const taxRate = currentRegion?.market_tax_rate || 10;
     const stateShare = Math.max(1, Math.floor(finalOutput * (taxRate / 100)));
-    const ownerShare = Math.max(1, Math.floor((finalOutput - stateShare) * 0.3)); // 30% to owner
+    const ownerShare = Math.max(1, Math.floor((finalOutput - stateShare) * RESOURCE_MODE_OWNER_SHARE_PCT));
     const playerShare = finalOutput - stateShare - ownerShare;
 
     if (playerShare <= 0) return res.status(400).json({ error: "Output troppo basso per lavorare in modalità risorse." });
@@ -2402,7 +2407,7 @@ app.post("/api/work", authenticate, async (req: any, res) => {
             p_money_delta: 0,
             p_metadata: { resource: factory.type, quantity: stateShare, factoryId }
           });
-        } catch {}
+        } catch (e) { console.error("[resource-work] Budget transaction error:", e); }
       }
 
       // XP Gain
@@ -3214,8 +3219,7 @@ app.get("/api/parties/:id", authenticate, async (req: any, res) => {
   }).length;
 
   // Primaries vote counts for current cycle
-  const cyclePeriodMs = 5 * 24 * 60 * 60 * 1000;
-  const currentCycleStart = new Date(Math.floor(Date.now() / cyclePeriodMs) * cyclePeriodMs).toISOString();
+  const currentCycleStart = getPrimariesCycleStart();
 
   const { data: primariesVotes } = await supabase
     .from('party_primaries')
@@ -3535,8 +3539,7 @@ app.post("/api/parties/primaries-vote", authenticate, async (req: any, res) => {
   const { data: targetMembership } = await supabase.from('party_members').select('partyId').eq('userId', candidateId).single();
   if (!targetMembership || targetMembership.partyId !== myMembership.partyId) return res.status(400).json({ error: "Candidato non valido." });
 
-  const cyclePeriodMs = 5 * 24 * 60 * 60 * 1000;
-  const currentCycleStart = new Date(Math.floor(Date.now() / cyclePeriodMs) * cyclePeriodMs).toISOString();
+  const currentCycleStart = getPrimariesCycleStart();
 
   const { data: existingVote } = await supabase.from('party_primaries').select('id').eq('voterId', user.id).gte('createdAt', currentCycleStart).single();
   if (existingVote) return res.status(400).json({ error: "Hai già votato in questo ciclo." });

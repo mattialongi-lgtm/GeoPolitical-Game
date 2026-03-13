@@ -956,3 +956,94 @@ CREATE POLICY "Ministers public read" ON ministers FOR SELECT USING (true);
 CREATE POLICY "Ministers server manage" ON ministers FOR ALL USING (true);
 CREATE POLICY "Market transactions log public read" ON market_transactions_log FOR SELECT USING (true);
 CREATE POLICY "Market transactions log server manage" ON market_transactions_log FOR ALL USING (true);
+
+-- ============================================================
+-- REGIONAL RESOURCES SYSTEM TABLES
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS game_settings (
+    key TEXT PRIMARY KEY,
+    value JSONB NOT NULL,
+    description TEXT,
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS deep_levels (
+    level INT PRIMARY KEY,
+    "targetCap" INT NOT NULL,
+    enabled BOOLEAN DEFAULT TRUE,
+    description TEXT
+);
+
+CREATE TABLE IF NOT EXISTS region_resources (
+    "regionId" TEXT REFERENCES regions(id) ON DELETE CASCADE,
+    "resourceType" TEXT NOT NULL,
+    "dailyAvailable" INT NOT NULL DEFAULT 5000,
+    "dailyExtracted" INT NOT NULL DEFAULT 0,
+    "baseCapPerRecharge" INT NOT NULL DEFAULT 200,
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY ("regionId", "resourceType")
+);
+
+CREATE TABLE IF NOT EXISTS player_extraction_state (
+    "playerId" UUID REFERENCES users(id) ON DELETE CASCADE,
+    "regionId" TEXT REFERENCES regions(id) ON DELETE CASCADE,
+    "resourceType" TEXT NOT NULL,
+    "extractedSinceLastRecharge" INT NOT NULL DEFAULT 0,
+    "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
+    PRIMARY KEY ("playerId", "regionId", "resourceType")
+);
+
+CREATE TABLE IF NOT EXISTS resource_recharges (
+    "regionId" TEXT REFERENCES regions(id) ON DELETE CASCADE,
+    "resourceType" TEXT NOT NULL,
+    "lastRechargeAt" TIMESTAMPTZ DEFAULT NULL,
+    "rechargedByUserId" UUID REFERENCES users(id),
+    PRIMARY KEY ("regionId", "resourceType")
+);
+
+CREATE TABLE IF NOT EXISTS deep_explorations (
+    id TEXT PRIMARY KEY,
+    "nationId" TEXT NOT NULL,
+    "resourceType" TEXT NOT NULL,
+    level INT NOT NULL DEFAULT 1,
+    "targetCap" INT NOT NULL,
+    "activatedByUserId" UUID REFERENCES users(id),
+    "startsAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    "endsAt" TIMESTAMPTZ NOT NULL,
+    "isActive" BOOLEAN NOT NULL DEFAULT TRUE,
+    "costDiamonds" INT DEFAULT 0,
+    "costEur" INT DEFAULT 0,
+    "costGold" INT DEFAULT 0,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS resource_extraction_logs (
+    id BIGSERIAL PRIMARY KEY,
+    "playerId" UUID REFERENCES users(id) ON DELETE CASCADE,
+    "regionId" TEXT REFERENCES regions(id) ON DELETE CASCADE,
+    "resourceType" TEXT NOT NULL,
+    amount INT NOT NULL,
+    "createdAt" TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_region_resources_region ON region_resources("regionId");
+CREATE INDEX IF NOT EXISTS idx_player_extraction_region ON player_extraction_state("regionId", "resourceType");
+CREATE INDEX IF NOT EXISTS idx_player_extraction_player ON player_extraction_state("playerId");
+CREATE INDEX IF NOT EXISTS idx_deep_explorations_active ON deep_explorations("nationId", "isActive") WHERE "isActive" = true;
+CREATE INDEX IF NOT EXISTS idx_extraction_logs_player ON resource_extraction_logs("playerId", "createdAt");
+
+ALTER TABLE game_settings ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "game_settings_read" ON game_settings FOR SELECT USING (true);
+ALTER TABLE deep_levels ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "deep_levels_read" ON deep_levels FOR SELECT USING (true);
+ALTER TABLE region_resources ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "region_resources_read" ON region_resources FOR SELECT USING (true);
+ALTER TABLE player_extraction_state ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "player_extraction_state_read" ON player_extraction_state FOR SELECT USING (auth.uid() = "playerId");
+ALTER TABLE resource_recharges ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "resource_recharges_read" ON resource_recharges FOR SELECT USING (true);
+ALTER TABLE deep_explorations ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "deep_explorations_read" ON deep_explorations FOR SELECT USING (true);
+ALTER TABLE resource_extraction_logs ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "extraction_logs_read" ON resource_extraction_logs FOR SELECT USING (auth.uid() = "playerId");

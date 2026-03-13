@@ -60,7 +60,8 @@ import {
   Flag
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG } from "./types";
+import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP } from "./types";
+import type { ResourceType, DeepCostPreview } from "./types";
 import { supabase } from "./lib/supabase";
 import { useNavigate, useLocation, Routes, Route, Link, useParams, Navigate } from "react-router-dom";
 import { MoreVertical, Settings, Box, Archive, Filter, ShoppingCart, RefreshCcw } from "lucide-react";
@@ -2933,7 +2934,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   const [agreements, setAgreements] = useState<{ outgoing: any[]; incoming: any[] }>({ outgoing: [], incoming: [] });
   const [agreementTargetId, setAgreementTargetId] = useState("");
   const [sanctions, setSanctions] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'info' | 'government' | 'leader'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'government' | 'leader' | 'resources'>('info');
   const [regionFactories, setRegionFactories] = useState<any[]>([]);
 
   const fetchCountryDetail = async () => {
@@ -3115,6 +3116,12 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 Leader
               </button>
             )}
+            <button
+              onClick={() => setActiveTab('resources')}
+              className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'resources' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
+            >
+              ⛏️ Risorse
+            </button>
           </div>
 
           {activeTab === 'info' && (
@@ -3200,6 +3207,18 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
 
       {activeTab === 'government' ? (
         <GovernmentView region={region} currentUser={user} onUpdate={fetchCountryDetail} />
+      ) : activeTab === 'resources' ? (
+        <div className="space-y-4">
+          <RegionResourcesTab regionId={region.id} user={user} />
+          {/* Show recharge panel for leader/economy minister */}
+          {(region.ownerUserId === user?.id || region.economicAdviserId === user?.id) && (
+            <RechargeResourcePanel regionId={region.id} user={user} />
+          )}
+          {/* Show Deep Exploration panel for leader/economy minister */}
+          {region.nation_id && (region.ownerUserId === user?.id || region.economicAdviserId === user?.id) && (
+            <DeepExplorationPanel user={user} nationId={region.nation_id} />
+          )}
+        </div>
       ) : (
         <>
           {/* Region Production Bonuses */}
@@ -4229,8 +4248,11 @@ export default function App() {
                 )}
 
                 {/* Risorse estraibili nella regione */}
+                <ResourceExtractView user={user} fetchData={fetchData} />
+
+                {/* Risorse estraibili nella regione (panoramica) */}
                 <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
-                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Risorse estraibili in {user.regionId}</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Panoramica risorse in {user.regionId}</h3>
                   <div className="grid grid-cols-5 gap-2">
                     {[
                       { emoji: "🪙", label: "Oro", color: "bg-amber-50" },
@@ -5036,6 +5058,602 @@ const PartyHub = ({ user, fetchData }: any) => {
     </motion.div>
   );
 };
+
+// ══════════════════════════════════════════════════════════════════
+// ██ REGIONAL RESOURCES UI COMPONENTS
+// ══════════════════════════════════════════════════════════════════
+
+// ── Region Resources Tab ────────────────────────────────────────
+const RegionResourcesTab = ({ regionId, user }: { regionId: string; user: any }) => {
+  const [resources, setResources] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetchResources = useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await fetch(`/api/regions/${regionId}/resources`, { credentials: 'include' });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setResources(data.resources || []);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [regionId]);
+
+  useEffect(() => { fetchResources(); }, [fetchResources]);
+
+  if (loading) return <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-slate-400" /></div>;
+  if (error) return <div className="p-4 bg-red-50 rounded-xl text-red-600 text-sm font-bold">{error}</div>;
+  if (resources.length === 0) return <div className="p-6 text-center text-slate-400 text-sm">Nessuna risorsa configurata per questa regione.</div>;
+
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+        <Pickaxe className="w-4 h-4" /> Risorse Regionali
+      </h3>
+      {resources.map((r: any) => {
+        const icon = RESOURCE_ICONS_MAP[r.resourceType as ResourceType] || '📦';
+        const label = RESOURCE_LABELS[r.resourceType as ResourceType] || r.resourceType;
+        const pctDaily = r.dailyAvailable > 0 ? Math.min(100, (r.dailyExtracted / r.dailyAvailable) * 100) : 0;
+        return (
+          <div key={r.resourceType} className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">{icon}</span>
+                <span className="font-black text-slate-800 text-sm">{label}</span>
+                {r.deepActive && (
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[9px] font-black uppercase">🔮 Deep</span>
+                )}
+              </div>
+              <div className="text-right">
+                <span className="text-xs text-slate-400">Cap effettivo</span>
+                <p className="text-sm font-black text-indigo-600">{r.effectiveCapPerRecharge}
+                  {r.effectiveCapPerRecharge > r.baseCapPerRecharge && (
+                    <span className="text-[9px] text-purple-500 ml-1">(base {r.baseCapPerRecharge})</span>
+                  )}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="bg-slate-50 p-2 rounded-lg">
+                <p className="text-[9px] font-bold text-slate-400 uppercase">Disponibile</p>
+                <p className="text-sm font-black text-slate-800">{r.dailyAvailable.toLocaleString()}</p>
+              </div>
+              <div className="bg-amber-50 p-2 rounded-lg">
+                <p className="text-[9px] font-bold text-amber-500 uppercase">Estratto</p>
+                <p className="text-sm font-black text-amber-700">{r.dailyExtracted.toLocaleString()}</p>
+              </div>
+              <div className="bg-emerald-50 p-2 rounded-lg">
+                <p className="text-[9px] font-bold text-emerald-500 uppercase">Rimanente</p>
+                <p className="text-sm font-black text-emerald-700">{r.remainingDaily.toLocaleString()}</p>
+              </div>
+            </div>
+            <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
+              <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${pctDaily}%` }} />
+            </div>
+            {r.deepActive && r.deepEndsAt && (
+              <p className="text-[9px] text-purple-500 font-medium">
+                🔮 Deep attiva fino al {new Date(r.deepEndsAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+              </p>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// ── Resource Work / Extract UI ──────────────────────────────────
+const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => void }) => {
+  const [regionId, setRegionId] = useState(user?.regionId || '');
+  const [resources, setResources] = useState<any[]>([]);
+  const [playerStates, setPlayerStates] = useState<any[]>([]);
+  const [selectedResource, setSelectedResource] = useState<string>('');
+  const [loading, setLoading] = useState(false);
+  const [working, setWorking] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  const fetchAll = useCallback(async () => {
+    if (!regionId) return;
+    setLoading(true);
+    try {
+      const [resRes, stateRes] = await Promise.all([
+        fetch(`/api/regions/${regionId}/resources`, { credentials: 'include' }).then(r => r.json()),
+        fetch(`/api/resources/player-state?regionId=${regionId}`, { credentials: 'include' }).then(r => r.json()),
+      ]);
+      setResources(resRes.resources || []);
+      setPlayerStates(stateRes.states || []);
+      if (!selectedResource && resRes.resources?.length > 0) {
+        setSelectedResource(resRes.resources[0].resourceType);
+      }
+    } catch (err: any) {
+      setMessage({ text: err.message, type: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  }, [regionId, selectedResource]);
+
+  useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const handleWork = async () => {
+    if (!selectedResource || !regionId) return;
+    setWorking(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/resources/work-extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ regionId, resourceType: selectedResource }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMessage({ text: data.error, type: 'error' });
+      } else {
+        const icon = RESOURCE_ICONS_MAP[selectedResource as ResourceType] || '📦';
+        setMessage({ text: `+${data.amount} ${icon} ${RESOURCE_LABELS[selectedResource as ResourceType] || selectedResource} estratti! (+${data.xpGain} XP)`, type: 'success' });
+        fetchAll();
+        fetchData();
+      }
+    } catch (err: any) {
+      setMessage({ text: err.message, type: 'error' });
+    } finally {
+      setWorking(false);
+    }
+  };
+
+  const selectedRes = resources.find((r: any) => r.resourceType === selectedResource);
+  const playerState = playerStates.find((s: any) => s.resourceType === selectedResource);
+  const extractedCycle = playerState?.extractedSinceLastRecharge || 0;
+  const effectiveCap = selectedRes?.effectiveCapPerRecharge || 0;
+  const remainingCycle = Math.max(0, effectiveCap - extractedCycle);
+  const remainingDaily = selectedRes ? Math.max(0, selectedRes.dailyAvailable - selectedRes.dailyExtracted) : 0;
+  const canWork = remainingCycle > 0 && remainingDaily > 0 && (user?.energy || 0) >= 10;
+  const blockReason = remainingCycle <= 0 ? "Cap del ciclo raggiunto. Serve una ricarica!" : remainingDaily <= 0 ? "Risorsa giornaliera esaurita!" : (user?.energy || 0) < 10 ? "Energia insufficiente!" : null;
+
+  return (
+    <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+      <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+        <Pickaxe className="w-4 h-4 text-amber-500" /> Estrazione Risorse
+      </h3>
+
+      {/* Resource selector */}
+      {resources.length > 0 ? (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {resources.map((r: any) => {
+            const icon = RESOURCE_ICONS_MAP[r.resourceType as ResourceType] || '📦';
+            const label = RESOURCE_LABELS[r.resourceType as ResourceType] || r.resourceType;
+            const isSelected = selectedResource === r.resourceType;
+            return (
+              <button
+                key={r.resourceType}
+                onClick={() => setSelectedResource(r.resourceType)}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${
+                  isSelected ? 'bg-indigo-100 text-indigo-700 border-2 border-indigo-300' : 'bg-slate-50 text-slate-600 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <span>{icon}</span> {label}
+                {r.deepActive && <span className="text-purple-500">🔮</span>}
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400">Nessuna risorsa disponibile in questa regione.</p>
+      )}
+
+      {/* Selected resource details */}
+      {selectedRes && (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-blue-50 p-3 rounded-xl">
+              <p className="text-[9px] font-bold text-blue-400 uppercase">Ciclo personale</p>
+              <p className="text-sm font-black text-blue-700">{extractedCycle} / {effectiveCap}</p>
+              <div className="w-full bg-blue-100 h-1 rounded-full mt-1 overflow-hidden">
+                <div className="bg-blue-500 h-full rounded-full" style={{ width: `${effectiveCap > 0 ? (extractedCycle / effectiveCap) * 100 : 0}%` }} />
+              </div>
+            </div>
+            <div className="bg-emerald-50 p-3 rounded-xl">
+              <p className="text-[9px] font-bold text-emerald-400 uppercase">Giornaliero regione</p>
+              <p className="text-sm font-black text-emerald-700">{selectedRes.dailyExtracted} / {selectedRes.dailyAvailable}</p>
+              <div className="w-full bg-emerald-100 h-1 rounded-full mt-1 overflow-hidden">
+                <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${selectedRes.dailyAvailable > 0 ? (selectedRes.dailyExtracted / selectedRes.dailyAvailable) * 100 : 0}%` }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Work button */}
+          <button
+            onClick={handleWork}
+            disabled={!canWork || working || loading}
+            className={`w-full py-3 rounded-xl font-black text-sm uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${
+              canWork && !working ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            {working ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Estraendo...</>
+            ) : (
+              <><Pickaxe className="w-4 h-4" /> Lavora / Estrai</>
+            )}
+          </button>
+
+          {blockReason && (
+            <div className="bg-amber-50 p-3 rounded-xl flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+              <span className="text-xs font-bold text-amber-700">{blockReason}</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Feedback message */}
+      {message && (
+        <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+          {message.type === 'success' ? <CheckCircle2 className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+          {message.text}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Government Recharge Panel ───────────────────────────────────
+const RechargeResourcePanel = ({ regionId, user }: { regionId: string; user: any }) => {
+  const [resources, setResources] = useState<any[]>([]);
+  const [selectedResource, setSelectedResource] = useState<string>('');
+  const [rechargeInfo, setRechargeInfo] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/regions/${regionId}/resources`, { credentials: 'include' });
+        const data = await res.json();
+        setResources(data.resources || []);
+        if (data.resources?.length > 0) setSelectedResource(data.resources[0].resourceType);
+      } catch (err: any) {
+        setMessage({ text: err.message, type: 'error' });
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [regionId]);
+
+  useEffect(() => {
+    if (!selectedResource) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/resources/recharge-info?regionId=${regionId}&resourceType=${selectedResource}`, { credentials: 'include' });
+        const data = await res.json();
+        setRechargeInfo(data);
+      } catch (err: any) {
+        console.error(err);
+      }
+    })();
+  }, [selectedResource, regionId]);
+
+  const handleRecharge = async () => {
+    if (!selectedResource) return;
+    setActionLoading(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/resources/recharge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ regionId, resourceType: selectedResource }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMessage({ text: data.error, type: 'error' });
+      } else {
+        setMessage({ text: data.message || 'Ricarica completata!', type: 'success' });
+        // Refresh info
+        const infoRes = await fetch(`/api/resources/recharge-info?regionId=${regionId}&resourceType=${selectedResource}`, { credentials: 'include' });
+        setRechargeInfo(await infoRes.json());
+      }
+    } catch (err: any) {
+      setMessage({ text: err.message, type: 'error' });
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) return <div className="flex justify-center p-4"><Loader2 className="w-5 h-5 animate-spin text-slate-400" /></div>;
+
+  const cooldownActive = (rechargeInfo?.cooldownRemaining || 0) > 0;
+  const canAfford = rechargeInfo?.canAfford !== false;
+  const canRecharge = !cooldownActive && canAfford && !actionLoading;
+
+  return (
+    <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+      <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+        <RefreshCcw className="w-4 h-4 text-emerald-500" /> Ricarica Risorse
+      </h3>
+      <p className="text-[10px] text-slate-400">Resetta i contatori di estrazione per tutti i giocatori su questa risorsa+regione.</p>
+
+      {resources.length > 0 ? (
+        <>
+          {/* Resource selector */}
+          <div className="flex gap-2 flex-wrap">
+            {resources.map((r: any) => {
+              const icon = RESOURCE_ICONS_MAP[r.resourceType as ResourceType] || '📦';
+              return (
+                <button
+                  key={r.resourceType}
+                  onClick={() => setSelectedResource(r.resourceType)}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold ${
+                    selectedResource === r.resourceType ? 'bg-emerald-100 text-emerald-700 border-2 border-emerald-300' : 'bg-slate-50 text-slate-500 border border-slate-200'
+                  }`}
+                >
+                  {icon} {RESOURCE_LABELS[r.resourceType as ResourceType] || r.resourceType}
+                </button>
+              );
+            })}
+          </div>
+
+          {rechargeInfo && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-slate-50 p-2 rounded-lg">
+                  <span className="text-slate-400 font-bold">Costo ricarica</span>
+                  <p className="font-black text-slate-800">€{(rechargeInfo.costEur || 0).toLocaleString()}</p>
+                </div>
+                <div className="bg-slate-50 p-2 rounded-lg">
+                  <span className="text-slate-400 font-bold">Tesoro</span>
+                  <p className={`font-black ${canAfford ? 'text-emerald-600' : 'text-red-500'}`}>€{(rechargeInfo.treasuryEur || 0).toLocaleString()}</p>
+                </div>
+              </div>
+
+              {cooldownActive && (
+                <div className="bg-amber-50 p-2 rounded-lg flex items-center gap-2">
+                  <Timer className="w-3 h-3 text-amber-500" />
+                  <span className="text-xs font-bold text-amber-700">
+                    Cooldown: {Math.ceil((rechargeInfo.cooldownRemaining || 0) / 60)} minuti rimanenti
+                  </span>
+                </div>
+              )}
+
+              <button
+                onClick={handleRecharge}
+                disabled={!canRecharge}
+                className={`w-full py-2.5 rounded-xl font-black text-xs uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${
+                  canRecharge ? 'bg-emerald-600 hover:bg-emerald-700 text-white' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCcw className="w-4 h-4" />}
+                Ricarica {RESOURCE_LABELS[selectedResource as ResourceType] || selectedResource}
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="text-xs text-slate-400">Nessuna risorsa configurata.</p>
+      )}
+
+      {message && (
+        <div className={`p-2 rounded-lg text-xs font-bold ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+          {message.text}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Deep Exploration Panel ──────────────────────────────────────
+const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string }) => {
+  const [levels, setLevels] = useState<any[]>([]);
+  const [active, setActive] = useState<any>(null);
+  const [selectedResource, setSelectedResource] = useState<string>('oil');
+  const [selectedLevel, setSelectedLevel] = useState<number>(1);
+  const [costPreview, setCostPreview] = useState<DeepCostPreview | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [computing, setComputing] = useState(false);
+  const [activating, setActivating] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/resources/deep-exploration/status?nationId=${nationId}`, { credentials: 'include' });
+        const data = await res.json();
+        setActive(data.active);
+        setLevels(data.levels || []);
+        if (data.levels?.length > 0) setSelectedLevel(data.levels[0].level);
+      } catch (err: any) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [nationId]);
+
+  const computeCost = useCallback(async () => {
+    if (!selectedResource || !selectedLevel || !nationId) return;
+    setComputing(true);
+    setCostPreview(null);
+    try {
+      const res = await fetch('/api/resources/deep-exploration/cost', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ nationId, resourceType: selectedResource, level: selectedLevel }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMessage({ text: data.error, type: 'error' });
+      } else {
+        setCostPreview(data);
+      }
+    } catch (err: any) {
+      setMessage({ text: err.message, type: 'error' });
+    } finally {
+      setComputing(false);
+    }
+  }, [nationId, selectedResource, selectedLevel]);
+
+  useEffect(() => { computeCost(); }, [computeCost]);
+
+  const handleActivate = async () => {
+    if (!costPreview || !window.confirm(`Confermi l'attivazione di Deep Exploration Lv${selectedLevel} per ${RESOURCE_LABELS[selectedResource as ResourceType]}?\n\nCosto: 💎${costPreview.costDiamonds.toLocaleString()} + €${costPreview.costEur.toLocaleString()}${costPreview.costGold > 0 ? ` + ${costPreview.costGold.toLocaleString()} gold` : ''}`)) return;
+
+    setActivating(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/resources/deep-exploration/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ nationId, resourceType: selectedResource, level: selectedLevel }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        setMessage({ text: data.error, type: 'error' });
+      } else {
+        setMessage({ text: data.message || 'Deep Exploration attivata!', type: 'success' });
+        setActive({ ...data, resourceType: selectedResource, targetCap: costPreview.targetCap, endsAt: data.endsAt });
+      }
+    } catch (err: any) {
+      setMessage({ text: err.message, type: 'error' });
+    } finally {
+      setActivating(false);
+    }
+  };
+
+  if (loading) return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-purple-400" /></div>;
+
+  return (
+    <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4">
+      <h3 className="text-sm font-black uppercase tracking-widest text-purple-600 flex items-center gap-2">
+        🔮 Deep Exploration
+      </h3>
+      <p className="text-[10px] text-slate-400">
+        Attiva una legge temporanea (7 giorni) che aumenta i cap di ricarica per una risorsa in tutte le regioni della nazione.
+        Il costo dipende da quanto devi alzare i cap (somma dei delta).
+      </p>
+
+      {/* Active Deep indicator */}
+      {active && (
+        <div className="bg-purple-50 p-3 rounded-xl border border-purple-200 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🔮</span>
+            <span className="font-black text-purple-700 text-sm">Deep Exploration ATTIVA</span>
+          </div>
+          <p className="text-xs text-purple-600">
+            Risorsa: <span className="font-bold">{RESOURCE_ICONS_MAP[active.resourceType as ResourceType]} {RESOURCE_LABELS[active.resourceType as ResourceType]}</span>
+            {' '} | Target Cap: <span className="font-bold">{active.targetCap}</span>
+          </p>
+          <p className="text-xs text-purple-500">
+            Scade: {new Date(active.endsAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </p>
+        </div>
+      )}
+
+      {!active && (
+        <>
+          {/* Resource selector */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Risorsa Target</label>
+            <div className="flex gap-2 flex-wrap">
+              {RESOURCE_TYPES.map(rt => (
+                <button
+                  key={rt}
+                  onClick={() => setSelectedResource(rt)}
+                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    selectedResource === rt ? 'bg-purple-100 text-purple-700 border-2 border-purple-300' : 'bg-slate-50 text-slate-500 border border-slate-200'
+                  }`}
+                >
+                  {RESOURCE_ICONS_MAP[rt]} {RESOURCE_LABELS[rt]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Level selector */}
+          <div>
+            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Livello Deep</label>
+            <div className="flex gap-2">
+              {levels.map((l: any) => (
+                <button
+                  key={l.level}
+                  onClick={() => setSelectedLevel(l.level)}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                    selectedLevel === l.level ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'bg-slate-50 text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  Lv {l.level} — Cap {l.targetCap}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Cost preview */}
+          {computing && (
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <Loader2 className="w-3 h-3 animate-spin" /> Calcolo costi...
+            </div>
+          )}
+
+          {costPreview && !computing && (
+            <div className="bg-slate-50 p-3 rounded-xl space-y-2">
+              <p className="text-[10px] font-bold text-slate-500 uppercase">Anteprima Costi</p>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                  <p className="text-[9px] text-slate-400">Target Cap</p>
+                  <p className="text-sm font-black text-purple-700">{costPreview.targetCap}</p>
+                </div>
+                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                  <p className="text-[9px] text-slate-400">Regioni</p>
+                  <p className="text-sm font-black text-slate-700">{costPreview.numRegions}</p>
+                </div>
+                <div className="bg-white p-2 rounded-lg border border-slate-100">
+                  <p className="text-[9px] text-slate-400">ΣDelta</p>
+                  <p className="text-sm font-black text-amber-700">{costPreview.sumDelta.toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="flex gap-2 text-xs font-bold">
+                {costPreview.costDiamonds > 0 && (
+                  <span className="bg-purple-50 text-purple-700 px-2 py-1 rounded">💎 {costPreview.costDiamonds.toLocaleString()}</span>
+                )}
+                {costPreview.costEur > 0 && (
+                  <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded">€{costPreview.costEur.toLocaleString()}</span>
+                )}
+                {costPreview.costGold > 0 && (
+                  <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded">🪙 {costPreview.costGold.toLocaleString()}</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Activate button */}
+          <button
+            onClick={handleActivate}
+            disabled={!costPreview || activating || computing}
+            className={`w-full py-3 rounded-xl font-black text-sm uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${
+              costPreview && !activating ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+            }`}
+          >
+            {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>🔮</span>}
+            Attiva Deep Exploration Lv{selectedLevel}
+          </button>
+        </>
+      )}
+
+      {message && (
+        <div className={`p-3 rounded-xl text-xs font-bold ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+          {message.text}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
 
 const ParliamentView = ({ user }: { user: any }) => {
   const [activeTab, setActiveTab] = useState<'elections' | 'parliament' | 'laws'>('elections');

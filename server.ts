@@ -2754,13 +2754,13 @@ app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {
   const updateData: any = { perkUpgradesJson: JSON.stringify(existingUpgrades) };
   
   // Atomic currency deduction for perk upgrades
-  const moneyCost2 = cashCost;
-  const goldCost2 = useGold ? goldCost : 0;
+  const perkMoneyCost = cashCost;
+  const perkGoldCost = useGold ? goldCost : 0;
   
   const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
     p_user_id: user.id,
-    p_money_cost: moneyCost2,
-    p_gold_cost: goldCost2,
+    p_money_cost: perkMoneyCost,
+    p_gold_cost: perkGoldCost,
     p_energy_cost: 0,
   });
   if (deductError) {
@@ -2829,8 +2829,8 @@ app.post("/api/perks/booster", authenticate, async (req: any, res) => {
   if (deductError) {
     return res.status(500).json({ error: "Errore nella deduzione: " + deductError.message });
   }
-  const deductData2 = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-  if (deductData2?.error) return res.status(400).json({ error: deductData2.error });
+  const boosterDeductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+  if (boosterDeductData?.error) return res.status(400).json({ error: boosterDeductData.error });
 
   await supabase.from('users').update(updateData).eq('id', user.id);
 
@@ -3634,8 +3634,7 @@ app.post("/api/parties/pay-wages", authenticate, async (req: any, res) => {
 
   if (validToPay.length === 0) return res.status(400).json({ error: "Nessun membro attivo riceve stipendi." });
 
-  // Update Leader - use SQL arithmetic to avoid stale data race condition
-  await supabase.rpc('add_user_xp', { p_user_id: user.id, p_xp: 0 }).then(() => {}); // no-op to warm up
+  // Update Leader
   await supabase.from('users').update({ money: user.money - totalCash, gold: user.gold - totalGold }).eq('id', user.id);
 
   // Update members using SQL arithmetic (gold = gold + X) to avoid read-then-write race conditions

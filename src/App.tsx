@@ -2012,7 +2012,7 @@ const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFa
                         </div>
                         <button
                           onClick={() => handleUpgrade(f.id, f.level || 1)}
-                          disabled={actionLoading || (!upgradeTarget[f.id] && false)}
+                          disabled={actionLoading}
                           className="w-full py-3 bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md shadow-amber-100 hover:bg-amber-600 hover:scale-[1.02] transition-all disabled:opacity-50"
                         >
                           ⬆️ Potenzia {upgradeTarget[f.id] ? `al Lv ${upgradeTarget[f.id]}` : `al Lv ${(f.level || 1) + 1}`} {upgradeCost[f.id] != null ? `(🪙 ${upgradeCost[f.id]} Gold)` : ''}

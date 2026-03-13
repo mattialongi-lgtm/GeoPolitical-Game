@@ -3050,8 +3050,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   };
 
   const fetchAutonomyData = async () => {
+    if (!iso2) return;
     try {
-      const res = await fetch(`/api/regions/${iso2?.toUpperCase()}/autonomy`);
+      const res = await fetch(`/api/regions/${iso2.toUpperCase()}/autonomy`);
       if (res.ok) setAutonomyData(await res.json());
     } catch (e) {
       console.error(e);

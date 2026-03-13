@@ -4259,11 +4259,13 @@ function calculateEnergyStatus(buildings: Record<string, number>): {
   const surplusPowerPlants = efficiency > 0
     ? Math.floor(efficiency / AUTONOMY_CONFIG.ENERGY_PRODUCTION_PER_PLANT)
     : -Math.ceil(Math.abs(efficiency) / AUTONOMY_CONFIG.ENERGY_PRODUCTION_PER_PLANT);
+  // Average energy cost per consuming building (using the most common cost from ENERGY_CONSUMPTION config)
+  const avgConsumptionPerBuilding = 2; // mW – matches the standard rate in AUTONOMY_CONFIG.ENERGY_CONSUMPTION
   const supportableBuildings = efficiency > 0
-    ? Math.floor(efficiency / 2) // each consuming building uses ~2 mW
+    ? Math.floor(efficiency / avgConsumptionPerBuilding)
     : 0;
   const excessBuildings = efficiency < 0
-    ? Math.ceil(Math.abs(efficiency) / 2)
+    ? Math.ceil(Math.abs(efficiency) / avgConsumptionPerBuilding)
     : 0;
   return { generation, consumption, efficiency, surplusPowerPlants, supportableBuildings, excessBuildings, isDeficit };
 }
@@ -6180,17 +6182,18 @@ async function dailyResourceReset() {
       .eq('isActive', true)
       .lt('endsAt', nowStr);
 
-    // Reset regional autonomy daily extraction counters
+    // Reset regional autonomy daily extraction counters for all regions
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    await supabase.from('regions').update({
+    const { error: resetErr } = await supabase.from('regions').update({
       dailyExtractedGold: 0,
       dailyExtractedOil: 0,
       dailyExtractedMinerals: 0,
       dailyExtractedUranium: 0,
       dailyExtractedDiamonds: 0,
       nextExtractionResetAt: tomorrow,
-    }).gte('dailyExtractedGold', 0); // matches all rows
-    console.log("[ResourceReset] Regional extraction counters reset.");
+    }).neq('id', ''); // matches all rows with non-empty id (i.e., all regions)
+    if (resetErr) console.error("[ResourceReset] Error resetting regional extraction:", resetErr);
+    else console.log("[ResourceReset] Regional extraction counters reset.");
 
   } catch (err) {
     console.error("[ResourceReset] Error in daily reset:", err);

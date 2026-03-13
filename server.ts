@@ -100,6 +100,10 @@ const addXP = async (userId: string, amount: number) => {
   }
 };
 
+// Helper to get the start of the current primaries cycle (5-day cycle)
+const PRIMARIES_CYCLE_MS = 5 * 24 * 60 * 60 * 1000;
+const getPrimariesCycleStart = () => new Date(Math.floor(Date.now() / PRIMARIES_CYCLE_MS) * PRIMARIES_CYCLE_MS).toISOString();
+
 const calculateMinisterWage = async (stateId: string, role: string) => {
   const { data: region } = await supabase
     .from('regions')
@@ -324,6 +328,20 @@ const authenticate = async (req: any, res: any, next: any) => {
         if (newUser) {
           console.log(`[JIT] Successfully provisioned user: ${newUser.username}`);
           user = newUser;
+
+          // Grant starter resources to new player
+          const starterResources = [
+            { userId: newUser.id, itemId: 'oil', quantity: 20 },
+            { userId: newUser.id, itemId: 'minerals', quantity: 20 },
+            { userId: newUser.id, itemId: 'uranium', quantity: 5 },
+            { userId: newUser.id, itemId: 'diamonds', quantity: 5 },
+          ];
+          try {
+            await supabase.from('user_inventory').insert(starterResources);
+            console.log(`[JIT] Granted starter resources to ${newUser.username}`);
+          } catch (invErr) {
+            console.error("[JIT] Error granting starter resources:", invErr);
+          }
         }
       }
     }
@@ -503,6 +521,12 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
     // 2. Generate stats (simplified, should eventually be in a trigger)
     const gameStats = generateGameStatsForCountry(isoId);
 
+    // 2b. Count player citizens (users with regionId matching this region)
+    const { count: citizenCount } = await supabase
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .eq('regionId', isoId);
+
     // 3. Get sibling regions
     const { data: memberRegions } = await supabase
       .from('regions')
@@ -516,6 +540,7 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       ownerName: region.owner?.username,
       leaderName: region.leader?.username,
       leaderLevel: region.leader?.level,
+      citizenCount: citizenCount || 0,
       memberRegions: memberRegions || [region],
       indicators: {
         ...(gameStats?.indicators || {}),
@@ -889,6 +914,27 @@ app.post("/api/factories/deposit", authenticate, async (req: any, res) => {
     res.json({ success: true, newBudget: (factory.budget || 0) + amount });
   } catch (err: any) {
     res.status(500).json({ error: "Errore nel deposito: " + err.message });
+  }
+});
+
+// Toggle factory pay mode (salary vs resource)
+app.post("/api/factories/paymode", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { factoryId, payMode } = req.body;
+
+  if (!factoryId || !['salary', 'resource'].includes(payMode)) {
+    return res.status(400).json({ error: "Parametri non validi." });
+  }
+
+  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
+  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
+  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
+
+  try {
+    await supabase.from('factories').update({ payMode }).eq('id', factoryId);
+    res.json({ success: true, payMode });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nel cambio modalità: " + err.message });
   }
 });
 
@@ -2110,7 +2156,7 @@ app.post("/api/actions/train", authenticate, async (req: any, res) => {
   if (error) return res.status(500).json({ error: error.message });
 
   // Grant XP
-  try { await supabase.rpc('add_user_xp', { p_user_id: user.id, p_xp: 5 }); } catch {}
+  try { await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: 5 }); } catch (e) { console.error("[train] XP grant error:", e); }
 
   res.json({ success: true, militaryExp, energy: newEnergy });
 });
@@ -2288,10 +2334,7 @@ app.post("/api/work", authenticate, async (req: any, res) => {
   const energyCost = Math.ceil(10 * (1 - energyEfficiency)); // Base 10 energy
   if (user.energy < energyCost) return res.status(400).json({ error: "Energia insufficiente." });
 
-  // Check budget
-  if (factory.budget < factory.wage) {
-    return res.status(400).json({ error: "L'azienda non ha abbastanza fondi per pagarti il salario." });
-  }
+  const payMode = factory.payMode || 'salary';
 
   // Check Owner Storage Space
   const { data: owner } = await supabase.from('users').select('id').eq('id', factory.ownerUserId).single();
@@ -2314,6 +2357,73 @@ app.post("/api/work", authenticate, async (req: any, res) => {
   else if (factory.type === 'diamonds') bonusMult = currentRegion.diamondsBonus || 1.0;
 
   const finalOutput = Math.max(1, Math.floor(outputBase * bonusMult));
+
+  if (payMode === 'resource') {
+    // Resource-based work: player mines resources, split between player/owner/state
+    const RESOURCE_MODE_OWNER_SHARE_PCT = 0.3; // 30% of net output goes to factory owner
+    const taxRate = currentRegion?.market_tax_rate || 10;
+    const stateShare = Math.max(1, Math.floor(finalOutput * (taxRate / 100)));
+    const ownerShare = Math.max(1, Math.floor((finalOutput - stateShare) * RESOURCE_MODE_OWNER_SHARE_PCT));
+    const playerShare = finalOutput - stateShare - ownerShare;
+
+    if (playerShare <= 0) return res.status(400).json({ error: "Output troppo basso per lavorare in modalità risorse." });
+
+    // EXECUTE RESOURCE WORK
+    try {
+      // Deduct energy and set cooldown
+      await supabase.from('users').update({ energy: user.energy - energyCost }).eq('id', user.id);
+      await supabase.from('user_factory_cooldowns').upsert({
+        userId: user.id, factoryId, lastUsed: new Date().toISOString()
+      });
+
+      // Give player their share of resources
+      const { data: playerInv } = await supabase.from('user_inventory')
+        .select('quantity').eq('userId', user.id).eq('itemId', factory.type).maybeSingle();
+      if (playerInv) {
+        await supabase.from('user_inventory').update({ quantity: playerInv.quantity + playerShare })
+          .eq('userId', user.id).eq('itemId', factory.type);
+      } else {
+        await supabase.from('user_inventory').insert({ userId: user.id, itemId: factory.type, quantity: playerShare });
+      }
+
+      // Give owner their share of resources
+      const { data: ownerInvItem } = await supabase.from('user_inventory')
+        .select('quantity').eq('userId', owner.id).eq('itemId', factory.type).maybeSingle();
+      if (ownerInvItem) {
+        await supabase.from('user_inventory').update({ quantity: ownerInvItem.quantity + ownerShare })
+          .eq('userId', owner.id).eq('itemId', factory.type);
+      } else {
+        await supabase.from('user_inventory').insert({ userId: owner.id, itemId: factory.type, quantity: ownerShare });
+      }
+
+      // State gets its share via budget transaction
+      if (stateShare > 0) {
+        try {
+          await supabase.rpc('add_budget_transaction', {
+            p_owner_type: 'REGION',
+            p_owner_id: factory.regionId,
+            p_type: 'INCOME',
+            p_subtype: 'RESOURCE_TAX',
+            p_money_delta: 0,
+            p_metadata: { resource: factory.type, quantity: stateShare, factoryId }
+          });
+        } catch (e) { console.error("[resource-work] Budget transaction error:", e); }
+      }
+
+      // XP Gain
+      const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
+      await supabase.rpc('add_user_xp', { p_user_id: user.id, p_amount: xpGain });
+
+      res.json({ success: true, earnings: 0, output: playerShare, ownerShare, stateShare, xpGain, payMode: 'resource' });
+    } catch (err: any) {
+      res.status(500).json({ error: "Errore durante il lavoro: " + err.message });
+    }
+  } else {
+    // Salary-based work (original logic)
+    // Check budget
+    if (factory.budget < factory.wage) {
+      return res.status(400).json({ error: "L'azienda non ha abbastanza fondi per pagarti il salario." });
+    }
 
   // PRESIDENTIAL_REPUBLIC: Double wage bonus for Leader and economic/foreign ministers
   let govBonus = 1;
@@ -2353,6 +2463,7 @@ app.post("/api/work", authenticate, async (req: any, res) => {
   } catch (err: any) {
     res.status(500).json({ error: "Errore durante il lavoro: " + err.message });
   }
+  } // end salary mode
 });
 
 // Wars API
@@ -3060,11 +3171,10 @@ app.get("/api/parties/my", authenticate, async (req: any, res) => {
   });
 
   const now = Date.now();
-  const activeMembersCount = mappedMembers.filter((m: any) =>
-    m.level >= 60 &&
-    now - (m.lastLogin || 0) <= 24 * 60 * 60 * 1000 &&
-    now - (new Date(m.joinedAt).getTime()) >= 72 * 60 * 60 * 1000
-  ).length;
+  const activeMembersCount = mappedMembers.filter((m: any) => {
+    const lastLoginTs = typeof m.lastLogin === 'string' ? new Date(m.lastLogin).getTime() : (m.lastLogin || 0);
+    return now - lastLoginTs <= 48 * 60 * 60 * 1000;
+  }).length;
 
   res.json({
     party: { ...party, leaderName },
@@ -3103,16 +3213,40 @@ app.get("/api/parties/:id", authenticate, async (req: any, res) => {
   }));
 
   const now = Date.now();
-  const activeMembersCount = mappedMembers.filter((m: any) =>
-    m.level >= 60 &&
-    now - (m.lastLogin || 0) <= 24 * 60 * 60 * 1000 &&
-    now - (new Date(m.joinedAt).getTime()) >= 72 * 60 * 60 * 1000
-  ).length;
+  const activeMembersCount = mappedMembers.filter((m: any) => {
+    const lastLoginTs = typeof m.lastLogin === 'string' ? new Date(m.lastLogin).getTime() : (m.lastLogin || 0);
+    return now - lastLoginTs <= 48 * 60 * 60 * 1000;
+  }).length;
+
+  // Primaries vote counts for current cycle
+  const currentCycleStart = getPrimariesCycleStart();
+
+  const { data: primariesVotes } = await supabase
+    .from('party_primaries')
+    .select('candidateId')
+    .eq('partyId', id)
+    .gte('createdAt', currentCycleStart);
+
+  const voteCounts: Record<string, number> = {};
+  (primariesVotes || []).forEach((v: any) => {
+    voteCounts[v.candidateId] = (voteCounts[v.candidateId] || 0) + 1;
+  });
+
+  // Check if current user has already voted in this cycle
+  const { data: myVote } = await supabase
+    .from('party_primaries')
+    .select('id')
+    .eq('voterId', req.user.id)
+    .eq('partyId', id)
+    .gte('createdAt', currentCycleStart)
+    .maybeSingle();
 
   res.json({
     party: { ...party, leaderName },
     members: mappedMembers,
-    activeMembersCount
+    activeMembersCount,
+    primariesVoteCounts: voteCounts,
+    hasVotedPrimaries: !!myVote
   });
 });
 
@@ -3405,8 +3539,7 @@ app.post("/api/parties/primaries-vote", authenticate, async (req: any, res) => {
   const { data: targetMembership } = await supabase.from('party_members').select('partyId').eq('userId', candidateId).single();
   if (!targetMembership || targetMembership.partyId !== myMembership.partyId) return res.status(400).json({ error: "Candidato non valido." });
 
-  const cyclePeriodMs = 5 * 24 * 60 * 60 * 1000;
-  const currentCycleStart = new Date(Math.floor(Date.now() / cyclePeriodMs) * cyclePeriodMs).toISOString();
+  const currentCycleStart = getPrimariesCycleStart();
 
   const { data: existingVote } = await supabase.from('party_primaries').select('id').eq('voterId', user.id).gte('createdAt', currentCycleStart).single();
   if (existingVote) return res.status(400).json({ error: "Hai già votato in questo ciclo." });

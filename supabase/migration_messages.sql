@@ -9,14 +9,14 @@ CREATE TABLE IF NOT EXISTS messages (
     "receiverName" TEXT NOT NULL,
     subject TEXT DEFAULT '',
     body TEXT NOT NULL,
-    read BOOLEAN DEFAULT false,
+    "read" BOOLEAN DEFAULT false,
     "createdAt" TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Indexes for efficient queries
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages("receiverId", "createdAt" DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages("senderId", "createdAt" DESC);
-CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages("receiverId") WHERE read = false;
+CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages("receiverId") WHERE "read" = false;
 
 -- Enable RLS
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;

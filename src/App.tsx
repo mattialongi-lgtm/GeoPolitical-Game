@@ -6457,8 +6457,84 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                     </div>
                   </div>
                 )}
+                {/* Autonomy Laws */}
+                {(selectedLaw === 'grant_autonomy' || selectedLaw === 'revoke_autonomy') && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Regione Bersaglio</label>
+                      <input type="text" placeholder="Es: IT-LOM, IT-SIC..." value={paramsForm.targetRegionId || ''} onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500 uppercase" />
+                    </div>
+                    {selectedLaw === 'grant_autonomy' && (
+                      <div>
+                        <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Quota Profitto Regionale (%)</label>
+                        <input type="number" min="0" max="100" placeholder="Es: 30" value={paramsForm.profitShare || ''} onChange={e => setParamsForm({ ...paramsForm, profitShare: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
+                        <p className="text-[10px] font-bold text-slate-400 mt-1">La regione tratterrà questa % degli utili, il resto andrà allo Stato.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {selectedLaw === 'change_profit_share' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Regione Autonoma</label>
+                      <input type="text" placeholder="Es: IT-LOM..." value={paramsForm.targetRegionId || ''} onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500 uppercase" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Nuova Quota Profitto Regionale (%)</label>
+                      <input type="number" min="0" max="100" placeholder="Es: 40" value={paramsForm.profitShare || ''} onChange={e => setParamsForm({ ...paramsForm, profitShare: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
+                    </div>
+                  </div>
+                )}
+                {(selectedLaw === 'change_worker_tax' || selectedLaw === 'change_industry_tax') && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Nuova Aliquota (%)</label>
+                      <input type="number" min="0" max="100" placeholder="Es: 15" value={paramsForm.tax || ''} onChange={e => setParamsForm({ ...paramsForm, tax: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Regione (opzionale, default: la tua)</label>
+                      <input type="text" placeholder="Es: IT-LOM..." value={paramsForm.targetRegionId || ''} onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500 uppercase" />
+                    </div>
+                  </div>
+                )}
+                {selectedLaw === 'build_regional_building' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Tipo Edificio</label>
+                      <select value={paramsForm.buildingType || ''} onChange={e => setParamsForm({ ...paramsForm, buildingType: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500">
+                        <option value="">Seleziona...</option>
+                        <option value="hospital">🏥 Ospedale</option>
+                        <option value="military_base">🏛️ Base Militare</option>
+                        <option value="school">🏫 Scuola</option>
+                        <option value="military_academy">🎖️ Accademia Militare</option>
+                        <option value="missile_system">🚀 Sistema Missilistico</option>
+                        <option value="airport">✈️ Aeroporto</option>
+                        <option value="naval_port">⚓ Porto Navale</option>
+                        <option value="space_port">🛸 Porto Spaziale</option>
+                        <option value="real_estate_fund">🏘️ Fondo Immobiliare</option>
+                        <option value="power_plant">⚡ Centrale Elettrica</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Regione Bersaglio (opzionale)</label>
+                      <input type="text" placeholder="Es: IT-LOM..." value={paramsForm.targetRegionId || ''} onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500 uppercase" />
+                    </div>
+                  </div>
+                )}
+                {selectedLaw === 'assign_governor' && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Regione Autonoma</label>
+                      <input type="text" placeholder="Es: IT-LOM..." value={paramsForm.targetRegionId || ''} onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500 uppercase" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Utente Governatore</label>
+                      <input type="text" placeholder="UUID del giocatore" value={paramsForm.governorUserId || ''} onChange={e => setParamsForm({ ...paramsForm, governorUserId: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
+                    </div>
+                  </div>
+                )}
                 {/* Fallback for laws with no params like proclaim_dictatorship */}
-                {['change_market_tax', 'change_salary_tax', 'change_state_name', 'change_parliament_size', 'change_parliament_duration', 'transfer_budget', 'declare_war', 'peace_treaty', 'migration_agreement', 'revoke_migration_agreement', 'apply_sanctions', 'revoke_sanctions'].indexOf(selectedLaw) === -1 && (
+                {['change_market_tax', 'change_salary_tax', 'change_state_name', 'change_parliament_size', 'change_parliament_duration', 'transfer_budget', 'declare_war', 'peace_treaty', 'migration_agreement', 'revoke_migration_agreement', 'apply_sanctions', 'revoke_sanctions', 'grant_autonomy', 'revoke_autonomy', 'change_profit_share', 'change_worker_tax', 'change_industry_tax', 'build_regional_building', 'assign_governor'].indexOf(selectedLaw) === -1 && (
                   <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-500">
                     Questa legge non richiede parametri aggiuntivi.
                   </div>

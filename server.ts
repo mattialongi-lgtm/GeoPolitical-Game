@@ -534,6 +534,7 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
         *,
         owner:users!ownerUserId(username),
         leader:users!leaderUserId(username, level),
+        governor:users!governorPlayerId(username),
         nation:nations(*)
       `)
       .eq('id', isoId)
@@ -572,7 +573,7 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
     // 3. Get sibling regions
     const { data: memberRegions } = await supabase
       .from('regions')
-      .select('id, name, population')
+      .select('id, name, population, isCapital, isAutonomous')
       .eq('nation_id', region.nation_id);
 
     // 4. Construct response
@@ -582,6 +583,7 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       ownerName: region.owner?.username,
       leaderName: region.leader?.username,
       leaderLevel: region.leader?.level,
+      governorName: region.governor?.username || null,
       citizenCount: citizenCount || 0,
       memberRegions: memberRegions || [region],
       indicators: {

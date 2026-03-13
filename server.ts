@@ -4498,6 +4498,27 @@ export const LawRegistry: Record<string, {
               p_metadata: { from: loser, warId: existingWar.id }
             });
           }
+
+          // Territory Annexation: If Attacker wins, they take the defender's region
+          if (winner === existingWar.attackerCountryIso2) {
+            const { data: attackerRegion } = await supabase.from('regions').select('ownerUserId, leaderUserId, nation_id, stateColor, governmentForm, leaderTitle, dictatorship').eq('id', winner).single();
+            const conquestLeader = attackerRegion?.leaderUserId || attackerRegion?.ownerUserId;
+            const conquestNation = attackerRegion?.nation_id || `nation_${winner}`;
+
+            if (attackerRegion && conquestLeader) {
+              await supabase.from('regions').update({
+                ownerUserId: conquestLeader,
+                leaderUserId: conquestLeader,
+                nation_id: conquestNation,
+                stateColor: attackerRegion.stateColor,
+                governmentForm: attackerRegion.governmentForm,
+                leaderTitle: attackerRegion.leaderTitle,
+                dictatorship: attackerRegion.dictatorship,
+                stability: 30
+              }).eq('id', loser);
+              console.log(`[PEACE TREATY] ${winner} ANNEXED ${loser} via treaty.`);
+            }
+          }
         }
         await supabase.from('wars').update({ status: 'ended', endsAt: new Date().toISOString() }).eq('id', existingWar.id);
       }
@@ -5923,15 +5944,18 @@ async function checkAndResolveWars() {
 
         // Conquest Logic: If Attacker wins, they take over the defender's region
         if (winner === war.attackerCountryIso2) {
-          const { data: attackerRegion } = await supabase.from('regions').select('ownerUserId, leaderUserId, nationId, nation_id').eq('id', winner).single();
+          const { data: attackerRegion } = await supabase.from('regions').select('ownerUserId, leaderUserId, nation_id, stateColor, governmentForm, leaderTitle, dictatorship').eq('id', winner).single();
           const conquestLeader = attackerRegion?.leaderUserId || attackerRegion?.ownerUserId;
-          const conquestNation = attackerRegion?.nationId || attackerRegion?.nation_id || `nation_${winner}`;
+          const conquestNation = attackerRegion?.nation_id || `nation_${winner}`;
           if (attackerRegion && conquestLeader) {
             await supabase.from('regions').update({
               ownerUserId: conquestLeader,
               leaderUserId: conquestLeader,
-              nationId: conquestNation,
               nation_id: conquestNation,
+              stateColor: attackerRegion.stateColor,
+              governmentForm: attackerRegion.governmentForm,
+              leaderTitle: attackerRegion.leaderTitle,
+              dictatorship: attackerRegion.dictatorship,
               stability: 30
             }).eq('id', loser);
 

@@ -269,3 +269,91 @@ export interface MigrationAgreement {
   sourceLawId?: string;
   updatedAt: number;
 }
+
+// ── Regional Resources System ──────────────────────────────
+
+export type ResourceType = 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore';
+
+export const RESOURCE_TYPES: ResourceType[] = ['oil', 'minerals', 'uranium', 'diamonds', 'gold_ore'];
+
+export const RESOURCE_LABELS: Record<ResourceType, string> = {
+  oil: 'Petrolio',
+  minerals: 'Minerali',
+  uranium: 'Uranio',
+  diamonds: 'Diamanti',
+  gold_ore: 'Oro',
+};
+
+export const RESOURCE_ICONS_MAP: Record<ResourceType, string> = {
+  oil: '🛢️',
+  minerals: '🪨',
+  uranium: '☢️',
+  diamonds: '💎',
+  gold_ore: '🥇',
+};
+
+export interface RegionResource {
+  regionId: string;
+  resourceType: ResourceType;
+  dailyAvailable: number;
+  dailyExtracted: number;
+  baseCapPerRecharge: number;
+}
+
+export interface PlayerExtractionState {
+  playerId: string;
+  regionId: string;
+  resourceType: ResourceType;
+  extractedSinceLastRecharge: number;
+}
+
+export interface ResourceRecharge {
+  regionId: string;
+  resourceType: ResourceType;
+  lastRechargeAt: string | null;
+  rechargedByUserId: string | null;
+}
+
+export interface DeepExploration {
+  id: string;
+  nationId: string;
+  resourceType: ResourceType;
+  level: number;
+  targetCap: number;
+  activatedByUserId: string;
+  startsAt: string;
+  endsAt: string;
+  isActive: boolean;
+  costDiamonds: number;
+  costEur: number;
+  costGold: number;
+}
+
+export interface DeepLevel {
+  level: number;
+  targetCap: number;
+  enabled: boolean;
+  description: string;
+}
+
+export interface DeepCostPreview {
+  targetCap: number;
+  numRegions: number;
+  sumDelta: number;
+  avgDelta: number;
+  costDiamonds: number;
+  costEur: number;
+  costGold: number;
+}
+
+export interface WorkExtractResult {
+  success: boolean;
+  amount: number;
+  resourceType: ResourceType;
+  remainingCycle: number;
+  remainingDaily: number;
+  xpGain: number;
+  energyCost: number;
+  error?: string;
+  reason?: string;
+}

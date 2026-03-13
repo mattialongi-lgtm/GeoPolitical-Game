@@ -125,7 +125,8 @@ const addXP = async (userId: string, amount: number) => {
 const PRIMARIES_CYCLE_MS = 5 * 24 * 60 * 60 * 1000;
 const getPrimariesCycleStart = () => new Date(Math.floor(Date.now() / PRIMARIES_CYCLE_MS) * PRIMARIES_CYCLE_MS).toISOString();
 
-// Cache for deep_levels configuration (rarely changes, queried frequently)
+// In-memory cache for deep_levels configuration (rarely changes, queried frequently).
+// Suitable for single-instance deployments; for multi-instance, consider a shared cache.
 let deepLevelsCache: any[] | null = null;
 let deepLevelsCacheTs = 0;
 const DEEP_LEVELS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes

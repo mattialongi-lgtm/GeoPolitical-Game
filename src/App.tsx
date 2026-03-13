@@ -3988,6 +3988,8 @@ export default function App() {
     }
   };
 
+  const pollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+
   useEffect(() => {
     // Check for existing session before initial data fetch to avoid race conditions
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -3997,15 +3999,16 @@ export default function App() {
       fetchData();
     });
 
-    let interval = setInterval(fetchData, 10000); // Polling every 10s
+    pollIntervalRef.current = setInterval(fetchData, 10000); // Polling every 10s
 
     // Pause polling when tab is hidden, resume when visible
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        clearInterval(interval);
+        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
       } else {
         fetchData(); // Refresh immediately on return
-        interval = setInterval(fetchData, 10000);
+        pollIntervalRef.current = setInterval(fetchData, 10000);
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -4024,7 +4027,7 @@ export default function App() {
     });
 
     return () => {
-      clearInterval(interval);
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       subscription.unsubscribe();
     };

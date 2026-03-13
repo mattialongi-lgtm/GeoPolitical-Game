@@ -2293,13 +2293,14 @@ app.post("/api/messages", authenticate, async (req: any, res) => {
   if (receiver.id === req.user.id) return res.status(400).json({ error: "Non puoi inviare messaggi a te stesso." });
 
   // Rate limit: max 1 message per 30 seconds
+  const MESSAGE_RATE_LIMIT_MS = 30 * 1000;
   const { data: lastMsg } = await supabase.from('messages')
     .select('createdAt')
     .eq('senderId', req.user.id)
     .order('createdAt', { ascending: false })
     .limit(1)
     .maybeSingle();
-  if (lastMsg && Date.now() - new Date(lastMsg.createdAt).getTime() < 30000) {
+  if (lastMsg && Date.now() - new Date(lastMsg.createdAt).getTime() < MESSAGE_RATE_LIMIT_MS) {
     return res.status(429).json({ error: "Attendi 30 secondi tra un messaggio e l'altro." });
   }
 
@@ -2470,6 +2471,7 @@ app.post("/api/work", authenticate, async (req: any, res) => {
     const taxRate = currentRegion?.marketTaxRate !== undefined ? currentRegion.marketTaxRate : 10;
     const stateShare = Math.floor(finalOutput * (taxRate / 100));
     const ownerShare = Math.floor((finalOutput - stateShare) * RESOURCE_MODE_OWNER_SHARE_PCT);
+    // Guarantee player always gets at least 1 resource — prevents "Output troppo basso" error for low-level factories
     const playerShare = Math.max(1, finalOutput - stateShare - ownerShare);
 
     // EXECUTE RESOURCE WORK

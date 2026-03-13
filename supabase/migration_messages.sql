@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS messages (
 -- Indexes for efficient queries
 CREATE INDEX IF NOT EXISTS idx_messages_receiver ON messages("receiverId", "createdAt" DESC);
 CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages("senderId", "createdAt" DESC);
-CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages("receiverId", read) WHERE read = false;
+CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages("receiverId") WHERE read = false;
 
 -- Enable RLS
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;

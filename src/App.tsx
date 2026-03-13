@@ -1179,7 +1179,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
     doAutoAttack();
     const iv = setInterval(doAutoAttack, 10 * 60 * 1000);
     return () => clearInterval(iv);
-  }, [autoAttack?.warId, autoAttack?.side, autoAttack?.weaponId]);
+  }, [autoAttack]);
 
   const handleTrain = async () => {
     if (user.energy < 10) { alert("Energia insufficiente!"); return; }

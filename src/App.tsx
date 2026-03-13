@@ -5174,7 +5174,7 @@ const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => 
     } finally {
       setLoading(false);
     }
-  }, [regionId, selectedResource]);
+  }, [regionId]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -5500,7 +5500,11 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
   useEffect(() => { computeCost(); }, [computeCost]);
 
   const handleActivate = async () => {
-    if (!costPreview || !window.confirm(`Confermi l'attivazione di Deep Exploration Lv${selectedLevel} per ${RESOURCE_LABELS[selectedResource as ResourceType]}?\n\nCosto: 💎${costPreview.costDiamonds.toLocaleString()} + €${costPreview.costEur.toLocaleString()}${costPreview.costGold > 0 ? ` + ${costPreview.costGold.toLocaleString()} gold` : ''}`)) return;
+    if (!costPreview) return;
+    const resLabel = RESOURCE_LABELS[selectedResource as ResourceType];
+    const goldPart = costPreview.costGold > 0 ? ` + ${costPreview.costGold.toLocaleString()} gold` : '';
+    const confirmMsg = `Confermi l'attivazione di Deep Exploration Lv${selectedLevel} per ${resLabel}?\n\nCosto: 💎${costPreview.costDiamonds.toLocaleString()} + €${costPreview.costEur.toLocaleString()}${goldPart}`;
+    if (!window.confirm(confirmMsg)) return;
 
     setActivating(true);
     setMessage(null);

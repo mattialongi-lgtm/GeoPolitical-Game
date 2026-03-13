@@ -5016,6 +5016,7 @@ app.post("/api/resources/work-extract", authenticate, async (req: any, res) => {
     const energyCost = parseInt(await getSetting('work_energy_cost_extract')) || 10;
     const perks = user.perks || {};
     const resistenza = perks['RESISTENZA'] || 0;
+    // Max 50% energy reduction at RESISTENZA level 50+ (same formula as factory work)
     const energyReduction = Math.min(0.5, resistenza / 100);
     const actualEnergyCost = Math.ceil(energyCost * (1 - energyReduction));
 
@@ -5457,6 +5458,28 @@ app.post("/api/resources/deep-exploration/activate", authenticate, async (req: a
     // Use the first region's budget as the national treasury
     const primaryRegionId = leaderRegions[0].id;
 
+    // Helper: rollback already-deducted costs on failure
+    const rollbackCosts = async (refundEur: boolean, refundDiamonds: boolean, reason: string) => {
+      if (refundEur && preview.costEur > 0) {
+        await supabase.rpc('add_budget_transaction', {
+          p_owner_type: 'REGION',
+          p_owner_id: primaryRegionId,
+          p_type: 'INCOME',
+          p_subtype: 'DEEP_EXPLORATION_REFUND',
+          p_money_delta: preview.costEur,
+          p_created_by: user.id,
+          p_metadata: { reason },
+        });
+      }
+      if (refundDiamonds && preview.costDiamonds > 0) {
+        const { data: dInv } = await supabase.from('user_inventory')
+          .select('quantity').eq('userId', user.id).eq('itemId', 'diamonds').maybeSingle();
+        await supabase.from('user_inventory')
+          .update({ quantity: (dInv?.quantity || 0) + preview.costDiamonds })
+          .eq('userId', user.id).eq('itemId', 'diamonds');
+      }
+    };
+
     if (preview.costEur > 0) {
       try {
         await supabase.rpc('add_budget_transaction', {
@@ -5486,18 +5509,7 @@ app.post("/api/resources/deep-exploration/activate", authenticate, async (req: a
       const currentDiamonds = diamondInv?.quantity || 0;
 
       if (currentDiamonds < preview.costDiamonds) {
-        // Rollback EUR if already deducted
-        if (preview.costEur > 0) {
-          await supabase.rpc('add_budget_transaction', {
-            p_owner_type: 'REGION',
-            p_owner_id: primaryRegionId,
-            p_type: 'INCOME',
-            p_subtype: 'DEEP_EXPLORATION_REFUND',
-            p_money_delta: preview.costEur,
-            p_created_by: user.id,
-            p_metadata: { reason: 'diamond_insufficient' },
-          });
-        }
+        await rollbackCosts(true, false, 'diamond_insufficient');
         return res.status(400).json({ error: `Diamanti insufficienti. Servono ${preview.costDiamonds}, hai ${currentDiamonds}.` });
       }
 
@@ -5509,25 +5521,7 @@ app.post("/api/resources/deep-exploration/activate", authenticate, async (req: a
     // Deduct gold from user if needed
     if (preview.costGold > 0) {
       if (user.gold < preview.costGold) {
-        // Rollback
-        if (preview.costEur > 0) {
-          await supabase.rpc('add_budget_transaction', {
-            p_owner_type: 'REGION',
-            p_owner_id: primaryRegionId,
-            p_type: 'INCOME',
-            p_subtype: 'DEEP_EXPLORATION_REFUND',
-            p_money_delta: preview.costEur,
-            p_created_by: user.id,
-            p_metadata: { reason: 'gold_insufficient' },
-          });
-        }
-        if (preview.costDiamonds > 0) {
-          const { data: dInv } = await supabase.from('user_inventory')
-            .select('quantity').eq('userId', user.id).eq('itemId', 'diamonds').maybeSingle();
-          await supabase.from('user_inventory')
-            .update({ quantity: (dInv?.quantity || 0) + preview.costDiamonds })
-            .eq('userId', user.id).eq('itemId', 'diamonds');
-        }
+        await rollbackCosts(true, true, 'gold_insufficient');
         return res.status(400).json({ error: `Gold insufficiente. Servono ${preview.costGold}, hai ${user.gold}.` });
       }
       await supabase.from('users').update({ gold: user.gold - preview.costGold }).eq('id', user.id);
@@ -6006,10 +6000,10 @@ async function startServer() {
     checkAndResolveWars();
   }, 60 * 1000); // Check every minute
 
-  // Daily Resource Reset (check every 5 minutes, run once per day)
+  // Daily Resource Reset (check every 5 minutes, run once per day at UTC midnight)
   let lastDailyReset = '';
   setInterval(async () => {
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
     if (today !== lastDailyReset) {
       lastDailyReset = today;
       await dailyResourceReset();

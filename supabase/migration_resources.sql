@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS game_settings (
 );
 
 -- Seed default settings
+-- NOTE: Values are stored as JSONB. Scalar values (numbers/strings) are parsed in
+-- application code via parseInt/parseFloat. JSON objects are used for structured config.
+-- Resource types in daily_available_base and base_cap_defaults must match RESOURCE_TYPES in src/types.ts.
 INSERT INTO game_settings (key, value, description) VALUES
   ('extraction_k',              '0.02',                                      'Coefficient K for per-work extraction amount'),
   ('recharge_cooldown_seconds', '7200',                                      'Cooldown between recharges in seconds (default 2h)'),

@@ -751,7 +751,7 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
             <Search className="w-5 h-5 text-slate-500" />
           </button>
           <button
-            onClick={() => navigate("/articles/new")}
+            onClick={() => navigate(`/articles/new?section=${section}`)}
             className="bg-emerald-600 text-white p-3 rounded-2xl shadow-lg shadow-emerald-100 hover:scale-105 transition-all"
           >
             <Plus className="w-6 h-6" />
@@ -1066,7 +1066,10 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
 
 const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, fetchData: () => void }) => {
   const navigate = useNavigate();
-  const [articleSection, setArticleSection] = useState<'global' | 'local'>('global');
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const initialSection = params.get('section') === 'local' ? 'local' : 'global';
+  const [articleSection, setArticleSection] = useState<'global' | 'local'>(initialSection);
   return (
     <motion.div
       key="article-new"
@@ -1634,6 +1637,7 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
 
   const handleWork = async (id: string) => {
     setActionLoading(true);
+    const factory = factories.find((f: any) => f.id === id);
     try {
       const res = await fetch("/api/work", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -1642,7 +1646,11 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
       const data = await res.json();
       if (data.error) alert(data.error);
       else {
-        alert(`Hai lavorato! +$${data.earnings} salario.${data.output ? ` L'azienda ha prodotto ${data.output} risorse.` : ''}`);
+        if (data.payMode === 'resource') {
+          alert(`Hai lavorato! +${data.output} ${factory?.type || 'risorse'} per te, ${data.ownerShare} al proprietario, ${data.stateShare} allo stato.`);
+        } else {
+          alert(`Hai lavorato! +$${data.earnings} salario.${data.output ? ` L'azienda ha prodotto ${data.output} risorse.` : ''}`);
+        }
         fetchData(); load();
       }
     } catch { alert("Errore"); } finally { setActionLoading(false); }
@@ -1663,6 +1671,19 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
         alert(`Fabbrica potenziata al livello ${data.newLevel}! Costo: 🪙 ${data.goldCost} Gold`);
         fetchData(); load();
       }
+    } catch { alert("Errore"); } finally { setActionLoading(false); }
+  };
+
+  const handlePayMode = async (id: string, payMode: string) => {
+    setActionLoading(true);
+    try {
+      const res = await fetch("/api/factories/paymode", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factoryId: id, payMode }),
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { load(); }
     } catch { alert("Errore"); } finally { setActionLoading(false); }
   };
 
@@ -1756,7 +1777,8 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
         <div className="grid gap-4">
           {filteredFactories.map(f => {
             const isOwner = f.ownerUserId === user?.id;
-            const needsBudget = f.budget < f.wage;
+            const isResourceMode = f.payMode === 'resource';
+            const needsBudget = !isResourceMode && f.budget < f.wage;
 
             return (
               <div key={f.id} className={`bg-white p-5 rounded-[2.5rem] shadow-sm border ${isOwner ? "border-indigo-200" : "border-slate-100"} space-y-4`}>
@@ -1772,6 +1794,7 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
                       </div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">
                         Estrazione <span className="text-slate-600">{RESOURCE_NAMES[f.type]}</span> • CEO <span className="text-indigo-500">{f.ownerName}</span>
+                        {isResourceMode ? <span className="ml-2 text-emerald-600">• Modalità Risorse</span> : <span className="ml-2 text-amber-600">• Stipendio Fisso</span>}
                       </p>
                     </div>
                   </div>
@@ -1781,16 +1804,23 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-50">
+                {isResourceMode ? (
                   <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100/50">
-                    <span className="text-[10px] font-black uppercase text-emerald-700/70">Salario Offerto</span>
-                    <span className="text-sm font-black text-emerald-700">${f.wage}</span>
+                    <span className="text-[10px] font-black uppercase text-emerald-700/70">Modalità</span>
+                    <span className="text-xs font-black text-emerald-700">🪨 Scava {RESOURCE_NAMES[f.type]} (diviso tra player, proprietario e stato)</span>
                   </div>
-                  <div className={`${needsBudget ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl flex items-center justify-between border`}>
-                    <span className={`text-[10px] font-black uppercase ${needsBudget ? 'text-rose-700/70' : 'text-slate-500'}`}>Budget Aziendale</span>
-                    <span className={`text-sm font-black ${needsBudget ? 'text-rose-600' : 'text-slate-700'}`}>${f.budget}</span>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-50">
+                    <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100/50">
+                      <span className="text-[10px] font-black uppercase text-emerald-700/70">Salario Offerto</span>
+                      <span className="text-sm font-black text-emerald-700">${f.wage}</span>
+                    </div>
+                    <div className={`${needsBudget ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl flex items-center justify-between border`}>
+                      <span className={`text-[10px] font-black uppercase ${needsBudget ? 'text-rose-700/70' : 'text-slate-500'}`}>Budget Aziendale</span>
+                      <span className={`text-sm font-black ${needsBudget ? 'text-rose-600' : 'text-slate-700'}`}>${f.budget}</span>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="flex gap-2">
                   <button
@@ -1798,36 +1828,58 @@ const PlayerFactoriesView = ({ user, fetchData }: { user: any; fetchData: () => 
                     disabled={actionLoading || needsBudget}
                     className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:shadow-none"
                   >
-                    💼 Lavora Qui (-10⚡)
+                    {isResourceMode ? `🪨 Scava ${RESOURCE_NAMES[f.type]} (-10⚡)` : '💼 Lavora Qui (-10⚡)'}
                   </button>
                 </div>
 
                 {isOwner && (
-                  <div className="pt-3 flex gap-2">
-                    <div className="flex-[2] flex gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        placeholder="Importo..."
-                        value={depositAmounts[f.id] || ""}
-                        onChange={e => setDepositAmounts(prev => ({ ...prev, [f.id]: e.target.value }))}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
+                  <div className="pt-3 space-y-3">
+                    {/* Pay mode toggle */}
+                    <div className="flex gap-2">
                       <button
-                        onClick={() => handleDeposit(f.id)}
-                        disabled={actionLoading || !depositAmounts[f.id]}
-                        className="px-4 py-2 bg-emerald-500 text-white font-black text-[10px] uppercase rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50 whitespace-nowrap"
+                        onClick={() => handlePayMode(f.id, 'salary')}
+                        disabled={actionLoading || !isResourceMode}
+                        className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${!isResourceMode ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                       >
-                        Versa Budget
+                        💰 Stipendio Fisso
+                      </button>
+                      <button
+                        onClick={() => handlePayMode(f.id, 'resource')}
+                        disabled={actionLoading || isResourceMode}
+                        className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${isResourceMode ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                      >
+                        🪨 Modalità Risorse
                       </button>
                     </div>
-                    <button
-                      onClick={() => handleUpgrade(f.id, f.level || 1)}
-                      disabled={actionLoading}
-                      className="w-full py-3 bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md shadow-amber-100 hover:bg-amber-600 hover:scale-[1.02] transition-all disabled:opacity-50"
-                    >
-                      ⬆️ Potenzia Livello (🪙 {Math.ceil(50 * Math.pow(1.5, (f.level || 1) - 1))} Gold)
-                    </button>
+                    {/* Deposit + Upgrade (only show deposit for salary mode) */}
+                    <div className="flex gap-2">
+                      {!isResourceMode && (
+                        <div className="flex-[2] flex gap-2">
+                          <input
+                            type="number"
+                            min="1"
+                            placeholder="Importo..."
+                            value={depositAmounts[f.id] || ""}
+                            onChange={e => setDepositAmounts(prev => ({ ...prev, [f.id]: e.target.value }))}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                          />
+                          <button
+                            onClick={() => handleDeposit(f.id)}
+                            disabled={actionLoading || !depositAmounts[f.id]}
+                            className="px-4 py-2 bg-emerald-500 text-white font-black text-[10px] uppercase rounded-xl hover:bg-emerald-600 transition-colors disabled:opacity-50 whitespace-nowrap"
+                          >
+                            Versa Budget
+                          </button>
+                        </div>
+                      )}
+                      <button
+                        onClick={() => handleUpgrade(f.id, f.level || 1)}
+                        disabled={actionLoading}
+                        className="w-full py-3 bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md shadow-amber-100 hover:bg-amber-600 hover:scale-[1.02] transition-all disabled:opacity-50"
+                      >
+                        ⬆️ Potenzia Livello (🪙 {Math.ceil(50 * Math.pow(1.5, (f.level || 1) - 1))} Gold)
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -2302,9 +2354,12 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
               const canAffordGold = (user.gold || 0) >= goldCost;
 
               return (
-                <div key={perk.id} className={`bg-white rounded-[2.5rem] border transition-all overflow-hidden ${isThisUpgrading ? "border-amber-200 shadow-amber-50 shadow-md" : blocked ? "border-slate-100 opacity-60" : "border-slate-100 shadow-sm"}`}>
+                <div key={perk.id} id={`perk-card-${perk.id}`} className={`bg-white rounded-[2.5rem] border transition-all overflow-hidden ${isThisUpgrading ? "border-amber-200 shadow-amber-50 shadow-md" : blocked ? "border-slate-100 opacity-60" : "border-slate-100 shadow-sm"}`}>
                   {/* Header */}
-                  <div className="p-6 pb-4">
+                  <div className="p-6 pb-4 cursor-pointer" onClick={() => {
+                    const el = document.getElementById(`perk-actions-${perk.id}`);
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }}>
                     <div className="flex items-start justify-between mb-3 gap-3">
                       <div className="flex items-center gap-3">
                         <span className="text-3xl shrink-0">{perk.icon}</span>
@@ -2338,7 +2393,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                   </div>
 
                   {/* Action area */}
-                  <div className="px-6 pb-6 space-y-4">
+                  <div id={`perk-actions-${perk.id}`} className="px-6 pb-6 space-y-4">
                     {/* Booster Section */}
                     <div className="pt-2 border-t border-slate-50">
                       {(() => {
@@ -2814,8 +2869,8 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
           {activeTab === 'info' && (
             <div className="grid grid-cols-2 gap-3">
               <div className="bg-slate-50 p-4 rounded-3xl text-center">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Popolazione</p>
-                <p className="text-xl font-black">{((region.population || 1000000) / 1000000).toFixed(1)}M</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cittadini</p>
+                <p className="text-xl font-black">{region.citizenCount ?? 0}</p>
               </div>
               <div className="bg-slate-50 p-4 rounded-3xl text-center">
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stabilità</p>
@@ -4186,7 +4241,7 @@ const Leaderboard = () => {
 // POLITICAL PARTIES COMPONENTS
 // ==========================================
 
-const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, reload, fetchData }: any) => {
+const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, reload, fetchData, primariesVoteCounts, hasVotedPrimaries }: any) => {
   const [activeTab, setActiveTab] = useState('info');
   const [loading, setLoading] = useState(false);
   const [targetUser, setTargetUser] = useState<any>(null);
@@ -4278,7 +4333,7 @@ const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, relo
       const res = await fetch("/api/parties/primaries-vote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ candidateId }) });
       const data = await res.json();
       if (data.error) alert(data.error);
-      else alert("Voto registrato!");
+      else { alert("Voto registrato!"); reload(); }
     } catch { alert("Errore"); }
   };
 
@@ -4337,7 +4392,8 @@ const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, relo
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {members.map((m: any) => {
-                  const isActive = m.level >= 60 && Date.now() - (m.lastLogin || 0) <= 24 * 60 * 60 * 1000 && Date.now() - m.joinedAt >= 72 * 60 * 60 * 1000;
+                  const lastLoginTs = typeof m.lastLogin === 'string' ? new Date(m.lastLogin).getTime() : (m.lastLogin || 0);
+                  const isActive = Date.now() - lastLoginTs <= 48 * 60 * 60 * 1000;
                   return (
                     <tr key={m.userId} className="hover:bg-slate-50 transition-colors">
                       <td className="py-4 px-2">
@@ -4442,6 +4498,13 @@ const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, relo
           <h3 className="text-2xl font-black text-slate-800 mb-2">Elezioni Primarie</h3>
           <p className="text-slate-500 font-bold mb-8 max-w-md mx-auto">Vota un membro del tuo partito! I vincitori avranno la possibilità di candidarsi al Parlamento per le Elezioni Nazionali. Ciclo ogni 5 giorni.</p>
 
+          {hasVotedPrimaries && (
+            <div className="flex items-center justify-center gap-2 mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
+              <Check className="w-4 h-4 text-emerald-600" />
+              <span className="text-xs font-black text-emerald-700 uppercase">Hai già votato in questo ciclo</span>
+            </div>
+          )}
+
           <div className="grid gap-3 max-w-lg mx-auto text-left">
             {members.map((m: any) => (
               <div key={m.userId} className="flex justify-between items-center bg-slate-50 p-4 rounded-2xl border border-slate-100 hover:border-indigo-200 transition-colors">
@@ -4452,9 +4515,18 @@ const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, relo
                     <p className="text-[10px] font-bold tracking-widest text-slate-400 uppercase">{m.role}</p>
                   </div>
                 </div>
-                <button onClick={() => handleVote(m.userId)} className="bg-indigo-600 text-white hover:bg-indigo-700 px-5 py-2 font-black tracking-widest uppercase text-xs rounded-xl shadow-md transition-all">
-                  Vota
-                </button>
+                <div className="flex items-center gap-3">
+                  <span className="text-sm font-black text-indigo-600">{primariesVoteCounts[m.userId] || 0} voti</span>
+                  {hasVotedPrimaries ? (
+                    <span className="bg-slate-200 text-slate-500 px-5 py-2 font-black tracking-widest uppercase text-xs rounded-xl">
+                      Votato
+                    </span>
+                  ) : (
+                    <button onClick={() => handleVote(m.userId)} className="bg-indigo-600 text-white hover:bg-indigo-700 px-5 py-2 font-black tracking-widest uppercase text-xs rounded-xl shadow-md transition-all">
+                      Vota
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -4590,9 +4662,9 @@ const PartyHub = ({ user, fetchData }: any) => {
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
 
   if (partyData && partyData.party) {
-    const { party, members, activeMembersCount } = partyData;
+    const { party, members, activeMembersCount, primariesVoteCounts, hasVotedPrimaries } = partyData;
     const myRole = members.find((m: any) => m.userId === user.id)?.role;
-    return <PartyDashboard party={party} members={members} activeMembersCount={activeMembersCount} myRole={myRole} user={user} reload={loadContent} fetchData={fetchData} />;
+    return <PartyDashboard party={party} members={members} activeMembersCount={activeMembersCount} myRole={myRole} user={user} reload={loadContent} fetchData={fetchData} primariesVoteCounts={primariesVoteCounts || {}} hasVotedPrimaries={!!hasVotedPrimaries} />;
   }
 
   if (showCreate) {

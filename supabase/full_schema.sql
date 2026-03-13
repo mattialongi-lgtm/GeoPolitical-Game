@@ -83,6 +83,7 @@ CREATE TABLE users (
     "boostersJson" TEXT DEFAULT '{}',
     "travelingTo" TEXT DEFAULT NULL,
     "travelingUntil" BIGINT DEFAULT NULL,
+    "militaryExp" INT DEFAULT 0,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" BIGINT
 );
@@ -165,6 +166,7 @@ CREATE TABLE factories (
     "ownerUserId" UUID REFERENCES users(id),
     wage BIGINT DEFAULT 50,
     budget BIGINT DEFAULT 0,
+    "payMode" TEXT DEFAULT 'salary', -- 'salary' (fixed wage) or 'resource' (resource-based)
     level INT DEFAULT 1,
     "cooldownSec" INT DEFAULT 600,
     "createdAt" TIMESTAMPTZ DEFAULT NOW()

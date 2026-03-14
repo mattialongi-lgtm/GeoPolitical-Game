@@ -1145,3 +1145,24 @@ ALTER TABLE deep_explorations ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "deep_explorations_read" ON deep_explorations FOR SELECT USING (true);
 ALTER TABLE resource_extraction_logs ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "extraction_logs_read" ON resource_extraction_logs FOR SELECT USING (auth.uid() = "playerId");
+
+-- RLS for Regional Autonomy tables
+ALTER TABLE regional_buildings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regional_parliament_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regional_laws ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regional_law_votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regional_budget_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE autonomy_history ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Regional buildings public read" ON regional_buildings FOR SELECT USING (true);
+CREATE POLICY "Regional buildings server manage" ON regional_buildings FOR ALL USING (true);
+CREATE POLICY "Regional parliament public read" ON regional_parliament_members FOR SELECT USING (true);
+CREATE POLICY "Regional parliament server manage" ON regional_parliament_members FOR ALL USING (true);
+CREATE POLICY "Regional laws public read" ON regional_laws FOR SELECT USING (true);
+CREATE POLICY "Regional laws server manage" ON regional_laws FOR ALL USING (true);
+CREATE POLICY "Regional law votes public read" ON regional_law_votes FOR SELECT USING (true);
+CREATE POLICY "Regional law votes server manage" ON regional_law_votes FOR ALL USING (true);
+CREATE POLICY "Regional budget tx public read" ON regional_budget_transactions FOR SELECT USING (true);
+CREATE POLICY "Regional budget tx server manage" ON regional_budget_transactions FOR ALL USING (true);
+CREATE POLICY "Autonomy history public read" ON autonomy_history FOR SELECT USING (true);
+CREATE POLICY "Autonomy history server manage" ON autonomy_history FOR ALL USING (true);

@@ -1,6 +1,7 @@
 -- ============================================================
 -- Migration: Regional Autonomy System
 -- Adds autonomy, buildings, energy, indices, taxes, extraction
+-- Run this in your Supabase SQL Editor to add regional autonomy
 -- ============================================================
 
 -- 1. Add autonomy columns to regions table
@@ -111,3 +112,27 @@ CREATE INDEX IF NOT EXISTS idx_regional_budget_tx_region ON regional_budget_tran
 CREATE INDEX IF NOT EXISTS idx_autonomy_history_region ON autonomy_history("regionId");
 CREATE INDEX IF NOT EXISTS idx_regions_autonomous ON regions("isAutonomous") WHERE "isAutonomous" = TRUE;
 CREATE INDEX IF NOT EXISTS idx_regions_nation ON regions("nation_id");
+
+-- 8. Row Level Security (RLS) for new tables
+ALTER TABLE regional_buildings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regional_parliament_members ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regional_laws ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regional_law_votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE regional_budget_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE autonomy_history ENABLE ROW LEVEL SECURITY;
+
+-- Public read policies (everyone can see autonomy data)
+CREATE POLICY "Regional buildings public read" ON regional_buildings FOR SELECT USING (true);
+CREATE POLICY "Regional parliament public read" ON regional_parliament_members FOR SELECT USING (true);
+CREATE POLICY "Regional laws public read" ON regional_laws FOR SELECT USING (true);
+CREATE POLICY "Regional law votes public read" ON regional_law_votes FOR SELECT USING (true);
+CREATE POLICY "Regional budget tx public read" ON regional_budget_transactions FOR SELECT USING (true);
+CREATE POLICY "Autonomy history public read" ON autonomy_history FOR SELECT USING (true);
+
+-- Server manage policies (service_role can do everything)
+CREATE POLICY "Regional buildings server manage" ON regional_buildings FOR ALL USING (true);
+CREATE POLICY "Regional parliament server manage" ON regional_parliament_members FOR ALL USING (true);
+CREATE POLICY "Regional laws server manage" ON regional_laws FOR ALL USING (true);
+CREATE POLICY "Regional law votes server manage" ON regional_law_votes FOR ALL USING (true);
+CREATE POLICY "Regional budget tx server manage" ON regional_budget_transactions FOR ALL USING (true);
+CREATE POLICY "Autonomy history server manage" ON autonomy_history FOR ALL USING (true);

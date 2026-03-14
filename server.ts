@@ -3,6 +3,7 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import cookieParser from "cookie-parser";
+import { randomBytes } from "crypto";
 import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, RESOURCE_TYPES, AUTONOMY_CONFIG, BUILDING_LABELS, FACTORY_CONFIG, EXTRACTION_CONFIG, factoryYieldMultiplier, factoryStorageLimit, estimateFactoryValue } from "./src/types";
 import type { ResourceType, DeepCostPreview, BuildingType, FactoryType, ExtractionBreakdown } from "./src/types";
 
@@ -10,6 +11,9 @@ console.log("Starting server.ts...");
 
 const app = express();
 const PORT = 3000;
+
+const generateSecureId = (length: number = 9): string =>
+  randomBytes(Math.ceil(length / 2)).toString("hex").slice(0, length);
 
 // Seeded Random Helper
 const seededRandom = (seed: string) => {
@@ -59,10 +63,10 @@ const generateGameStatsForCountry = (iso2: string) => {
 
 // Initialize Supabase Client (Service Role for admin bypass)
 const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || "";
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error("Supabase URL or Key missing in Environment Variables!");
+  throw new Error("Supabase URL or SUPABASE_SERVICE_ROLE_KEY missing in Environment Variables.");
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -666,7 +670,7 @@ app.post("/api/market/listings", authenticate, async (req: any, res) => {
   }
 
   try {
-    const offerId = Math.random().toString(36).substring(2, 11);
+    const offerId = generateSecureId(9);
     await supabase.from('market_offers').insert({
       id: offerId,
       sellerId: user.id,
@@ -1895,7 +1899,7 @@ app.post("/api/ministers/assign", authenticate, async (req: any, res) => {
 
     // 2. Insert new minister
     await supabase.from('ministers').insert({
-      id: Math.random().toString(36).substring(2, 11),
+      id: generateSecureId(9),
       stateId: iso2,
       userId,
       role,
@@ -2063,7 +2067,7 @@ app.post("/api/actions/apply", authenticate, async (req: any, res) => {
 
   if (!region) return res.status(404).json({ error: "Regione non trovata." });
 
-  const id = Math.random().toString(36).substring(2, 9);
+  const id = generateSecureId(7);
   const now = new Date().toISOString();
 
   if (!region.ownerUserId) {
@@ -2199,7 +2203,7 @@ app.post("/api/government/transition", authenticate, async (req: any, res) => {
 
   const { data: region } = await supabase.from('regions').select('leaderUserId, governmentForm').eq('id', regionId).single();
   if (!region) return res.status(404).json({ error: "Region not found." });
-  if (region.leaderUserId && region.leaderUserId !== user.id) {
+  if (region.leaderUserId !== user.id) {
     return res.status(403).json({ error: "Azione riservata al Leader dello Stato." });
   }
 
@@ -2413,7 +2417,7 @@ app.post("/api/actions/attack", authenticate, async (req: any, res) => {
       stability: Math.max(0, (region.stability || 100) - 20)
     }).eq('id', regionId);
 
-    const warId = Math.random().toString(36).substring(2, 9);
+    const warId = generateSecureId(7);
     await supabase.from('wars').insert({
       id: warId,
       attackerCountryIso2: user.regionId,
@@ -2536,7 +2540,7 @@ app.post("/api/articles", authenticate, async (req: any, res) => {
 
   if (count && count >= 5) return res.status(429).json({ error: "Rate limit exceeded (max 5 articles per hour)" });
 
-  const id = Math.random().toString(36).substring(2, 9);
+  const id = generateSecureId(7);
   const now = new Date().toISOString();
   const { error: insertError } = await supabase.from('articles').insert({
     id,
@@ -3309,7 +3313,7 @@ app.post("/api/sanctions/apply", authenticate, async (req: any, res) => {
   if (!isLeader && !minister) return res.status(403).json({ error: "Autorizzazione insufficiente." });
 
   await supabase.from('sanctions').insert({
-    id: Math.random().toString(36).substring(2, 11),
+    id: generateSecureId(9),
     fromStateId: finalFromStateId,
     targetStateId,
     status: 'ACTIVE',
@@ -3562,7 +3566,7 @@ app.post("/api/produce", authenticate, async (req: any, res) => {
 
     const startedAt = now + startOffset;
     const willCompleteAt = startedAt + weapon.timeMin * 60 * 1000 * amount;
-    const prodId = Math.random().toString(36).substring(2, 11);
+    const prodId = generateSecureId(9);
 
     // Atomic currency deduction first (before inserting to queue)
     const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
@@ -3690,7 +3694,7 @@ app.post("/api/parties/create", authenticate, async (req: any, res) => {
   const { data: existingMember } = await supabase.from('party_members').select('partyId').eq('userId', user.id).maybeSingle();
   if (existingMember) return res.status(400).json({ error: "Sei già membro di un partito." });
 
-  const partyId = Math.random().toString(36).substring(2, 11);
+  const partyId = generateSecureId(9);
   const now = Date.now();
 
   try {
@@ -3728,7 +3732,7 @@ app.post("/api/parties/create", authenticate, async (req: any, res) => {
 
     // 4. Log creation
     await supabase.from('party_logs').insert({
-      id: Math.random().toString(36).substring(2, 11),
+      id: generateSecureId(9),
       partyId,
       action: 'created',
       details: `Partito creato da ${user.username} in ${regionId}`,
@@ -3958,7 +3962,7 @@ app.post("/api/parties/kick", authenticate, async (req: any, res) => {
 
   await supabase.from('party_members').delete().eq('userId', targetUserId).eq('partyId', partyId);
 
-  const logId = Math.random().toString(36).substring(2, 11);
+  const logId = generateSecureId(9);
   await supabase.from('party_logs').insert({
     id: logId,
     partyId,
@@ -4079,7 +4083,7 @@ app.post("/api/parties/pay-wages", authenticate, async (req: any, res) => {
   await Promise.all(updates);
 
   await supabase.from('party_logs').insert({
-    id: Math.random().toString(36).substring(2, 11),
+    id: generateSecureId(9),
     partyId,
     action: 'pay_wages',
     details: `Pagati totali $${totalCash} e ${totalGold} Gold a ${validToPay.length} membri.`,
@@ -4133,7 +4137,7 @@ app.post("/api/parties/contribute", authenticate, async (req: any, res) => {
     }
 
     await supabase.from('party_logs').insert({
-      id: Math.random().toString(36).substring(2, 11),
+      id: generateSecureId(9),
       partyId: myMembership.partyId,
       action: 'contribution',
       details: `${user.username} ha inviato ${numAmount} ${itemType} a ID:${targetUserId}`,
@@ -4162,7 +4166,7 @@ app.post("/api/parties/invite", authenticate, async (req: any, res) => {
   if (existingInvite) return res.status(400).json({ error: "L'utente ha già un invito pendente." });
 
   await supabase.from('party_invites').insert({
-    id: Math.random().toString(36).substring(2, 11),
+    id: generateSecureId(9),
     partyId: myMembership.partyId,
     userId: targetUserId,
     invitedBy: user.id,
@@ -4223,7 +4227,7 @@ app.post("/api/parties/primaries-vote", authenticate, async (req: any, res) => {
   if (existingVote) return res.status(400).json({ error: "Hai già votato in questo ciclo." });
 
   await supabase.from('party_primaries').insert({
-    id: Math.random().toString(36).substring(2, 11),
+    id: generateSecureId(9),
     partyId: myMembership.partyId,
     candidateId,
     voterId: user.id,
@@ -4274,7 +4278,7 @@ app.post("/api/elections/vote", authenticate, async (req: any, res) => {
   if (existingVote) return res.status(400).json({ error: "Hai già votato." });
 
   await supabase.from('election_votes').insert({
-    id: Math.random().toString(36).substring(2, 11),
+    id: generateSecureId(9),
     electionId,
     voterId: user.id,
     partyId,
@@ -4452,7 +4456,7 @@ app.post("/api/blocs/create", authenticate, async (req: any, res) => {
   const { data: existingBloc } = await supabase.from('blocs').select('id').eq('name', name.trim()).maybeSingle();
   if (existingBloc) return res.status(409).json({ error: "Esiste già un blocco con questo nome." });
 
-  const id = Math.random().toString(36).substring(2, 11);
+  const id = generateSecureId(9);
   const now = new Date().toISOString();
 
   await supabase.from('blocs').insert({ id, name: name.trim(), logo: logo || '', description: description || '', ownerStateId: stateId, ownerUserId: user.id, createdAt: now });
@@ -4479,7 +4483,7 @@ app.post("/api/blocs/:id/apply", authenticate, async (req: any, res) => {
   if (existingApp) return res.status(400).json({ error: "Candidatura già pendente." });
 
   await supabase.from('bloc_applications').insert({
-    id: Math.random().toString(36).substring(2, 11),
+    id: generateSecureId(9),
     blocId,
     stateId,
     createdAt: new Date().toISOString(),
@@ -4547,7 +4551,7 @@ app.post("/api/blocs/:id/regulations/propose", authenticate, async (req: any, re
   const { data: existingProp } = await supabase.from('bloc_regulation_proposals').select('id').eq('blocId', blocId).eq('type', type).eq('status', 'pending').maybeSingle();
   if (existingProp) return res.status(400).json({ error: "Proposta già pendente." });
 
-  const id = Math.random().toString(36).substring(2, 11);
+  const id = generateSecureId(9);
   const now = new Date().toISOString();
   await supabase.from('bloc_regulation_proposals').insert({ id, blocId, type, proposedValue: value, createdAt: now, status: 'pending' });
   await supabase.from('bloc_votes').insert({ targetId: id, voterStateId: proposerStateId, choice: 1, createdAt: now });
@@ -4983,7 +4987,7 @@ export const LawRegistry: Record<string, {
       return null;
     },
     execute: async (region, params, sourceLawId) => {
-      const id = Math.random().toString(36).substring(2, 11);
+      const id = generateSecureId(9);
       const nowIso = new Date().toISOString();
       await supabase.from('migration_agreements').upsert({
         id,
@@ -5337,7 +5341,7 @@ export const LawRegistry: Record<string, {
         const durationDays = parseInt(await getSetting('deep_duration_days')) || 7;
         const startsAt = new Date();
         const endsAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
-        const deepId = 'deep_' + Math.random().toString(36).substring(2, 11);
+        const deepId = 'deep_' + generateSecureId(9);
 
         // Deduct costs from region budget
         if (preview.costEur > 0) {
@@ -5681,7 +5685,7 @@ app.post("/api/parliament/laws/propose", authenticate, async (req: any, res) => 
 
     if (activeLaw) return res.status(400).json({ error: "Una proposta simile è già in votazione o in attesa di sanzione." });
 
-    const lawId = `law_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+    const lawId = `law_${Date.now()}_${generateSecureId(6)}`;
     const nowIso = new Date().toISOString();
 
     // Check Dictatorship / Autocracies
@@ -6163,6 +6167,12 @@ app.post("/api/resources/work-extract", authenticate, async (req: any, res) => {
   }
 
   try {
+    const extractionCooldownMs = 2000;
+    const canExtract = await checkCooldown(user.id, 'resource_extract_work', extractionCooldownMs);
+    if (!canExtract) {
+      return res.status(429).json({ error: "Troppi tentativi ravvicinati. Riprova tra pochi secondi." });
+    }
+
     // 1. Energy check
     const energyCost = parseInt(await getSetting('work_energy_cost_extract')) || 10;
     const perks = user.perks || {};
@@ -6289,6 +6299,7 @@ app.post("/api/resources/work-extract", authenticate, async (req: any, res) => {
     // 11. XP
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
     await addXP(user.id, xpGain);
+    await updateCooldown(user.id, 'resource_extract_work');
 
     res.json({
       success: true,
@@ -6678,7 +6689,7 @@ app.post("/api/resources/deep-exploration/activate", authenticate, async (req: a
     const durationDays = parseInt(await getSetting('deep_duration_days')) || 7;
     const startsAt = new Date();
     const endsAt = new Date(startsAt.getTime() + durationDays * 24 * 60 * 60 * 1000);
-    const deepId = 'deep_' + Math.random().toString(36).substring(2, 11);
+    const deepId = 'deep_' + generateSecureId(9);
 
     await supabase.from('deep_explorations').insert({
       id: deepId,
@@ -7705,7 +7716,7 @@ async function checkAndResolveElections() {
 
     if (!activeElection) {
       await supabase.from('elections').insert({
-        id: Math.random().toString(36).substring(2, 11),
+        id: generateSecureId(9),
         regionId: r.id,
         status: 'active',
         createdAt: nowIso,

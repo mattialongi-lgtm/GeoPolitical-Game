@@ -2,7 +2,6 @@ import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
-import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, RESOURCE_TYPES, AUTONOMY_CONFIG, BUILDING_LABELS, FACTORY_CONFIG, EXTRACTION_CONFIG, factoryYieldMultiplier, factoryStorageLimit, estimateFactoryValue } from "./src/types";
 import type { ResourceType, DeepCostPreview, BuildingType, FactoryType, ExtractionBreakdown } from "./src/types";
@@ -11,7 +10,6 @@ console.log("Starting server.ts...");
 
 const app = express();
 const PORT = 3000;
-const SECRET_KEY = process.env.JWT_SECRET || "territorial-secret-key";
 
 // Seeded Random Helper
 const seededRandom = (seed: string) => {
@@ -1820,11 +1818,26 @@ app.post("/api/budget/explore", authenticate, async (req: any, res) => {
 
 app.get("/api/budget/:ownerType/:ownerId", authenticate, async (req: any, res) => {
   const { ownerType, ownerId } = req.params;
+  const normalizedOwnerType = String(ownerType || '').toUpperCase();
+
+  if (normalizedOwnerType !== 'REGION') {
+    return res.status(403).json({ error: "Tipo di budget non autorizzato." });
+  }
+
+  const { data: region, error: regionError } = await supabase
+    .from('regions')
+    .select('ownerUserId')
+    .eq('id', ownerId)
+    .single();
+
+  if (regionError || !region || region.ownerUserId !== req.user.id) {
+    return res.status(403).json({ error: "Azione riservata al Leader." });
+  }
 
   const { data: budget, error: budgetError } = await supabase
     .from('budgets')
     .select('*')
-    .eq('ownerType', ownerType)
+    .eq('ownerType', normalizedOwnerType)
     .eq('ownerId', ownerId)
     .single();
 
@@ -1836,6 +1849,8 @@ app.get("/api/budget/:ownerType/:ownerId", authenticate, async (req: any, res) =
     .eq('budgetId', budget.id)
     .order('createdAt', { ascending: false })
     .limit(50);
+
+  if (txError) return res.status(500).json({ error: "Errore nel recupero transazioni." });
 
   // Format to match old structure (t.username instead of t.users.username)
   const formattedTxs = (transactions || []).map((t: any) => ({
@@ -2834,10 +2849,20 @@ app.put("/api/messages/:id/read", authenticate, async (req: any, res) => {
 // Delete a message
 app.delete("/api/messages/:id", authenticate, async (req: any, res) => {
   const { id } = req.params;
+  const { data: message, error: messageError } = await supabase.from('messages')
+    .select('senderId, receiverId')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (messageError) return res.status(500).json({ error: messageError.message });
+  if (!message) return res.status(404).json({ error: "Messaggio non trovato." });
+  if (message.senderId !== req.user.id && message.receiverId !== req.user.id) {
+    return res.status(403).json({ error: "Non autorizzato a eliminare questo messaggio." });
+  }
+
   const { error } = await supabase.from('messages')
     .delete()
-    .eq('id', id)
-    .or(`senderId.eq.${req.user.id},receiverId.eq.${req.user.id}`);
+    .eq('id', id);
   if (error) return res.status(500).json({ error: error.message });
   res.json({ success: true });
 });

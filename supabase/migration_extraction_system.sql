@@ -94,7 +94,17 @@ INSERT INTO game_settings (key, value, description) VALUES
   ('extraction_work_exp_exponent',      '0.6',   'Exponent for work experience in productivity formula'),
   ('extraction_nation_bonus',           '1.2',   'Nation/global production bonus multiplier'),
   ('extraction_gold_to_money',          '3.538975', 'Money generated per unit of gold produced'),
-  ('extraction_work_exp_gain',          '1',     'Work experience gained per extraction action')
+  ('extraction_work_exp_gain',          '1',     'Work experience gained per extraction action'),
+  ('extraction_balancing_multipliers',  '{"gold_ore":4,"oil":1,"minerals":1,"uranium":1,"diamonds":0.001,"liquid_oxygen":0.2,"helium3":0.001,"rivalium":1}', 'Final balancing multipliers per resource type'),
+  ('extraction_resource_coeff_multipliers', '{"gold_ore":0.4,"oil":0.65,"minerals":0.65,"uranium":0.75,"diamonds":0.75}', 'Resource coefficient multipliers based on region max cap'),
+  ('extraction_consumption_gold_ore',   '{"linearCoeff":200000,"baseOffset":20000000}', 'Regional consumption formula coefficients for gold'),
+  ('extraction_consumption_oil',        '{"linearCoeff":200000,"baseOffset":20000000}', 'Regional consumption formula coefficients for oil'),
+  ('extraction_consumption_minerals',   '{"linearCoeff":200000,"baseOffset":20000000}', 'Regional consumption formula coefficients for minerals'),
+  ('extraction_consumption_uranium',    '{"linearCoeff":200000,"baseOffset":20000000}', 'Regional consumption formula coefficients for uranium'),
+  ('extraction_consumption_diamonds',   '{"linearCoeff":250,"baseOffset":25000}', 'Regional consumption formula coefficients for diamonds'),
+  ('extraction_consumption_helium3',    '{"linearCoeff":250,"baseOffset":25000}', 'Regional consumption formula coefficients for helium3'),
+  ('extraction_energy_resource_multiplier', '2', 'Multiplier for power plants in energy-based resource coefficient'),
+  ('extraction_energy_resource_exponent',   '0.4', 'Exponent for energy-based resource coefficient')
 ON CONFLICT (key) DO NOTHING;
 
 -- ────────────────────────────────────────────────────────────

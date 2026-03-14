@@ -3306,6 +3306,21 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
         <GovernmentView region={region} currentUser={user} onUpdate={fetchCountryDetail} />
       ) : activeTab === 'resources' ? (
         <div className="space-y-4">
+          {/* Link to Advanced Extraction Dashboard */}
+          <div className="bg-emerald-50 p-4 rounded-[2rem] border border-emerald-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-black text-emerald-800">⛏️ Dashboard Estrazione Avanzata</h4>
+                <p className="text-[10px] font-bold text-emerald-600 mt-1">Visualizza cap, analytics 24h, leaderboard, esperienza lavorativa e distribuzione risorse.</p>
+              </div>
+              <button
+                onClick={() => navigate(`/extraction/${region.id}`)}
+                className="px-4 py-2 bg-emerald-500 text-white rounded-xl font-black text-xs uppercase hover:bg-emerald-600 transition-all"
+              >
+                Apri →
+              </button>
+            </div>
+          </div>
           <RegionResourcesTab regionId={region.id} user={user} />
           {/* Show recharge panel for leader/economy minister */}
           {(region.ownerUserId === user?.id || region.economicAdviserId === user?.id) && (

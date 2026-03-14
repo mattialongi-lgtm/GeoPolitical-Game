@@ -750,7 +750,8 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
     .single();
 
   if (fError || !factory) return res.status(404).json({ error: "Nessuna fabbrica trovata" });
-  if (user.level < factory.minLevel) return res.status(400).json({ error: `Richiede livello ${factory.minLevel}` });
+  const factoryMinLevel = factory.minLevel ?? 1;
+  if (user.level < factoryMinLevel) return res.status(400).json({ error: `Richiede livello ${factoryMinLevel}` });
   if (factory.isActive === false) return res.status(400).json({ error: "Fabbrica non attiva." });
 
   // 2. Check Immigration/Work Restrictions
@@ -784,7 +785,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   const perks = user.perks || {};
   const resistenza = perks['RESISTENZA'] || 0;
   const energyReduction = Math.min(0.5, resistenza / 100);
-  const energyCost = Math.ceil(factory.energyCost * (1 - energyReduction));
+  const energyCost = Math.ceil((factory.energyCost ?? 10) * (1 - energyReduction));
 
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
@@ -817,7 +818,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
     grossValue = baseMoney;
   } else if (factory.payMode === 'salary') {
     // Salary mode: pay fixed wage from budget
-    const earnings = Math.floor(factory.payoutMoney * (1 + forzaBoost));
+    const earnings = Math.floor((factory.payoutMoney ?? factory.wage ?? 50) * (1 + forzaBoost));
     const taxes = Math.floor(earnings * (taxRate / 100));
     netEarningsMoney = earnings - taxes;
     grossValue = earnings;
@@ -853,25 +854,20 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
       // Gold mine: deduct energy, add money and gold to worker
       const { error: energyErr } = await supabase.rpc('safe_deduct_currency', {
         p_user_id: user.id,
-        p_money_cost: 0,
-        p_gold_cost: 0,
+        p_money_cost: -netEarningsMoney,  // negative cost = add money
+        p_gold_cost: netEarningsGold >= 1 ? -Math.floor(netEarningsGold) : 0,
         p_energy_cost: energyCost,
       });
       if (energyErr) throw energyErr;
 
-      // Add money to player
-      await supabase.from('users').update({ money: user.money + netEarningsMoney }).eq('id', user.id);
-      // Add gold to player - only whole units awarded; fractional amounts < 1 are not accumulated
-      // This is by design: gold is a premium currency, higher-level gold mines earn more per action
-      if (netEarningsGold >= 1) {
-        await supabase.from('users').update({ gold: user.gold + Math.floor(netEarningsGold) }).eq('id', user.id);
-      }
-      // Owner profit: add money to owner
+      // Owner profit: atomically increment owner's money
       if (ownerCut > 0 && factory.ownerUserId !== user.id) {
-        const { data: owner } = await supabase.from('users').select('money').eq('id', factory.ownerUserId).single();
-        if (owner) {
-          await supabase.from('users').update({ money: owner.money + ownerCut }).eq('id', factory.ownerUserId);
-        }
+        await supabase.rpc('safe_deduct_currency', {
+          p_user_id: factory.ownerUserId,
+          p_money_cost: -ownerCut,  // negative cost = add money
+          p_gold_cost: 0,
+          p_energy_cost: 0,
+        });
       }
       // Tax to region
       const moneyTax = Math.floor(FACTORY_CONFIG.GOLD_MINE_MONEY_PER_WORK * yieldMult * (1 + forzaBoost) * (taxRate / 100));
@@ -912,12 +908,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
         }
       }
 
-      // Owner gets resource cut into factory storage
-      if (ownerCut > 0) {
-        await supabase.from('factories')
-          .update({ currentStorage: (factory.currentStorage || 0) + ownerCut })
-          .eq('id', factoryId);
-      }
+      // Owner gets resource cut into factory storage (handled atomically below)
 
       // State gets resource tax via budget transaction
       if (stateResourceOutput > 0) {
@@ -932,15 +923,17 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
       }
     }
 
-    // Update factory economy counters
-    // For gold mines, track grossValue as production since they produce currency, not physical resources
+    // Atomically update factory economy counters and storage (prevents race conditions)
     const productionCount = isGoldMine ? grossValue : (playerResourceOutput + stateResourceOutput + ownerCut);
-    await supabase.from('factories').update({
-      totalWorkerCount: (factory.totalWorkerCount || 0) + 1,
-      totalProduction: (factory.totalProduction || 0) + productionCount,
-      totalOwnerProfit: (factory.totalOwnerProfit || 0) + ownerCut,
-      totalTaxesPaid: (factory.totalTaxesPaid || 0) + Math.floor(grossValue * (taxRate / 100)),
-    }).eq('id', factoryId);
+    const storageDelta = (!isGoldMine && ownerCut > 0) ? ownerCut : 0;
+    await supabase.rpc('increment_factory_counters', {
+      p_factory_id: factoryId,
+      p_worker_count: 1,
+      p_production: productionCount,
+      p_owner_profit: ownerCut,
+      p_taxes_paid: Math.floor(grossValue * (taxRate / 100)),
+      p_storage_delta: storageDelta,
+    });
 
     // Log economy daily aggregate
     try {

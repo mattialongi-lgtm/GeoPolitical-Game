@@ -177,3 +177,28 @@ BEGIN
   END IF;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ═══════════════════════════════════════════════════════════
+-- 6. Atomic factory counter increment RPC
+--    Prevents race conditions when multiple workers work
+--    the same factory simultaneously.
+-- ═══════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION increment_factory_counters(
+  p_factory_id UUID,
+  p_worker_count INT DEFAULT 1,
+  p_production BIGINT DEFAULT 0,
+  p_owner_profit BIGINT DEFAULT 0,
+  p_taxes_paid BIGINT DEFAULT 0,
+  p_storage_delta BIGINT DEFAULT 0
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE factories SET
+    "totalWorkerCount" = COALESCE("totalWorkerCount", 0) + p_worker_count,
+    "totalProduction"  = COALESCE("totalProduction", 0)  + p_production,
+    "totalOwnerProfit" = COALESCE("totalOwnerProfit", 0) + p_owner_profit,
+    "totalTaxesPaid"   = COALESCE("totalTaxesPaid", 0)   + p_taxes_paid,
+    "currentStorage"   = COALESCE("currentStorage", 0)   + p_storage_delta
+  WHERE id = p_factory_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;

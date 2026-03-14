@@ -6167,7 +6167,7 @@ app.post("/api/resources/work-extract", authenticate, async (req: any, res) => {
   }
 
   try {
-    const extractionCooldownMs = 2000;
+    const extractionCooldownMs = parseInt(await getSetting('work_extract_cooldown_ms')) || 2000;
     const canExtract = await checkCooldown(user.id, 'resource_extract_work', extractionCooldownMs);
     if (!canExtract) {
       return res.status(429).json({ error: "Troppi tentativi ravvicinati. Riprova tra pochi secondi." });

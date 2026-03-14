@@ -4,8 +4,8 @@ import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
-import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, RESOURCE_TYPES, AUTONOMY_CONFIG, BUILDING_LABELS } from "./src/types";
-import type { ResourceType, DeepCostPreview, BuildingType } from "./src/types";
+import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, RESOURCE_TYPES, AUTONOMY_CONFIG, BUILDING_LABELS, FACTORY_CONFIG, factoryYieldMultiplier, factoryStorageLimit, estimateFactoryValue } from "./src/types";
+import type { ResourceType, DeepCostPreview, BuildingType, FactoryType } from "./src/types";
 
 console.log("Starting server.ts...");
 
@@ -751,6 +751,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
   if (fError || !factory) return res.status(404).json({ error: "Nessuna fabbrica trovata" });
   if (user.level < factory.min_level) return res.status(400).json({ error: `Richiede livello ${factory.min_level}` });
+  if (factory.isActive === false) return res.status(400).json({ error: "Fabbrica non attiva." });
 
   // 2. Check Immigration/Work Restrictions
   const { data: regionRel, error: rError } = await supabase
@@ -788,82 +789,202 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
   const forzaBoost = (perks['FORZA'] || 0) * 0.03;
-  const earnings = Math.floor(factory.payout_money * (1 + forzaBoost));
+  const taxRate = regionRel?.marketTaxRate !== undefined ? regionRel.marketTaxRate : FACTORY_CONFIG.DEFAULT_INDUSTRY_TAX_RATE;
 
-  const taxRate = regionRel?.marketTaxRate !== undefined ? regionRel.marketTaxRate : 10;
-  const taxes = Math.floor(earnings * (taxRate / 100));
-  const netEarnings = earnings - taxes;
+  // 5. Determine factory category and calculate outputs
+  const factoryType = factory.type || '';
+  const typeDef = FACTORY_CONFIG.TYPES[factoryType];
+  const isGoldMine = typeDef?.category === 'gold';
+  const level = factory.level || 1;
+  const yieldMult = factoryYieldMultiplier(level);
 
-  // 5. Resource output for resource-type factories (oil, minerals, uranium, diamonds)
-  const resourceTypes = ['oil', 'minerals', 'uranium', 'diamonds'];
-  let resourceOutput = 0;
+  let netEarningsMoney = 0;
+  let netEarningsGold = 0;
   let playerResourceOutput = 0;
   let stateResourceOutput = 0;
-  const factoryType = factory.type || '';
+  let ownerCut = 0;
+  let grossValue = 0;
 
-  if (resourceTypes.includes(factoryType)) {
-    const level = factory.level || 1;
-    let bonusMult = 1.0;
-    if (factoryType === 'oil') bonusMult = regionRel?.oilBonus || 1.0;
-    else if (factoryType === 'minerals') bonusMult = regionRel?.mineralsBonus || 1.0;
-    else if (factoryType === 'uranium') bonusMult = regionRel?.uraniumBonus || 1.0;
-    else if (factoryType === 'diamonds') bonusMult = regionRel?.diamondsBonus || 1.0;
+  if (isGoldMine) {
+    // Gold mine: dual payout (money + gold)
+    const baseMoney = Math.floor(FACTORY_CONFIG.GOLD_MINE_MONEY_PER_WORK * yieldMult * (1 + forzaBoost));
+    const baseGold = Math.round(FACTORY_CONFIG.GOLD_MINE_GOLD_PER_WORK * yieldMult * 100) / 100;
+    const moneyTax = Math.floor(baseMoney * (taxRate / 100));
+    const goldTax = Math.round(baseGold * (taxRate / 100) * 100) / 100;
+    netEarningsMoney = baseMoney - moneyTax;
+    netEarningsGold = Math.round((baseGold - goldTax) * 100) / 100;
+    ownerCut = Math.floor(baseMoney * FACTORY_CONFIG.OWNER_PROFIT_RATE);
+    grossValue = baseMoney;
+  } else if (factory.payMode === 'salary') {
+    // Salary mode: pay fixed wage from budget
+    const earnings = Math.floor(factory.payout_money * (1 + forzaBoost));
+    const taxes = Math.floor(earnings * (taxRate / 100));
+    netEarningsMoney = earnings - taxes;
+    grossValue = earnings;
+    ownerCut = 0; // salary mode: no owner cut, paid from budget
+  } else {
+    // Resource mode: mine resources
+    const resourceTypes = Object.keys(FACTORY_CONFIG.TYPES).filter(k => FACTORY_CONFIG.TYPES[k].category === 'resource');
+    if (resourceTypes.includes(factoryType)) {
+      let bonusMult = 1.0;
+      if (factoryType === 'oil') bonusMult = regionRel?.oilBonus || 1.0;
+      else if (factoryType === 'minerals') bonusMult = regionRel?.mineralsBonus || 1.0;
+      else if (factoryType === 'uranium') bonusMult = regionRel?.uraniumBonus || 1.0;
+      else if (factoryType === 'diamonds') bonusMult = regionRel?.diamondsBonus || 1.0;
 
-    resourceOutput = Math.max(1, Math.floor(level * 2 * bonusMult));
-    stateResourceOutput = Math.floor(resourceOutput * (taxRate / 100));
-    playerResourceOutput = resourceOutput - stateResourceOutput;
+      const resourceOutput = Math.max(1, Math.floor(level * FACTORY_CONFIG.BASE_RESOURCE_OUTPUT * bonusMult * (1 + forzaBoost)));
+      stateResourceOutput = Math.floor(resourceOutput * (taxRate / 100));
+      ownerCut = Math.floor(resourceOutput * FACTORY_CONFIG.OWNER_PROFIT_RATE);
+      playerResourceOutput = resourceOutput - stateResourceOutput - ownerCut;
+      if (playerResourceOutput < 0) playerResourceOutput = 0;
+      grossValue = resourceOutput * (FACTORY_CONFIG.RESOURCE_VALUES[typeDef?.resource || ''] || 1);
+
+      // Check storage capacity
+      const storageLimit = factoryStorageLimit(factoryType, level);
+      const currentStorage = factory.currentStorage || 0;
+      if (storageLimit > 0 && currentStorage + ownerCut > storageLimit) {
+        return res.status(400).json({ error: `Magazzino pieno! Capacità: ${storageLimit.toLocaleString()}, Attuale: ${currentStorage.toLocaleString()}` });
+      }
+    }
   }
 
   try {
-    // Perform updates via a custom RPC to ensure atomicity
-    const { error: workError } = await supabase.rpc('process_work_action', {
-      p_user_id: user.id,
-      p_factory_id: factoryId,
-      p_energy_cost: energyCost,
-      p_net_earnings: netEarnings,
-      p_taxes: taxes,
-      p_region_id: userRegion
-    });
+    if (isGoldMine) {
+      // Gold mine: deduct energy, add money and gold to worker
+      const { error: energyErr } = await supabase.rpc('safe_deduct_currency', {
+        p_user_id: user.id,
+        p_money_cost: 0,
+        p_gold_cost: 0,
+        p_energy_cost: energyCost,
+      });
+      if (energyErr) throw energyErr;
 
-    if (workError) throw workError;
+      // Add money to player
+      await supabase.from('users').update({ money: user.money + netEarningsMoney }).eq('id', user.id);
+      // Add gold to player (round to integer for DB)
+      if (netEarningsGold >= 1) {
+        await supabase.from('users').update({ gold: user.gold + Math.floor(netEarningsGold) }).eq('id', user.id);
+      }
+      // Owner profit: add money to owner
+      if (ownerCut > 0 && factory.ownerUserId !== user.id) {
+        const { data: owner } = await supabase.from('users').select('money').eq('id', factory.ownerUserId).single();
+        if (owner) {
+          await supabase.from('users').update({ money: owner.money + ownerCut }).eq('id', factory.ownerUserId);
+        }
+      }
+      // Tax to region
+      const moneyTax = Math.floor(FACTORY_CONFIG.GOLD_MINE_MONEY_PER_WORK * yieldMult * (1 + forzaBoost) * (taxRate / 100));
+      if (moneyTax > 0) {
+        await supabase.rpc('add_budget_transaction', {
+          p_owner_type: 'REGION',
+          p_owner_id: userRegion,
+          p_type: 'INCOME',
+          p_subtype: 'INDUSTRY_TAX',
+          p_money_delta: moneyTax,
+          p_metadata: { factoryType: 'gold', factoryId }
+        });
+      }
+    } else {
+      // Perform updates via a custom RPC to ensure atomicity
+      const { error: workError } = await supabase.rpc('process_work_action', {
+        p_user_id: user.id,
+        p_factory_id: factoryId,
+        p_energy_cost: energyCost,
+        p_net_earnings: netEarningsMoney,
+        p_taxes: Math.floor(grossValue * (taxRate / 100)),
+        p_region_id: userRegion
+      });
 
-    // Resource distribution: player gets resources minus state tax
-    if (playerResourceOutput > 0) {
-      const { data: existingInv } = await supabase.from('user_inventory')
-        .select('quantity').eq('userId', user.id).eq('itemId', factoryType).maybeSingle();
-      if (existingInv) {
-        await supabase.from('user_inventory')
-          .update({ quantity: existingInv.quantity + playerResourceOutput })
-          .eq('userId', user.id).eq('itemId', factoryType);
-      } else {
-        await supabase.from('user_inventory')
-          .insert({ userId: user.id, itemId: factoryType, quantity: playerResourceOutput });
+      if (workError) throw workError;
+
+      // Resource distribution: player gets resources minus state tax and owner cut
+      if (playerResourceOutput > 0) {
+        const { data: existingInv } = await supabase.from('user_inventory')
+          .select('quantity').eq('userId', user.id).eq('itemId', factoryType).maybeSingle();
+        if (existingInv) {
+          await supabase.from('user_inventory')
+            .update({ quantity: existingInv.quantity + playerResourceOutput })
+            .eq('userId', user.id).eq('itemId', factoryType);
+        } else {
+          await supabase.from('user_inventory')
+            .insert({ userId: user.id, itemId: factoryType, quantity: playerResourceOutput });
+        }
+      }
+
+      // Owner gets resource cut into factory storage
+      if (ownerCut > 0) {
+        await supabase.from('factories')
+          .update({ currentStorage: (factory.currentStorage || 0) + ownerCut })
+          .eq('id', factoryId);
+      }
+
+      // State gets resource tax via budget transaction
+      if (stateResourceOutput > 0) {
+        await supabase.rpc('add_budget_transaction', {
+          p_owner_type: 'REGION',
+          p_owner_id: userRegion,
+          p_type: 'INCOME',
+          p_subtype: 'RESOURCE_TAX',
+          p_money_delta: 0,
+          p_metadata: { resource: factoryType, quantity: stateResourceOutput, factoryId }
+        });
       }
     }
 
-    // State gets resource tax via budget transaction
-    if (stateResourceOutput > 0) {
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: userRegion,
-        p_type: 'INCOME',
-        p_subtype: 'RESOURCE_TAX',
-        p_money_delta: 0,
-        p_metadata: { resource: factoryType, quantity: stateResourceOutput, factoryId }
-      });
-    }
+    // Update factory economy counters
+    await supabase.from('factories').update({
+      totalWorkerCount: (factory.totalWorkerCount || 0) + 1,
+      totalProduction: (factory.totalProduction || 0) + (playerResourceOutput + stateResourceOutput + ownerCut),
+      totalOwnerProfit: (factory.totalOwnerProfit || 0) + ownerCut,
+      totalTaxesPaid: (factory.totalTaxesPaid || 0) + Math.floor(grossValue * (taxRate / 100)),
+    }).eq('id', factoryId);
 
-    // XP Gain (simplified, should ideally be in the RPC too)
+    // Log economy daily aggregate
+    try {
+      await supabase.rpc('upsert_factory_economy_log', {
+        p_factory_id: factoryId,
+        p_gross_income: grossValue,
+        p_taxes_paid: Math.floor(grossValue * (taxRate / 100)),
+        p_owner_profit: ownerCut,
+        p_production: playerResourceOutput + stateResourceOutput + ownerCut,
+      });
+    } catch { /* non-critical */ }
+
+    // Log worker action
+    try {
+      await supabase.from('factory_worker_logs').insert({
+        factoryId: factoryId,
+        workerId: user.id,
+        earningsMoney: netEarningsMoney,
+        earningsGold: netEarningsGold,
+        resourceType: isGoldMine ? 'gold_ore' : (playerResourceOutput > 0 ? factoryType : null),
+        resourceAmount: playerResourceOutput,
+        ownerCut: ownerCut,
+      });
+    } catch { /* non-critical */ }
+
+    // Update cooldown
+    await supabase.from('user_factory_cooldowns').upsert({
+      userId: user.id,
+      factoryId: factoryId,
+      lastUsed: new Date().toISOString(),
+    }, { onConflict: 'userId,factoryId' });
+
+    // XP Gain
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
     await addXP(user.id, xpGain);
 
     res.json({ 
       success: true, 
-      earnings: netEarnings, 
-      taxes, 
+      earnings: netEarningsMoney,
+      goldEarnings: netEarningsGold,
+      taxes: Math.floor(grossValue * (taxRate / 100)), 
       energyCost, 
       xpGain,
-      resourceOutput: playerResourceOutput > 0 ? { type: factoryType, player: playerResourceOutput, state: stateResourceOutput } : null
+      ownerCut,
+      isGoldMine,
+      payMode: factory.payMode,
+      resourceOutput: playerResourceOutput > 0 ? { type: factoryType, player: playerResourceOutput, state: stateResourceOutput, ownerCut } : null
     });
   } catch (err: any) {
     console.error("Work execution failed:", err);
@@ -910,13 +1031,12 @@ app.post("/api/factories/create", authenticate, async (req: any, res) => {
 
   if (!name || !type || !regionId) return res.status(400).json({ error: "Dati mancanti." });
 
-  const validTypes = ['oil', 'minerals', 'uranium', 'diamonds'];
+  const validTypes = Object.keys(FACTORY_CONFIG.TYPES);
   if (!validTypes.includes(type)) return res.status(400).json({ error: "Tipo di fabbrica non valido." });
 
-  const costs: Record<string, number> = { oil: 5000, minerals: 5000, uranium: 15000, diamonds: 25000 };
-  const cost = costs[type] || 5000;
+  const cost = FACTORY_CONFIG.CREATE_COST[type] || 5000;
 
-  if (user.money < cost) return res.status(400).json({ error: `Fondi insufficienti. Servono $${cost}.` });
+  if (user.money < cost) return res.status(400).json({ error: `Fondi insufficienti. Servono €${cost.toLocaleString()}.` });
 
   try {
     // Atomic currency deduction to prevent race conditions
@@ -939,6 +1059,14 @@ app.post("/api/factories/create", authenticate, async (req: any, res) => {
       budget: 0,
       level: 1,
       cooldownSec: 600,
+      currentStorage: 0,
+      isActive: true,
+      totalWorkerCount: 0,
+      totalProduction: 0,
+      totalOwnerProfit: 0,
+      totalTaxesPaid: 0,
+      listedForSale: false,
+      salePrice: 0,
       createdAt: new Date().toISOString()
     }).select().single();
 
@@ -1084,6 +1212,248 @@ app.post("/api/factories/upgrade", authenticate, async (req: any, res) => {
     res.json({ success: true, newLevel: result.levelAfter, goldCost: result.goldCost });
   } catch (err: any) {
     res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
+  }
+});
+
+
+// ── Factory Detail Endpoint ──────────────────────────────
+app.get("/api/factories/:id", authenticate, async (req: any, res) => {
+  const { id } = req.params;
+  try {
+    const { data: factory, error } = await supabase.from('factories').select('*').eq('id', id).single();
+    if (error || !factory) return res.status(404).json({ error: "Fabbrica non trovata." });
+
+    // Get owner name
+    const { data: owner } = await supabase.from('users').select('username').eq('id', factory.ownerUserId).single();
+
+    // Get economy logs (last 7 days)
+    const { data: econLogs } = await supabase.from('factory_economy_logs')
+      .select('*')
+      .eq('factoryId', id)
+      .order('logDate', { ascending: false })
+      .limit(7);
+
+    // Get recent worker logs (last 20)
+    const { data: workerLogs } = await supabase.from('factory_worker_logs')
+      .select('*')
+      .eq('factoryId', id)
+      .order('workedAt', { ascending: false })
+      .limit(20);
+
+    // Get worker names
+    const workerIds = [...new Set((workerLogs || []).map((w: any) => w.workerId))];
+    const workerNameMap: Record<string, string> = {};
+    if (workerIds.length > 0) {
+      const { data: workers } = await supabase.from('users').select('id, username').in('id', workerIds);
+      (workers || []).forEach((w: any) => { workerNameMap[w.id] = w.username; });
+    }
+
+    const typeDef = FACTORY_CONFIG.TYPES[factory.type] || {};
+    const level = factory.level || 1;
+    const yieldMult = factoryYieldMultiplier(level);
+    const storageCap = factoryStorageLimit(factory.type, level);
+    const storagePerLevel = FACTORY_CONFIG.STORAGE_PER_LEVEL[factory.type] || 0;
+
+    // Calculate average daily profit for valuation
+    const recentProfit = (econLogs || []).length > 0
+      ? (econLogs || []).reduce((sum: number, l: any) => sum + (l.ownerProfit || 0), 0) / (econLogs || []).length
+      : 0;
+    const estimatedValue = estimateFactoryValue(factory.type, level, recentProfit);
+
+    // Market listing status
+    const { data: listing } = await supabase.from('factory_market_listings')
+      .select('*')
+      .eq('factoryId', id)
+      .eq('status', 'active')
+      .maybeSingle();
+
+    res.json({
+      ...factory,
+      ownerName: owner?.username || 'Sconosciuto',
+      typeDef,
+      yieldMultiplier: Math.round(yieldMult * 100) / 100,
+      storageCapacity: storageCap,
+      storagePerLevel,
+      storagePercent: storageCap > 0 ? Math.round(((factory.currentStorage || 0) / storageCap) * 100) : 0,
+      estimatedValue,
+      economyLogs: (econLogs || []),
+      recentWorkers: (workerLogs || []).map((w: any) => ({ ...w, workerName: workerNameMap[w.workerId] || 'Sconosciuto' })),
+      activeListing: listing || null,
+      nextLevelYield: Math.round(factoryYieldMultiplier(level + 1) * 100) / 100,
+      nextLevelStorage: factoryStorageLimit(factory.type, level + 1),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nel caricamento dettaglio: " + err.message });
+  }
+});
+
+// ── Factory Market: List factories for sale ──────────────
+app.get("/api/factory-market", authenticate, async (req: any, res) => {
+  try {
+    const { data: listings, error } = await supabase.from('factory_market_listings')
+      .select('*')
+      .eq('status', 'active')
+      .order('listedAt', { ascending: false });
+
+    if (error) throw error;
+
+    // Get all factory details
+    const factoryIds = (listings || []).map((l: any) => l.factoryId);
+    let factoryMap: Record<string, any> = {};
+    if (factoryIds.length > 0) {
+      const { data: factories } = await supabase.from('factories').select('*').in('id', factoryIds);
+      (factories || []).forEach((f: any) => { factoryMap[f.id] = f; });
+    }
+
+    // Get seller names
+    const sellerIds = [...new Set((listings || []).map((l: any) => l.sellerId))];
+    const sellerMap: Record<string, string> = {};
+    if (sellerIds.length > 0) {
+      const { data: sellers } = await supabase.from('users').select('id, username').in('id', sellerIds);
+      (sellers || []).forEach((s: any) => { sellerMap[s.id] = s.username; });
+    }
+
+    const enriched = (listings || []).map((l: any) => {
+      const factory = factoryMap[l.factoryId] || {};
+      const typeDef = FACTORY_CONFIG.TYPES[factory.type] || {};
+      return {
+        ...l,
+        sellerName: sellerMap[l.sellerId] || 'Sconosciuto',
+        factory: {
+          ...factory,
+          typeDef,
+          yieldMultiplier: Math.round(factoryYieldMultiplier(factory.level || 1) * 100) / 100,
+          storageCapacity: factoryStorageLimit(factory.type, factory.level || 1),
+          estimatedValue: estimateFactoryValue(factory.type, factory.level || 1),
+        },
+      };
+    });
+
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nel caricamento mercato: " + err.message });
+  }
+});
+
+// ── Factory Market: List a factory for sale ──────────────
+app.post("/api/factory-market/list", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { factoryId, askingPrice } = req.body;
+
+  if (!factoryId || !askingPrice || askingPrice <= 0) {
+    return res.status(400).json({ error: "Parametri non validi." });
+  }
+
+  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
+  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
+  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
+  if (factory.listedForSale) return res.status(400).json({ error: "Fabbrica già in vendita." });
+
+  try {
+    // Create listing
+    const { data: listing, error: listErr } = await supabase.from('factory_market_listings').insert({
+      factoryId,
+      sellerId: user.id,
+      askingPrice: Math.floor(askingPrice),
+      status: 'active',
+    }).select().single();
+    if (listErr) throw listErr;
+
+    // Mark factory as listed
+    await supabase.from('factories').update({ listedForSale: true, salePrice: Math.floor(askingPrice) }).eq('id', factoryId);
+
+    res.json({ success: true, listing });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nella creazione annuncio: " + err.message });
+  }
+});
+
+// ── Factory Market: Buy a listed factory ──────────────
+app.post("/api/factory-market/buy", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { listingId } = req.body;
+
+  if (!listingId) return res.status(400).json({ error: "ID annuncio mancante." });
+
+  try {
+    const { data: listing } = await supabase.from('factory_market_listings')
+      .select('*').eq('id', listingId).eq('status', 'active').single();
+
+    if (!listing) return res.status(404).json({ error: "Annuncio non trovato o non più attivo." });
+    if (listing.sellerId === user.id) return res.status(400).json({ error: "Non puoi comprare la tua stessa fabbrica." });
+
+    const { data: result, error } = await supabase.rpc('transfer_factory_ownership', {
+      p_factory_id: listing.factoryId,
+      p_seller_id: listing.sellerId,
+      p_buyer_id: user.id,
+      p_price: listing.askingPrice,
+      p_listing_id: listingId,
+    });
+
+    if (error) throw error;
+    const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+    if (parsed?.error) return res.status(400).json({ error: parsed.error });
+
+    res.json({ success: true, ...parsed });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nell'acquisto: " + err.message });
+  }
+});
+
+// ── Factory Market: Cancel listing ──────────────
+app.post("/api/factory-market/cancel", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { listingId } = req.body;
+
+  if (!listingId) return res.status(400).json({ error: "ID annuncio mancante." });
+
+  try {
+    const { data: listing } = await supabase.from('factory_market_listings')
+      .select('*').eq('id', listingId).eq('status', 'active').single();
+
+    if (!listing) return res.status(404).json({ error: "Annuncio non trovato." });
+    if (listing.sellerId !== user.id) return res.status(403).json({ error: "Non sei il venditore." });
+
+    await supabase.from('factory_market_listings').update({ status: 'cancelled' }).eq('id', listingId);
+    await supabase.from('factories').update({ listedForSale: false, salePrice: 0 }).eq('id', listing.factoryId);
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nell'annullamento: " + err.message });
+  }
+});
+
+// ── All factories (world view) ──────────────
+app.get("/api/factories/all", authenticate, async (req: any, res) => {
+  try {
+    const { data: factories, error } = await supabase.from('factories')
+      .select('*')
+      .order('level', { ascending: false })
+      .limit(100);
+    if (error) throw error;
+
+    const ownerIds = [...new Set((factories || []).map((f: any) => f.ownerUserId).filter(Boolean))];
+    const ownerMap: Record<string, string> = {};
+    if (ownerIds.length > 0) {
+      const { data: owners } = await supabase.from('users').select('id, username').in('id', ownerIds);
+      (owners || []).forEach((o: any) => { ownerMap[o.id] = o.username; });
+    }
+
+    const enriched = (factories || []).map((f: any) => {
+      const typeDef = FACTORY_CONFIG.TYPES[f.type] || {};
+      return {
+        ...f,
+        ownerName: ownerMap[f.ownerUserId] || 'Sconosciuto',
+        typeDef,
+        yieldMultiplier: Math.round(factoryYieldMultiplier(f.level || 1) * 100) / 100,
+        storageCapacity: factoryStorageLimit(f.type, f.level || 1),
+        estimatedValue: estimateFactoryValue(f.type, f.level || 1),
+      };
+    });
+
+    res.json(enriched);
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore: " + err.message });
   }
 });
 

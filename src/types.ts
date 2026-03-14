@@ -182,6 +182,21 @@ export interface Factory {
   energyCost: number;
   cooldownSec: number;
   minLevel: number;
+  level: number;
+  budget: number;
+  payMode: 'salary' | 'resource';
+  ownerUserId: string;
+  regionId: string;
+  currentStorage: number;
+  isActive: boolean;
+  totalWorkerCount: number;
+  totalProduction: number;
+  totalOwnerProfit: number;
+  totalTaxesPaid: number;
+  listedForSale: boolean;
+  salePrice: number;
+  ownerName?: string;
+  remainingCooldown?: number;
 }
 
 export interface Application {
@@ -261,6 +276,149 @@ export const GAME_CONFIG = {
   MARKET_OFFER_COOLDOWN_MS: 5 * 60 * 1000, // 5 minutes
   MARKET_ANTI_ABUSE_PERCENTAGE: 1.10, // 110%
 };
+
+// ── Factory System Configuration ──────────────────────────
+export type FactoryType = 'gold' | 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'liquid_oxygen' | 'helium3' | 'rivalium';
+
+export const FACTORY_TYPES: FactoryType[] = ['gold', 'oil', 'minerals', 'uranium', 'diamonds', 'liquid_oxygen', 'helium3', 'rivalium'];
+
+/** Factory category: 'gold' produces money+gold, 'resource' produces a single resource */
+export type FactoryCategory = 'gold' | 'resource';
+
+export const FACTORY_CONFIG = {
+  // ── Factory type definitions ──
+  TYPES: {
+    gold:           { label: 'Miniera d\'Oro',          icon: '🪙', category: 'gold'     as FactoryCategory, resource: 'gold_ore',       rarity: 1, basePayout: 100 },
+    oil:            { label: 'Giacimento di Petrolio',   icon: '🛢️', category: 'resource' as FactoryCategory, resource: 'oil',            rarity: 2, basePayout: 0 },
+    minerals:       { label: 'Cava di Minerali',         icon: '🪨', category: 'resource' as FactoryCategory, resource: 'minerals',       rarity: 2, basePayout: 0 },
+    uranium:        { label: 'Cava di Uranio',            icon: '☢️', category: 'resource' as FactoryCategory, resource: 'uranium',        rarity: 4, basePayout: 0 },
+    diamonds:       { label: 'Miniera di Diamanti',      icon: '💎', category: 'resource' as FactoryCategory, resource: 'diamonds',       rarity: 5, basePayout: 0 },
+    liquid_oxygen:  { label: 'Impianto Ossigeno Liquido', icon: '🧊', category: 'resource' as FactoryCategory, resource: 'liquid_oxygen',  rarity: 6, basePayout: 0 },
+    helium3:        { label: 'Laboratorio Elio-3',       icon: '⚗️', category: 'resource' as FactoryCategory, resource: 'helium3',        rarity: 7, basePayout: 0 },
+    rivalium:       { label: 'Miniera di Rivalium',      icon: '🔮', category: 'resource' as FactoryCategory, resource: 'rivalium',       rarity: 9, basePayout: 0 },
+  } as Record<string, { label: string; icon: string; category: FactoryCategory; resource: string; rarity: number; basePayout: number }>,
+
+  // ── Creation costs (money) ──
+  CREATE_COST: {
+    gold: 10000,
+    oil: 5000,
+    minerals: 5000,
+    uranium: 15000,
+    diamonds: 25000,
+    liquid_oxygen: 30000,
+    helium3: 50000,
+    rivalium: 100000,
+  } as Record<string, number>,
+
+  // ── Storage constants per level (units per level) ──
+  STORAGE_PER_LEVEL: {
+    gold: 0,                // Gold mines produce currency, no physical storage needed
+    oil: 40_000_000,
+    minerals: 40_000_000,
+    uranium: 5_000_000,
+    diamonds: 50_000,
+    liquid_oxygen: 8_000_000,
+    helium3: 50_000,
+    rivalium: 10_000,
+  } as Record<string, number>,
+
+  // ── Yield multiplier formula: yield = 1 + (level - 1) * YIELD_GROWTH_RATE ──
+  YIELD_GROWTH_RATE: 0.08,  // 8% growth per level over level 1
+
+  // ── Resource output per work action: base = level * BASE_RESOURCE_OUTPUT * bonusMult ──
+  BASE_RESOURCE_OUTPUT: 2,
+
+  // ── Gold mine specific: dual payout ──
+  GOLD_MINE_MONEY_PER_WORK: 100,    // base money per work action
+  GOLD_MINE_GOLD_PER_WORK: 0.5,     // base gold per work action (fractional, accumulated)
+
+  // ── Owner profit: owner receives this % of gross production value ──
+  OWNER_PROFIT_RATE: 0.10,  // 10% of output value goes to owner
+
+  // ── Industrial tax rate (default, can be overridden by region) ──
+  DEFAULT_INDUSTRY_TAX_RATE: 10,  // percentage
+
+  // ── Resource base market values (for valuation and economy) ──
+  RESOURCE_VALUES: {
+    gold_ore: 50,
+    oil: 5,
+    minerals: 4,
+    uranium: 30,
+    diamonds: 200,
+    liquid_oxygen: 15,
+    helium3: 250,
+    rivalium: 1000,
+  } as Record<string, number>,
+
+  // ── Valuation formula weights ──
+  VALUATION: {
+    LEVEL_WEIGHT: 500,
+    RARITY_WEIGHT: 1000,
+    STORAGE_WEIGHT: 0.001,
+    PROFIT_WEIGHT: 30,     // multiplied by daily avg profit
+  },
+};
+
+/** Calculate yield multiplier for a factory level relative to level 1 */
+export function factoryYieldMultiplier(level: number): number {
+  return 1 + (Math.max(1, level) - 1) * FACTORY_CONFIG.YIELD_GROWTH_RATE;
+}
+
+/** Calculate storage limit for a factory type and level */
+export function factoryStorageLimit(factoryType: string, level: number): number {
+  const perLevel = FACTORY_CONFIG.STORAGE_PER_LEVEL[factoryType] || 0;
+  return perLevel * Math.max(1, level);
+}
+
+/** Estimate factory value based on type, level, and recent profit */
+export function estimateFactoryValue(factoryType: string, level: number, recentDailyProfit: number = 0): number {
+  const typeDef = FACTORY_CONFIG.TYPES[factoryType];
+  if (!typeDef) return 0;
+  const createCost = FACTORY_CONFIG.CREATE_COST[factoryType] || 0;
+  const levelValue = level * FACTORY_CONFIG.VALUATION.LEVEL_WEIGHT;
+  const rarityValue = typeDef.rarity * FACTORY_CONFIG.VALUATION.RARITY_WEIGHT;
+  const storageValue = factoryStorageLimit(factoryType, level) * FACTORY_CONFIG.VALUATION.STORAGE_WEIGHT;
+  const profitValue = recentDailyProfit * FACTORY_CONFIG.VALUATION.PROFIT_WEIGHT;
+  return Math.floor(createCost + levelValue + rarityValue + storageValue + profitValue);
+}
+
+// ── Factory Market Listing ──
+export interface FactoryMarketListing {
+  id: string;
+  factoryId: string;
+  sellerId: string;
+  sellerName?: string;
+  askingPrice: number;
+  listedAt: string;
+  status: 'active' | 'sold' | 'cancelled';
+  factory?: Factory;
+}
+
+// ── Factory Economy Log ──
+export interface FactoryEconomyLog {
+  id: string;
+  factoryId: string;
+  logDate: string;
+  workerCount: number;
+  grossIncome: number;
+  taxesPaid: number;
+  ownerProfit: number;
+  production: number;
+}
+
+// ── Factory Worker Log ──
+export interface FactoryWorkerLog {
+  id: string;
+  factoryId: string;
+  workerId: string;
+  workerName?: string;
+  workedAt: string;
+  earningsMoney: number;
+  earningsGold: number;
+  resourceType: string | null;
+  resourceAmount: number;
+  ownerCut: number;
+}
 
 // ── Regional Autonomy Configuration ──────────────────────
 export const AUTONOMY_CONFIG = {
@@ -472,9 +630,9 @@ export interface MigrationAgreement {
 
 // ── Regional Resources System ──────────────────────────────
 
-export type ResourceType = 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore';
+export type ResourceType = 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore' | 'liquid_oxygen' | 'helium3' | 'rivalium';
 
-export const RESOURCE_TYPES: ResourceType[] = ['oil', 'minerals', 'uranium', 'diamonds', 'gold_ore'];
+export const RESOURCE_TYPES: ResourceType[] = ['oil', 'minerals', 'uranium', 'diamonds', 'gold_ore', 'liquid_oxygen', 'helium3', 'rivalium'];
 
 export const RESOURCE_LABELS: Record<ResourceType, string> = {
   oil: 'Petrolio',
@@ -482,6 +640,9 @@ export const RESOURCE_LABELS: Record<ResourceType, string> = {
   uranium: 'Uranio',
   diamonds: 'Diamanti',
   gold_ore: 'Oro',
+  liquid_oxygen: 'Ossigeno Liquido',
+  helium3: 'Elio-3',
+  rivalium: 'Rivalium',
 };
 
 export const RESOURCE_ICONS_MAP: Record<ResourceType, string> = {
@@ -490,6 +651,9 @@ export const RESOURCE_ICONS_MAP: Record<ResourceType, string> = {
   uranium: '☢️',
   diamonds: '💎',
   gold_ore: '🥇',
+  liquid_oxygen: '🧊',
+  helium3: '⚗️',
+  rivalium: '🔮',
 };
 
 export interface RegionResource {

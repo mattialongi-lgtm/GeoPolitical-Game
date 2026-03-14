@@ -4,6 +4,9 @@
 -- Run this in your Supabase SQL Editor to add regional autonomy
 -- ============================================================
 
+-- 0. Ensure uuid-ossp extension is available
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- 1. Add autonomy columns to regions table
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS "isCapital" BOOLEAN DEFAULT FALSE;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS "isAutonomous" BOOLEAN DEFAULT FALSE;
@@ -121,18 +124,34 @@ ALTER TABLE regional_law_votes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE regional_budget_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE autonomy_history ENABLE ROW LEVEL SECURITY;
 
--- Public read policies (everyone can see autonomy data)
+-- RLS Policies (idempotent — safe to re-run)
+-- Uses DROP IF EXISTS + CREATE to handle any prior partial runs
+DROP POLICY IF EXISTS "Regional buildings public read" ON regional_buildings;
+DROP POLICY IF EXISTS "Regional buildings server manage" ON regional_buildings;
 CREATE POLICY "Regional buildings public read" ON regional_buildings FOR SELECT USING (true);
-CREATE POLICY "Regional parliament public read" ON regional_parliament_members FOR SELECT USING (true);
-CREATE POLICY "Regional laws public read" ON regional_laws FOR SELECT USING (true);
-CREATE POLICY "Regional law votes public read" ON regional_law_votes FOR SELECT USING (true);
-CREATE POLICY "Regional budget tx public read" ON regional_budget_transactions FOR SELECT USING (true);
-CREATE POLICY "Autonomy history public read" ON autonomy_history FOR SELECT USING (true);
-
--- Server manage policies (service_role can do everything)
 CREATE POLICY "Regional buildings server manage" ON regional_buildings FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Regional parliament public read" ON regional_parliament_members;
+DROP POLICY IF EXISTS "Regional parliament server manage" ON regional_parliament_members;
+CREATE POLICY "Regional parliament public read" ON regional_parliament_members FOR SELECT USING (true);
 CREATE POLICY "Regional parliament server manage" ON regional_parliament_members FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Regional laws public read" ON regional_laws;
+DROP POLICY IF EXISTS "Regional laws server manage" ON regional_laws;
+CREATE POLICY "Regional laws public read" ON regional_laws FOR SELECT USING (true);
 CREATE POLICY "Regional laws server manage" ON regional_laws FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Regional law votes public read" ON regional_law_votes;
+DROP POLICY IF EXISTS "Regional law votes server manage" ON regional_law_votes;
+CREATE POLICY "Regional law votes public read" ON regional_law_votes FOR SELECT USING (true);
 CREATE POLICY "Regional law votes server manage" ON regional_law_votes FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Regional budget tx public read" ON regional_budget_transactions;
+DROP POLICY IF EXISTS "Regional budget tx server manage" ON regional_budget_transactions;
+CREATE POLICY "Regional budget tx public read" ON regional_budget_transactions FOR SELECT USING (true);
 CREATE POLICY "Regional budget tx server manage" ON regional_budget_transactions FOR ALL USING (true);
+
+DROP POLICY IF EXISTS "Autonomy history public read" ON autonomy_history;
+DROP POLICY IF EXISTS "Autonomy history server manage" ON autonomy_history;
+CREATE POLICY "Autonomy history public read" ON autonomy_history FOR SELECT USING (true);
 CREATE POLICY "Autonomy history server manage" ON autonomy_history FOR ALL USING (true);

@@ -787,7 +787,10 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   const perks = user.perks || {};
   const resistenza = perks['RESISTENZA'] || 0;
   const energyReduction = Math.min(0.5, resistenza / 100);
-  const energyCost = Math.ceil((factory.energyCost ?? 10) * (1 - energyReduction));
+  // Regional Health Index reduces energy cost (capped at 10%)
+  const healthLevel = (regionRel?.healthIndex || 0) as number;
+  const healthRegionReduction = Math.min(0.10, healthLevel * AUTONOMY_CONFIG.INDEX_EFFECTS.health.energyCostReductionPerLevel);
+  const energyCost = Math.ceil((factory.energyCost ?? 10) * (1 - energyReduction - healthRegionReduction));
 
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
@@ -968,8 +971,10 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
       lastUsed: new Date().toISOString(),
     }, { onConflict: 'userId,factoryId' });
 
-    // XP Gain
-    const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
+    // XP Gain — boosted by regional Education Index
+    const educationLevel = (regionRel?.educationIndex || 0) as number;
+    const educationBonus = educationLevel * AUTONOMY_CONFIG.INDEX_EFFECTS.education.xpBonusPerLevel;
+    const xpGain = Math.round((GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2) * (1 + educationBonus));
     await addXP(user.id, xpGain);
 
     res.json({ 
@@ -2480,6 +2485,22 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
   const forzaBonus = (perks['FORZA'] || 0) * 0.05;
   const resistBonus = (perks['RESISTENZA'] || 0) * 0.03;
   totalDamage = Math.floor(totalDamage * (1 + forzaBonus + resistBonus));
+
+  // Apply Regional Military Index bonus to the attacker's region
+  const warRegionId = side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2;
+  if (warRegionId) {
+    try {
+      const warBuildings = await getRegionBuildings(warRegionId);
+      const warIndices   = calculateRegionalIndices(warBuildings);
+      const warEffects   = calculateIndexEffects(warIndices);
+      const regionalBonus = side === 'attacker' ? warEffects.warAttackBonus : warEffects.warDefenseBonus;
+      if (regionalBonus > 0) {
+        totalDamage = Math.floor(totalDamage * (1 + regionalBonus));
+      }
+    } catch (_e) {
+      // Non-critical: skip regional bonus if lookup fails
+    }
+  }
 
   try {
     // Deduct resources
@@ -4623,19 +4644,133 @@ async function getRegionBuildings(regionId: string): Promise<Record<string, numb
   return map;
 }
 
+// ── Index helpers ────────────────────────────────────────────────
+
+/** Compute the raw weighted building score for one index category. */
+function calcRawScore(key: string, buildings: Record<string, number>): number {
+  const weights = AUTONOMY_CONFIG.INDEX_WEIGHTS[key] || {};
+  let total = 0;
+  for (const [bt, w] of Object.entries(weights)) total += (buildings[bt] || 0) * (w as number);
+  return Math.round(total * 100) / 100;
+}
+
+/**
+ * Convert a raw building-score into a discrete level 0–10 using the
+ * configured threshold array.  Levels above 10 are capped at 10.
+ */
+function calculateIndexLevel(rawScore: number, thresholds: number[]): number {
+  let level = 0;
+  for (let i = 0; i < thresholds.length; i++) {
+    if (rawScore >= thresholds[i]) level = i + 1;
+    else break;
+  }
+  return Math.min(level, thresholds.length);
+}
+
+/**
+ * Return progress information toward the next index level.
+ *  - progressPercent: 0–100 (how far from previous threshold to the next)
+ *  - currentScore:    raw weighted building score
+ *  - nextThreshold:   raw score needed for next level (null = already maxed)
+ */
+function calculateIndexProgress(
+  rawScore: number,
+  thresholds: number[],
+  level: number
+): { progressPercent: number; currentScore: number; nextThreshold: number | null } {
+  if (level >= thresholds.length) {
+    // Maximum level reached
+    return { progressPercent: 100, currentScore: Math.round(rawScore), nextThreshold: null };
+  }
+  const prevThreshold = level > 0 ? thresholds[level - 1] : 0;
+  const nextThreshold = thresholds[level];
+  const progressInLevel = rawScore - prevThreshold;
+  const levelRange = nextThreshold - prevThreshold;
+  const progressPercent = Math.min(100, Math.max(0, (progressInLevel / levelRange) * 100));
+  return { progressPercent: Math.round(progressPercent * 100) / 100, currentScore: Math.round(rawScore), nextThreshold };
+}
+
+/** Map a developmentIndex level to a human-readable classification string. */
+function getRegionalClassification(developmentLevel: number): 'developed' | 'developing' | 'underdeveloped' {
+  const thresholds = AUTONOMY_CONFIG.CLASSIFICATION_THRESHOLDS;
+  if (developmentLevel >= thresholds.developed) return 'developed';
+  if (developmentLevel >= thresholds.developing) return 'developing';
+  return 'underdeveloped';
+}
+
+/**
+ * Compute all four regional indices (as 1–10 levels), their progress
+ * toward the next level, primary building counts, and classification.
+ * This is the central function for the Regional Indexes system.
+ */
 function calculateRegionalIndices(buildings: Record<string, number>) {
-  const cfg = AUTONOMY_CONFIG.INDEX_WEIGHTS;
-  const calc = (key: string) => {
-    const weights = cfg[key] || {};
-    let total = 0;
-    for (const [bt, w] of Object.entries(weights)) total += (buildings[bt] || 0) * w;
-    return Math.round(total * 100) / 100;
-  };
+  const thresholds = AUTONOMY_CONFIG.INDEX_THRESHOLDS;
+
+  const rawHealth      = calcRawScore('health',      buildings);
+  const rawMilitary    = calcRawScore('military',    buildings);
+  const rawEducation   = calcRawScore('education',   buildings);
+  const rawDevelopment = calcRawScore('development', buildings);
+
+  const healthIndex      = calculateIndexLevel(rawHealth,      thresholds.health);
+  const militaryIndex    = calculateIndexLevel(rawMilitary,    thresholds.military);
+  const educationIndex   = calculateIndexLevel(rawEducation,   thresholds.education);
+  const developmentIndex = calculateIndexLevel(rawDevelopment, thresholds.development);
+
+  const healthProg      = calculateIndexProgress(rawHealth,      thresholds.health,      healthIndex);
+  const militaryProg    = calculateIndexProgress(rawMilitary,    thresholds.military,    militaryIndex);
+  const educationProg   = calculateIndexProgress(rawEducation,   thresholds.education,   educationIndex);
+  const developmentProg = calculateIndexProgress(rawDevelopment, thresholds.development, developmentIndex);
+
+  const classification = getRegionalClassification(developmentIndex);
+
   return {
-    healthIndex: calc('health'),
-    militaryIndex: calc('military'),
-    educationIndex: calc('education'),
-    developmentIndex: calc('development'),
+    healthIndex,
+    militaryIndex,
+    educationIndex,
+    developmentIndex,
+    healthProgress:      healthProg.progressPercent,
+    militaryProgress:    militaryProg.progressPercent,
+    educationProgress:   educationProg.progressPercent,
+    developmentProgress: developmentProg.progressPercent,
+    regionalClassification: classification,
+    // Raw scores and next thresholds for UI display
+    raw: { health: rawHealth, military: rawMilitary, education: rawEducation, development: rawDevelopment },
+    nextThresholds: {
+      health:      healthProg.nextThreshold,
+      military:    militaryProg.nextThreshold,
+      education:   educationProg.nextThreshold,
+      development: developmentProg.nextThreshold,
+    },
+    // Primary building counts (for "X/Y building" display in UI)
+    primaryCounts: {
+      health:      buildings['hospital']          || 0,
+      military:    Math.round(rawMilitary * 10) / 10,
+      education:   buildings['school']            || 0,
+      development: buildings['real_estate_fund']  || 0,
+    },
+  };
+}
+
+/**
+ * Calculate the gameplay effects that the regional indices provide.
+ * Returns multipliers that other game systems can apply.
+ */
+function calculateIndexEffects(indices: ReturnType<typeof calculateRegionalIndices>) {
+  const fx = AUTONOMY_CONFIG.INDEX_EFFECTS;
+  return {
+    // HEALTH → reduces energy cost for actions performed in this region
+    energyCostReduction: indices.healthIndex * fx.health.energyCostReductionPerLevel,
+    // MILITARY → bonus to attack damage and defence reduction when deploying in wars
+    warAttackBonus:   indices.militaryIndex * fx.military.attackBonusPerLevel,
+    warDefenseBonus:  indices.militaryIndex * fx.military.defenseBonusPerLevel,
+    // EDUCATION → bonus XP from any action performed in this region
+    xpBonus: indices.educationIndex * fx.education.xpBonusPerLevel,
+    // DEVELOPMENT → salary multiplier and coup risk reduction
+    salaryMultiplier:      1 + indices.developmentIndex * fx.development.salaryMultiplierPerLevel,
+    coupRiskReduction:     indices.developmentIndex * fx.development.coupRiskReductionPerLevel,
+    // Summary for quick consumption
+    classification: indices.regionalClassification,
+    isAtRisk: indices.developmentIndex <= 1, // Region arretrata — instability risk active
   };
 }
 
@@ -4695,13 +4830,18 @@ async function recalculateRegionStats(regionId: string) {
   const indices = calculateRegionalIndices(buildings);
   const energy = calculateEnergyStatus(buildings);
   await supabase.from('regions').update({
-    healthIndex: indices.healthIndex,
-    militaryIndex: indices.militaryIndex,
-    educationIndex: indices.educationIndex,
-    developmentIndex: indices.developmentIndex,
-    energyGeneration: energy.generation,
-    energyConsumption: energy.consumption,
-    energyEfficiency: energy.efficiency,
+    healthIndex:            indices.healthIndex,
+    militaryIndex:          indices.militaryIndex,
+    educationIndex:         indices.educationIndex,
+    developmentIndex:       indices.developmentIndex,
+    healthProgress:         indices.healthProgress,
+    militaryProgress:       indices.militaryProgress,
+    educationProgress:      indices.educationProgress,
+    developmentProgress:    indices.developmentProgress,
+    regionalClassification: indices.regionalClassification,
+    energyGeneration:       energy.generation,
+    energyConsumption:      energy.consumption,
+    energyEfficiency:       energy.efficiency,
   }).eq('id', regionId);
   return { buildings, indices, energy };
 }
@@ -7435,6 +7575,7 @@ app.get("/api/regions/:id/autonomy", authenticate, async (req: any, res) => {
         ...indices,
         effectiveHealthIndex,
       },
+      effects: calculateIndexEffects(indices),
       energy: {
         ...energy,
         stateCompensation,
@@ -7551,6 +7692,120 @@ app.get("/api/regions/:id/economy", authenticate, async (req: any, res) => {
       transactions: transactions || [],
     });
   } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── GET /api/regions/:id/indexes ─────────────────────────────────
+// Returns the full Regional Indexes panel data: levels, progress,
+// primary building counts, gameplay effects, and classification.
+// This is the primary endpoint for the Regional Indexes UI.
+app.get("/api/regions/:id/indexes", authenticate, async (req: any, res) => {
+  try {
+    const regionId = (req.params.id || '').toUpperCase();
+    const { data: region, error } = await supabase
+      .from('regions')
+      .select('id, name, pollution, pollutionModifier, warModifier, crisisModifier')
+      .eq('id', regionId)
+      .single();
+    if (error || !region) return res.status(404).json({ error: "Regione non trovata" });
+
+    const buildings = await getRegionBuildings(regionId);
+    const indices   = calculateRegionalIndices(buildings);
+    const effects   = calculateIndexEffects(indices);
+
+    // Pollution malus applied to effective health index
+    const pollutionMalus       = (region.pollution || 0) * AUTONOMY_CONFIG.POLLUTION_MALUS_PER_POINT;
+    const externalModifiers    = {
+      pollution: region.pollution || 0,
+      pollutionMalus,
+      pollutionModifier: region.pollutionModifier || 0,
+      warModifier:       region.warModifier       || 0,
+      crisisModifier:    region.crisisModifier     || 0,
+    };
+    const effectiveHealthIndex = Math.max(0, indices.healthIndex * (1 - pollutionMalus / 100));
+
+    // Build the per-index metadata used by the UI
+    const indexMeta = [
+      {
+        key: 'health',
+        label: 'Salute',
+        icon: '❤️',
+        color: '#ef4444',
+        source: 'Ospedali',
+        buildingType: 'hospital',
+        effect: 'Riduce il costo energetico delle azioni (+1% riduzione per livello)',
+        level:          indices.healthIndex,
+        effectiveLevel: effectiveHealthIndex,
+        progress:       indices.healthProgress,
+        currentScore:   indices.primaryCounts.health,
+        nextThreshold:  indices.nextThresholds.health,
+        thresholds:     AUTONOMY_CONFIG.INDEX_THRESHOLDS.health,
+      },
+      {
+        key: 'military',
+        label: 'Militare',
+        icon: '🛡️',
+        color: '#f97316',
+        source: 'Basi Militari (+ Accademie, Missili, Aeroporti, Porti)',
+        buildingType: 'military_base',
+        effect: 'Aumenta il danno in guerra e la resistenza in difesa (+3% attacco, +2% difesa per livello)',
+        level:         indices.militaryIndex,
+        progress:      indices.militaryProgress,
+        currentScore:  indices.primaryCounts.military,
+        nextThreshold: indices.nextThresholds.military,
+        thresholds:    AUTONOMY_CONFIG.INDEX_THRESHOLDS.military,
+      },
+      {
+        key: 'education',
+        label: 'Istruzione',
+        icon: '📚',
+        color: '#6366f1',
+        source: 'Scuole',
+        buildingType: 'school',
+        effect: 'Aumenta l\'XP guadagnata da ogni azione (+2% per livello)',
+        level:         indices.educationIndex,
+        progress:      indices.educationProgress,
+        currentScore:  indices.primaryCounts.education,
+        nextThreshold: indices.nextThresholds.education,
+        thresholds:    AUTONOMY_CONFIG.INDEX_THRESHOLDS.education,
+      },
+      {
+        key: 'development',
+        label: 'Sviluppo',
+        icon: '🏘️',
+        color: '#10b981',
+        source: 'Fondi Immobiliari',
+        buildingType: 'real_estate_fund',
+        effect: 'Stabilità politica, riduce rischio di crisi. Aumenta gli stipendi istituzionali (+5% per livello)',
+        level:         indices.developmentIndex,
+        progress:      indices.developmentProgress,
+        currentScore:  indices.primaryCounts.development,
+        nextThreshold: indices.nextThresholds.development,
+        thresholds:    AUTONOMY_CONFIG.INDEX_THRESHOLDS.development,
+      },
+    ];
+
+    res.json({
+      regionId:  region.id,
+      regionName: region.name,
+      indices,
+      effects,
+      indexMeta,
+      externalModifiers,
+      classification: {
+        value: indices.regionalClassification,
+        label: indices.regionalClassification === 'developed'
+          ? '🟢 Regione Sviluppata'
+          : indices.regionalClassification === 'developing'
+            ? '🟡 Regione in Via di Sviluppo'
+            : '🔴 Regione Arretrata',
+        isAtRisk: effects.isAtRisk,
+      },
+      thresholds: AUTONOMY_CONFIG.INDEX_THRESHOLDS,
+    });
+  } catch (err: any) {
+    console.error("Error fetching region indexes:", err);
     res.status(500).json({ error: err.message });
   }
 });

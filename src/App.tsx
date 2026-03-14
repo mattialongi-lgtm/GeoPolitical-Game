@@ -3406,35 +3406,126 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
 
               {/* Regional Indices */}
               <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black uppercase tracking-tight mb-4">📊 Indici Regionali</h3>
-                <div className="space-y-4">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-black uppercase tracking-tight">📊 Indici Regionali</h3>
+                  {/* Regional Classification Badge */}
+                  {(() => {
+                    const cls = autonomyData.indices.regionalClassification;
+                    const clsLabel = cls === 'developed' ? '🟢 Sviluppata' : cls === 'developing' ? '🟡 In Via di Sviluppo' : '🔴 Arretrata';
+                    const clsColor = cls === 'developed' ? 'bg-emerald-100 text-emerald-800' : cls === 'developing' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
+                    return (
+                      <span className={`px-3 py-1 rounded-xl text-[10px] font-black ${clsColor}`}>{clsLabel}</span>
+                    );
+                  })()}
+                </div>
+                {/* Crisis risk warning for underdeveloped regions */}
+                {autonomyData.indices.regionalClassification === 'underdeveloped' && (
+                  <div className="mb-4 p-3 bg-red-50 rounded-2xl border border-red-200">
+                    <p className="text-xs font-black text-red-700">⚠️ Regione Arretrata — rischio di instabilità politica attivo</p>
+                    <p className="text-[10px] font-bold text-red-600">Aumenta lo Sviluppo costruendo Fondi Immobiliari per stabilizzare la regione.</p>
+                  </div>
+                )}
+                <div className="space-y-5">
                   {[
-                    { label: "Salute", val: autonomyData.indices.healthIndex, effective: autonomyData.indices.effectiveHealthIndex, icon: "❤️", color: "#ef4444", desc: "Determinato da ospedali. Influenza recupero e condizioni generali." },
-                    { label: "Militare", val: autonomyData.indices.militaryIndex, icon: "🛡️", color: "#f97316", desc: "Basi, accademie, missili, aeroporti, porti. Influenza attacco e difesa." },
-                    { label: "Istruzione", val: autonomyData.indices.educationIndex, icon: "📚", color: "#6366f1", desc: "Determinato da scuole. Riduce tempi e migliora efficienza." },
-                    { label: "Sviluppo", val: autonomyData.indices.developmentIndex, icon: "🏘️", color: "#10b981", desc: "Fondi immobiliari. Influenza redditività e valore regionale." },
-                  ].map(ind => (
-                    <div key={ind.label} className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-lg">{ind.icon}</span>
-                          <div>
-                            <p className="text-xs font-black text-slate-700">{ind.label}</p>
-                            <p className="text-[9px] font-bold text-slate-400">{ind.desc}</p>
+                    {
+                      label: "Salute",
+                      val: autonomyData.indices.healthIndex,
+                      effective: autonomyData.indices.effectiveHealthIndex,
+                      progress: autonomyData.indices.healthProgress,
+                      icon: "❤️",
+                      color: "#ef4444",
+                      colorClass: "bg-red-50",
+                      source: "Ospedali 🏥",
+                      buildingKey: "hospital",
+                      effect: `Riduce costo energetico delle azioni (-${((autonomyData.indices.healthIndex || 0) * 1).toFixed(0)}% attuale)`,
+                      nextThreshold: autonomyData.indices.nextThresholds?.health,
+                      primaryCount: autonomyData.indices.primaryCounts?.health ?? (autonomyData.buildings?.hospital || 0),
+                    },
+                    {
+                      label: "Militare",
+                      val: autonomyData.indices.militaryIndex,
+                      progress: autonomyData.indices.militaryProgress,
+                      icon: "🛡️",
+                      color: "#f97316",
+                      colorClass: "bg-orange-50",
+                      source: "Basi Militari 🏛️ (+ Accademie, Missili, Aeroporti, Porti)",
+                      buildingKey: "military_base",
+                      effect: `Bonus danno guerra (+${((autonomyData.indices.militaryIndex || 0) * 3).toFixed(0)}% attacco, +${((autonomyData.indices.militaryIndex || 0) * 2).toFixed(0)}% difesa)`,
+                      nextThreshold: autonomyData.indices.nextThresholds?.military,
+                      primaryCount: autonomyData.indices.primaryCounts?.military ?? Math.round((autonomyData.indices.militaryIndex || 0) * 10) / 10,
+                    },
+                    {
+                      label: "Istruzione",
+                      val: autonomyData.indices.educationIndex,
+                      progress: autonomyData.indices.educationProgress,
+                      icon: "📚",
+                      color: "#6366f1",
+                      colorClass: "bg-indigo-50",
+                      source: "Scuole 🏫",
+                      buildingKey: "school",
+                      effect: `Aumenta XP guadagnata (+${((autonomyData.indices.educationIndex || 0) * 2).toFixed(0)}% per azione)`,
+                      nextThreshold: autonomyData.indices.nextThresholds?.education,
+                      primaryCount: autonomyData.indices.primaryCounts?.education ?? (autonomyData.buildings?.school || 0),
+                    },
+                    {
+                      label: "Sviluppo",
+                      val: autonomyData.indices.developmentIndex,
+                      progress: autonomyData.indices.developmentProgress,
+                      icon: "🏘️",
+                      color: "#10b981",
+                      colorClass: "bg-emerald-50",
+                      source: "Fondi Immobiliari 🏘️",
+                      buildingKey: "real_estate_fund",
+                      effect: `Stabilità politica e stipendi (+${((autonomyData.indices.developmentIndex || 0) * 5).toFixed(0)}% stipendi, -${((autonomyData.indices.developmentIndex || 0) * 8).toFixed(0)}% rischio crisi)`,
+                      nextThreshold: autonomyData.indices.nextThresholds?.development,
+                      primaryCount: autonomyData.indices.primaryCounts?.development ?? (autonomyData.buildings?.real_estate_fund || 0),
+                    },
+                  ].map(ind => {
+                    const level = typeof ind.val === 'number' ? Math.floor(ind.val) : 0;
+                    const MAX_LEVEL = 10;
+                    const progressVal = typeof ind.progress === 'number' ? ind.progress : Math.min(100, (level / MAX_LEVEL) * 100);
+                    const isMaxed = level >= MAX_LEVEL;
+                    return (
+                      <div key={ind.label} className={`p-4 rounded-3xl border border-slate-100 ${ind.colorClass}`}>
+                        {/* Header row */}
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl">{ind.icon}</span>
+                            <div>
+                              <p className="text-sm font-black text-slate-800">{ind.label}</p>
+                              <p className="text-[9px] font-bold text-slate-500">Fonte: {ind.source}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <span className="text-lg font-black text-slate-800">{level}</span>
+                            <span className="text-xs font-bold text-slate-400">/{MAX_LEVEL}</span>
+                            {ind.effective !== undefined && ind.effective < level && (
+                              <p className="text-[9px] font-bold text-rose-500">eff: {typeof ind.effective === 'number' ? ind.effective.toFixed(1) : ind.effective}</p>
+                            )}
                           </div>
                         </div>
-                        <span className="text-sm font-black text-slate-800">
-                          {ind.val.toFixed(1)}
-                          {ind.effective !== undefined && ind.effective < ind.val && (
-                            <span className="text-rose-500 text-[10px] ml-1">(eff: {ind.effective.toFixed(1)})</span>
-                          )}
-                        </span>
+                        {/* Progress bar */}
+                        <div className="w-full bg-white/60 h-2 rounded-full overflow-hidden mb-2">
+                          <div
+                            className="h-full rounded-full transition-all duration-700"
+                            style={{ width: `${isMaxed ? 100 : progressVal}%`, backgroundColor: ind.color }}
+                          />
+                        </div>
+                        {/* Progress label */}
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[9px] font-bold text-slate-500">
+                            {isMaxed
+                              ? '✅ Livello massimo raggiunto'
+                              : `Score: ${typeof ind.primaryCount === 'number' ? (Number.isInteger(ind.primaryCount) ? ind.primaryCount : ind.primaryCount.toFixed(1)) : '—'}${ind.nextThreshold != null ? ` / ${ind.nextThreshold} per lv.${level + 1}` : ''}`
+                            }
+                          </p>
+                          <p className="text-[9px] font-black" style={{ color: ind.color }}>{isMaxed ? '🏆' : `${Math.round(progressVal)}%`}</p>
+                        </div>
+                        {/* Effect description */}
+                        <p className="text-[9px] font-bold text-slate-600 italic">⚡ {ind.effect}</p>
                       </div>
-                      <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${Math.min(100, ind.val * 10)}%`, backgroundColor: ind.color }} />
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 {autonomyData.region.pollution > 0 && (
                   <div className="mt-4 p-3 bg-yellow-50 rounded-2xl border border-yellow-200">

@@ -750,7 +750,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
     .single();
 
   if (fError || !factory) return res.status(404).json({ error: "Nessuna fabbrica trovata" });
-  if (user.level < factory.min_level) return res.status(400).json({ error: `Richiede livello ${factory.min_level}` });
+  if (user.level < factory.minLevel) return res.status(400).json({ error: `Richiede livello ${factory.minLevel}` });
   if (factory.isActive === false) return res.status(400).json({ error: "Fabbrica non attiva." });
 
   // 2. Check Immigration/Work Restrictions
@@ -771,12 +771,12 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   // 3. Cooldown Check (Using RPC or simple query)
   const { data: cooldownData } = await supabase
     .from('user_factory_cooldowns')
-    .select('last_used')
-    .eq('user_id', user.id)
-    .eq('factory_id', factoryId)
+    .select('lastUsed')
+    .eq('userId', user.id)
+    .eq('factoryId', factoryId)
     .single();
 
-  if (cooldownData && Date.now() - new Date(cooldownData.last_used).getTime() < factory.cooldown_sec * 1000) {
+  if (cooldownData && Date.now() - new Date(cooldownData.lastUsed).getTime() < factory.cooldownSec * 1000) {
     return res.status(400).json({ error: "Factory on cooldown" });
   }
 
@@ -784,7 +784,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   const perks = user.perks || {};
   const resistenza = perks['RESISTENZA'] || 0;
   const energyReduction = Math.min(0.5, resistenza / 100);
-  const energyCost = Math.ceil(factory.energy_cost * (1 - energyReduction));
+  const energyCost = Math.ceil(factory.energyCost * (1 - energyReduction));
 
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
@@ -817,7 +817,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
     grossValue = baseMoney;
   } else if (factory.payMode === 'salary') {
     // Salary mode: pay fixed wage from budget
-    const earnings = Math.floor(factory.payout_money * (1 + forzaBoost));
+    const earnings = Math.floor(factory.payoutMoney * (1 + forzaBoost));
     const taxes = Math.floor(earnings * (taxRate / 100));
     netEarningsMoney = earnings - taxes;
     grossValue = earnings;

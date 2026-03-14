@@ -1818,7 +1818,7 @@ app.post("/api/budget/explore", authenticate, async (req: any, res) => {
 
 app.get("/api/budget/:ownerType/:ownerId", authenticate, async (req: any, res) => {
   const { ownerType, ownerId } = req.params;
-  const normalizedOwnerType = String(ownerType || '').toUpperCase();
+  const normalizedOwnerType = (ownerType || '').toUpperCase();
 
   if (normalizedOwnerType !== 'REGION') {
     return res.status(403).json({ error: "Tipo di budget non autorizzato." });
@@ -1850,7 +1850,7 @@ app.get("/api/budget/:ownerType/:ownerId", authenticate, async (req: any, res) =
     .order('createdAt', { ascending: false })
     .limit(50);
 
-  if (txError) return res.status(500).json({ error: "Errore nel recupero transazioni." });
+  if (txError) return res.status(500).json({ error: txError.message || "Errore nel recupero transazioni." });
 
   // Format to match old structure (t.username instead of t.users.username)
   const formattedTxs = (transactions || []).map((t: any) => ({

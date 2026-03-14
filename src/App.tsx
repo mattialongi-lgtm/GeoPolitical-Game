@@ -3452,7 +3452,8 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       buildingKey: "military_base",
                       effect: `Bonus danno guerra (+${((autonomyData.indices.militaryIndex || 0) * 3).toFixed(0)}% attacco, +${((autonomyData.indices.militaryIndex || 0) * 2).toFixed(0)}% difesa)`,
                       nextThreshold: autonomyData.indices.nextThresholds?.military,
-                      primaryCount: autonomyData.indices.primaryCounts?.military ?? Math.round((autonomyData.indices.militaryIndex || 0) * 10) / 10,
+                      // For military, display the weighted score (accounts for all contributing buildings)
+                      primaryCount: autonomyData.indices.rawScores?.military ?? (autonomyData.indices.primaryCounts?.military ?? (autonomyData.buildings?.military_base || 0)),
                     },
                     {
                       label: "Istruzione",

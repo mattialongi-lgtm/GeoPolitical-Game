@@ -4742,11 +4742,20 @@ function calculateRegionalIndices(buildings: Record<string, number>) {
       development: developmentProg.nextThreshold,
     },
     // Primary building counts (for "X/Y building" display in UI)
+    // For military we show the weighted score (sum across all contributing buildings)
+    // because multiple building types contribute, alongside the raw military_base count.
     primaryCounts: {
       health:      buildings['hospital']          || 0,
-      military:    Math.round(rawMilitary * 10) / 10,
+      military:    buildings['military_base']     || 0,
       education:   buildings['school']            || 0,
       development: buildings['real_estate_fund']  || 0,
+    },
+    // Weighted scores for informational display (military has multiple contributors)
+    rawScores: {
+      health:      rawHealth,
+      military:    Math.round(rawMilitary * 10) / 10,
+      education:   rawEducation,
+      development: rawDevelopment,
     },
   };
 }
@@ -7753,6 +7762,7 @@ app.get("/api/regions/:id/indexes", authenticate, async (req: any, res) => {
         level:         indices.militaryIndex,
         progress:      indices.militaryProgress,
         currentScore:  indices.primaryCounts.military,
+        weightedScore: indices.rawScores.military,
         nextThreshold: indices.nextThresholds.military,
         thresholds:    AUTONOMY_CONFIG.INDEX_THRESHOLDS.military,
       },
@@ -7763,7 +7773,7 @@ app.get("/api/regions/:id/indexes", authenticate, async (req: any, res) => {
         color: '#6366f1',
         source: 'Scuole',
         buildingType: 'school',
-        effect: 'Aumenta l\'XP guadagnata da ogni azione (+2% per livello)',
+        effect: "Aumenta l'XP guadagnata da ogni azione (+2% per livello)",
         level:         indices.educationIndex,
         progress:      indices.educationProgress,
         currentScore:  indices.primaryCounts.education,

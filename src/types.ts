@@ -745,7 +745,9 @@ export const EXTRACTION_CONFIG = {
     minerals: 0.65,
     uranium: 0.75,
     diamonds: 0.75,
-    // Energy-based resources use a different formula
+    // Energy-based resources (liquid_oxygen, helium3) and rivalium use 0 here
+    // because their coefficient is calculated via ENERGY_RESOURCE_MULTIPLIER/EXPONENT
+    // based on power plant count, not region cap.
     liquid_oxygen: 0,
     helium3: 0,
     rivalium: 0,
@@ -775,6 +777,7 @@ export const EXTRACTION_CONFIG = {
   } as Record<string, number>,
 
   // ── Gold special: money generated per unit of gold produced ──
+  // Derived from base game economy ratio for gold-to-currency conversion.
   GOLD_TO_MONEY_COEFFICIENT: 3.538975,
 
   // ── Regional consumption coefficients (separate from player profit) ──
@@ -793,6 +796,9 @@ export const EXTRACTION_CONFIG = {
   // ── Work experience gain per extraction action ──
   WORK_EXPERIENCE_GAIN: 1,
   MIN_WORK_EXPERIENCE: 1,  // floor for formula (avoid 0^exp)
+
+  // ── Minimum extraction threshold (below this, extraction is considered exhausted) ──
+  MIN_EXTRACTION_THRESHOLD: 0.001,
 
   // ── Work action cost (energy drinks / energy) ──
   WORK_ACTION_ENERGY_COST: 10,

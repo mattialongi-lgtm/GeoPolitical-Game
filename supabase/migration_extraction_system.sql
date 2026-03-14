@@ -77,7 +77,7 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'region_resources'
-          AND column_name = 'deepBonusCap'
+          AND column_name = 'deepbonuscap'
     ) THEN
         ALTER TABLE region_resources ADD COLUMN "deepBonusCap" INT NOT NULL DEFAULT 0;
     END IF;
@@ -93,7 +93,7 @@ INSERT INTO game_settings (key, value, description) VALUES
   ('extraction_factory_level_exponent', '0.8',   'Exponent for factory level in productivity formula'),
   ('extraction_work_exp_exponent',      '0.6',   'Exponent for work experience in productivity formula'),
   ('extraction_nation_bonus',           '1.2',   'Nation/global production bonus multiplier'),
-  ('extraction_gold_to_money',          '3.538975', 'Money generated per unit of gold produced'),
+  ('extraction_gold_to_money',          '3.538975', 'Money generated per unit of gold produced (derived from base game economy ratio for gold-to-currency conversion)'),
   ('extraction_work_exp_gain',          '1',     'Work experience gained per extraction action'),
   ('extraction_balancing_multipliers',  '{"gold_ore":4,"oil":1,"minerals":1,"uranium":1,"diamonds":0.001,"liquid_oxygen":0.2,"helium3":0.001,"rivalium":1}', 'Final balancing multipliers per resource type'),
   ('extraction_resource_coeff_multipliers', '{"gold_ore":0.4,"oil":0.65,"minerals":0.65,"uranium":0.75,"diamonds":0.75}', 'Resource coefficient multipliers based on region max cap'),

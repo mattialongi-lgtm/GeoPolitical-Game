@@ -5858,11 +5858,8 @@ function getResourceCoefficient(
     return Math.pow(base, cfg.ENERGY_RESOURCE_EXPONENT);
   }
 
-  if (resourceType === 'rivalium') {
-    // Predisposed for future – use a floor of 1
-    return Math.max(1, regionMaxCapIncludingDeep * (mult || 0.5));
-  }
-
+  // Fallback 0.5 is a safe default for unconfigured resources (e.g. rivalium)
+  // to ensure the coefficient is always positive.
   return Math.max(1, regionMaxCapIncludingDeep * (mult || 0.5));
 }
 
@@ -6847,7 +6844,7 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
 
     // The actual amount the player receives (capped)
     let actualPlayerAmount = Math.min(breakdown.playerAmount, remainingCycle, remainingDaily);
-    if (actualPlayerAmount < 0.001) {
+    if (actualPlayerAmount < EXTRACTION_CONFIG.MIN_EXTRACTION_THRESHOLD) {
       const reason = remainingCycle <= 0 ? "cycle_cap_reached" : "daily_exhausted";
       return res.status(400).json({
         error: reason === "cycle_cap_reached"
@@ -6858,7 +6855,7 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
     }
 
     // Scale all amounts proportionally if capped
-    const scaleFactor = actualPlayerAmount / Math.max(0.001, breakdown.playerAmount);
+    const scaleFactor = actualPlayerAmount / Math.max(EXTRACTION_CONFIG.MIN_EXTRACTION_THRESHOLD, breakdown.playerAmount);
     const actualGross = breakdown.grossAmount * scaleFactor;
     const actualOwner = breakdown.ownerAmount * scaleFactor;
     const actualTax = breakdown.taxAmount * scaleFactor;
@@ -6874,11 +6871,16 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
       .eq('id', user.id);
     if (energyErr) throw energyErr;
 
-    // 9. Update region daily extracted (use withdrawn points as the regional impact)
+    // 9. Update region daily extracted (track actual resource units, not withdrawn points)
+    const roundedPlayer = Math.round(actualPlayerAmount);
+    if (roundedPlayer <= 0) {
+      return res.status(400).json({ error: "Produttività insufficiente per estrarre.", reason: "insufficient_productivity" });
+    }
+
     if (regionRes) {
       const newDailyExtracted = Math.min(
         dailyAvailable,
-        dailyExtracted + Math.max(1, Math.round(actualWithdrawn))
+        dailyExtracted + roundedPlayer
       );
       await supabase.from('region_resources').update({
         dailyExtracted: newDailyExtracted,
@@ -6887,7 +6889,7 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
     }
 
     // 10. Update player cycle extraction state
-    const newExtracted = extractedSoFar + Math.round(actualPlayerAmount);
+    const newExtracted = extractedSoFar + roundedPlayer;
     if (playerState) {
       await supabase.from('player_extraction_state').update({
         extractedSinceLastRecharge: newExtracted,
@@ -6896,13 +6898,12 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
     } else {
       await supabase.from('player_extraction_state').insert({
         playerId: user.id, regionId, resourceType,
-        extractedSinceLastRecharge: Math.round(actualPlayerAmount),
+        extractedSinceLastRecharge: roundedPlayer,
         updatedAt: new Date().toISOString(),
       });
     }
 
     // 11. Add resources to player inventory
-    const roundedPlayer = Math.max(1, Math.round(actualPlayerAmount));
     const { data: existingInv } = await supabase.from('user_inventory')
       .select('quantity').eq('userId', user.id).eq('itemId', resourceType).maybeSingle();
     if (existingInv) {
@@ -7245,15 +7246,16 @@ app.get("/api/extraction/leaderboard", authenticate, async (req: any, res) => {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 20);
 
-    // Fetch usernames
+    // Fetch usernames (skip query if no players)
     const playerIds = sorted.map(([id]) => id);
-    const { data: users } = await supabase
-      .from('users')
-      .select('id, username, level')
-      .in('id', playerIds.length > 0 ? playerIds : ['__none__']);
-
-    const usernameMap: Record<string, any> = {};
-    for (const u of (users || [])) usernameMap[u.id] = u;
+    let usernameMap: Record<string, any> = {};
+    if (playerIds.length > 0) {
+      const { data: users } = await supabase
+        .from('users')
+        .select('id, username, level')
+        .in('id', playerIds);
+      for (const u of (users || [])) usernameMap[u.id] = u;
+    }
 
     const leaderboard = sorted.map(([id, total]) => ({
       playerId: id,

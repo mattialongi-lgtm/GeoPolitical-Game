@@ -9,6 +9,9 @@ import { ArrowLeft, TrendingUp, Warehouse, Users, Zap, DollarSign, ChevronUp, Lo
 import { FACTORY_CONFIG, EXTRACTION_CONFIG, RESOURCE_LABELS, RESOURCE_ICONS_MAP, factoryYieldMultiplier, factoryStorageLimit } from "../types";
 import type { ResourceType } from "../types";
 
+/** Round to 2 decimal places for display */
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
 interface FactoryDetailProps {
   user: any;
   fetchData: () => void;
@@ -257,7 +260,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
             <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-100">
               <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500">Produttività Stimata</span>
               <p className="text-lg font-black text-emerald-700">
-                {RESOURCE_ICONS_MAP[extractionBreakdown.breakdown?.resourceType as ResourceType] || '📦'} {Math.round((extractionBreakdown.breakdown?.playerAmount || 0) * 100) / 100}
+                {RESOURCE_ICONS_MAP[extractionBreakdown.breakdown?.resourceType as ResourceType] || '📦'} {r2(extractionBreakdown.breakdown?.playerAmount || 0)}
               </p>
               <p className="text-[9px] font-bold text-emerald-500">{RESOURCE_LABELS[extractionBreakdown.breakdown?.resourceType as ResourceType] || extractionBreakdown.factoryType}</p>
             </div>
@@ -294,7 +297,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
             </div>
             <div className="flex justify-between text-[10px] font-bold text-slate-500">
               <span>Consumo regionale previsto</span>
-              <span>{Math.round((extractionBreakdown.breakdown?.withdrawnPoints || 0) * 100) / 100} punti</span>
+              <span>{r2(extractionBreakdown.breakdown?.withdrawnPoints || 0)} punti</span>
             </div>
           </div>
 
@@ -303,24 +306,24 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
             <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Distribuzione Payout</p>
             <div className="flex justify-between text-[10px] font-bold">
               <span className="text-slate-500">Lordo estratto</span>
-              <span className="text-slate-700">{Math.round((extractionBreakdown.breakdown?.grossAmount || 0) * 100) / 100}</span>
+              <span className="text-slate-700">{r2(extractionBreakdown.breakdown?.grossAmount || 0)}</span>
             </div>
             <div className="flex justify-between text-[10px] font-bold">
               <span className="text-emerald-600">→ Al giocatore</span>
-              <span className="text-emerald-700">{Math.round((extractionBreakdown.breakdown?.playerAmount || 0) * 100) / 100}</span>
+              <span className="text-emerald-700">{r2(extractionBreakdown.breakdown?.playerAmount || 0)}</span>
             </div>
             <div className="flex justify-between text-[10px] font-bold">
               <span className="text-purple-600">→ Al proprietario</span>
-              <span className="text-purple-700">{Math.round((extractionBreakdown.breakdown?.ownerAmount || 0) * 100) / 100}</span>
+              <span className="text-purple-700">{r2(extractionBreakdown.breakdown?.ownerAmount || 0)}</span>
             </div>
             <div className="flex justify-between text-[10px] font-bold">
               <span className="text-red-500">→ Tasse</span>
-              <span className="text-red-600">{Math.round((extractionBreakdown.breakdown?.taxAmount || 0) * 100) / 100}</span>
+              <span className="text-red-600">{r2(extractionBreakdown.breakdown?.taxAmount || 0)}</span>
             </div>
             {(extractionBreakdown.breakdown?.autonomyAmount || 0) > 0 && (
               <div className="flex justify-between text-[10px] font-bold">
                 <span className="text-orange-500">→ Autonomia</span>
-                <span className="text-orange-600">{Math.round(extractionBreakdown.breakdown.autonomyAmount * 100) / 100}</span>
+                <span className="text-orange-600">{r2(extractionBreakdown.breakdown.autonomyAmount)}</span>
               </div>
             )}
           </div>
@@ -339,21 +342,21 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
             <div className="bg-indigo-50 p-4 rounded-xl space-y-2 border border-indigo-100">
               <p className="text-[10px] font-black uppercase text-indigo-500 mb-2">📐 Breakdown Formula Produttività</p>
               <div className="space-y-1 text-[10px] font-mono text-indigo-800">
-                <p>Produttività = {EXTRACTION_CONFIG.BASE_COEFFICIENT} × (LvGiocatore^{EXTRACTION_CONFIG.PLAYER_LEVEL_EXPONENT}) × (CoeffRisorsa/10)^{EXTRACTION_CONFIG.RESOURCE_COEFF_EXPONENT} × (LvFabbrica^{EXTRACTION_CONFIG.FACTORY_LEVEL_EXPONENT}) × (EXP/10)^{EXTRACTION_CONFIG.WORK_EXPERIENCE_EXPONENT}</p>
+                <p>Produttività = {EXTRACTION_CONFIG.BASE_COEFFICIENT} × (LvGiocatore^{EXTRACTION_CONFIG.PLAYER_LEVEL_EXPONENT}) × (CoeffRisorsa/{EXTRACTION_CONFIG.RESOURCE_COEFF_DIVISOR})^{EXTRACTION_CONFIG.RESOURCE_COEFF_EXPONENT} × (LvFabbrica^{EXTRACTION_CONFIG.FACTORY_LEVEL_EXPONENT}) × (EXP/{EXTRACTION_CONFIG.WORK_EXPERIENCE_DIVISOR})^{EXTRACTION_CONFIG.WORK_EXPERIENCE_EXPONENT}</p>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
                 <BreakdownRow label="Livello Giocatore" value={extractionBreakdown.breakdown.playerLevel} />
                 <BreakdownRow label="Livello Fabbrica" value={extractionBreakdown.breakdown.factoryLevel} />
                 <BreakdownRow label="Esperienza Lavoro" value={extractionBreakdown.breakdown.workExperience} />
-                <BreakdownRow label="Coeff. Risorsa" value={Math.round(extractionBreakdown.breakdown.resourceCoefficient * 100) / 100} />
-                <BreakdownRow label="Produttività Base" value={Math.round(extractionBreakdown.breakdown.baseProductivity * 100) / 100} />
+                <BreakdownRow label="Coeff. Risorsa" value={r2(extractionBreakdown.breakdown.resourceCoefficient)} />
+                <BreakdownRow label="Produttività Base" value={r2(extractionBreakdown.breakdown.baseProductivity)} />
                 <BreakdownRow label="Bonus Nazione" value={`×${extractionBreakdown.breakdown.nationBonus}`} />
                 <BreakdownRow label="Bonus Dipartimento" value={`×${extractionBreakdown.breakdown.departmentBonus}`} />
                 <BreakdownRow label="Moltiplicatore Bilanciamento" value={`×${extractionBreakdown.breakdown.balancingMultiplier}`} />
               </div>
               <div className="mt-3 p-2 bg-white rounded-lg">
                 <p className="text-[11px] font-black text-indigo-700">
-                  Produttività Finale: {Math.round(extractionBreakdown.breakdown.finalProductivity * 100) / 100}
+                  Produttività Finale: {r2(extractionBreakdown.breakdown.finalProductivity)}
                 </p>
               </div>
               <div className="mt-2 text-[9px] text-indigo-500 space-y-1">

@@ -60,7 +60,7 @@ import {
   Flag
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP } from "./types";
+import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP, FACTORY_CONFIG } from "./types";
 import type { ResourceType, DeepCostPreview } from "./types";
 import { supabase } from "./lib/supabase";
 import { useNavigate, useLocation, Routes, Route, Link, useParams, Navigate } from "react-router-dom";
@@ -72,6 +72,8 @@ import { GovernmentView } from "./components/GovernmentView";
 import { LeaderView } from "./components/LeaderView";
 import { MinistersView } from "./components/MinistersView";
 import WorldMap from "./components/WorldMap";
+import FactoryDetail from "./components/FactoryDetail";
+import FactoryMarket from "./components/FactoryMarket";
 
 // --- Utilities ---
 const getTs = (val: any) => {
@@ -1632,25 +1634,28 @@ const UsernameEditor = ({ username, fetchData }: { username: string; fetchData: 
 
 // Player Factories View (New Resource System)
 const RESOURCE_ICONS: Record<string, string> = {
+  gold: "🪙",
   oil: "🛢️",
   minerals: "🪨",
   uranium: "☢️",
   diamonds: "💎",
+  liquid_oxygen: "🧊",
+  helium3: "⚗️",
+  rivalium: "🔮",
 };
 
 const RESOURCE_NAMES: Record<string, string> = {
+  gold: "Oro",
   oil: "Petrolio",
   minerals: "Minerali",
   uranium: "Uranio",
   diamonds: "Diamanti",
+  liquid_oxygen: "Ossigeno Liquido",
+  helium3: "Elio-3",
+  rivalium: "Rivalium",
 };
 
-const FACTORY_CREATE_COST = {
-  oil: 5000,
-  minerals: 5000,
-  uranium: 15000,
-  diamonds: 25000
-};
+const FACTORY_CREATE_COST = FACTORY_CONFIG.CREATE_COST;
 
 const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFactoryId }: { user: any; fetchData: () => void; autoWorkFactoryId?: string | null; setAutoWorkFactoryId?: (id: string | null) => void }) => {
   const { iso2 } = useParams();
@@ -1830,10 +1835,15 @@ const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFa
       </div>
 
       {showWorldFactories && (
-        <div className="bg-white p-8 rounded-[2rem] text-center border border-dashed border-slate-200">
+        <div className="bg-white p-8 rounded-[2rem] text-center border border-dashed border-slate-200 space-y-4">
           <Globe className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-400 font-bold text-sm">Visualizzazione globale in arrivo!</p>
-          <p className="text-[10px] text-slate-300 font-medium mt-1">Placeholder: lista fabbriche di tutte le regioni</p>
+          <p className="text-slate-500 font-bold text-sm">Esplora le fabbriche di tutto il mondo</p>
+          <button
+            onClick={() => navigate('/factory-market')}
+            className="px-6 py-3 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs shadow-md hover:bg-emerald-600 transition-all"
+          >
+            🏪 Mercato Fabbriche
+          </button>
         </div>
       )}
 
@@ -1931,6 +1941,13 @@ const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFa
                     className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:shadow-none"
                   >
                     {isResourceMode ? `🪨 Scava ${RESOURCE_NAMES[f.type]} (-10⚡)` : '💼 Lavora Qui (-10⚡)'}
+                  </button>
+                  <button
+                    onClick={() => navigate(`/factory/${f.id}`)}
+                    className="py-3 px-4 bg-slate-100 text-slate-700 rounded-2xl font-black uppercase text-xs hover:bg-slate-200 transition-all"
+                    title="Dettagli fabbrica"
+                  >
+                    📋
                   </button>
                   {setAutoWorkFactoryId && (
                     autoWorkFactoryId === f.id ? (
@@ -4723,6 +4740,8 @@ export default function App() {
           <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
+          <Route path="/factory/:id" element={user ? <FactoryDetail user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
+          <Route path="/factory-market" element={user ? <FactoryMarket user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/regions/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/leader" element={<LeaderView user={user} regionId={user?.residenceId || user?.regionId} fetchData={fetchData} />} />

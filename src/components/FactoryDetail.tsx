@@ -36,7 +36,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
 
   const fetchUpgradeCost = async (target: string) => {
     const targetNum = parseInt(target);
-    if (!targetNum || !factory || targetNum <= factory.level || targetNum > 800) {
+    if (!targetNum || !factory || targetNum <= factory.level || targetNum > FACTORY_CONFIG.MAX_LEVEL) {
       setUpgradeCost(null);
       return;
     }
@@ -50,7 +50,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
 
   const handleUpgrade = async () => {
     const target = parseInt(upgradeTarget || String((factory?.level || 1) + 1));
-    if (!target || target <= factory.level || target > 800) return;
+    if (!target || target <= factory.level || target > FACTORY_CONFIG.MAX_LEVEL) return;
     if (!window.confirm(`Vuoi potenziare al livello ${target}? Costo: 🪙 ${upgradeCost ?? '?'} Gold`)) return;
     setActionLoading(true);
     try {
@@ -301,11 +301,11 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
           </div>
           <div className="flex gap-2 items-end">
             <div className="flex-1">
-              <label className="text-[10px] font-black uppercase text-slate-400">Livello Target (max 800)</label>
+              <label className="text-[10px] font-black uppercase text-slate-400">Livello Target (max {FACTORY_CONFIG.MAX_LEVEL})</label>
               <input
                 type="number"
                 min={level + 1}
-                max={800}
+                max={FACTORY_CONFIG.MAX_LEVEL}
                 placeholder={`Lv ${level + 1}`}
                 value={upgradeTarget}
                 onChange={e => { setUpgradeTarget(e.target.value); fetchUpgradeCost(e.target.value); }}

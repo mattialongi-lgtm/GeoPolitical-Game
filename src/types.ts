@@ -288,7 +288,7 @@ export type FactoryCategory = 'gold' | 'resource';
 export const FACTORY_CONFIG = {
   // ── Factory type definitions ──
   TYPES: {
-    gold:           { label: 'Miniera d\'Oro',          icon: '🪙', category: 'gold'     as FactoryCategory, resource: 'gold_ore',       rarity: 1, basePayout: 100 },
+    gold:           { label: "Miniera d'Oro",            icon: '🪙', category: 'gold'     as FactoryCategory, resource: 'gold_ore',       rarity: 1, basePayout: 100 },
     oil:            { label: 'Giacimento di Petrolio',   icon: '🛢️', category: 'resource' as FactoryCategory, resource: 'oil',            rarity: 2, basePayout: 0 },
     minerals:       { label: 'Cava di Minerali',         icon: '🪨', category: 'resource' as FactoryCategory, resource: 'minerals',       rarity: 2, basePayout: 0 },
     uranium:        { label: 'Cava di Uranio',            icon: '☢️', category: 'resource' as FactoryCategory, resource: 'uranium',        rarity: 4, basePayout: 0 },
@@ -321,6 +321,9 @@ export const FACTORY_CONFIG = {
     helium3: 50_000,
     rivalium: 10_000,
   } as Record<string, number>,
+
+  // ── Maximum factory level ──
+  MAX_LEVEL: 800,
 
   // ── Yield multiplier formula: yield = 1 + (level - 1) * YIELD_GROWTH_RATE ──
   YIELD_GROWTH_RATE: 0.08,  // 8% growth per level over level 1

@@ -861,7 +861,8 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
       // Add money to player
       await supabase.from('users').update({ money: user.money + netEarningsMoney }).eq('id', user.id);
-      // Add gold to player (round to integer for DB)
+      // Add gold to player - only whole units awarded; fractional amounts < 1 are not accumulated
+      // This is by design: gold is a premium currency, higher-level gold mines earn more per action
       if (netEarningsGold >= 1) {
         await supabase.from('users').update({ gold: user.gold + Math.floor(netEarningsGold) }).eq('id', user.id);
       }
@@ -932,9 +933,11 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
     }
 
     // Update factory economy counters
+    // For gold mines, track grossValue as production since they produce currency, not physical resources
+    const productionCount = isGoldMine ? grossValue : (playerResourceOutput + stateResourceOutput + ownerCut);
     await supabase.from('factories').update({
       totalWorkerCount: (factory.totalWorkerCount || 0) + 1,
-      totalProduction: (factory.totalProduction || 0) + (playerResourceOutput + stateResourceOutput + ownerCut),
+      totalProduction: (factory.totalProduction || 0) + productionCount,
       totalOwnerProfit: (factory.totalOwnerProfit || 0) + ownerCut,
       totalTaxesPaid: (factory.totalTaxesPaid || 0) + Math.floor(grossValue * (taxRate / 100)),
     }).eq('id', factoryId);
@@ -946,7 +949,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
         p_gross_income: grossValue,
         p_taxes_paid: Math.floor(grossValue * (taxRate / 100)),
         p_owner_profit: ownerCut,
-        p_production: playerResourceOutput + stateResourceOutput + ownerCut,
+        p_production: productionCount,
       });
     } catch { /* non-critical */ }
 
@@ -957,8 +960,8 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
         workerId: user.id,
         earningsMoney: netEarningsMoney,
         earningsGold: netEarningsGold,
-        resourceType: isGoldMine ? 'gold_ore' : (playerResourceOutput > 0 ? factoryType : null),
-        resourceAmount: playerResourceOutput,
+        resourceType: isGoldMine ? null : (playerResourceOutput > 0 ? factoryType : null),
+        resourceAmount: isGoldMine ? 0 : playerResourceOutput,
         ownerCut: ownerCut,
       });
     } catch { /* non-critical */ }

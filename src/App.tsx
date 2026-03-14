@@ -74,6 +74,7 @@ import { MinistersView } from "./components/MinistersView";
 import WorldMap from "./components/WorldMap";
 import FactoryDetail from "./components/FactoryDetail";
 import FactoryMarket from "./components/FactoryMarket";
+import ExtractionDashboard from "./components/ExtractionDashboard";
 
 // --- Utilities ---
 const getTs = (val: any) => {
@@ -3305,6 +3306,21 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
         <GovernmentView region={region} currentUser={user} onUpdate={fetchCountryDetail} />
       ) : activeTab === 'resources' ? (
         <div className="space-y-4">
+          {/* Link to Advanced Extraction Dashboard */}
+          <div className="bg-emerald-50 p-4 rounded-[2rem] border border-emerald-100">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-black text-emerald-800">⛏️ Dashboard Estrazione Avanzata</h4>
+                <p className="text-[10px] font-bold text-emerald-600 mt-1">Visualizza cap, analytics 24h, leaderboard, esperienza lavorativa e distribuzione risorse.</p>
+              </div>
+              <button
+                onClick={() => navigate(`/extraction/${region.id}`)}
+                className="px-4 py-2 bg-emerald-500 text-white rounded-xl font-black text-xs uppercase hover:bg-emerald-600 transition-all"
+              >
+                Apri →
+              </button>
+            </div>
+          </div>
           <RegionResourcesTab regionId={region.id} user={user} />
           {/* Show recharge panel for leader/economy minister */}
           {(region.ownerUserId === user?.id || region.economicAdviserId === user?.id) && (
@@ -4742,6 +4758,7 @@ export default function App() {
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/factory/:id" element={user ? <FactoryDetail user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
           <Route path="/factory-market" element={user ? <FactoryMarket user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
+          <Route path="/extraction/:id" element={user ? <ExtractionDashboard user={user} /> : <Navigate to="/" />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/regions/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/leader" element={<LeaderView user={user} regionId={user?.residenceId || user?.regionId} fetchData={fetchData} />} />

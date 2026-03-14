@@ -724,3 +724,124 @@ export interface WorkExtractResult {
   error?: string;
   reason?: string;
 }
+
+// ── Extraction System Configuration ──────────────────────────
+// All formula constants are centralised here for easy balancing.
+
+export const EXTRACTION_CONFIG = {
+  // ── Base formula: Productivity = BASE_COEFF * (playerLevel ^ PLAYER_EXP) * ((coeffRisorsa / 10) ^ RESOURCE_EXP) * (factoryLevel ^ FACTORY_EXP) * ((workExp / 10) ^ WORK_EXP)
+  BASE_COEFFICIENT: 0.2,
+  PLAYER_LEVEL_EXPONENT: 0.8,
+  RESOURCE_COEFF_EXPONENT: 0.8,
+  FACTORY_LEVEL_EXPONENT: 0.8,
+  WORK_EXPERIENCE_EXPONENT: 0.6,
+  RESOURCE_COEFF_DIVISOR: 10,       // CoeffRisorsa / this
+  WORK_EXPERIENCE_DIVISOR: 10,      // WorkExp / this
+
+  // ── Resource coefficient multipliers (based on region max cap incl. deep) ──
+  RESOURCE_COEFF_MULTIPLIERS: {
+    gold_ore: 0.4,
+    oil: 0.65,
+    minerals: 0.65,
+    uranium: 0.75,
+    diamonds: 0.75,
+    // Energy-based resources (liquid_oxygen, helium3) and rivalium use 0 here
+    // because their coefficient is calculated via ENERGY_RESOURCE_MULTIPLIER/EXPONENT
+    // based on power plant count, not region cap.
+    liquid_oxygen: 0,
+    helium3: 0,
+    rivalium: 0,
+  } as Record<string, number>,
+
+  // ── Energy-based resource coefficient: pow(numPowerPlants * MULT, EXP) ──
+  ENERGY_RESOURCE_MULTIPLIER: 2,
+  ENERGY_RESOURCE_EXPONENT: 0.4,
+
+  // ── Bonus: Nation / Global production multiplier ──
+  NATION_BONUS_ENABLED: true,
+  NATION_BONUS_MULTIPLIER: 1.2,   // +20%
+
+  // ── Bonus: Resource Department ──
+  DEPARTMENT_BONUS_ENABLED: true,  // applies (1 + departmentLevel / 100)
+
+  // ── Final balancing multipliers per resource ──
+  BALANCING_MULTIPLIERS: {
+    gold_ore: 4,
+    oil: 1,
+    minerals: 1,
+    uranium: 1,
+    diamonds: 0.001,       // /1000
+    liquid_oxygen: 0.2,    // /5
+    helium3: 0.001,        // /1000
+    rivalium: 1,
+  } as Record<string, number>,
+
+  // ── Gold special: money generated per unit of gold produced ──
+  // Derived from base game economy ratio for gold-to-currency conversion.
+  GOLD_TO_MONEY_COEFFICIENT: 3.538975,
+
+  // ── Regional consumption coefficients (separate from player profit) ──
+  // Formula: (LINEAR_COEFF * factoryLevel) + BASE_OFFSET
+  CONSUMPTION_COEFFICIENTS: {
+    gold_ore:       { linearCoeff: 200000, baseOffset: 20000000 },
+    oil:            { linearCoeff: 200000, baseOffset: 20000000 },
+    minerals:       { linearCoeff: 200000, baseOffset: 20000000 },
+    uranium:        { linearCoeff: 200000, baseOffset: 20000000 },
+    diamonds:       { linearCoeff: 250,    baseOffset: 25000 },
+    liquid_oxygen:  { linearCoeff: 200000, baseOffset: 20000000 },
+    helium3:        { linearCoeff: 250,    baseOffset: 25000 },
+    rivalium:       { linearCoeff: 200000, baseOffset: 20000000 },
+  } as Record<string, { linearCoeff: number; baseOffset: number }>,
+
+  // ── Work experience gain per extraction action ──
+  WORK_EXPERIENCE_GAIN: 1,
+  MIN_WORK_EXPERIENCE: 1,  // floor for formula (avoid 0^exp)
+
+  // ── Minimum extraction threshold (below this, extraction is considered exhausted) ──
+  MIN_EXTRACTION_THRESHOLD: 0.001,
+
+  // ── Work action cost (energy drinks / energy) ──
+  WORK_ACTION_ENERGY_COST: 10,
+};
+
+// ── Extraction Breakdown (for UI transparency) ──────────────
+export interface ExtractionBreakdown {
+  // Inputs
+  playerLevel: number;
+  factoryLevel: number;
+  workExperience: number;
+  resourceCoefficient: number;
+  resourceType: ResourceType;
+  // Intermediate
+  baseProductivity: number;
+  nationBonus: number;
+  departmentBonus: number;
+  balancingMultiplier: number;
+  // Output
+  finalProductivity: number;
+  // Regional consumption
+  regionalConsumptionCoeff: number;
+  withdrawnPoints: number;
+  // Payout distribution
+  grossAmount: number;
+  playerAmount: number;
+  ownerAmount: number;
+  taxAmount: number;
+  stateAmount: number;
+  autonomyAmount: number;
+  // Gold special
+  moneyGenerated: number;
+  // Region status
+  regionCapMax: number;
+  regionDeepBonus: number;
+  regionCapTotal: number;
+  regionResidualToday: number;
+}
+
+export interface PlayerWorkExperience {
+  playerId: string;
+  resourceType: ResourceType;
+  experience: number;
+  totalExtractions: number;
+  lastWorkedAt: string | null;
+}

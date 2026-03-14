@@ -5,8 +5,9 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, TrendingUp, Warehouse, Users, Zap, DollarSign, ChevronUp, Loader2, ShoppingCart, BarChart3, Shield } from "lucide-react";
-import { FACTORY_CONFIG, factoryYieldMultiplier, factoryStorageLimit } from "../types";
+import { ArrowLeft, TrendingUp, Warehouse, Users, Zap, DollarSign, ChevronUp, Loader2, ShoppingCart, BarChart3, Shield, Info, Pickaxe, ChevronDown } from "lucide-react";
+import { FACTORY_CONFIG, EXTRACTION_CONFIG, RESOURCE_LABELS, RESOURCE_ICONS_MAP, factoryYieldMultiplier, factoryStorageLimit } from "../types";
+import type { ResourceType } from "../types";
 
 interface FactoryDetailProps {
   user: any;
@@ -22,6 +23,9 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
   const [upgradeTarget, setUpgradeTarget] = useState("");
   const [upgradeCost, setUpgradeCost] = useState<number | null>(null);
   const [salePrice, setSalePrice] = useState("");
+  const [extractionBreakdown, setExtractionBreakdown] = useState<any>(null);
+  const [showBreakdown, setShowBreakdown] = useState(false);
+  const [extractionLoading, setExtractionLoading] = useState(false);
 
   const load = async () => {
     try {
@@ -33,6 +37,41 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  // Load extraction breakdown preview when factory data is available
+  useEffect(() => {
+    if (!factory || !id) return;
+    const typeDef = FACTORY_CONFIG.TYPES[factory.type];
+    if (!typeDef?.resource) return;
+    fetch(`/api/extraction/breakdown?factoryId=${id}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data) setExtractionBreakdown(data); })
+      .catch(() => {});
+  }, [factory?.id, factory?.level]);
+
+  const handleExtract = async () => {
+    setExtractionLoading(true);
+    try {
+      const res = await fetch("/api/extraction/work", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ factoryId: id }),
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        const rt = data.resourceType as ResourceType;
+        const label = RESOURCE_LABELS[rt] || data.resourceType;
+        const icon = RESOURCE_ICONS_MAP[rt] || '📦';
+        let msg = `${icon} Estratto: +${data.amount} ${label}`;
+        if (data.moneyGenerated > 0) msg += ` (+€${data.moneyGenerated} valuta)`;
+        msg += `\n⚡ Energia: -${data.energyCost}`;
+        msg += `\n📊 EXP lavoro: ${data.workExperience}`;
+        alert(msg);
+        fetchData(); load();
+      }
+    } catch { alert("Errore durante l'estrazione."); }
+    finally { setExtractionLoading(false); }
+  };
 
   const fetchUpgradeCost = async (target: string) => {
     const targetNum = parseInt(target);
@@ -205,6 +244,142 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
           {actionLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (isGoldMine ? '🪙 Lavora (€ + Gold)' : `💼 Lavora (-10⚡)`)}
         </button>
       </div>
+
+      {/* ── Extraction System Section ── */}
+      {extractionBreakdown && (
+        <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-emerald-100 space-y-4">
+          <h3 className="text-sm font-black uppercase tracking-widest text-emerald-600 flex items-center gap-2">
+            <Pickaxe className="w-4 h-4" /> Sistema di Estrazione Avanzato
+          </h3>
+
+          {/* Quick Preview */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-100">
+              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500">Produttività Stimata</span>
+              <p className="text-lg font-black text-emerald-700">
+                {RESOURCE_ICONS_MAP[extractionBreakdown.breakdown?.resourceType as ResourceType] || '📦'} {Math.round((extractionBreakdown.breakdown?.playerAmount || 0) * 100) / 100}
+              </p>
+              <p className="text-[9px] font-bold text-emerald-500">{RESOURCE_LABELS[extractionBreakdown.breakdown?.resourceType as ResourceType] || extractionBreakdown.factoryType}</p>
+            </div>
+            <div className="bg-blue-50 p-3 rounded-2xl border border-blue-100">
+              <span className="text-[9px] font-black uppercase tracking-wider text-blue-500">Costo Energia</span>
+              <p className="text-lg font-black text-blue-700">⚡ {extractionBreakdown.energyCost}</p>
+              <p className="text-[9px] font-bold text-blue-500">Energia disponibile: {user?.energy || 0}</p>
+            </div>
+            {extractionBreakdown.breakdown?.moneyGenerated > 0 && (
+              <div className="bg-amber-50 p-3 rounded-2xl border border-amber-100">
+                <span className="text-[9px] font-black uppercase tracking-wider text-amber-500">Valuta Generata</span>
+                <p className="text-lg font-black text-amber-700">€{Math.round(extractionBreakdown.breakdown.moneyGenerated)}</p>
+                <p className="text-[9px] font-bold text-amber-500">Dall'oro estratto</p>
+              </div>
+            )}
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
+              <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">EXP Lavorativa</span>
+              <p className="text-lg font-black text-slate-700">📊 {extractionBreakdown.workExperience || 1}</p>
+              <p className="text-[9px] font-bold text-slate-400">{RESOURCE_LABELS[extractionBreakdown.breakdown?.resourceType as ResourceType] || ''}</p>
+            </div>
+          </div>
+
+          {/* Region Resource Status */}
+          <div className="bg-slate-50 p-3 rounded-xl space-y-2">
+            <div className="flex justify-between text-[10px] font-bold text-slate-500">
+              <span>Cap Regionale</span>
+              <span>{extractionBreakdown.breakdown?.regionCapTotal || 0} (base: {extractionBreakdown.breakdown?.regionCapMax || 0}{extractionBreakdown.breakdown?.regionDeepBonus > 0 ? ` + ${extractionBreakdown.breakdown.regionDeepBonus} deep` : ''})</span>
+            </div>
+            <div className="flex justify-between text-[10px] font-bold text-slate-500">
+              <span>Residuo disponibile oggi</span>
+              <span className={extractionBreakdown.breakdown?.regionResidualToday <= 0 ? 'text-red-500' : 'text-emerald-600'}>
+                {extractionBreakdown.breakdown?.regionResidualToday || 0}
+              </span>
+            </div>
+            <div className="flex justify-between text-[10px] font-bold text-slate-500">
+              <span>Consumo regionale previsto</span>
+              <span>{Math.round((extractionBreakdown.breakdown?.withdrawnPoints || 0) * 100) / 100} punti</span>
+            </div>
+          </div>
+
+          {/* Payout Distribution */}
+          <div className="bg-slate-50 p-3 rounded-xl space-y-1">
+            <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Distribuzione Payout</p>
+            <div className="flex justify-between text-[10px] font-bold">
+              <span className="text-slate-500">Lordo estratto</span>
+              <span className="text-slate-700">{Math.round((extractionBreakdown.breakdown?.grossAmount || 0) * 100) / 100}</span>
+            </div>
+            <div className="flex justify-between text-[10px] font-bold">
+              <span className="text-emerald-600">→ Al giocatore</span>
+              <span className="text-emerald-700">{Math.round((extractionBreakdown.breakdown?.playerAmount || 0) * 100) / 100}</span>
+            </div>
+            <div className="flex justify-between text-[10px] font-bold">
+              <span className="text-purple-600">→ Al proprietario</span>
+              <span className="text-purple-700">{Math.round((extractionBreakdown.breakdown?.ownerAmount || 0) * 100) / 100}</span>
+            </div>
+            <div className="flex justify-between text-[10px] font-bold">
+              <span className="text-red-500">→ Tasse</span>
+              <span className="text-red-600">{Math.round((extractionBreakdown.breakdown?.taxAmount || 0) * 100) / 100}</span>
+            </div>
+            {(extractionBreakdown.breakdown?.autonomyAmount || 0) > 0 && (
+              <div className="flex justify-between text-[10px] font-bold">
+                <span className="text-orange-500">→ Autonomia</span>
+                <span className="text-orange-600">{Math.round(extractionBreakdown.breakdown.autonomyAmount * 100) / 100}</span>
+              </div>
+            )}
+          </div>
+
+          {/* Breakdown Toggle */}
+          <button
+            onClick={() => setShowBreakdown(!showBreakdown)}
+            className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 transition-colors"
+          >
+            <Info className="w-3 h-3" />
+            {showBreakdown ? 'Nascondi Dettagli Formula' : 'Mostra Dettagli Formula'}
+            {showBreakdown ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+
+          {showBreakdown && extractionBreakdown.breakdown && (
+            <div className="bg-indigo-50 p-4 rounded-xl space-y-2 border border-indigo-100">
+              <p className="text-[10px] font-black uppercase text-indigo-500 mb-2">📐 Breakdown Formula Produttività</p>
+              <div className="space-y-1 text-[10px] font-mono text-indigo-800">
+                <p>Produttività = {EXTRACTION_CONFIG.BASE_COEFFICIENT} × (LvGiocatore^{EXTRACTION_CONFIG.PLAYER_LEVEL_EXPONENT}) × (CoeffRisorsa/10)^{EXTRACTION_CONFIG.RESOURCE_COEFF_EXPONENT} × (LvFabbrica^{EXTRACTION_CONFIG.FACTORY_LEVEL_EXPONENT}) × (EXP/10)^{EXTRACTION_CONFIG.WORK_EXPERIENCE_EXPONENT}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <BreakdownRow label="Livello Giocatore" value={extractionBreakdown.breakdown.playerLevel} />
+                <BreakdownRow label="Livello Fabbrica" value={extractionBreakdown.breakdown.factoryLevel} />
+                <BreakdownRow label="Esperienza Lavoro" value={extractionBreakdown.breakdown.workExperience} />
+                <BreakdownRow label="Coeff. Risorsa" value={Math.round(extractionBreakdown.breakdown.resourceCoefficient * 100) / 100} />
+                <BreakdownRow label="Produttività Base" value={Math.round(extractionBreakdown.breakdown.baseProductivity * 100) / 100} />
+                <BreakdownRow label="Bonus Nazione" value={`×${extractionBreakdown.breakdown.nationBonus}`} />
+                <BreakdownRow label="Bonus Dipartimento" value={`×${extractionBreakdown.breakdown.departmentBonus}`} />
+                <BreakdownRow label="Moltiplicatore Bilanciamento" value={`×${extractionBreakdown.breakdown.balancingMultiplier}`} />
+              </div>
+              <div className="mt-3 p-2 bg-white rounded-lg">
+                <p className="text-[11px] font-black text-indigo-700">
+                  Produttività Finale: {Math.round(extractionBreakdown.breakdown.finalProductivity * 100) / 100}
+                </p>
+              </div>
+              <div className="mt-2 text-[9px] text-indigo-500 space-y-1">
+                <p>💡 Livello più alto = più risorse estratte</p>
+                <p>🏭 Fabbrica di livello superiore = maggiore produttività per lavoro</p>
+                <p>📊 Più esperienza sulla risorsa = rendimento crescente</p>
+                <p>🌍 Il coeff. risorsa dipende dal potenziale della regione</p>
+              </div>
+            </div>
+          )}
+
+          {/* Extract Button */}
+          <button
+            onClick={handleExtract}
+            disabled={extractionLoading || !extractionBreakdown.canWork}
+            className="w-full py-3.5 bg-emerald-500 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-emerald-100 hover:bg-emerald-600 transition-all disabled:opacity-50"
+          >
+            {extractionLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : `⛏️ Estrai Risorse (-${extractionBreakdown.energyCost}⚡)`}
+          </button>
+          {!extractionBreakdown.canWork && (
+            <p className="text-[10px] font-bold text-red-500 text-center">
+              {(user?.energy || 0) < extractionBreakdown.energyCost ? 'Energia insufficiente' : 'Risorsa esaurita per oggi'}
+            </p>
+          )}
+        </div>
+      )}
 
       {/* ── Economy Section ── */}
       <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
@@ -388,6 +563,15 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
       <span className="text-[9px] font-black uppercase tracking-wider opacity-70">{label}</span>
       <p className="text-lg font-black">{value}</p>
       {sub && <p className="text-[9px] font-bold opacity-60 mt-0.5">{sub}</p>}
+    </div>
+  );
+}
+
+function BreakdownRow({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-white p-2 rounded-lg flex justify-between items-center">
+      <span className="text-[9px] font-bold text-indigo-500">{label}</span>
+      <span className="text-[10px] font-black text-indigo-800">{value}</span>
     </div>
   );
 }

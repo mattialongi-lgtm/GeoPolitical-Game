@@ -74,6 +74,7 @@ import { MinistersView } from "./components/MinistersView";
 import WorldMap from "./components/WorldMap";
 import FactoryDetail from "./components/FactoryDetail";
 import FactoryMarket from "./components/FactoryMarket";
+import ExtractionDashboard from "./components/ExtractionDashboard";
 
 // --- Utilities ---
 const getTs = (val: any) => {
@@ -4742,6 +4743,7 @@ export default function App() {
           <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/factory/:id" element={user ? <FactoryDetail user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
           <Route path="/factory-market" element={user ? <FactoryMarket user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
+          <Route path="/extraction/:id" element={user ? <ExtractionDashboard user={user} /> : <Navigate to="/" />} />
           <Route path="/countries/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/regions/:iso2" element={<CountryDetailView user={user} handleAction={handleAction} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/leader" element={<LeaderView user={user} regionId={user?.residenceId || user?.regionId} fetchData={fetchData} />} />

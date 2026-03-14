@@ -4,8 +4,8 @@ import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
-import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, RESOURCE_TYPES } from "./src/types";
-import type { ResourceType, DeepCostPreview } from "./src/types";
+import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, RESOURCE_TYPES, AUTONOMY_CONFIG, BUILDING_LABELS } from "./src/types";
+import type { ResourceType, DeepCostPreview, BuildingType } from "./src/types";
 
 console.log("Starting server.ts...");
 
@@ -492,6 +492,7 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
         *,
         owner:users!ownerUserId(username),
         leader:users!leaderUserId(username, level),
+        governor:users!governorPlayerId(username),
         nation:nations(*),
         factories:factories(count)
       `)
@@ -503,7 +504,7 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
     // Get sibling regions
     const { data: memberRegions } = await supabase
       .from('regions')
-      .select('id, name, population')
+      .select('id, name, population, isCapital, isAutonomous')
       .eq('nation_id', region.nation_id);
 
     res.json({
@@ -511,6 +512,7 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
       ownerName: region.owner?.username,
       leaderName: region.leader?.username,
       leaderLevel: region.leader?.level,
+      governorName: region.governor?.username || null,
       memberRegions: memberRegions || [region]
     });
   } catch (err: any) {
@@ -532,6 +534,7 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
         *,
         owner:users!ownerUserId(username),
         leader:users!leaderUserId(username, level),
+        governor:users!governorPlayerId(username),
         nation:nations(*)
       `)
       .eq('id', isoId)
@@ -570,7 +573,7 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
     // 3. Get sibling regions
     const { data: memberRegions } = await supabase
       .from('regions')
-      .select('id, name, population')
+      .select('id, name, population, isCapital, isAutonomous')
       .eq('nation_id', region.nation_id);
 
     // 4. Construct response
@@ -580,6 +583,7 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       ownerName: region.owner?.username,
       leaderName: region.leader?.username,
       leaderLevel: region.leader?.level,
+      governorName: region.governor?.username || null,
       citizenCount: citizenCount || 0,
       memberRegions: memberRegions || [region],
       indicators: {
@@ -4203,6 +4207,138 @@ app.post("/api/blocs/regulations/proposals/:id/vote", authenticate, async (req: 
   res.json({ success: true });
 });
 
+// ══════════════════════════════════════════════════════════════════
+// REGIONAL AUTONOMY – Calculation Services
+// ══════════════════════════════════════════════════════════════════
+
+const ALL_BUILDING_TYPES: BuildingType[] = [
+  'hospital', 'military_base', 'school', 'military_academy',
+  'missile_system', 'airport', 'naval_port', 'space_port',
+  'real_estate_fund', 'power_plant'
+];
+
+async function getRegionBuildings(regionId: string): Promise<Record<string, number>> {
+  const { data } = await supabase
+    .from('regional_buildings')
+    .select('buildingType, quantity')
+    .eq('regionId', regionId);
+  const map: Record<string, number> = {};
+  for (const bt of ALL_BUILDING_TYPES) map[bt] = 0;
+  for (const row of data || []) map[row.buildingType] = row.quantity || 0;
+  return map;
+}
+
+function calculateRegionalIndices(buildings: Record<string, number>) {
+  const cfg = AUTONOMY_CONFIG.INDEX_WEIGHTS;
+  const calc = (key: string) => {
+    const weights = cfg[key] || {};
+    let total = 0;
+    for (const [bt, w] of Object.entries(weights)) total += (buildings[bt] || 0) * w;
+    return Math.round(total * 100) / 100;
+  };
+  return {
+    healthIndex: calc('health'),
+    militaryIndex: calc('military'),
+    educationIndex: calc('education'),
+    developmentIndex: calc('development'),
+  };
+}
+
+function calculateEnergyStatus(buildings: Record<string, number>): {
+  generation: number; consumption: number; efficiency: number;
+  surplusPowerPlants: number; supportableBuildings: number; excessBuildings: number; isDeficit: boolean;
+} {
+  const cons = AUTONOMY_CONFIG.ENERGY_CONSUMPTION;
+  let consumption = 0;
+  for (const [bt, qty] of Object.entries(buildings)) {
+    consumption += (cons[bt] || 0) * qty;
+  }
+  const generation = (buildings['power_plant'] || 0) * AUTONOMY_CONFIG.ENERGY_PRODUCTION_PER_PLANT;
+  const efficiency = generation - consumption;
+  const isDeficit = efficiency < 0;
+  const surplusPowerPlants = efficiency > 0
+    ? Math.floor(efficiency / AUTONOMY_CONFIG.ENERGY_PRODUCTION_PER_PLANT)
+    : -Math.ceil(Math.abs(efficiency) / AUTONOMY_CONFIG.ENERGY_PRODUCTION_PER_PLANT);
+  // Average energy cost per consuming building (using the most common cost from ENERGY_CONSUMPTION config)
+  const avgConsumptionPerBuilding = 2; // mW – matches the standard rate in AUTONOMY_CONFIG.ENERGY_CONSUMPTION
+  const supportableBuildings = efficiency > 0
+    ? Math.floor(efficiency / avgConsumptionPerBuilding)
+    : 0;
+  const excessBuildings = efficiency < 0
+    ? Math.ceil(Math.abs(efficiency) / avgConsumptionPerBuilding)
+    : 0;
+  return { generation, consumption, efficiency, surplusPowerPlants, supportableBuildings, excessBuildings, isDeficit };
+}
+
+function calculateMilitaryStats(buildings: Record<string, number>) {
+  const coefAtk = AUTONOMY_CONFIG.ATTACK_BASE_COEFFICIENT;
+  const coefDef = AUTONOMY_CONFIG.DEFENSE_STRUCTURAL_COEFFICIENT;
+  const academies = buildings['military_academy'] || 0;
+  const bases = buildings['military_base'] || 0;
+  const hospitals = buildings['hospital'] || 0;
+  const schools = buildings['school'] || 0;
+  const missileSystems = buildings['missile_system'] || 0;
+  const airports = buildings['airport'] || 0;
+  const navalPorts = buildings['naval_port'] || 0;
+  const spacePorts = buildings['space_port'] || 0;
+  const powerPlants = buildings['power_plant'] || 0;
+
+  const initialAttackDamage = academies * coefAtk;
+  const R1 = academies * coefAtk;
+  const R2 = bases * 2;
+  const R3 = hospitals + schools + missileSystems + airports + navalPorts + spacePorts + powerPlants;
+  const initialDefensePoints = R1 + ((R2 + R3) * coefDef);
+
+  return {
+    initialAttackDamage, initialDefensePoints,
+    academies, bases, hospitals, schools, missileSystems, airports, navalPorts, spacePorts, powerPlants,
+  };
+}
+
+async function recalculateRegionStats(regionId: string) {
+  const buildings = await getRegionBuildings(regionId);
+  const indices = calculateRegionalIndices(buildings);
+  const energy = calculateEnergyStatus(buildings);
+  await supabase.from('regions').update({
+    healthIndex: indices.healthIndex,
+    militaryIndex: indices.militaryIndex,
+    educationIndex: indices.educationIndex,
+    developmentIndex: indices.developmentIndex,
+    energyGeneration: energy.generation,
+    energyConsumption: energy.consumption,
+    energyEfficiency: energy.efficiency,
+  }).eq('id', regionId);
+  return { buildings, indices, energy };
+}
+
+async function getStateEnergyCompensation(regionId: string, nationId: string | null) {
+  if (!nationId) return 0;
+  const { data: siblings } = await supabase
+    .from('regions')
+    .select('id, energyEfficiency')
+    .eq('nation_id', nationId)
+    .neq('id', regionId);
+  let totalSurplus = 0;
+  for (const s of siblings || []) {
+    if ((s.energyEfficiency || 0) > 0) totalSurplus += s.energyEfficiency;
+  }
+  return totalSurplus;
+}
+
+async function addRegionalBudgetTransaction(regionId: string, type: string, subtype: string | null, moneyDelta: number, description: string, userId?: string) {
+  await supabase.from('regional_budget_transactions').insert({
+    regionId, type, subtype, moneyDelta, description,
+    createdByUserId: userId || null,
+  });
+  if (moneyDelta !== 0) {
+    const { data: region } = await supabase.from('regions').select('regionalBudget').eq('id', regionId).single();
+    const currentBudget = region?.regionalBudget || 0;
+    await supabase.from('regions').update({
+      regionalBudget: Math.max(0, currentBudget + moneyDelta),
+    }).eq('id', regionId);
+  }
+}
+
 export const LawRegistry: Record<string, {
   category: string;
   icon: string;
@@ -4842,6 +4978,223 @@ export const LawRegistry: Record<string, {
       } catch (e) {
         console.error("Failed to execute deep_exploration law:", e);
       }
+    }
+  },
+  // ── Autonomy Laws ──────────────────────────────────
+  grant_autonomy: {
+    category: "Autonomie Regionali",
+    icon: "MapPin",
+    title: "Istituisci Autonomia Regionale",
+    description: "Trasforma una regione non-capitale in autonomia con governatore e parlamento regionale.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: async (region, params) => {
+      if (!params || !params.targetRegionId) return "ID regione bersaglio obbligatorio.";
+      const { data: target } = await supabase.from('regions').select('*').eq('id', params.targetRegionId).single();
+      if (!target) return "Regione bersaglio inesistente.";
+      if (target.nation_id !== region.nation_id && target.id !== region.id) return "La regione non appartiene a questo Stato.";
+      if (target.isCapital) return "La capitale non può diventare autonomia.";
+      if (target.isAutonomous) return "La regione è già autonoma.";
+      return null;
+    },
+    execute: async (region, params) => {
+      const share = parseInt(params.profitShare) || 30;
+      const clampedShare = Math.max(0, Math.min(100, share));
+      const nowIso = new Date().toISOString();
+      await supabase.from('regions').update({
+        isAutonomous: true,
+        regionalParliamentEnabled: true,
+        regionalProfitSharePercent: clampedShare,
+        nationalProfitSharePercent: 100 - clampedShare,
+        regionalBudget: 0,
+        autonomyGrantedAt: nowIso,
+        autonomyRevokedAt: null,
+      }).eq('id', params.targetRegionId);
+      await supabase.from('autonomy_history').insert({
+        regionId: params.targetRegionId,
+        action: 'granted',
+        details: { profitShare: clampedShare, grantedBy: region.id },
+      });
+    }
+  },
+  revoke_autonomy: {
+    category: "Autonomie Regionali",
+    icon: "MapPinOff",
+    title: "Revoca Autonomia Regionale",
+    description: "Rimuove lo status di autonomia da una regione, riportandola sotto gestione centrale.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: async (region, params) => {
+      if (!params || !params.targetRegionId) return "ID regione bersaglio obbligatorio.";
+      const { data: target } = await supabase.from('regions').select('*').eq('id', params.targetRegionId).single();
+      if (!target) return "Regione bersaglio inesistente.";
+      if (!target.isAutonomous) return "La regione non è autonoma.";
+      return null;
+    },
+    execute: async (region, params) => {
+      const { data: target } = await supabase.from('regions').select('regionalBudget').eq('id', params.targetRegionId).single();
+      const frozenBudget = target?.regionalBudget || 0;
+      const nowIso = new Date().toISOString();
+      // Transfer remaining regional budget to state
+      if (frozenBudget > 0) {
+        await supabase.rpc('add_budget_transaction', {
+          p_owner_type: 'REGION',
+          p_owner_id: region.id,
+          p_type: 'INCOME',
+          p_subtype: 'AUTONOMY_REVOKE_TRANSFER',
+          p_money_delta: frozenBudget,
+          p_metadata: { fromRegion: params.targetRegionId },
+        });
+      }
+      await supabase.from('regions').update({
+        isAutonomous: false,
+        regionalParliamentEnabled: false,
+        governorPlayerId: null,
+        regionalBudget: 0,
+        regionalProfitSharePercent: 0,
+        nationalProfitSharePercent: 100,
+        autonomyRevokedAt: nowIso,
+      }).eq('id', params.targetRegionId);
+      // Remove regional parliament members
+      await supabase.from('regional_parliament_members').delete().eq('regionId', params.targetRegionId);
+      await supabase.from('autonomy_history').insert({
+        regionId: params.targetRegionId,
+        action: 'revoked',
+        details: { revokedBy: region.id, frozenBudget },
+      });
+    }
+  },
+  change_profit_share: {
+    category: "Autonomie Regionali",
+    icon: "PieChart",
+    title: "Modifica Quota Utili Autonomia",
+    description: "Cambia la percentuale di profitto trattenuta dalla regione autonoma.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: async (region, params) => {
+      if (!params || !params.targetRegionId) return "ID regione bersaglio obbligatorio.";
+      const share = parseInt(params.profitShare);
+      if (isNaN(share) || share < 0 || share > 100) return "Quota non valida (0-100).";
+      const { data: target } = await supabase.from('regions').select('isAutonomous').eq('id', params.targetRegionId).single();
+      if (!target || !target.isAutonomous) return "La regione non è autonoma.";
+      return null;
+    },
+    execute: async (region, params) => {
+      const share = Math.max(0, Math.min(100, parseInt(params.profitShare)));
+      await supabase.from('regions').update({
+        regionalProfitSharePercent: share,
+        nationalProfitSharePercent: 100 - share,
+      }).eq('id', params.targetRegionId);
+    }
+  },
+  change_worker_tax: {
+    category: "Autonomie Regionali",
+    icon: "Wallet",
+    title: "Modifica Tassa Lavoratori",
+    description: "Imposta la tassa percentuale sui guadagni da lavoro nella regione.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: async (region, params) => {
+      const tax = parseInt(params.tax);
+      if (isNaN(tax) || tax < 0 || tax > 100) return "Tassa non valida (0-100).";
+      return null;
+    },
+    execute: async (region, params) => {
+      const regionTarget = params.targetRegionId || region.id;
+      await supabase.from('regions').update({ workerTaxPercent: parseInt(params.tax) }).eq('id', regionTarget);
+    }
+  },
+  change_industry_tax: {
+    category: "Autonomie Regionali",
+    icon: "Factory",
+    title: "Modifica Tassa Industriale",
+    description: "Imposta la tassa percentuale sui profitti industriali nella regione.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: async (region, params) => {
+      const tax = parseInt(params.tax);
+      if (isNaN(tax) || tax < 0 || tax > 100) return "Tassa non valida (0-100).";
+      return null;
+    },
+    execute: async (region, params) => {
+      const regionTarget = params.targetRegionId || region.id;
+      await supabase.from('regions').update({ industryTaxPercent: parseInt(params.tax) }).eq('id', regionTarget);
+    }
+  },
+  build_regional_building: {
+    category: "Costruzioni Regionali",
+    icon: "Building2",
+    title: "Costruzione Edificio Regionale",
+    description: "Costruisci un edificio in una regione specifica.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: async (region, params) => {
+      const bt = params.buildingType;
+      if (!bt || !AUTONOMY_CONFIG.BUILDING_COSTS[bt]) return "Tipo edificio non valido.";
+      const cost = AUTONOMY_CONFIG.BUILDING_COSTS[bt];
+      const targetId = params.targetRegionId || region.id;
+      // Check budget source (regional budget for autonomous, state budget otherwise)
+      const { data: targetRegion } = await supabase.from('regions').select('isAutonomous, regionalBudget, nation_id').eq('id', targetId).single();
+      if (!targetRegion) return "Regione non trovata.";
+      if (targetRegion.isAutonomous) {
+        if ((targetRegion.regionalBudget || 0) < cost) return `Budget regionale insufficiente (${cost} EUR richiesti).`;
+      } else {
+        const { data: budget } = await supabase.from('budgets').select('moneyEUR').eq('ownerType', 'REGION').eq('ownerId', region.id).single();
+        if (!budget || budget.moneyEUR < cost) return `Fondi statali insufficienti (${cost} EUR richiesti).`;
+      }
+      return null;
+    },
+    execute: async (region, params) => {
+      const bt = params.buildingType;
+      const cost = AUTONOMY_CONFIG.BUILDING_COSTS[bt];
+      const targetId = params.targetRegionId || region.id;
+      const { data: targetRegion } = await supabase.from('regions').select('isAutonomous, regionalBudget').eq('id', targetId).single();
+      // Deduct cost
+      if (targetRegion?.isAutonomous) {
+        await addRegionalBudgetTransaction(targetId, 'EXPENSE', 'BUILDING', -cost, `Costruzione ${BUILDING_LABELS[bt] || bt}`);
+      } else {
+        await supabase.rpc('add_budget_transaction', {
+          p_owner_type: 'REGION', p_owner_id: region.id,
+          p_type: 'EXPENSE', p_subtype: 'BUILDING',
+          p_money_delta: -cost, p_metadata: { building: bt, targetRegion: targetId },
+        });
+      }
+      // Upsert building
+      const { data: existing } = await supabase.from('regional_buildings')
+        .select('quantity').eq('regionId', targetId).eq('buildingType', bt).maybeSingle();
+      if (existing) {
+        await supabase.from('regional_buildings')
+          .update({ quantity: (existing.quantity || 0) + 1, updatedAt: new Date().toISOString() })
+          .eq('regionId', targetId).eq('buildingType', bt);
+      } else {
+        await supabase.from('regional_buildings').insert({
+          regionId: targetId, buildingType: bt, quantity: 1, level: 1,
+        });
+      }
+      // Recalculate indices
+      await recalculateRegionStats(targetId);
+    }
+  },
+  assign_governor: {
+    category: "Autonomie Regionali",
+    icon: "UserCheck",
+    title: "Nomina Governatore",
+    description: "Assegna un governatore a una regione autonoma.",
+    threshold: 0.5,
+    delayDays: 1,
+    validate: async (region, params) => {
+      if (!params.targetRegionId) return "ID regione obbligatorio.";
+      if (!params.governorUserId) return "ID governatore obbligatorio.";
+      const { data: target } = await supabase.from('regions').select('isAutonomous').eq('id', params.targetRegionId).single();
+      if (!target?.isAutonomous) return "La regione non è autonoma.";
+      const { data: user } = await supabase.from('users').select('id').eq('id', params.governorUserId).single();
+      if (!user) return "Utente non trovato.";
+      return null;
+    },
+    execute: async (region, params) => {
+      await supabase.from('regions').update({
+        governorPlayerId: params.governorUserId,
+      }).eq('id', params.targetRegionId);
     }
   }
 };
@@ -5829,6 +6182,19 @@ async function dailyResourceReset() {
       .eq('isActive', true)
       .lt('endsAt', nowStr);
 
+    // Reset regional autonomy daily extraction counters for all regions
+    const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    const { error: resetErr } = await supabase.from('regions').update({
+      dailyExtractedGold: 0,
+      dailyExtractedOil: 0,
+      dailyExtractedMinerals: 0,
+      dailyExtractedUranium: 0,
+      dailyExtractedDiamonds: 0,
+      nextExtractionResetAt: tomorrow,
+    }).neq('id', ''); // matches all rows with non-empty id (i.e., all regions)
+    if (resetErr) console.error("[ResourceReset] Error resetting regional extraction:", resetErr);
+    else console.log("[ResourceReset] Regional extraction counters reset.");
+
   } catch (err) {
     console.error("[ResourceReset] Error in daily reset:", err);
   }
@@ -5847,7 +6213,348 @@ app.get("/api/leaderboard", authenticate, async (req, res) => {
   res.json(leaders);
 });
 
-// Election Cronjob - Migrated to Supabase
+// ══════════════════════════════════════════════════════════════════
+// REGIONAL AUTONOMY – API Endpoints
+// ══════════════════════════════════════════════════════════════════
+
+// GET region autonomy details (buildings, indices, energy, economy, military)
+app.get("/api/regions/:id/autonomy", authenticate, async (req: any, res) => {
+  try {
+    const regionId = (req.params.id || '').toUpperCase();
+    const { data: region, error } = await supabase
+      .from('regions')
+      .select('*, governor:users!governorPlayerId(username)')
+      .eq('id', regionId)
+      .single();
+    if (error || !region) return res.status(404).json({ error: "Regione non trovata" });
+
+    const buildings = await getRegionBuildings(regionId);
+    const indices = calculateRegionalIndices(buildings);
+    const energy = calculateEnergyStatus(buildings);
+    const militaryStats = calculateMilitaryStats(buildings);
+
+    // State energy compensation
+    const stateCompensation = energy.isDeficit
+      ? await getStateEnergyCompensation(regionId, region.nation_id)
+      : 0;
+    const netEfficiency = energy.efficiency + Math.min(stateCompensation, Math.abs(energy.efficiency));
+
+    // Budget transactions
+    const { data: transactions } = await supabase
+      .from('regional_budget_transactions')
+      .select('*')
+      .eq('regionId', regionId)
+      .order('createdAt', { ascending: false })
+      .limit(50);
+
+    // Autonomy history
+    const { data: history } = await supabase
+      .from('autonomy_history')
+      .select('*')
+      .eq('regionId', regionId)
+      .order('createdAt', { ascending: false })
+      .limit(20);
+
+    // Governor name
+    const governorName = region.governor?.username || null;
+
+    // Pollution malus
+    const pollutionMalus = (region.pollution || 0) * AUTONOMY_CONFIG.POLLUTION_MALUS_PER_POINT;
+    const effectiveHealthIndex = Math.max(0, indices.healthIndex * (1 - pollutionMalus / 100));
+
+    // Energy deficit malus
+    const energyDeficitMalus = netEfficiency < 0 ? AUTONOMY_CONFIG.ENERGY_DEFICIT_MALUS * Math.abs(netEfficiency) : 0;
+
+    res.json({
+      region: {
+        id: region.id,
+        name: region.name,
+        isCapital: region.isCapital || false,
+        isAutonomous: region.isAutonomous || false,
+        isBorderRegion: region.isBorderRegion || false,
+        governorPlayerId: region.governorPlayerId,
+        governorName,
+        regionalParliamentEnabled: region.regionalParliamentEnabled || false,
+        regionalBudget: region.regionalBudget || 0,
+        nationalProfitSharePercent: region.nationalProfitSharePercent ?? 100,
+        regionalProfitSharePercent: region.regionalProfitSharePercent ?? 0,
+        workerTaxPercent: region.workerTaxPercent ?? 10,
+        marketTaxRate: region.marketTaxRate ?? 10,
+        industryTaxPercent: region.industryTaxPercent ?? 10,
+        pollution: region.pollution || 0,
+        autonomyGrantedAt: region.autonomyGrantedAt,
+        autonomyRevokedAt: region.autonomyRevokedAt,
+      },
+      buildings,
+      indices: {
+        ...indices,
+        effectiveHealthIndex,
+      },
+      energy: {
+        ...energy,
+        stateCompensation,
+        netEfficiency,
+      },
+      militaryStats,
+      pollutionMalus,
+      energyDeficitMalus,
+      extraction: {
+        gold: { limit: region.dailyExtractionLimitGold ?? 2500, extracted: region.dailyExtractedGold ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitGold ?? 2500) - (region.dailyExtractedGold ?? 0)) },
+        oil: { limit: region.dailyExtractionLimitOil ?? 600, extracted: region.dailyExtractedOil ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitOil ?? 600) - (region.dailyExtractedOil ?? 0)) },
+        minerals: { limit: region.dailyExtractionLimitMinerals ?? 500, extracted: region.dailyExtractedMinerals ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitMinerals ?? 500) - (region.dailyExtractedMinerals ?? 0)) },
+        uranium: { limit: region.dailyExtractionLimitUranium ?? 60, extracted: region.dailyExtractedUranium ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitUranium ?? 60) - (region.dailyExtractedUranium ?? 0)) },
+        diamonds: { limit: region.dailyExtractionLimitDiamonds ?? 75, extracted: region.dailyExtractedDiamonds ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitDiamonds ?? 75) - (region.dailyExtractedDiamonds ?? 0)) },
+        nextResetAt: region.nextExtractionResetAt,
+      },
+      transactions: transactions || [],
+      history: history || [],
+    });
+  } catch (err: any) {
+    console.error("Error fetching region autonomy:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET regional buildings
+app.get("/api/regions/:id/buildings", authenticate, async (req: any, res) => {
+  try {
+    const regionId = (req.params.id || '').toUpperCase();
+    const buildings = await getRegionBuildings(regionId);
+    const buildingDetails = ALL_BUILDING_TYPES.map(bt => ({
+      type: bt,
+      label: BUILDING_LABELS[bt] || bt,
+      quantity: buildings[bt] || 0,
+      cost: AUTONOMY_CONFIG.BUILDING_COSTS[bt] || 0,
+      energyConsumption: AUTONOMY_CONFIG.ENERGY_CONSUMPTION[bt] || 0,
+    }));
+    res.json({ buildings: buildingDetails });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET regional energy dashboard
+app.get("/api/regions/:id/energy", authenticate, async (req: any, res) => {
+  try {
+    const regionId = (req.params.id || '').toUpperCase();
+    const { data: region } = await supabase.from('regions').select('nation_id, energyGeneration, energyConsumption, energyEfficiency').eq('id', regionId).single();
+    if (!region) return res.status(404).json({ error: "Regione non trovata" });
+
+    const buildings = await getRegionBuildings(regionId);
+    const energy = calculateEnergyStatus(buildings);
+    const stateCompensation = energy.isDeficit
+      ? await getStateEnergyCompensation(regionId, region.nation_id)
+      : 0;
+    const netEfficiency = energy.efficiency + Math.min(stateCompensation, Math.abs(energy.efficiency));
+
+    // Per-building energy breakdown
+    const breakdown = ALL_BUILDING_TYPES.map(bt => ({
+      type: bt,
+      label: BUILDING_LABELS[bt] || bt,
+      quantity: buildings[bt] || 0,
+      consumption: (AUTONOMY_CONFIG.ENERGY_CONSUMPTION[bt] || 0) * (buildings[bt] || 0),
+      production: bt === 'power_plant' ? (buildings[bt] || 0) * AUTONOMY_CONFIG.ENERGY_PRODUCTION_PER_PLANT : 0,
+    }));
+
+    res.json({
+      ...energy,
+      stateCompensation,
+      netEfficiency,
+      breakdown,
+      config: {
+        productionPerPlant: AUTONOMY_CONFIG.ENERGY_PRODUCTION_PER_PLANT,
+        buildingsPerPlant: AUTONOMY_CONFIG.BUILDINGS_PER_PLANT,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET regional economy dashboard
+app.get("/api/regions/:id/economy", authenticate, async (req: any, res) => {
+  try {
+    const regionId = (req.params.id || '').toUpperCase();
+    const { data: region } = await supabase.from('regions').select('*').eq('id', regionId).single();
+    if (!region) return res.status(404).json({ error: "Regione non trovata" });
+
+    const { data: transactions } = await supabase
+      .from('regional_budget_transactions')
+      .select('*')
+      .eq('regionId', regionId)
+      .order('createdAt', { ascending: false })
+      .limit(100);
+
+    // Aggregate income/expenses
+    let totalIncome = 0, totalExpense = 0;
+    for (const tx of transactions || []) {
+      if ((tx.moneyDelta || 0) > 0) totalIncome += tx.moneyDelta;
+      else totalExpense += Math.abs(tx.moneyDelta || 0);
+    }
+
+    res.json({
+      regionalBudget: region.regionalBudget || 0,
+      workerTaxPercent: region.workerTaxPercent ?? 10,
+      marketTaxRate: region.marketTaxRate ?? 10,
+      industryTaxPercent: region.industryTaxPercent ?? 10,
+      nationalProfitSharePercent: region.nationalProfitSharePercent ?? 100,
+      regionalProfitSharePercent: region.regionalProfitSharePercent ?? 0,
+      isAutonomous: region.isAutonomous || false,
+      totalIncome,
+      totalExpense,
+      netBalance: totalIncome - totalExpense,
+      transactions: transactions || [],
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST assign governor (direct action for leaders in dictatorships)
+app.post("/api/regions/:id/governor", authenticate, async (req: any, res) => {
+  try {
+    const regionId = (req.params.id || '').toUpperCase();
+    const { governorUserId } = req.body;
+    if (!governorUserId) return res.status(400).json({ error: "ID governatore obbligatorio." });
+
+    const { data: region } = await supabase.from('regions').select('*').eq('id', regionId).single();
+    if (!region) return res.status(404).json({ error: "Regione non trovata" });
+    if (!region.isAutonomous) return res.status(400).json({ error: "La regione non è autonoma." });
+
+    // Check permission: must be leader of the parent state or dictator
+    const { data: parentRegion } = await supabase.from('regions')
+      .select('leaderUserId, governmentForm')
+      .eq('nation_id', region.nation_id)
+      .eq('isCapital', true)
+      .single();
+
+    const isLeader = parentRegion?.leaderUserId === req.user.id;
+    const isDictator = isLeader && ['DICTATORSHIP', 'ONE_PARTY_SYSTEM', 'EXECUTIVE_MONARCHY'].includes(parentRegion?.governmentForm);
+
+    if (!isDictator) return res.status(403).json({ error: "Solo il leader di un regime autocratico può assegnare direttamente un governatore." });
+
+    const { data: user } = await supabase.from('users').select('id, username').eq('id', governorUserId).single();
+    if (!user) return res.status(404).json({ error: "Utente non trovato." });
+
+    await supabase.from('regions').update({ governorPlayerId: governorUserId }).eq('id', regionId);
+    res.json({ success: true, governorName: user.username });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST remove governor
+app.delete("/api/regions/:id/governor", authenticate, async (req: any, res) => {
+  try {
+    const regionId = (req.params.id || '').toUpperCase();
+    const { data: region } = await supabase.from('regions').select('*, parentNation:regions!nation_id(leaderUserId, governmentForm)').eq('id', regionId).single();
+    if (!region) return res.status(404).json({ error: "Regione non trovata" });
+    if (!region.isAutonomous) return res.status(400).json({ error: "La regione non è autonoma." });
+
+    // Must be national leader
+    const { data: capitalRegion } = await supabase.from('regions')
+      .select('leaderUserId')
+      .eq('nation_id', region.nation_id)
+      .eq('isCapital', true)
+      .single();
+    if (capitalRegion?.leaderUserId !== req.user.id) {
+      return res.status(403).json({ error: "Solo il leader nazionale può rimuovere un governatore." });
+    }
+
+    await supabase.from('regions').update({ governorPlayerId: null }).eq('id', regionId);
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET regional parliament
+app.get("/api/regions/:id/parliament", authenticate, async (req: any, res) => {
+  try {
+    const regionId = (req.params.id || '').toUpperCase();
+    const { data: region } = await supabase.from('regions').select('regionalParliamentEnabled, isAutonomous').eq('id', regionId).single();
+    if (!region) return res.status(404).json({ error: "Regione non trovata" });
+    if (!region.isAutonomous || !region.regionalParliamentEnabled) {
+      return res.json({ enabled: false, members: [] });
+    }
+
+    const { data: members } = await supabase
+      .from('regional_parliament_members')
+      .select('*, user:users!userId(username, level)')
+      .eq('regionId', regionId);
+
+    res.json({
+      enabled: true,
+      members: (members || []).map((m: any) => ({
+        userId: m.userId,
+        username: m.user?.username || 'Sconosciuto',
+        level: m.user?.level || 1,
+        electedAt: m.electedAt,
+        termEndsAt: m.termEndsAt,
+      })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET regional laws
+app.get("/api/regions/:id/laws", authenticate, async (req: any, res) => {
+  try {
+    const regionId = (req.params.id || '').toUpperCase();
+    const { data: laws } = await supabase
+      .from('regional_laws')
+      .select('*, proposer:users!proposerId(username)')
+      .eq('regionId', regionId)
+      .order('createdAt', { ascending: false })
+      .limit(50);
+
+    const lawsWithVotes = await Promise.all((laws || []).map(async (l: any) => {
+      const { data: votes } = await supabase.from('regional_law_votes').select('vote, voterId').eq('lawId', l.id);
+      const yesVotes = (votes || []).filter((v: any) => v.vote === 'yes').length;
+      const noVotes = (votes || []).filter((v: any) => v.vote === 'no').length;
+      const myVote = (votes || []).find((v: any) => v.voterId === req.user.id)?.vote || null;
+      return { ...l, proposerName: l.proposer?.username || 'Sconosciuto', yesVotes, noVotes, myVote };
+    }));
+
+    res.json({ laws: lawsWithVotes });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET state-wide energy overview (all regions of a nation)
+app.get("/api/nations/:nationId/energy", authenticate, async (req: any, res) => {
+  try {
+    const nationId = (req.params.nationId || '').toUpperCase();
+    const { data: regions } = await supabase
+      .from('regions')
+      .select('id, name, isCapital, isAutonomous, energyGeneration, energyConsumption, energyEfficiency')
+      .eq('nation_id', nationId);
+
+    if (!regions || regions.length === 0) return res.status(404).json({ error: "Nazione non trovata" });
+
+    let totalGeneration = 0, totalConsumption = 0;
+    const regionDetails = regions.map((r: any) => {
+      const gen = r.energyGeneration || 0;
+      const cons = r.energyConsumption || 0;
+      totalGeneration += gen;
+      totalConsumption += cons;
+      return { id: r.id, name: r.name, isCapital: r.isCapital, isAutonomous: r.isAutonomous, generation: gen, consumption: cons, efficiency: gen - cons };
+    });
+
+    res.json({
+      totalGeneration,
+      totalConsumption,
+      totalEfficiency: totalGeneration - totalConsumption,
+      regions: regionDetails,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════
 async function checkAndResolveElections() {
   const { data: regions } = await supabase.from('regions').select('id');
   if (!regions) return;

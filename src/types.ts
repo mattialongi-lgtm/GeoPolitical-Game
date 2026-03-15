@@ -488,6 +488,49 @@ export const AUTONOMY_CONFIG = {
     education: { school: 1.0 },
     development: { real_estate_fund: 1.0 },
   } as Record<string, Record<string, number>>,
+
+  // Cumulative building-score thresholds to reach each level 1–10.
+  // threshold[i] = minimum weighted score required to reach level (i+1).
+  // These are configurable: adjust to balance difficulty of progression.
+  INDEX_THRESHOLDS: {
+    health:      [1, 3,  6,  10, 15, 21, 28, 36, 45, 55],
+    military:    [1, 3,  6,  10, 15, 21, 28, 36, 45, 55],
+    education:   [1, 3,  6,  10, 15, 21, 28, 36, 45, 55],
+    development: [1, 3,  6,  10, 15, 21, 28, 36, 45, 55],
+  } as Record<string, number[]>,
+
+  // Regional classification thresholds based on developmentIndex (level 1-10).
+  CLASSIFICATION_THRESHOLDS: {
+    developed:    6, // developmentIndex >= 6 → Regione Sviluppata
+    developing:   2, // 2 <= developmentIndex < 6 → Regione in Via di Sviluppo
+    // developmentIndex < 2 → Regione Arretrata
+  },
+
+  // Gameplay effect multipliers applied per index level (1–10).
+  // These values are used by server-side game systems (war, energy, XP, stability).
+  INDEX_EFFECTS: {
+    health: {
+      // Each level reduces energy cost by this fraction (e.g. 0.01 = 1% per level)
+      energyCostReductionPerLevel: 0.01,
+      // Pollution weakens the effective health index (see POLLUTION_MALUS_PER_POINT)
+    },
+    military: {
+      // Each level adds this fraction as a bonus to war damage dealt
+      attackBonusPerLevel: 0.03,   // +3% per level → max +30% at level 10
+      // Each level adds this fraction as a bonus to damage reduction when defending
+      defenseBonusPerLevel: 0.02,  // +2% per level → max +20% at level 10
+    },
+    education: {
+      // Each level adds this fraction as a bonus to XP gained from actions
+      xpBonusPerLevel: 0.02,       // +2% per level → max +20% at level 10
+    },
+    development: {
+      // Each level above 0 adds this fraction to institutional salary payouts
+      salaryMultiplierPerLevel: 0.05, // +5% per level → max +50% at level 10
+      // Coup/instability risk modifier: positive = reduces risk
+      coupRiskReductionPerLevel: 0.08, // -8% coup risk per level
+    },
+  } as Record<string, Record<string, number>>,
 };
 
 export const BUILDING_LABELS: Record<string, string> = {

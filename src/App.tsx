@@ -123,6 +123,26 @@ const isoToFlag = (iso2: string): string => {
   }
 };
 
+const NationalFlag = ({ iso2, className = "w-[1.2em] h-[0.9em]", style }: { iso2: string; className?: string; style?: React.CSSProperties }) => {
+  const [error, setError] = useState(false);
+  const upper = (iso2 || '').toUpperCase();
+  const countryCode = (upper.includes('-') ? upper.split('-')[0] : upper).toLowerCase();
+  
+  if (!countryCode || countryCode === 'st' || countryCode === 'world' || error) {
+    return <span className={className} style={{...style, fontSize: '1em'}}>🌍</span>;
+  }
+
+  return (
+    <img
+      src={`https://flagcdn.com/${countryCode}.svg`}
+      className={`inline-block object-cover rounded-sm shadow-sm align-middle ${className}`}
+      alt={iso2}
+      style={style}
+      onError={() => setError(true)}
+    />
+  );
+};
+
 const COUNTRY_FLAGS: Record<string, string> = {
   IT: "🇮🇹", FR: "🇫🇷", DE: "🇩🇪", ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", CA: "🇨🇦",
   BR: "🇧🇷", JP: "🇯🇵", CN: "🇨🇳", IN: "🇮🇳", RU: "🇷🇺", AU: "🇦🇺", ZA: "🇿🇦",
@@ -675,7 +695,9 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
               <MapPin className="w-5 h-5 text-emerald-600" />
             </div>
             <p className="font-black text-slate-900 text-sm">La Tua Regione</p>
-            <p className="text-[10px] font-bold text-slate-400 mt-1">{getFlag(user.regionId || "")} {user.regionId}</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-1 flex items-center gap-1.5">
+              <NationalFlag iso2={user.regionId || ""} className="w-4 h-3" /> {user.regionId}
+            </p>
           </button>
 
           <button onClick={() => navigateToCountry(user.originalNation || user.regionId)} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-200 transition-all group">
@@ -683,7 +705,9 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
               <Flag className="w-5 h-5 text-rose-600" />
             </div>
             <p className="font-black text-slate-900 text-sm">Il Tuo Stato</p>
-            <p className="text-[10px] font-bold text-slate-400 mt-1">{getFlag(user.originalNation || '')} {user.originalNation || 'N/A'}</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-1 flex items-center gap-1.5">
+              <NationalFlag iso2={user.originalNation || ""} className="w-4 h-3" /> {user.originalNation || 'N/A'}
+            </p>
           </button>
 
           <button onClick={() => navigate("/parliament")} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-200 transition-all group">
@@ -2471,7 +2495,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                   <p className="font-black text-slate-900 text-sm">Nazione Visualizzata</p>
                   <p className="text-[10px] font-bold text-slate-400">Attuale: {user.displayedNation || 'N/A'}</p>
                 </div>
-                <span className="text-2xl">{getFlag(user.displayedNation || '')}</span>
+                <NationalFlag iso2={user.displayedNation || ""} className="w-8 h-6 shadow-sm rounded-sm" />
               </div>
 
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
@@ -2552,8 +2576,8 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
 
           <div className="flex justify-center items-center gap-2 mt-2">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Comandante di Livello {user.level}</p>
-            <span className="text-[10px] font-black uppercase bg-rose-100 text-rose-600 px-2 py-0.5 rounded-lg flex items-center gap-1">
-              {getFlag(user.displayedNation || '')} {user.displayedNation || 'ST'}
+            <span className="text-[10px] font-black uppercase bg-rose-100 text-rose-600 px-2 py-0.5 rounded-lg flex items-center gap-1.5">
+              <NationalFlag iso2={user.displayedNation || ""} className="w-4 h-3" /> {user.displayedNation || 'ST'}
             </span>
           </div>
 
@@ -3229,7 +3253,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     }
   };
 
-  const flag = getFlag(iso2 || "");
   const resources = Array.isArray(region.resources) ? region.resources : [];
   const health = region.health || 1;
   const education = region.education || 1;
@@ -3251,7 +3274,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
         <div className={`h-3 w-full ${region.ownerUserId ? "bg-indigo-500" : "bg-emerald-400"}`} />
         <div className="p-8">
           <div className="flex items-center gap-5 mb-6">
-            <span className="text-6xl">{flag}</span>
+            <NationalFlag iso2={iso2 || ""} className="w-16 h-12 shadow-md rounded-lg" />
             <div className="flex-1">
               <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">{region.name || iso2}</h2>
               <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -3334,7 +3357,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {sanctions.map((s: any) => (
                       <div key={s.id} className="flex items-center gap-2 p-3 bg-rose-50 rounded-2xl border border-rose-100">
-                        <span className="text-xl">{getFlag(s.targetStateId || '')}</span>
+                        <NationalFlag iso2={s.targetStateId || ""} className="w-8 h-6 shadow-sm rounded-sm" />
                         <div className="flex-1">
                           <p className="text-xs font-black text-rose-900 leading-none">{s.targetStateName || s.targetStateId}</p>
                           <p className="text-[9px] font-bold text-rose-400 uppercase mt-0.5">Sanzioni Commerciali Attive</p>

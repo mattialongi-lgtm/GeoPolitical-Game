@@ -888,3 +888,180 @@ export interface PlayerWorkExperience {
   totalExtractions: number;
   lastWorkedAt: string | null;
 }
+
+// ── Daily Gameplay System ──────────────────────────────────
+// Types, interfaces and configuration for the daily task & farming system.
+
+/** Status of a daily task */
+export type DailyTaskStatus = 'completed' | 'available' | 'blocked' | 'cooldown';
+
+/** A single daily task entry */
+export interface DailyTask {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  status: DailyTaskStatus;
+  /** Optional route to navigate on tap */
+  route?: string;
+  /** When the task becomes available again (epoch ms), used for cooldown */
+  cooldownEndsAt?: number;
+  /** Textual reason why it's blocked */
+  blockedReason?: string;
+}
+
+/** Auto-work farming configuration for a player */
+export interface AutoWorkConfig {
+  resourceType: ResourceType | 'gold_ore';
+  active: boolean;
+  startedAt: number | null;
+  /** Duration in ms (configurable, e.g. 8h) */
+  durationMs: number;
+  /** Estimated yield per cycle */
+  estimatedYield: number;
+  /** Energy cost per cycle */
+  energyCost: number;
+}
+
+/** Region health farming bonus */
+export interface FarmingBonus {
+  regionHealth: number;           // 1-10
+  bonusMultiplier: number;        // e.g. 1.0 to 2.0
+  suggestion: string;             // contextual tip
+}
+
+/** Farming resource entry for the UI */
+export interface FarmingResourceEntry {
+  resourceType: ResourceType;
+  label: string;
+  icon: string;
+  estimatedYield: number;
+  energyCost: number;
+  bonusPercent: number;
+  recommended: boolean;
+}
+
+/** Daily damage / training system */
+export interface DailyDamageState {
+  available: boolean;
+  nextAvailableAt: number;        // epoch ms (countdown 24h)
+  currentXp: number;
+  currentLevel: number;
+  xpToNextLevel: number;
+  maxDamagePotential: number;
+  /** Active regional events the damage can be sent to */
+  activeEvents: DamageTarget[];
+  recommendedTarget: string | null;
+}
+
+export type DamageTargetType = 'military_training' | 'revolution_defense' | 'coup_defense' | 'active_event';
+
+export interface DamageTarget {
+  id: string;
+  type: DamageTargetType;
+  label: string;
+  description: string;
+  xpGain: number;
+  recommended: boolean;
+}
+
+/** Military academy daily state */
+export interface AcademyState {
+  built: boolean;
+  canBuild: boolean;
+  isInResidenceRegion: boolean;
+  /** Epoch ms: next available build time */
+  nextBuildAt: number;
+  rewards: AcademyReward[];
+  /** Reason for blocked status */
+  blockedReason?: string;
+}
+
+export interface AcademyReward {
+  type: 'energy_bottles' | 'gold' | 'money' | 'xp' | 'resource';
+  label: string;
+  amount: number;
+  icon: string;
+}
+
+/** Perk upgrade entry for daily suggestions */
+export interface PerkUpgradeEntry {
+  perkId: string;
+  name: string;
+  icon: string;
+  currentLevel: number;
+  upgradeCost: { money: number; gold: number };
+  bonusDescription: string;
+  /** Badge tag for recommendation */
+  tag?: 'consigliata' | 'economica' | 'strategica' | 'militare' | 'farming';
+  canUpgrade: boolean;
+}
+
+/** Free reward / bottle source tracking */
+export interface FreeRewardEntry {
+  id: string;
+  source: 'academy' | 'work_medal' | 'periodic' | 'streak' | 'event' | 'other';
+  sourceLabel: string;
+  type: 'energy_bottles' | 'gold' | 'money' | 'xp';
+  amount: number;
+  claimedAt: number | null;
+  icon: string;
+}
+
+/** Work streak tracking */
+export interface WorkStreak {
+  currentStreak: number;
+  longestStreak: number;
+  lastWorkDate: string | null;     // ISO date YYYY-MM-DD
+  /** Streak milestones with rewards */
+  milestones: StreakMilestone[];
+}
+
+export interface StreakMilestone {
+  days: number;
+  reward: AcademyReward;
+  claimed: boolean;
+}
+
+/** Periodic / cumulative reward progress */
+export interface PeriodicRewardProgress {
+  id: string;
+  label: string;
+  totalDaysRequired: number;
+  daysCompleted: number;
+  reward: AcademyReward;
+  claimed: boolean;
+}
+
+/** Strategic value explanation for bottles */
+export interface BottleValueBreakdown {
+  autoWorkHours: number;
+  maxDamagePotential: number;
+  goldFarmEquivalent: number;
+}
+
+// ── Daily Gameplay System Configuration ──────────────────────
+export const DAILY_GAMEPLAY_CONFIG = {
+  /** Auto-work default duration: 8 hours */
+  AUTO_WORK_DURATION_MS: 8 * 60 * 60 * 1000,
+  /** Daily damage cooldown: 24 hours */
+  DAILY_DAMAGE_COOLDOWN_MS: 24 * 60 * 60 * 1000,
+  /** Academy build window: 24 hours */
+  ACADEMY_BUILD_WINDOW_MS: 24 * 60 * 60 * 1000,
+  /** Energy bottles per academy claim */
+  ACADEMY_BOTTLES_REWARD: 5,
+  /** Gold per academy claim */
+  ACADEMY_GOLD_REWARD: 2,
+  /** Farming health bonus: each health point adds this % */
+  FARMING_HEALTH_BONUS_PER_POINT: 0.05,
+  /** Max health bonus multiplier */
+  FARMING_HEALTH_BONUS_MAX: 1.50,
+  /** Streak milestones (consecutive days → reward) */
+  STREAK_MILESTONES: [3, 5, 7, 14, 30],
+  /** Bottles per streak milestone */
+  STREAK_BOTTLES_REWARD: [2, 3, 5, 10, 25],
+  /** Base XP per training action */
+  TRAINING_BASE_XP: 50,
+  /** XP multiplier per level for damage potential */
+  DAMAGE_PER_LEVEL: 150,
+};

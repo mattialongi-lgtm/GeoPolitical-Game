@@ -392,6 +392,13 @@ const authenticate = async (req: any, res: any, next: any) => {
     req.user = user;
     req.user.maxEnergy = GAME_CONFIG.ENERGY_MAX;
 
+    // Update lastLogin timestamp for activity tracking
+    const nowLogin = Date.now();
+    if (!user.lastLogin || nowLogin - (typeof user.lastLogin === 'number' ? user.lastLogin : new Date(user.lastLogin).getTime()) > 60000) {
+      await supabase.from('users').update({ lastLogin: nowLogin }).eq('id', user.id);
+      req.user.lastLogin = nowLogin;
+    }
+
     // Load perk levels from perks table
     req.user.perks = await getUserPerks(user.id);
 
@@ -998,7 +1005,17 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
 app.get("/api/factories", authenticate, async (req: any, res) => {
   const regionId = (req.query.regionId as string) || req.user.regionId || 'IT';
-  const { data: factories, error } = await supabase.from('factories').select('*').eq('regionId', regionId);
+  
+  // Try exact match first, then also match sub-regions (e.g., "IT" matches "IT" and "IT-RM")
+  let { data: factories, error } = await supabase.from('factories').select('*').eq('regionId', regionId);
+  
+  if (!error && (!factories || factories.length === 0) && regionId.length <= 3) {
+    // No exact match found and regionId looks like a country code - try prefix match for sub-regions
+    const { data: subFactories, error: subErr } = await supabase.from('factories').select('*').like('regionId', `${regionId}-%`);
+    if (!subErr && subFactories && subFactories.length > 0) {
+      factories = subFactories;
+    }
+  }
 
   if (error) {
     console.error("Error fetching factories:", error);
@@ -3696,7 +3713,7 @@ app.post("/api/leader/nation/branding", authenticate, async (req: any, res) => {
   if (!nation) return res.status(404).json({ error: "Nazione non trovata." });
   if (nation.leaderUserId !== req.user.id) return res.status(403).json({ error: "Solo il Leader può farlo." });
 
-  await supabase.from('nations').update({ name, logo: logo || '🏛️', updatedAt: new Date().toISOString() }).eq('id', nationId);
+  await supabase.from('nations').update({ name, logo: logo || '🏛️', updatedAt: Date.now() }).eq('id', nationId);
   res.json({ success: true });
 });
 

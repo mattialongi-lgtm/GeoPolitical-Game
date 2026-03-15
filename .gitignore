@@ -11,3 +11,5 @@ coverage/
 *.db
 *.sqlite
 game.db
+dist/
+node_modules/

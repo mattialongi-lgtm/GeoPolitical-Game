@@ -57,7 +57,9 @@ import {
   Target,
   Dumbbell,
   Award,
-  Flag
+  Flag,
+  Moon,
+  Sun
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP, FACTORY_CONFIG } from "./types";
@@ -109,6 +111,18 @@ const formatRemaining = (ms: number): string => {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 };
 
+// Compute flag emoji from ISO2 code using Unicode Regional Indicator Symbols
+const isoToFlag = (iso2: string): string => {
+  if (!iso2 || iso2.length < 2) return "🌍";
+  const code = iso2.toUpperCase();
+  const offset = 127397; // Regional Indicator Symbol offset
+  try {
+    return String.fromCodePoint(code.charCodeAt(0) + offset, code.charCodeAt(1) + offset);
+  } catch {
+    return "🌍";
+  }
+};
+
 const COUNTRY_FLAGS: Record<string, string> = {
   IT: "🇮🇹", FR: "🇫🇷", DE: "🇩🇪", ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", CA: "🇨🇦",
   BR: "🇧🇷", JP: "🇯🇵", CN: "🇨🇳", IN: "🇮🇳", RU: "🇷🇺", AU: "🇦🇺", ZA: "🇿🇦",
@@ -119,6 +133,14 @@ const COUNTRY_FLAGS: Record<string, string> = {
   MY: "🇲🇾", SG: "🇸🇬", IR: "🇮🇷", IQ: "🇮🇶", IL: "🇮🇱", CO: "🇨🇴", CL: "🇨🇱",
   PE: "🇵🇪", ET: "🇪🇹", KE: "🇰🇪", GH: "🇬🇭", TZ: "🇹🇿", MA: "🇲🇦", DZ: "🇩🇿",
   NZ: "🇳🇿", AF: "🇦🇫",
+};
+
+// Get flag: try static map first, then compute from ISO2 code
+const getFlag = (iso2: string): string => {
+  const upper = (iso2 || '').toUpperCase();
+  // Handle sub-region codes (e.g., "IT-RM" → "IT")
+  const countryCode = upper.includes('-') ? upper.split('-')[0] : upper;
+  return COUNTRY_FLAGS[countryCode] || isoToFlag(countryCode);
 };
 
 const WarTimer = ({ endsAt }: { endsAt: number | any }) => {
@@ -653,7 +675,7 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
               <MapPin className="w-5 h-5 text-emerald-600" />
             </div>
             <p className="font-black text-slate-900 text-sm">La Tua Regione</p>
-            <p className="text-[10px] font-bold text-slate-400 mt-1">{COUNTRY_FLAGS[(user.regionId || '').toUpperCase()] || '🌍'} {user.regionId}</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-1">{getFlag(user.regionId || "")} {user.regionId}</p>
           </button>
 
           <button onClick={() => navigateToCountry(user.originalNation || user.regionId)} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-200 transition-all group">
@@ -661,7 +683,7 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
               <Flag className="w-5 h-5 text-rose-600" />
             </div>
             <p className="font-black text-slate-900 text-sm">Il Tuo Stato</p>
-            <p className="text-[10px] font-bold text-slate-400 mt-1">{COUNTRY_FLAGS[(user.originalNation || '').toUpperCase()] || '🌍'} {user.originalNation || 'N/A'}</p>
+            <p className="text-[10px] font-bold text-slate-400 mt-1">{getFlag(user.originalNation || '')} {user.originalNation || 'N/A'}</p>
           </button>
 
           <button onClick={() => navigate("/parliament")} className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-200 transition-all group">
@@ -1162,11 +1184,17 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
   const autoAttackRef = React.useRef(autoAttack);
   autoAttackRef.current = autoAttack;
 
+  // Auto-training state
+  const [autoTrain, setAutoTrain] = useState(false);
+  const autoTrainRef = React.useRef(autoTrain);
+  autoTrainRef.current = autoTrain;
+
   // Auto-attack interval
   useEffect(() => {
     if (!autoAttack) return;
+    let stopped = false;
     const doAutoAttack = async () => {
-      if (!autoAttackRef.current) return;
+      if (!autoAttackRef.current || stopped) return;
       try {
         const res = await fetch("/api/wars/deploy", {
           method: "POST",
@@ -1175,19 +1203,52 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         });
         const data = await res.json();
         if (data.error) {
-          // Stop auto if error (energy/money insufficient)
-          setAutoAttack(null);
+          const errLower = (data.error || '').toLowerCase();
+          // Stop on energy/resource errors, not on cooldown
+          if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('insufficiente') || errLower.includes('not found')) {
+            setAutoAttack(null);
+          }
         }
         fetchData();
       } catch {
-        setAutoAttack(null);
+        // Network error - retry next interval
       }
     };
     // Execute immediately, then every 10 minutes
     doAutoAttack();
     const iv = setInterval(doAutoAttack, 10 * 60 * 1000);
-    return () => clearInterval(iv);
+    return () => { stopped = true; clearInterval(iv); };
   }, [autoAttack]);
+
+  // Auto-training interval
+  useEffect(() => {
+    if (!autoTrain) return;
+    let stopped = false;
+    const doAutoTrain = async () => {
+      if (!autoTrainRef.current || stopped) return;
+      try {
+        const res = await fetch("/api/actions/train", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        });
+        const data = await res.json();
+        if (data.error) {
+          const errLower = (data.error || '').toLowerCase();
+          if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('insufficiente')) {
+            setAutoTrain(false);
+          }
+        } else {
+          setMilitaryExp(data.militaryExp || militaryExp + 5);
+        }
+        fetchData();
+      } catch {
+        // Network error - retry next interval
+      }
+    };
+    doAutoTrain();
+    const iv = setInterval(doAutoTrain, 10 * 60 * 1000);
+    return () => { stopped = true; clearInterval(iv); };
+  }, [autoTrain]);
 
   const handleTrain = async () => {
     if (user.energy < 10) { alert("Energia insufficiente!"); return; }
@@ -1252,14 +1313,38 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
             <p className="text-lg font-black text-amber-600">{user.energy}⚡</p>
           </div>
         </div>
-        <button
-          onClick={handleTrain}
-          disabled={training || user.energy < 10}
-          className="w-full py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-amber-100 hover:bg-amber-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-        >
-          {training ? <Loader2 className="w-4 h-4 animate-spin" /> : <Dumbbell className="w-4 h-4" />}
-          Allenati (-10⚡, +5 Exp)
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleTrain}
+            disabled={training || user.energy < 10}
+            className="flex-1 py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-amber-100 hover:bg-amber-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {training ? <Loader2 className="w-4 h-4 animate-spin" /> : <Dumbbell className="w-4 h-4" />}
+            Allenati (-10⚡, +5 Exp)
+          </button>
+          {autoTrain ? (
+            <button
+              onClick={() => setAutoTrain(false)}
+              className="py-4 px-4 bg-red-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-red-600 transition-all flex items-center justify-center gap-1"
+            >
+              ⏹ Stop
+            </button>
+          ) : (
+            <button
+              onClick={() => setAutoTrain(true)}
+              className="py-4 px-4 bg-amber-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-amber-700 transition-all flex items-center justify-center gap-1"
+              title="Addestramento automatico ogni 10 minuti"
+            >
+              🤖 Auto
+            </button>
+          )}
+        </div>
+        {autoTrain && (
+          <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
+            <span className="animate-pulse text-lg">⚙️</span>
+            <span className="text-xs font-black text-amber-800">Auto-addestramento attivo! Prossimo turno tra 10 minuti.</span>
+          </div>
+        )}
       </div>
 
       {/* Revolution / Coup CTA */}
@@ -2386,7 +2471,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                   <p className="font-black text-slate-900 text-sm">Nazione Visualizzata</p>
                   <p className="text-[10px] font-bold text-slate-400">Attuale: {user.displayedNation || 'N/A'}</p>
                 </div>
-                <span className="text-2xl">{COUNTRY_FLAGS[(user.displayedNation || '').toUpperCase()] || '🌍'}</span>
+                <span className="text-2xl">{getFlag(user.displayedNation || '')}</span>
               </div>
 
               <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
@@ -2468,7 +2553,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
           <div className="flex justify-center items-center gap-2 mt-2">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Comandante di Livello {user.level}</p>
             <span className="text-[10px] font-black uppercase bg-rose-100 text-rose-600 px-2 py-0.5 rounded-lg flex items-center gap-1">
-              {COUNTRY_FLAGS[(user.displayedNation || '').toUpperCase()] || '🌍'} {user.displayedNation || 'ST'}
+              {getFlag(user.displayedNation || '')} {user.displayedNation || 'ST'}
             </span>
           </div>
 
@@ -3144,7 +3229,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     }
   };
 
-  const flag = COUNTRY_FLAGS[iso2?.toUpperCase() || ""] || "🌍";
+  const flag = getFlag(iso2 || "");
   const resources = Array.isArray(region.resources) ? region.resources : [];
   const health = region.health || 1;
   const education = region.education || 1;
@@ -3249,7 +3334,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {sanctions.map((s: any) => (
                       <div key={s.id} className="flex items-center gap-2 p-3 bg-rose-50 rounded-2xl border border-rose-100">
-                        <span className="text-xl">{COUNTRY_FLAGS[s.targetStateId] || "🌍"}</span>
+                        <span className="text-xl">{getFlag(s.targetStateId || '')}</span>
                         <div className="flex-1">
                           <p className="text-xs font-black text-rose-900 leading-none">{s.targetStateName || s.targetStateId}</p>
                           <p className="text-[9px] font-bold text-rose-400 uppercase mt-0.5">Sanzioni Commerciali Attive</p>
@@ -4397,6 +4482,22 @@ export default function App() {
   const autoWorkFactoryIdRef = React.useRef(autoWorkFactoryId);
   autoWorkFactoryIdRef.current = autoWorkFactoryId;
 
+  // Dark mode state with localStorage persistence
+  const [darkMode, setDarkMode] = useState(() => {
+    try {
+      return localStorage.getItem('darkMode') === 'true';
+    } catch { return false; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('darkMode', String(darkMode)); } catch {}
+    if (darkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [darkMode]);
+
   const fetchData = async () => {
     try {
       const [userRes, regionsRes, articlesRes, warsRes] = await Promise.all([
@@ -4492,8 +4593,9 @@ export default function App() {
   // Auto-work interval
   useEffect(() => {
     if (!autoWorkFactoryId) return;
+    let stopped = false;
     const doAutoWork = async () => {
-      if (!autoWorkFactoryIdRef.current) return;
+      if (!autoWorkFactoryIdRef.current || stopped) return;
       try {
         const res = await fetch("/api/work", {
           method: "POST",
@@ -4502,16 +4604,21 @@ export default function App() {
         });
         const data = await res.json();
         if (data.error) {
-          setAutoWorkFactoryId(null);
+          // Only stop on critical errors (energy, inactive, not found), not cooldown
+          const errLower = (data.error || '').toLowerCase();
+          if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('non trovata') || errLower.includes('not found') || errLower.includes('non attiva')) {
+            setAutoWorkFactoryId(null);
+          }
+          // Cooldown errors are expected - just wait for next interval
         }
         fetchData();
       } catch {
-        setAutoWorkFactoryId(null);
+        // Network error - don't stop, retry next interval
       }
     };
     doAutoWork();
     const iv = setInterval(doAutoWork, 10 * 60 * 1000);
-    return () => clearInterval(iv);
+    return () => { stopped = true; clearInterval(iv); };
   }, [autoWorkFactoryId]);
 
   const handleUseDrink = async () => {
@@ -4621,10 +4728,10 @@ export default function App() {
   const isDashboardRoute = location.pathname.startsWith("/leader") || location.pathname.startsWith("/ministers");
 
   return (
-    <div className={`min-h-screen ${isDashboardRoute ? 'bg-slate-900' : 'bg-slate-50'} text-slate-900 font-sans pb-24`}>
+    <div className={`min-h-screen ${isDashboardRoute ? 'bg-slate-900' : darkMode ? 'bg-gray-900' : 'bg-slate-50'} ${darkMode ? 'text-gray-100' : 'text-slate-900'} font-sans pb-24`}>
       {/* Header - Hidden on Dashboards */}
       {!isDashboardRoute && (
-        <header className="bg-white border-b border-slate-100 sticky top-0 z-40 px-4 py-3 flex justify-between items-center gap-2">
+        <header className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-100'} border-b sticky top-0 z-40 px-4 py-3 flex justify-between items-center gap-2`}>
           <div className="flex items-center gap-2 shrink-0">
             <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
               <Globe className="w-5 h-5 text-white" />
@@ -4651,6 +4758,13 @@ export default function App() {
             >
               <span className="text-xs leading-none mt-0.5">🥤</span>
               <span className="text-[10px] font-black text-sky-600">{user.energyDrinks || 0}</span>
+            </button>
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border transition-colors ${darkMode ? 'bg-yellow-100 border-yellow-200 hover:bg-yellow-200' : 'bg-gray-100 border-gray-200 hover:bg-gray-200'}`}
+              title={darkMode ? "Modalità chiara" : "Modalità scura"}
+            >
+              {darkMode ? <Sun className="w-4 h-4 text-yellow-600" /> : <Moon className="w-4 h-4 text-gray-600" />}
             </button>
             <button
               onClick={() => navigate("/profile")}
@@ -6168,7 +6282,7 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
 // ══════════════════════════════════════════════════════════════════
 
 const ParliamentView = ({ user }: { user: any }) => {
-  const [activeTab, setActiveTab] = useState<'elections' | 'parliament' | 'laws'>('elections');
+  const [activeTab, setActiveTab] = useState<'elections' | 'parliament' | 'laws' | 'dictatorship'>('elections');
   const [loading, setLoading] = useState(true);
 
   // Data
@@ -6178,19 +6292,30 @@ const ParliamentView = ({ user }: { user: any }) => {
   const [registry, setRegistry] = useState<any>(null);
   const [regionData, setRegionData] = useState<any>(null);
 
+  const isDictatorship = regionData?.dictatorship === 1;
+
   const loadData = async () => {
     setLoading(true);
     try {
       // Always fetch region basic info for parliament configs (like dictatorship)
       if (user?.residenceId) {
         const rRes = await fetch(`/api/regions/${user.residenceId}`);
-        if (rRes.ok) setRegionData(await rRes.json());
+        if (rRes.ok) {
+          const rData = await rRes.json();
+          setRegionData(rData);
+          // If dictatorship, force tab to dictatorship view
+          if (rData?.dictatorship === 1 && (activeTab === 'elections' || activeTab === 'parliament')) {
+            setActiveTab('dictatorship');
+          }
+        }
       }
 
-      const pRes = await fetch("/api/parliament");
-      if (pRes.ok) setParliamentData(await pRes.json());
+      if (!isDictatorship) {
+        const pRes = await fetch("/api/parliament");
+        if (pRes.ok) setParliamentData(await pRes.json());
+      }
 
-      if (activeTab === 'elections') {
+      if (activeTab === 'elections' && !isDictatorship) {
         const res = await fetch("/api/elections");
         if (res.ok) setElectionData(await res.json());
       } else if (activeTab === 'laws') {
@@ -6207,16 +6332,68 @@ const ParliamentView = ({ user }: { user: any }) => {
 
   useEffect(() => { loadData(); }, [activeTab]);
 
+  // Dictatorship view: only show dictator + economic minister
+  const DictatorshipTab = () => (
+    <div className="space-y-6">
+      <div className="bg-rose-500 text-white p-6 rounded-3xl shadow-xl border border-rose-400 flex items-center gap-4">
+        <Crown className="w-12 h-12 text-rose-200 shrink-0" />
+        <div>
+          <h3 className="text-xl font-black uppercase tracking-widest">Regime Dittatoriale</h3>
+          <p className="font-bold text-rose-100 text-sm mt-1">Il parlamento è sospeso. Il Dittatore ha potere esecutivo e legislativo assoluto.</p>
+        </div>
+      </div>
+
+      <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
+        <h3 className="text-xl font-black text-slate-900">Cariche dello Stato</h3>
+        <div className="grid gap-3">
+          <div className="flex items-center justify-between p-4 bg-rose-50 rounded-2xl border border-rose-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center">
+                <Crown className="w-5 h-5 text-rose-600" />
+              </div>
+              <div>
+                <p className="font-black text-slate-900 text-sm">Dittatore</p>
+                <p className="text-[10px] font-bold text-rose-500 uppercase mt-0.5">Potere assoluto</p>
+              </div>
+            </div>
+            <span className="text-sm font-black text-slate-700">{regionData?.leaderName || regionData?.leader?.username || '—'}</span>
+          </div>
+          <div className="flex items-center justify-between p-4 bg-amber-50 rounded-2xl border border-amber-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
+                <Briefcase className="w-5 h-5 text-amber-600" />
+              </div>
+              <div>
+                <p className="font-black text-slate-900 text-sm">Ministro Economico</p>
+                <p className="text-[10px] font-bold text-amber-500 uppercase mt-0.5">Gestione economica</p>
+              </div>
+            </div>
+            <span className="text-sm font-black text-slate-700">{regionData?.economicAdviserName || '—'}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-slate-50 p-6 rounded-3xl border border-dashed border-slate-200 text-center">
+        <p className="text-slate-400 font-bold italic text-sm">Le elezioni parlamentari sono sospese durante il regime dittatoriale.</p>
+        <p className="text-[10px] text-slate-300 font-bold mt-1">Il Dittatore può emanare editti dalla sezione Leggi.</p>
+      </div>
+    </div>
+  );
+
+  const availableTabs = isDictatorship
+    ? [{ id: 'dictatorship', label: 'Regime' }, { id: 'laws', label: 'Editti' }]
+    : [{ id: 'elections', label: 'Elezioni' }, { id: 'parliament', label: 'Parlamento' }, { id: 'laws', label: 'Leggi' }];
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <div className="bg-white rounded-[2.5rem] p-2 flex gap-2 shadow-sm border border-slate-100 overflow-x-auto hide-scrollbar">
-        {['elections', 'parliament', 'laws'].map(tab => (
+        {availableTabs.map(tab => (
           <button
-            key={tab}
-            onClick={() => setActiveTab(tab as any)}
-            className={`flex-1 min-w-[120px] py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === tab ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"}`}
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`flex-1 min-w-[120px] py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === tab.id ? (isDictatorship ? "bg-rose-600 text-white shadow-lg shadow-rose-200" : "bg-indigo-600 text-white shadow-lg shadow-indigo-200") : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"}`}
           >
-            {tab === 'elections' ? 'Elezioni' : tab === 'parliament' ? 'Parlamento' : 'Leggi'}
+            {tab.label}
           </button>
         ))}
       </div>
@@ -6225,9 +6402,10 @@ const ParliamentView = ({ user }: { user: any }) => {
         <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
       ) : (
         <>
-          {activeTab === 'elections' && <ElectionsTab data={electionData} user={user} reload={loadData} />}
-          {activeTab === 'parliament' && <ParliamentTab members={parliamentData} />}
-          {activeTab === 'laws' && <LawsTab laws={lawsData} registry={registry} region={regionData} user={user} reload={loadData} isMp={parliamentData.some(m => m.userId === user.id)} />}
+          {activeTab === 'dictatorship' && <DictatorshipTab />}
+          {activeTab === 'elections' && !isDictatorship && <ElectionsTab data={electionData} user={user} reload={loadData} />}
+          {activeTab === 'parliament' && !isDictatorship && <ParliamentTab members={parliamentData} />}
+          {activeTab === 'laws' && <LawsTab laws={lawsData} registry={registry} region={regionData} user={user} reload={loadData} isMp={isDictatorship || parliamentData.some(m => m.userId === user.id)} />}
         </>
       )}
     </motion.div>

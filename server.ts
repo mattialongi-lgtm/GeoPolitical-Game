@@ -3063,15 +3063,11 @@ app.post("/api/work", authenticate, async (req: any, res) => {
         await supabase.from('user_inventory').insert({ userId: user.id, itemId: factory.type, quantity: playerShare });
       }
 
-      // Give owner their share of resources
-      const { data: ownerInvItem } = await supabase.from('user_inventory')
-        .select('quantity').eq('userId', owner.id).eq('itemId', factory.type).maybeSingle();
-      if (ownerInvItem) {
-        await supabase.from('user_inventory').update({ quantity: ownerInvItem.quantity + ownerShare })
-          .eq('userId', owner.id).eq('itemId', factory.type);
-      } else {
-        await supabase.from('user_inventory').insert({ userId: owner.id, itemId: factory.type, quantity: ownerShare });
-      }
+      // Give owner their share of resources - now goes to factory storage
+      await supabase.rpc('increment_factory_storage', {
+        p_factory_id: factoryId,
+        p_amount: ownerShare
+      });
 
       // State gets its share via budget transaction
       if (stateShare > 0) {
@@ -3141,6 +3137,65 @@ app.post("/api/work", authenticate, async (req: any, res) => {
     res.status(500).json({ error: "Errore durante il lavoro: " + err.message });
   }
   } // end salary mode
+});
+
+// Withdrawal API: Move resources from factory storage to personal inventory
+app.post("/api/factories/:id/withdraw", authenticate, async (req: any, res) => {
+  const { id: factoryId } = req.params;
+  const user = req.user;
+
+  try {
+    const { data: factory, error: fError } = await supabase
+      .from('factories')
+      .select('*')
+      .eq('id', factoryId)
+      .single();
+
+    if (fError || !factory) return res.status(404).json({ error: "Fabbrica non trovata." });
+    if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario di questa fabbrica." });
+
+    const amount = factory.currentStorage || 0;
+    if (amount <= 0) return res.status(400).json({ error: "Il magazzino è vuoto." });
+
+    // Check personal inventory capacity
+    const { data: userInv } = await supabase.from('user_inventory').select('quantity').eq('userId', user.id);
+    const currentVol = (userInv || []).reduce((sum: number, item: any) => sum + item.quantity, 0);
+    const perks = await getUserPerks(user.id);
+    const r = perks['RESISTENZA'] || 0;
+    const maxStorage = Math.floor(GAME_CONFIG.STORAGE_BASE_CAPACITY * (1 + (r * 0.01)));
+
+    if (currentVol + amount > maxStorage) {
+      return res.status(400).json({ error: "Non hai abbastanza spazio nel tuo magazzino personale." });
+    }
+
+    // Move resources
+    // 1. Update user inventory
+    const { data: invItem } = await supabase.from('user_inventory')
+      .select('quantity').eq('userId', user.id).eq('itemId', factory.type).maybeSingle();
+    
+    if (invItem) {
+      await supabase.from('user_inventory').update({ quantity: invItem.quantity + amount })
+        .eq('userId', user.id).eq('itemId', factory.type);
+    } else {
+      await supabase.from('user_inventory').insert({ userId: user.id, itemId: factory.type, quantity: amount });
+    }
+
+    // 2. Reset factory storage
+    await supabase.from('factories').update({ currentStorage: 0 }).eq('id', factoryId);
+
+    // 3. Log action
+    await supabase.from('action_logs').insert({
+      userId: user.id,
+      action: 'FACTORY_WITHDRAW',
+      details: JSON.stringify({ factoryId, amount, item: factory.type }),
+      timestamp: Date.now()
+    });
+
+    res.json({ success: true, amount, item: factory.type });
+  } catch (err: any) {
+    console.error("Withdrawal error:", err);
+    res.status(500).json({ error: "Errore durante il ritiro: " + err.message });
+  }
 });
 
 // Wars API
@@ -7131,18 +7186,12 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
       });
     }
 
-    // 13. Owner profit (add to factory storage or owner wallet)
-    if (Math.round(actualOwner) > 0 && factory.ownerUserId) {
-      const { data: ownerInv } = await supabase.from('user_inventory')
-        .select('quantity').eq('userId', factory.ownerUserId).eq('itemId', resourceType).maybeSingle();
-      if (ownerInv) {
-        await supabase.from('user_inventory')
-          .update({ quantity: ownerInv.quantity + Math.round(actualOwner) })
-          .eq('userId', factory.ownerUserId).eq('itemId', resourceType);
-      } else {
-        await supabase.from('user_inventory')
-          .insert({ userId: factory.ownerUserId, itemId: resourceType, quantity: Math.round(actualOwner) });
-      }
+    // 13. Owner profit (stored in factory Magazzino)
+    if (Math.round(actualOwner) > 0) {
+      await supabase.rpc('increment_factory_storage', {
+        p_factory_id: factoryId,
+        p_amount: Math.round(actualOwner)
+      });
     }
 
     // 14. Taxes to budget

@@ -178,20 +178,28 @@ BEGIN
       money = money + p_wage
   WHERE id = p_user_id;
 
-  -- 2. Deduct Wage from Factory Budget and Add Item to Owner Inventory
+  -- 2. Deduct Wage from Factory Budget and Add Item to Factory Storage
   UPDATE factories
-  SET budget = budget - p_wage
+  SET budget = budget - p_wage,
+      currentStorage = COALESCE(currentStorage, 0) + p_output_qty
   WHERE id = p_factory_id;
 
-  -- 3. Add item to owner inventory
-  INSERT INTO user_inventory (userId, itemId, quantity)
-  VALUES (p_owner_id, p_output_item, p_output_qty)
-  ON CONFLICT (userId, itemId) DO UPDATE SET quantity = user_inventory.quantity + EXCLUDED.quantity;
-
-  -- 4. Update Cooldown
+  -- 3. Update Cooldown
   INSERT INTO user_factory_cooldowns (userId, factoryId, lastUsed)
   VALUES (p_user_id, p_factory_id, NOW())
   ON CONFLICT (userId, factoryId) DO UPDATE SET lastUsed = EXCLUDED.lastUsed;
+END;
+$$ LANGUAGE plpgsql;
+
+-- RPC: increment_factory_storage
+CREATE OR REPLACE FUNCTION increment_factory_storage(
+  p_factory_id UUID,
+  p_amount INT
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE factories
+  SET currentStorage = COALESCE(currentStorage, 0) + p_amount
+  WHERE id = p_factory_id;
 END;
 $$ LANGUAGE plpgsql;
 

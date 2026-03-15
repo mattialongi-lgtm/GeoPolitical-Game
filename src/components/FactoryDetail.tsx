@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, TrendingUp, Warehouse, Users, Zap, DollarSign, ChevronUp, Loader2, ShoppingCart, BarChart3, Shield, Info, Pickaxe, ChevronDown } from "lucide-react";
+import { ArrowLeft, TrendingUp, Warehouse, Users, Zap, DollarSign, ChevronUp, Loader2, ShoppingCart, BarChart3, Shield, Info, Pickaxe, ChevronDown, Download } from "lucide-react";
 import { FACTORY_CONFIG, EXTRACTION_CONFIG, RESOURCE_LABELS, RESOURCE_ICONS_MAP, factoryYieldMultiplier, factoryStorageLimit } from "../types";
 import type { ResourceType } from "../types";
 
@@ -135,6 +135,24 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
       if (data.error) alert(data.error);
       else load();
     } catch { alert("Errore"); } finally { setActionLoading(false); }
+  };
+
+  const [withdrawing, setWithdrawing] = useState(false);
+  const handleWithdraw = async () => {
+    if (currentStorage <= 0) return;
+    setWithdrawing(true);
+    try {
+      const res = await fetch(`/api/factories/${id}/withdraw`, {
+        method: "POST", headers: { "Content-Type": "application/json" }
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        alert(`${RESOURCE_ICONS_MAP[data.item as ResourceType] || '📦'} Hai ritirato ${data.amount} ${RESOURCE_LABELS[data.item as ResourceType] || data.item} dal magazzino.`);
+        fetchData(); load();
+      }
+    } catch { alert("Errore durante il ritiro."); }
+    finally { setWithdrawing(false); }
   };
 
   const handleWork = async () => {
@@ -436,6 +454,18 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
           <div className="text-[10px] font-bold text-slate-400">
             {storagePercent}% pieno • +{(factory.storagePerLevel || 0).toLocaleString()} al prossimo livello (Lv {level + 1}: {(factory.nextLevelStorage || 0).toLocaleString()})
           </div>
+
+          {isOwner && currentStorage > 0 && (
+            <button
+              onClick={handleWithdraw}
+              disabled={withdrawing}
+              className="w-full mt-2 py-3 bg-indigo-50 text-indigo-700 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all disabled:opacity-50"
+            >
+              {withdrawing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Ritira Risorse nel Magazzino Personale
+            </button>
+          )}
+
           <div className="bg-slate-50 p-3 rounded-xl text-[10px] font-mono text-slate-500">
             Formula: storage = {(factory.storagePerLevel || 0).toLocaleString()} × livello = {(factory.storagePerLevel || 0).toLocaleString()} × {level} = {storageCap.toLocaleString()}
           </div>

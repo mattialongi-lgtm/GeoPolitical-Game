@@ -58,8 +58,6 @@ import {
   Dumbbell,
   Award,
   Flag,
-  Moon,
-  Sun
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP, FACTORY_CONFIG } from "./types";
@@ -77,6 +75,7 @@ import WorldMap from "./components/WorldMap";
 import FactoryDetail from "./components/FactoryDetail";
 import FactoryMarket from "./components/FactoryMarket";
 import ExtractionDashboard from "./components/ExtractionDashboard";
+import { HomePage } from "./components/home";
 
 // --- Utilities ---
 const getTs = (val: any) => {
@@ -201,7 +200,7 @@ const BottomNav = () => {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 px-6 py-3 flex justify-between items-center z-50 pb-safe">
+    <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md border-t border-gray-700/50 px-4 py-2.5 flex justify-around items-center z-50 pb-safe">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = location.pathname === tab.id ||
@@ -213,10 +212,11 @@ const BottomNav = () => {
           <button
             key={tab.id}
             onClick={() => navigate(tab.id)}
-            className={`flex flex-col items-center gap-1 transition-all ${isActive ? "text-indigo-600 scale-110" : "text-slate-400 hover:text-slate-600"}`}
+            className={`flex flex-col items-center gap-0.5 min-w-[48px] py-1 rounded-xl transition-all ${isActive ? "text-indigo-400" : "text-gray-500 hover:text-gray-300"}`}
           >
-            <Icon className={`w-6 h-6 ${isActive ? "fill-indigo-50" : ""}`} />
-            <span className="text-[10px] font-black uppercase tracking-tighter">{tab.label}</span>
+            <Icon className={`w-5 h-5 ${isActive ? "drop-shadow-[0_0_6px_rgba(129,140,248,0.5)]" : ""}`} />
+            <span className="text-[9px] font-black uppercase tracking-wider">{tab.label}</span>
+            {isActive && <div className="w-1 h-1 rounded-full bg-indigo-400 mt-0.5" />}
           </button>
         );
       })}
@@ -4508,21 +4508,10 @@ export default function App() {
   const autoWorkFactoryIdRef = React.useRef(autoWorkFactoryId);
   autoWorkFactoryIdRef.current = autoWorkFactoryId;
 
-  // Dark mode state with localStorage persistence
-  const [darkMode, setDarkMode] = useState(() => {
-    try {
-      return localStorage.getItem('darkMode') === 'true';
-    } catch (e) { console.warn('localStorage not available:', e); return false; }
-  });
-
+  // Dark mode – always enabled (native dark geopolitical theme)
   useEffect(() => {
-    try { localStorage.setItem('darkMode', String(darkMode)); } catch (e) { console.warn('localStorage write failed:', e); }
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [darkMode]);
+    document.documentElement.classList.add('dark');
+  }, []);
 
   const fetchData = async () => {
     try {
@@ -4754,59 +4743,52 @@ export default function App() {
   const isDashboardRoute = location.pathname.startsWith("/leader") || location.pathname.startsWith("/ministers");
 
   return (
-    <div className={`min-h-screen ${isDashboardRoute ? 'bg-slate-900' : darkMode ? 'bg-gray-900' : 'bg-slate-50'} ${darkMode ? 'text-gray-100' : 'text-slate-900'} font-sans pb-24`}>
+    <div className={`min-h-screen bg-gray-950 text-gray-100 font-sans pb-24`}>
       {/* Header - Hidden on Dashboards */}
       {!isDashboardRoute && (
-        <header className={`${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-slate-100'} border-b sticky top-0 z-40 px-4 py-3 flex justify-between items-center gap-2`}>
+        <header className="bg-gray-900/95 backdrop-blur-md border-b border-gray-800/50 sticky top-0 z-40 px-4 py-2.5 flex justify-between items-center gap-2">
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
+            <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <Globe className="w-5 h-5 text-white" />
             </div>
-            <span className="font-black text-lg tracking-tight">Territorial</span>
+            <span className="font-black text-lg tracking-tight text-white">Territorial</span>
           </div>
-          <div className="flex items-center gap-2 overflow-x-auto flex-1 justify-end">
-            <div className="bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-100 flex items-center gap-1 shrink-0">
-              <span className="text-[10px] font-black text-emerald-600">${(user.money || 0).toLocaleString()}</span>
+          <div className="flex items-center gap-1.5 overflow-x-auto flex-1 justify-end">
+            <div className="bg-emerald-900/30 px-2.5 py-1.5 rounded-xl border border-emerald-700/30 flex items-center gap-1 shrink-0">
+              <span className="text-[10px] font-black text-emerald-400">${(user.money || 0).toLocaleString()}</span>
             </div>
-            <div className="bg-amber-50 px-2.5 py-1.5 rounded-xl border border-amber-100 flex items-center gap-1 shrink-0">
-              <span className="text-[10px] font-black text-amber-600">🪙{user.gold || 0}</span>
+            <div className="bg-amber-900/30 px-2.5 py-1.5 rounded-xl border border-amber-700/30 flex items-center gap-1 shrink-0">
+              <span className="text-[10px] font-black text-amber-400">🪙{user.gold || 0}</span>
             </div>
-            <div className="bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100 flex items-center gap-1 shrink-0">
-              <Zap className="w-3 h-3 text-indigo-500" />
-              <span className="text-[10px] font-black text-slate-600">{user.energy}</span>
-              <span className="text-[8px] font-bold text-slate-400 ml-1">{energyTimer}</span>
+            <div className="bg-gray-800/60 px-2.5 py-1.5 rounded-xl border border-gray-700/40 flex items-center gap-1 shrink-0">
+              <Zap className="w-3 h-3 text-indigo-400" />
+              <span className="text-[10px] font-black text-gray-300">{user.energy}</span>
+              <span className="text-[8px] font-bold text-gray-500 ml-1">{energyTimer}</span>
             </div>
             <button
               onClick={handleUseDrink}
               disabled={actionLoading}
               title="Usa Drink Energetico"
-              className="bg-sky-50 px-2.5 py-1.5 rounded-xl border border-sky-100 flex items-center gap-1 shrink-0 hover:bg-sky-100 transition-colors disabled:opacity-50"
+              className="bg-sky-900/30 px-2.5 py-1.5 rounded-xl border border-sky-700/30 flex items-center gap-1 shrink-0 hover:bg-sky-800/40 transition-colors disabled:opacity-50"
             >
               <span className="text-xs leading-none mt-0.5">🥤</span>
-              <span className="text-[10px] font-black text-sky-600">{user.energyDrinks || 0}</span>
-            </button>
-            <button
-              onClick={() => setDarkMode(!darkMode)}
-              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border transition-colors ${darkMode ? 'bg-yellow-100 border-yellow-200 hover:bg-yellow-200' : 'bg-gray-100 border-gray-200 hover:bg-gray-200'}`}
-              title={darkMode ? "Modalità chiara" : "Modalità scura"}
-            >
-              {darkMode ? <Sun className="w-4 h-4 text-yellow-600" /> : <Moon className="w-4 h-4 text-gray-600" />}
+              <span className="text-[10px] font-black text-sky-400">{user.energyDrinks || 0}</span>
             </button>
             <button
               onClick={() => navigate("/profile")}
-              className="w-8 h-8 rounded-xl overflow-hidden bg-indigo-100 flex items-center justify-center shrink-0 border border-indigo-100"
+              className="w-8 h-8 rounded-xl overflow-hidden bg-indigo-900/30 flex items-center justify-center shrink-0 border border-indigo-700/30"
               title="Profilo"
             >
               {user.avatarData ? (
                 <img src={user.avatarData} alt="avatar" className="w-full h-full object-cover" />
               ) : (
-                <UserIcon className="w-4 h-4 text-indigo-600" />
+                <UserIcon className="w-4 h-4 text-indigo-400" />
               )}
             </button>
             <div className="relative">
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
-                className="p-2 text-slate-400 hover:text-indigo-600 transition-colors bg-slate-50 rounded-xl border border-slate-100"
+                className="p-2 text-gray-400 hover:text-indigo-400 transition-colors bg-gray-800/60 rounded-xl border border-gray-700/40"
               >
                 <MoreVertical className="w-5 h-5" />
               </button>
@@ -4822,34 +4804,34 @@ export default function App() {
                       initial={{ opacity: 0, scale: 0.95, y: -8 }}
                       animate={{ opacity: 1, scale: 1, y: 0 }}
                       exit={{ opacity: 0, scale: 0.95, y: -8 }}
-                      className="fixed right-4 top-16 w-52 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-[999] overflow-hidden"
+                      className="fixed right-4 top-14 w-52 bg-gray-800 rounded-2xl shadow-xl border border-gray-700/50 py-2 z-[999] overflow-hidden"
                     >
-                      <button onClick={() => { navigate("/map"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <Globe className="w-4 h-4 text-indigo-500" /> MAPPA
+                      <button onClick={() => { navigate("/map"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        <Globe className="w-4 h-4 text-indigo-400" /> MAPPA
                       </button>
-                      <button onClick={() => { navigate("/market"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <ShoppingCart className="w-4 h-4 text-emerald-500" /> MERCATO
+                      <button onClick={() => { navigate("/market"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        <ShoppingCart className="w-4 h-4 text-emerald-400" /> MERCATO
                       </button>
-                      <button onClick={() => { navigate("/storage"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <Archive className="w-4 h-4 text-indigo-500" /> MAGAZZINO
+                      <button onClick={() => { navigate("/storage"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        <Archive className="w-4 h-4 text-indigo-400" /> MAGAZZINO
                       </button>
-                      <button onClick={() => { navigate("/nation"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <Shield className="w-4 h-4 text-rose-500" /> NAZIONE
+                      <button onClick={() => { navigate("/nation"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        <Shield className="w-4 h-4 text-rose-400" /> NAZIONE
                       </button>
-                      <button onClick={() => { navigate("/parliament"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <Landmark className="w-4 h-4 text-blue-500" /> PARLAMENTO
+                      <button onClick={() => { navigate("/parliament"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        <Landmark className="w-4 h-4 text-blue-400" /> PARLAMENTO
                       </button>
-                      <button onClick={() => { navigate("/party"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <Users className="w-4 h-4 text-purple-500" /> PARTITO
+                      <button onClick={() => { navigate("/party"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        <Users className="w-4 h-4 text-purple-400" /> PARTITO
                       </button>
-                      <button onClick={() => { navigate("/blocs"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <Shield className="w-4 h-4 text-indigo-500" /> BLOCCHI
+                      <button onClick={() => { navigate("/blocs"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        <Shield className="w-4 h-4 text-indigo-400" /> BLOCCHI
                       </button>
-                      <button onClick={() => { navigate("/produce"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors">
-                        <Hammer className="w-4 h-4 text-orange-500" /> PRODUCI ARMI
+                      <button onClick={() => { navigate("/produce"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        <Hammer className="w-4 h-4 text-orange-400" /> PRODUCI ARMI
                       </button>
-                      <div className="h-px bg-slate-100 my-1" />
-                      <button onClick={handleLogout} className="w-full px-4 py-3 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition-colors">
+                      <div className="h-px bg-gray-700/50 my-1" />
+                      <button onClick={handleLogout} className="w-full px-4 py-3 text-left text-sm font-bold text-red-400 hover:bg-red-900/20 flex items-center gap-3 transition-colors">
                         <LogOut className="w-4 h-4" /> LOGOUT
                       </button>
                     </motion.div>
@@ -4864,7 +4846,7 @@ export default function App() {
       {/* Main Content */}
       <main className={`${isDashboardRoute ? 'max-w-none p-0' : 'max-w-2xl mx-auto p-6'}`}>
         <Routes>
-          <Route path="/" element={<HomeView user={user} regions={regions} navigateToCountry={navigateToCountry} />} />
+          <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} navigateToCountry={navigateToCountry} />} />
           <Route path="/map" element={<WorldMap onRegionClick={navigateToCountry} regions={regions} />} />
           <Route path="/market" element={<MarketView />} />
           <Route path="/storage" element={<StorageView user={user} />} />

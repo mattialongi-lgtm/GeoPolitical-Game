@@ -114,26 +114,41 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
     const isLeader = region?.leaderUserId === user?.id;
 
     const handleUpdateBranding = async () => {
-        const promises = [
-            fetch('/api/leader/update-state-ui', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ regionId, stateColor: branding.stateColor, stateHymn: branding.stateHymn })
-            })
-        ];
-
-        if (region?.nation && isLeader) {
-            promises.push(
-                fetch('/api/leader/nation/branding', {
+        try {
+            const promises: Promise<Response>[] = [
+                fetch('/api/leader/update-state-ui', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ nationId: region.nation.id, name: branding.nationName, logo: branding.nationLogo })
+                    body: JSON.stringify({ regionId, stateColor: branding.stateColor, stateHymn: branding.stateHymn })
                 })
-            );
-        }
+            ];
 
-        await Promise.all(promises);
-        fetchData();
+            if (region?.nation && isLeader) {
+                promises.push(
+                    fetch('/api/leader/nation/branding', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ nationId: region.nation.id, name: branding.nationName, logo: branding.nationLogo })
+                    })
+                );
+            }
+
+            const results = await Promise.all(promises);
+            let hasError = false;
+            for (const r of results) {
+                const data = await r.json();
+                if (data.error) {
+                    alert(data.error);
+                    hasError = true;
+                }
+            }
+            if (!hasError) {
+                alert('Identità aggiornata con successo!');
+            }
+            fetchData();
+        } catch {
+            alert('Errore durante l\'aggiornamento.');
+        }
     };
 
     const handlePostOrder = async () => {

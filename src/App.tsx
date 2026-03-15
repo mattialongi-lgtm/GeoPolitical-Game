@@ -4486,11 +4486,11 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(() => {
     try {
       return localStorage.getItem('darkMode') === 'true';
-    } catch { return false; }
+    } catch (e) { console.warn('localStorage not available:', e); return false; }
   });
 
   useEffect(() => {
-    try { localStorage.setItem('darkMode', String(darkMode)); } catch {}
+    try { localStorage.setItem('darkMode', String(darkMode)); } catch (e) { console.warn('localStorage write failed:', e); }
     if (darkMode) {
       document.documentElement.classList.add('dark');
     } else {
@@ -6284,6 +6284,7 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
 const ParliamentView = ({ user }: { user: any }) => {
   const [activeTab, setActiveTab] = useState<'elections' | 'parliament' | 'laws' | 'dictatorship'>('elections');
   const [loading, setLoading] = useState(true);
+  const [initialLoad, setInitialLoad] = useState(true);
 
   // Data
   const [electionData, setElectionData] = useState<any>(null);
@@ -6294,31 +6295,31 @@ const ParliamentView = ({ user }: { user: any }) => {
 
   const isDictatorship = regionData?.dictatorship === 1;
 
-  const loadData = async () => {
+  const loadData = async (currentTab?: string) => {
+    const tab = currentTab || activeTab;
     setLoading(true);
     try {
       // Always fetch region basic info for parliament configs (like dictatorship)
+      let rData: any = regionData;
       if (user?.residenceId) {
         const rRes = await fetch(`/api/regions/${user.residenceId}`);
         if (rRes.ok) {
-          const rData = await rRes.json();
+          rData = await rRes.json();
           setRegionData(rData);
-          // If dictatorship, force tab to dictatorship view
-          if (rData?.dictatorship === 1 && (activeTab === 'elections' || activeTab === 'parliament')) {
-            setActiveTab('dictatorship');
-          }
         }
       }
 
-      if (!isDictatorship) {
+      const dictMode = rData?.dictatorship === 1;
+
+      if (!dictMode) {
         const pRes = await fetch("/api/parliament");
         if (pRes.ok) setParliamentData(await pRes.json());
       }
 
-      if (activeTab === 'elections' && !isDictatorship) {
+      if (tab === 'elections' && !dictMode) {
         const res = await fetch("/api/elections");
         if (res.ok) setElectionData(await res.json());
-      } else if (activeTab === 'laws') {
+      } else if (tab === 'laws') {
         const res = await fetch("/api/parliament/laws");
         if (res.ok) {
           const lData = await res.json();
@@ -6330,7 +6331,33 @@ const ParliamentView = ({ user }: { user: any }) => {
     setLoading(false);
   };
 
-  useEffect(() => { loadData(); }, [activeTab]);
+  // Initial load: fetch region data and set correct initial tab
+  useEffect(() => {
+    const init = async () => {
+      setLoading(true);
+      try {
+        if (user?.residenceId) {
+          const rRes = await fetch(`/api/regions/${user.residenceId}`);
+          if (rRes.ok) {
+            const rData = await rRes.json();
+            setRegionData(rData);
+            if (rData?.dictatorship === 1) {
+              setActiveTab('dictatorship');
+            }
+          }
+        }
+      } catch { }
+      setInitialLoad(false);
+    };
+    init();
+  }, []);
+
+  // Load data when tab changes (but not on initial load)
+  useEffect(() => {
+    if (!initialLoad) {
+      loadData(activeTab);
+    }
+  }, [activeTab, initialLoad]);
 
   // Dictatorship view: only show dictator + economic minister
   const DictatorshipTab = () => (
@@ -6403,9 +6430,9 @@ const ParliamentView = ({ user }: { user: any }) => {
       ) : (
         <>
           {activeTab === 'dictatorship' && <DictatorshipTab />}
-          {activeTab === 'elections' && !isDictatorship && <ElectionsTab data={electionData} user={user} reload={loadData} />}
+          {activeTab === 'elections' && !isDictatorship && <ElectionsTab data={electionData} user={user} reload={() => loadData('elections')} />}
           {activeTab === 'parliament' && !isDictatorship && <ParliamentTab members={parliamentData} />}
-          {activeTab === 'laws' && <LawsTab laws={lawsData} registry={registry} region={regionData} user={user} reload={loadData} isMp={isDictatorship || parliamentData.some(m => m.userId === user.id)} />}
+          {activeTab === 'laws' && <LawsTab laws={lawsData} registry={registry} region={regionData} user={user} reload={() => loadData('laws')} isMp={isDictatorship || parliamentData.some(m => m.userId === user.id)} />}
         </>
       )}
     </motion.div>

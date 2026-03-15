@@ -159,7 +159,7 @@ html.dark .bg-red-50 {
   background-color: rgba(239, 68, 68, 0.15) !important;
 }
 
-/* Menu dropdown */
+/* Menu dropdown - targets the header dropdown menu's z-index class */
 html.dark .z-\[999\] {
   background-color: #1f2937 !important;
   border-color: #374151 !important;

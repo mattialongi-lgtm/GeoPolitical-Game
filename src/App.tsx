@@ -4509,8 +4509,6 @@ export default function App() {
   autoWorkFactoryIdRef.current = autoWorkFactoryId;
 
   // Dark mode – always enabled (native dark geopolitical theme)
-  const [darkMode] = useState(true);
-
   useEffect(() => {
     document.documentElement.classList.add('dark');
   }, []);

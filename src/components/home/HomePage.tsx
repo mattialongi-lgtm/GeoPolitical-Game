@@ -18,7 +18,7 @@
 import React from "react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
-import { Region, War } from "../../types";
+import { Region, War, User } from "../../types";
 
 import QuickAccessMenu from "./QuickAccessMenu";
 import WorldStatsCarousel from "./WorldStatsCarousel";
@@ -43,7 +43,7 @@ import {
 } from "./mockData";
 
 interface HomePageProps {
-  user: any;
+  user: User & { perks?: Record<string, number>; maxEnergy?: number; [key: string]: any };
   regions: Region[];
   wars: { active: War[]; ended: War[] };
   navigateToCountry: (id: string) => void;

@@ -39,7 +39,7 @@ export default function ChatPanel({ currentUser }: ChatPanelProps) {
     let active = true;
     const fetchMessages = async () => {
       try {
-        const res = await fetch(`/api/chat?channel=${channel}`);
+        const res = await fetch(`/api/chat?channel=${encodeURIComponent(channel)}`);
         if (res.ok && active) {
           const data = await res.json();
           setMessages(Array.isArray(data) ? data : []);

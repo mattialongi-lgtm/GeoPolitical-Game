@@ -24,7 +24,7 @@ const StatChip = ({ icon: Icon, label, value, color, onClick }: {
     className="flex flex-col items-center gap-1.5 min-w-[80px] shrink-0 p-3 rounded-2xl bg-gray-800/60 border border-gray-700/50 hover:border-indigo-500/50 active:scale-95 transition-all"
   >
     <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${color}`}>
-      <Icon className="w-4.5 h-4.5 text-white" />
+      <Icon className="w-4 h-4 text-white" />
     </div>
     <span className="text-base font-black text-white tabular-nums">{typeof value === 'number' ? value.toLocaleString() : value}</span>
     <span className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">{label}</span>

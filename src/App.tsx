@@ -58,6 +58,8 @@ import {
   Dumbbell,
   Award,
   Flag,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP, FACTORY_CONFIG } from "./types";
@@ -4509,10 +4511,20 @@ export default function App() {
   const autoWorkFactoryIdRef = React.useRef(autoWorkFactoryId);
   autoWorkFactoryIdRef.current = autoWorkFactoryId;
 
-  // Dark mode – always enabled (native dark geopolitical theme)
+  // Dark / Light mode toggle with localStorage persistence
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved ? saved === 'dark' : true; // default dark
+  });
+
   useEffect(() => {
-    document.documentElement.classList.add('dark');
-  }, []);
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
 
   const fetchData = async () => {
     try {
@@ -4830,6 +4842,11 @@ export default function App() {
                       </button>
                       <button onClick={() => { navigate("/produce"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
                         <Hammer className="w-4 h-4 text-orange-400" /> PRODUCI ARMI
+                      </button>
+                      <div className="h-px bg-gray-700/50 my-1" />
+                      <button onClick={() => { setIsDarkMode(prev => !prev); setIsMenuOpen(false); }} aria-label={isDarkMode ? 'Passa alla modalità chiara' : 'Passa alla modalità scura'} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        {isDarkMode ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4 text-blue-400" />}
+                        {isDarkMode ? 'MODALITÀ CHIARA' : 'MODALITÀ SCURA'}
                       </button>
                       <div className="h-px bg-gray-700/50 my-1" />
                       <button onClick={handleLogout} className="w-full px-4 py-3 text-left text-sm font-bold text-red-400 hover:bg-red-900/20 flex items-center gap-3 transition-colors">

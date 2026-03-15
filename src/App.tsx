@@ -665,7 +665,10 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
         <StatCard icon={DollarSign} label="Tesoro" value={`$${user.money.toLocaleString()}`} color="bg-emerald-500" />
         <StatCard icon={Zap} label="Energia" value={`${user.energy}/${user.maxEnergy}`} color="bg-amber-500" subValue={`Regen: +${GAME_CONFIG.ENERGY_REGEN_RATE + (user.perks?.['RESISTENZA'] || 0) * 5}/h`} />
         <StatCard icon={Star} label="Livello" value={user.level} color="bg-indigo-500" />
-        <div className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4">
+        <button 
+          onClick={() => navigateToCountry(user.regionId)}
+          className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 flex items-center gap-4 hover:border-indigo-200 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer text-left w-full"
+        >
           <div className="p-3 rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-100">
             <Globe className="w-5 h-5 text-white" />
           </div>
@@ -673,7 +676,7 @@ const HomeView = ({ user, regions, navigateToCountry }: { user: any, regions: Re
             <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">Regione</p>
             <p className="text-xl font-black text-slate-900 leading-none mt-1">{user.regionId}</p>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* CTA Cards */}

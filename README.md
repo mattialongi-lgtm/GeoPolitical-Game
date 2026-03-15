@@ -57,6 +57,23 @@ Questo file consolida tutto in un unica esecuzione:
 >
 > **Fix opzionale:** `fix_it_region.sql` — solo se devi riallineare i dati seed di Italia/regioni.
 
+### ⚡ File unico per step 10–16: `migration_next.sql`
+
+Se hai già eseguito gli step 1–9, puoi applicare tutti gli step rimanenti con **un solo file**:
+
+    supabase/migration_next.sql
+
+Contiene (nell'ordine corretto di dipendenze):
+- **Part A** — Factory Economy V2 (marketplace, economy logs, worker logs)
+- **Part B** — Factory System V3 (colonne mancanti, cooldowns, budgets, RPCs)
+- **Part C** — Factory Storage Fix (warehouse interno)
+- **Part D** — Bugfixes V3 (colonne factories, lastLogin, governance)
+- **Part E** — Extraction System (work experience, produttività, analytics)
+- **Part F** — Regional Autonomy (governatori, edifici, energia, tasse)
+- **Part G** — Regional Indexes (progress tracking, classificazione, modificatori)
+
+> Il file è **completamente idempotente** — nessun DROP TABLE, nessun reset. Sicuro da rieseguire.
+
 
 ## Run Locally
 

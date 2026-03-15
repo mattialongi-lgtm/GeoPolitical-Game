@@ -76,6 +76,7 @@ import FactoryDetail from "./components/FactoryDetail";
 import FactoryMarket from "./components/FactoryMarket";
 import ExtractionDashboard from "./components/ExtractionDashboard";
 import { HomePage } from "./components/home";
+import { DailyTasksPage } from "./components/daily";
 
 // --- Utilities ---
 const getTs = (val: any) => {
@@ -4847,6 +4848,7 @@ export default function App() {
       <main className={`${isDashboardRoute ? 'max-w-none p-0' : 'max-w-2xl mx-auto p-6'}`}>
         <Routes>
           <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} navigateToCountry={navigateToCountry} />} />
+          <Route path="/daily" element={<DailyTasksPage user={user} regions={regions} />} />
           <Route path="/map" element={<WorldMap onRegionClick={navigateToCountry} regions={regions} />} />
           <Route path="/market" element={<MarketView />} />
           <Route path="/storage" element={<StorageView user={user} />} />

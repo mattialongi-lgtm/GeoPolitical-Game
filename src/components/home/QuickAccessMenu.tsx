@@ -3,7 +3,7 @@
  * Provides rapid access to: Map, Market, Storage, Auctions, and more.
  */
 import React from "react";
-import { Globe, ShoppingCart, Archive, Landmark, Users, Shield, Hammer, Search } from "lucide-react";
+import { Globe, ShoppingCart, Archive, Landmark, Users, Shield, Hammer, Search, CalendarCheck } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface QuickAction {
@@ -14,6 +14,7 @@ interface QuickAction {
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
+  { icon: CalendarCheck, label: "Giornaliere", route: "/daily", color: "bg-cyan-600" },
   { icon: Globe, label: "Mappa", route: "/map", color: "bg-indigo-600" },
   { icon: ShoppingCart, label: "Mercato", route: "/market", color: "bg-emerald-600" },
   { icon: Archive, label: "Magazzino", route: "/storage", color: "bg-amber-600" },

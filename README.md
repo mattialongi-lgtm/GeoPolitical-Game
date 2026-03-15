@@ -43,6 +43,19 @@ Questo file consolida tutto in un unica esecuzione:
 | 7 | `migration_travel_time.sql` | Colonne tempo di viaggio |
 | 8 | `migration_resources.sql` | Sistema risorse regionali + Deep Exploration |
 | 9 | **`migration_consolidated.sql`** | **Factory Upgrade (800 livelli) + Security Fixes** |
+| 10 | `migration_extraction_system.sql` | Sistema estrazione avanzato: esperienza lavoro, formula produttività, analytics (⚠️ richiede step 8) |
+| 11 | `migration_factories_v2.sql` | Economia fabbriche: storage, marketplace, log economia e lavoratori |
+| 12 | `migration_factories_v3.sql` | Factory v3: colonne mancanti, cooldowns, budgets, RPCs (add_budget_transaction, process_work_action) |
+| 13 | `migration_factory_storage_fix.sql` | Fix warehouse interno fabbriche (execute_factory_work, increment_factory_storage) |
+| 14 | `migration_bugfixes_v3.sql` | Bugfix colonne factories, user_factory_cooldowns |
+| 15 | `migration_regional_autonomy.sql` | Autonomia regionale: governatori, edifici, energia, indici, tasse |
+| 16 | `migration_regional_indexes.sql` | Indici regionali: progress tracking, classificazione, modificatori |
+
+> **Tutti i file sono idempotenti** (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`, `CREATE OR REPLACE`): possono essere rieseguiti senza errori.
+>
+> **Per un database completamente nuovo** usa `full_schema.sql` al posto di tutti gli step sopra — include tutto in un'unica esecuzione.
+>
+> **Fix opzionale:** `fix_it_region.sql` — solo se devi riallineare i dati seed di Italia/regioni.
 
 
 ## Run Locally

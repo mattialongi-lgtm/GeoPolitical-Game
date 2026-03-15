@@ -1,5 +1,19 @@
 @import "tailwindcss";
 
+/* Utility: hide scrollbar for horizontal carousels */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Safe area bottom padding for devices with home indicators */
+.pb-safe {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
 /* Dark Mode Global Styles */
 html.dark {
   color-scheme: dark;
@@ -7,7 +21,7 @@ html.dark {
 
 /* Dark mode overrides for common elements */
 html.dark body {
-  background-color: #111827; /* gray-900 */
+  background-color: #030712; /* gray-950 */
   color: #f3f4f6; /* gray-100 */
 }
 

@@ -1,0 +1,50 @@
+/**
+ * QuickAccessMenu – Top bar quick action buttons for the Home dashboard.
+ * Provides rapid access to: Map, Market, Storage, Auctions, and more.
+ */
+import React from "react";
+import { Globe, ShoppingCart, Archive, Landmark, Users, Shield, Hammer, Search } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+
+interface QuickAction {
+  icon: React.ElementType;
+  label: string;
+  route: string;
+  color: string;
+}
+
+const QUICK_ACTIONS: QuickAction[] = [
+  { icon: Globe, label: "Mappa", route: "/map", color: "bg-indigo-600" },
+  { icon: ShoppingCart, label: "Mercato", route: "/market", color: "bg-emerald-600" },
+  { icon: Archive, label: "Magazzino", route: "/storage", color: "bg-amber-600" },
+  { icon: Landmark, label: "Parlamento", route: "/parliament", color: "bg-blue-600" },
+  { icon: Users, label: "Partito", route: "/party", color: "bg-purple-600" },
+  { icon: Shield, label: "Blocchi", route: "/blocs", color: "bg-rose-600" },
+  { icon: Hammer, label: "Produci", route: "/produce", color: "bg-orange-600" },
+];
+
+export default function QuickAccessMenu() {
+  const navigate = useNavigate();
+
+  return (
+    <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
+      <div className="flex gap-2 pb-1" style={{ minWidth: 'min-content' }}>
+        {QUICK_ACTIONS.map((action) => {
+          const Icon = action.icon;
+          return (
+            <button
+              key={action.route}
+              onClick={() => navigate(action.route)}
+              className="flex flex-col items-center gap-1.5 min-w-[56px] shrink-0 active:scale-90 transition-all"
+            >
+              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${action.color} shadow-lg`}>
+                <Icon className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-[9px] font-bold text-gray-400">{action.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

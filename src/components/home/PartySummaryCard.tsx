@@ -49,7 +49,7 @@ export default function PartySummaryCard({ party, resources, soldier, hotWar }: 
 
       {/* Resources Carousel */}
       <div className="space-y-2">
-        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">🎒 Risorse</h3>
+        <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">🎒 Magazzino</h3>
         <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
           <div className="flex gap-2 pb-1" style={{ minWidth: 'min-content' }}>
             {resourceItems.map((r) => (

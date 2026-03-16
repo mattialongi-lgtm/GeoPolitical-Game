@@ -37,17 +37,16 @@ export default function WorldStatsCarousel({ stats }: WorldStatsCarouselProps) {
 
   const rows = [
     [
-      { icon: Globe, label: "Mondo", value: "🗺️", color: "bg-indigo-600", onClick: () => navigate("/map") },
-      { icon: Users, label: "Giocatori", value: stats.totalPlayers, color: "bg-emerald-600", onClick: () => {} },
-      { icon: UsersRound, label: "Online", value: stats.onlinePlayers, color: "bg-yellow-500", onClick: () => {} },
+      { icon: Users, label: "Giocatori", value: stats.totalPlayers, color: "bg-emerald-600", onClick: () => navigate("/players") },
+      { icon: UsersRound, label: "Online", value: stats.onlinePlayers, color: "bg-yellow-500", onClick: () => navigate("/players?filter=online") },
       { icon: MapPin, label: "Regioni", value: stats.totalRegions, color: "bg-sky-600", onClick: () => navigate("/map") },
-      { icon: Flag, label: "Stati", value: stats.totalStates, color: "bg-rose-600", onClick: () => {} },
+      { icon: Flag, label: "Stati", value: stats.totalStates, color: "bg-rose-600", onClick: () => navigate("/states") },
     ],
     [
       { icon: Shield, label: "Blocchi", value: stats.totalBlocs, color: "bg-purple-600", onClick: () => navigate("/blocs") },
-      { icon: MapPin, label: "Indipendenti", value: stats.independentRegions, color: "bg-orange-500", onClick: () => {} },
-      { icon: Landmark, label: "Partiti", value: stats.totalParties, color: "bg-teal-600", onClick: () => {} },
-      { icon: Factory, label: "Fabbriche", value: stats.totalFactories, color: "bg-amber-600", onClick: () => navigate("/factory-market") },
+      { icon: MapPin, label: "Indipendenti", value: stats.independentRegions, color: "bg-orange-500", onClick: () => navigate("/independent-regions") },
+      { icon: Landmark, label: "Partiti", value: stats.totalParties, color: "bg-teal-600", onClick: () => navigate("/parties") },
+      { icon: Factory, label: "Fabbriche", value: stats.totalFactories, color: "bg-amber-600", onClick: () => navigate("/world-factories") },
     ],
   ];
 

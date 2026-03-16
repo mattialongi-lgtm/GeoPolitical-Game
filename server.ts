@@ -484,7 +484,10 @@ app.get("/api/world-stats", authenticate, async (_req, res) => {
     ]);
 
     // Count regions with no nation_id (independent)
-    const independentRes = await supabase.from('regions').select('id', { count: 'exact', head: true }).is('nation_id', null);
+    const independentRes = await supabase
+      .from('regions')
+      .select('id', { count: 'exact', head: true })
+      .is('nation_id', null);
 
     res.json({
       totalPlayers: usersRes.count || 0,
@@ -499,6 +502,76 @@ app.get("/api/world-stats", authenticate, async (_req, res) => {
   } catch (err) {
     console.error("Error fetching world stats:", err);
     res.status(500).json({ error: "Failed to fetch world stats." });
+  }
+});
+
+// List of nations / states with basic info and region counts
+app.get("/api/nations", authenticate, async (_req, res) => {
+  try {
+    const { data: nations, error } = await supabase
+      .from('nations')
+      .select('id, name, logo, leaderUserId, updatedAt');
+    if (error) throw error;
+
+    const { data: regions } = await supabase
+      .from('regions')
+      .select('id, nation_id, population');
+
+    const regionCounts: Record<string, { count: number; population: number }> = {};
+    (regions || []).forEach((r: any) => {
+      if (!r.nation_id) return;
+      if (!regionCounts[r.nation_id]) regionCounts[r.nation_id] = { count: 0, population: 0 };
+      regionCounts[r.nation_id].count += 1;
+      regionCounts[r.nation_id].population += r.population || 0;
+    });
+
+    const leaderIds = [...new Set((nations || []).map((n: any) => n.leaderUserId).filter(Boolean))];
+    const leaderMap: Record<string, string> = {};
+    if (leaderIds.length > 0) {
+      const { data: leaders } = await supabase.from('users').select('id, username').in('id', leaderIds);
+      (leaders || []).forEach((l: any) => { leaderMap[l.id] = l.username; });
+    }
+
+    const enriched = (nations || []).map((n: any) => ({
+      ...n,
+      leaderName: n.leaderUserId ? (leaderMap[n.leaderUserId] || null) : null,
+      regionCount: regionCounts[n.id]?.count || 0,
+      population: regionCounts[n.id]?.population || 0,
+    }));
+
+    res.json(enriched);
+  } catch (err: any) {
+    console.error("Error fetching nations:", err);
+    res.status(500).json({ error: "Errore nel caricamento degli stati: " + err.message });
+  }
+});
+
+// Players list (optionally only online)
+app.get("/api/players", authenticate, async (req: any, res) => {
+  try {
+    const onlyOnline = String(req.query.online || '').toLowerCase() === 'true';
+    const onlineThreshold = Date.now() - 5 * 60 * 1000;
+
+    let query = supabase
+      .from('users')
+      .select('id, username, regionId, originalNation, level, lastLogin', { count: 'exact' })
+      .order('level', { ascending: false })
+      .limit(200);
+
+    if (onlyOnline) query = query.gte('lastLogin', onlineThreshold);
+
+    const { data, count, error } = await query;
+    if (error) throw error;
+
+    res.json({
+      players: data || [],
+      total: count || 0,
+      onlineOnly: onlyOnline,
+      onlineThreshold,
+    });
+  } catch (err: any) {
+    console.error("Error fetching players:", err);
+    res.status(500).json({ error: "Errore nel caricamento dei giocatori: " + err.message });
   }
 });
 

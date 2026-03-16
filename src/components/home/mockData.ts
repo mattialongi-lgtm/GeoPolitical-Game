@@ -106,15 +106,15 @@ export interface GameEvent {
 
 // --- Mock Data ---
 
-export const MOCK_WORLD_STATS: WorldStats = {
-  totalPlayers: 12847,
-  onlinePlayers: 342,
-  totalRegions: 856,
-  totalStates: 194,
-  totalBlocs: 23,
-  independentRegions: 47,
-  totalParties: 312,
-  totalFactories: 4521,
+export const DEFAULT_WORLD_STATS: WorldStats = {
+  totalPlayers: 0,
+  onlinePlayers: 0,
+  totalRegions: 0,
+  totalStates: 0,
+  totalBlocs: 0,
+  independentRegions: 0,
+  totalParties: 0,
+  totalFactories: 0,
 };
 
 export const MOCK_REGION_STATS: RegionStats = {

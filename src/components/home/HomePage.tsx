@@ -31,7 +31,7 @@ import PartySummaryCard from "./PartySummaryCard";
 import EventHistoryCard from "./EventHistoryCard";
 
 import {
-  MOCK_WORLD_STATS,
+  DEFAULT_WORLD_STATS,
   MOCK_REGION_STATS,
   MOCK_STATE_STATS,
   MOCK_PENDING_LAWS,
@@ -41,11 +41,13 @@ import {
   MOCK_SOLDIER_OF_HOUR,
   MOCK_EVENTS,
 } from "./mockData";
+import type { WorldStats } from "./mockData";
 
 interface HomePageProps {
   user: User & { perks?: Record<string, number>; maxEnergy?: number; [key: string]: any };
   regions: Region[];
   wars: { active: War[]; ended: War[] };
+  worldStats?: WorldStats;
   navigateToCountry: (id: string) => void;
 }
 
@@ -54,7 +56,7 @@ const SectionDivider = () => (
   <div className="h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
 );
 
-export default function HomePage({ user, regions, wars, navigateToCountry }: HomePageProps) {
+export default function HomePage({ user, regions, wars, worldStats, navigateToCountry }: HomePageProps) {
   const navigate = useNavigate();
 
   // Build region stats from real data if available
@@ -108,11 +110,8 @@ export default function HomePage({ user, regions, wars, navigateToCountry }: Hom
     helium3: user.helium3 || 0,
   };
 
-  // World stats from regions if available
-  const worldStats = {
-    ...MOCK_WORLD_STATS,
-    totalRegions: regions.length > 0 ? regions.length : MOCK_WORLD_STATS.totalRegions,
-  };
+  // World stats from API (real data)
+  const resolvedWorldStats = worldStats || DEFAULT_WORLD_STATS;
 
   return (
     <motion.div
@@ -127,7 +126,7 @@ export default function HomePage({ user, regions, wars, navigateToCountry }: Hom
       <SectionDivider />
 
       {/* World Statistics */}
-      <WorldStatsCarousel stats={worldStats} />
+      <WorldStatsCarousel stats={resolvedWorldStats} />
 
       <SectionDivider />
 

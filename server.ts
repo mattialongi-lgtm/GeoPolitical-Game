@@ -487,7 +487,7 @@ app.get("/api/world-stats", authenticate, async (_req, res) => {
     const independentRes = await supabase
       .from('regions')
       .select('id', { count: 'exact', head: true })
-      .or('nation_id.is.null,nation_id.eq.');
+      .is('nation_id', null);
 
     res.json({
       totalPlayers: usersRes.count || 0,

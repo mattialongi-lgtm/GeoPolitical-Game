@@ -4565,8 +4565,8 @@ export default function App() {
         ws = {
           ...ws,
           totalRegions: regionsData.length,
-          independentRegions: Math.max(independentCount, ws.independentRegions || 0),
-          totalStates: Math.max(ws.totalStates || 0, uniqueStates),
+          independentRegions: independentCount,
+          totalStates: uniqueStates,
         };
       }
       setWorldStats(ws);

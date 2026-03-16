@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 
@@ -19,7 +20,7 @@ const DEFAULTS: Record<string, { daily: number, cap: number }> = {
 };
 
 async function init() {
-  console.log("Initializing region resources...");
+  console.log("Initializing region resources (batch mode)...");
 
   const { data: regions } = await supabase.from('regions').select('id');
   if (!regions) {
@@ -27,23 +28,35 @@ async function init() {
     return;
   }
 
+  const allResources: any[] = [];
+  const now = new Date().toISOString();
+
   for (const region of regions) {
-    console.log(`Setting up resources for ${region.id}...`);
     for (const resType of RESOURCE_TYPES) {
       const def = DEFAULTS[resType];
-      const { error } = await supabase
-        .from('region_resources')
-        .upsert({
-          regionId: region.id,
-          resourceType: resType,
-          dailyAvailable: def.daily,
-          dailyExtracted: 0,
-          baseCapPerRecharge: def.cap,
-          updatedAt: new Date().toISOString()
-        });
-      if (error) {
-        console.error(`Error for ${region.id} ${resType}:`, error.message);
-      }
+      allResources.push({
+        regionId: region.id,
+        resourceType: resType,
+        dailyAvailable: def.daily,
+        dailyExtracted: 0,
+        baseCapPerRecharge: def.cap,
+        updatedAt: now
+      });
+    }
+  }
+
+  console.log(`Total resources to upsert: ${allResources.length}`);
+
+  // Upsert in batches of 100
+  for (let i = 0; i < allResources.length; i += 100) {
+    const batch = allResources.slice(i, i + 100);
+    console.log(`Upserting batch ${i / 100 + 1}...`);
+    const { error } = await supabase
+      .from('region_resources')
+      .upsert(batch, { onConflict: 'regionId, resourceType' });
+    
+    if (error) {
+      console.error(`Error in batch ${i / 100 + 1}:`, error.message);
     }
   }
 

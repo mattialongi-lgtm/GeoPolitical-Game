@@ -644,20 +644,30 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
                                         <label className="text-xs font-black text-slate-500 uppercase tracking-[0.2em] block mb-6 px-1">Identità della Nazione</label>
                                         <div className="space-y-4">
                                             <div className="flex gap-4">
-                                                <input
-                                                    type="text"
-                                                    value={branding.nationLogo}
-                                                    onChange={e => setBranding({ ...branding, nationLogo: e.target.value })}
-                                                    className="w-16 bg-slate-900/60 border border-slate-800 rounded-xl p-4 text-center text-xl focus:outline-none focus:border-indigo-500"
-                                                    placeholder="🏛️"
-                                                    disabled={!isLeader}
-                                                />
+                                                <div className="w-16 h-16 bg-slate-900/60 border border-slate-800 rounded-xl flex items-center justify-center text-xl overflow-hidden shrink-0">
+                                                    {branding.nationLogo && branding.nationLogo.startsWith('http') ? (
+                                                        <img src={branding.nationLogo} alt="Logo" className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <span>{branding.nationLogo || '🏛️'}</span>
+                                                    )}
+                                                </div>
                                                 <input
                                                     type="text"
                                                     value={branding.nationName}
                                                     onChange={e => setBranding({ ...branding, nationName: e.target.value })}
                                                     className="flex-1 bg-slate-900/60 border border-slate-800 rounded-xl p-4 text-white font-bold placeholder:text-slate-600 focus:outline-none focus:border-indigo-500"
                                                     placeholder="Nome della Federazione/Stato..."
+                                                    disabled={!isLeader}
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <p className="text-[10px] text-slate-500 font-black uppercase px-1">URL Logo o Emoji</p>
+                                                <input
+                                                    type="text"
+                                                    value={branding.nationLogo}
+                                                    onChange={e => setBranding({ ...branding, nationLogo: e.target.value })}
+                                                    className="w-full bg-slate-900/60 border border-slate-800 rounded-xl p-4 text-white font-medium placeholder:text-slate-600 focus:outline-none focus:border-indigo-500 text-sm"
+                                                    placeholder="Incolla URL immagine o inserisci Emoji..."
                                                     disabled={!isLeader}
                                                 />
                                             </div>

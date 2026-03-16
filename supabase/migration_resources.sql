@@ -122,24 +122,31 @@ CREATE INDEX IF NOT EXISTS idx_extraction_logs_player ON resource_extraction_log
 -- ============================================================
 
 ALTER TABLE game_settings ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "game_settings_read" ON game_settings;
 CREATE POLICY "game_settings_read" ON game_settings FOR SELECT USING (true);
 
 ALTER TABLE deep_levels ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "deep_levels_read" ON deep_levels;
 CREATE POLICY "deep_levels_read" ON deep_levels FOR SELECT USING (true);
 
 ALTER TABLE region_resources ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "region_resources_read" ON region_resources;
 CREATE POLICY "region_resources_read" ON region_resources FOR SELECT USING (true);
 
 ALTER TABLE player_extraction_state ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "player_extraction_state_read" ON player_extraction_state;
 CREATE POLICY "player_extraction_state_read" ON player_extraction_state FOR SELECT USING (auth.uid() = "playerId");
 
 ALTER TABLE resource_recharges ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "resource_recharges_read" ON resource_recharges;
 CREATE POLICY "resource_recharges_read" ON resource_recharges FOR SELECT USING (true);
 
 ALTER TABLE deep_explorations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "deep_explorations_read" ON deep_explorations;
 CREATE POLICY "deep_explorations_read" ON deep_explorations FOR SELECT USING (true);
 
 ALTER TABLE resource_extraction_logs ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "extraction_logs_read" ON resource_extraction_logs;
 CREATE POLICY "extraction_logs_read" ON resource_extraction_logs FOR SELECT USING (auth.uid() = "playerId");
 
 -- ============================================================

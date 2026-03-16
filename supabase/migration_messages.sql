@@ -22,14 +22,18 @@ CREATE INDEX IF NOT EXISTS idx_messages_unread ON messages("receiverId") WHERE "
 ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
 
 -- RLS Policies: users can only see their own messages
+DROP POLICY IF EXISTS "Users can read their own messages" ON messages;
 CREATE POLICY "Users can read their own messages" ON messages
     FOR SELECT USING (auth.uid() = "senderId" OR auth.uid() = "receiverId");
 
+DROP POLICY IF EXISTS "Users can insert messages" ON messages;
 CREATE POLICY "Users can insert messages" ON messages
     FOR INSERT WITH CHECK (auth.uid() = "senderId");
 
+DROP POLICY IF EXISTS "Users can update their received messages" ON messages;
 CREATE POLICY "Users can update their received messages" ON messages
     FOR UPDATE USING (auth.uid() = "receiverId");
 
+DROP POLICY IF EXISTS "Users can delete their own messages" ON messages;
 CREATE POLICY "Users can delete their own messages" ON messages
     FOR DELETE USING (auth.uid() = "senderId" OR auth.uid() = "receiverId");

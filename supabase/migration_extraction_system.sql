@@ -77,7 +77,7 @@ BEGIN
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns
         WHERE table_name = 'region_resources'
-          AND column_name = 'deepbonuscap'
+          AND column_name = 'deepBonusCap'
     ) THEN
         ALTER TABLE region_resources ADD COLUMN "deepBonusCap" INT NOT NULL DEFAULT 0;
     END IF;

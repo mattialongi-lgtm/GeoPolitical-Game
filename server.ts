@@ -554,7 +554,7 @@ app.get("/api/players", authenticate, async (req: any, res) => {
 
     let query = supabase
       .from('users')
-      .select('id, username, regionId, originalNation, level, lastLogin, avatarUrl', { count: 'exact' })
+      .select('id, username, regionId, originalNation, level, lastLogin, avatarData', { count: 'exact' })
       .order('level', { ascending: false })
       .limit(200);
 

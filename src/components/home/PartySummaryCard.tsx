@@ -36,7 +36,17 @@ export default function PartySummaryCard({ party, resources, soldier, hotWar }: 
           onClick={() => navigate("/party")}
           className="w-full bg-gray-800/60 border border-gray-700/40 rounded-xl p-3 flex items-center gap-3 hover:border-purple-500/40 active:scale-[0.98] transition-all"
         >
-          <span className="text-2xl">{party.logo}</span>
+          <div className="w-10 h-10 rounded-xl bg-gray-800 flex items-center justify-center text-xl overflow-hidden shrink-0">
+            {party.logo ? (
+              party.logo.startsWith("http") ? (
+                <img src={party.logo} alt={party.name} className="w-full h-full object-cover" />
+              ) : (
+                party.logo
+              )
+            ) : (
+              "🛡️"
+            )}
+          </div>
           <div className="flex-1 text-left">
             <p className="text-sm font-bold text-white">{party.name}</p>
             <p className="text-[10px] text-gray-400">

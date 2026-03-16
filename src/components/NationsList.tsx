@@ -80,8 +80,16 @@ export default function NationsList() {
               key={n.id}
               className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 flex items-center gap-3 hover:border-indigo-500/40 transition-colors"
             >
-              <div className="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center text-2xl">
-                {n.logo || "🏛️"}
+              <div className="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center text-2xl overflow-hidden">
+                {n.logo ? (
+                  n.logo.startsWith("http") ? (
+                    <img src={n.logo} alt={n.name || n.id} className="w-full h-full object-cover" />
+                  ) : (
+                    n.logo
+                  )
+                ) : (
+                  "🏛️"
+                )}
               </div>
               <div className="flex-1">
                 <p className="text-sm font-black text-white leading-tight">{n.name || n.id}</p>

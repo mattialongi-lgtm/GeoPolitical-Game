@@ -201,8 +201,16 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
             {/* Sidebar Navigation */}
             <aside className="w-64 border-r border-slate-800/60 bg-slate-900/50 backdrop-blur-xl flex flex-col sticky top-0 h-screen">
                 <div className="p-6 border-b border-slate-800/60 flex items-center gap-3">
-                    <div className="text-2xl">
-                        {region.nation?.logo || '🏛️'}
+                    <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-2xl overflow-hidden shadow-inner">
+                        {region.nation?.logo ? (
+                            region.nation.logo.startsWith("http") ? (
+                                <img src={region.nation.logo} alt={region.nation.name} className="w-full h-full object-cover" />
+                            ) : (
+                                region.nation.logo
+                            )
+                        ) : (
+                            '🏛️'
+                        )}
                     </div>
                     <div>
                         <h2 className="font-bold text-white tracking-tight leading-tight">{region.nation?.name || region.name}</h2>
@@ -285,7 +293,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
                             <p className="text-[10px] text-indigo-400 font-black uppercase">Livello {user?.level || 1}</p>
                         </div>
                         <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 overflow-hidden">
-                            {user?.avatarUrl ? <img src={user.avatarUrl} alt="" className="w-full h-full object-cover" /> : <User />}
+                            {user?.avatarData ? <img src={user.avatarData} alt="" className="w-full h-full object-cover" /> : <User />}
                         </div>
                     </div>
                 </header>

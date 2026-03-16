@@ -12,12 +12,11 @@ View your app in AI Studio: https://ai.studio/apps/300c5164-3f3f-46f8-940b-7c494
 
 Se ti serve il codice SQL da eseguire su Supabase, usa i file già presenti in `supabase/`:
 
-- **🆕 File unico completo:** copia tutto il contenuto di **`supabase/migration_completa.sql`** nel SQL Editor di Supabase e premi **Run**. Questo è il file **consigliato** per un database nuovo — include tutto (schema base + tutte le migration) in un'unica esecuzione.
-- **Nuovo database / reset completo (alternativa):** `supabase/full_schema.sql` contiene lo schema base ma **non** include alcune migration recenti (Factory V2/V3, Extraction System, Regional Indexes, Daily Gameplay). Per queste, usa `migration_completa.sql`.
-- **Database già esistente:** esegui solo le migration necessarie presenti in `supabase/`, partendo dai file `migration_*.sql` pertinenti al problema che devi allineare, senza usare il reset completo.
+- **🆕 File unico migration:** copia tutto il contenuto di **`supabase/migration_completa.sql`** nel SQL Editor di Supabase e premi **Run**. Combina tutte le 17 migration in un solo file. **NON cancella dati** — è sicuro su database esistenti.
+- **Nuovo database / reset completo:** `supabase/full_schema.sql` — solo per database NUOVI (attenzione: fa DROP di tutte le tabelle!).
 - **Fix dati Italia:** usa `fix_it_region.sql` solo se devi riallineare i dati seed di Italia/regioni.
 
-`migration_completa.sql` è il file unico "pronto da incollare" su Supabase: crea tutte le tabelle, le policy, le funzioni RPC, i CHECK constraint e i dati seed usati dal server. Include tutto il contenuto di `full_schema.sql` più tutte le migration.
+`migration_completa.sql` è il file unico con tutte le migration, **non distruttivo** e **completamente idempotente** (puoi rieseguirlo senza errori). Combina tutti i 17 step di migration nell'ordine corretto.
 
 
 ### 🆕 Migration per Factory Upgrade + Security Fixes

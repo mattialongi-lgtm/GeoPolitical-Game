@@ -64,6 +64,8 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP, FACTORY_CONFIG } from "./types";
 import type { ResourceType, DeepCostPreview } from "./types";
+import type { WorldStats } from "./components/home/mockData";
+import { DEFAULT_WORLD_STATS } from "./components/home/mockData";
 import { supabase } from "./lib/supabase";
 import { useNavigate, useLocation, Routes, Route, Link, useParams, Navigate } from "react-router-dom";
 import { MoreVertical, Settings, Box, Archive, Filter, ShoppingCart, RefreshCcw } from "lucide-react";
@@ -4498,6 +4500,7 @@ export default function App() {
   const [regions, setRegions] = useState<Region[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [wars, setWars] = useState<{ active: War[], ended: War[] }>({ active: [], ended: [] });
+  const [worldStats, setWorldStats] = useState<WorldStats>(DEFAULT_WORLD_STATS);
   const [currentView, setCurrentView] = useState<"home" | "articles" | "work" | "wars" | "profile" | "article-new" | "article-detail" | "country-detail">("home");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [selectedArticleId, setSelectedArticleId] = useState<string | null>(null);
@@ -4528,11 +4531,12 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const [userRes, regionsRes, articlesRes, warsRes] = await Promise.all([
+      const [userRes, regionsRes, articlesRes, warsRes, worldStatsRes] = await Promise.all([
         fetch("/api/me"),
         fetch("/api/regions"),
         fetch("/api/articles"),
-        fetch("/api/wars")
+        fetch("/api/wars"),
+        fetch("/api/world-stats")
       ]);
       if (userRes.ok) {
         const userData = await userRes.json();
@@ -4543,6 +4547,7 @@ export default function App() {
       if (regionsRes.ok) setRegions(await regionsRes.json());
       if (articlesRes.ok) setArticles(await articlesRes.json());
       if (warsRes.ok) setWars(await warsRes.json());
+      if (worldStatsRes.ok) setWorldStats(await worldStatsRes.json());
     } catch (err) {
       console.error(err);
     } finally {
@@ -4864,7 +4869,7 @@ export default function App() {
       {/* Main Content */}
       <main className={`${isDashboardRoute ? 'max-w-none p-0' : 'max-w-2xl mx-auto p-6'}`}>
         <Routes>
-          <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} navigateToCountry={navigateToCountry} />} />
+          <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} worldStats={worldStats} navigateToCountry={navigateToCountry} />} />
           <Route path="/daily" element={<DailyTasksPage user={user} regions={regions} />} />
           <Route path="/map" element={<WorldMap onRegionClick={navigateToCountry} regions={regions} />} />
           <Route path="/market" element={<MarketView />} />

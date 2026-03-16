@@ -469,6 +469,39 @@ app.get("/api/me", authenticate, (req: any, res) => {
   res.json(req.user);
 });
 
+app.get("/api/world-stats", authenticate, async (_req, res) => {
+  try {
+    const onlineThreshold = Date.now() - 5 * 60 * 1000; // 5 minutes
+
+    const [usersRes, onlineRes, regionsRes, nationsRes, blocsRes, partiesRes, factoriesRes] = await Promise.all([
+      supabase.from('users').select('id', { count: 'exact', head: true }),
+      supabase.from('users').select('id', { count: 'exact', head: true }).gte('lastLogin', onlineThreshold),
+      supabase.from('regions').select('id', { count: 'exact', head: true }),
+      supabase.from('nations').select('id', { count: 'exact', head: true }),
+      supabase.from('blocs').select('id', { count: 'exact', head: true }),
+      supabase.from('parties').select('id', { count: 'exact', head: true }),
+      supabase.from('factories').select('id', { count: 'exact', head: true }),
+    ]);
+
+    // Count regions with no nation_id (independent)
+    const independentRes = await supabase.from('regions').select('id', { count: 'exact', head: true }).is('nation_id', null);
+
+    res.json({
+      totalPlayers: usersRes.count || 0,
+      onlinePlayers: onlineRes.count || 0,
+      totalRegions: regionsRes.count || 0,
+      totalStates: nationsRes.count || 0,
+      totalBlocs: blocsRes.count || 0,
+      independentRegions: independentRes.count || 0,
+      totalParties: partiesRes.count || 0,
+      totalFactories: factoriesRes.count || 0,
+    });
+  } catch (err) {
+    console.error("Error fetching world stats:", err);
+    res.status(500).json({ error: "Failed to fetch world stats." });
+  }
+});
+
 app.get("/api/regions", authenticate, async (req, res) => {
   const { data: regions, error } = await supabase
     .from('regions')

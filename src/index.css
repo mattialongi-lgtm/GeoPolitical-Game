@@ -345,45 +345,21 @@ html:not(.dark) .text-gray-500 {
   color: #475569 !important;
 }
 
-/* Restore white text on elements with colored backgrounds (same element) */
+/* Restore white text on colored backgrounds (same element or descendant) */
 html:not(.dark) .text-white:is(
-  [class*="bg-indigo-"],
-  [class*="bg-emerald-"],
-  [class*="bg-blue-"],
-  [class*="bg-red-"],
-  [class*="bg-rose-"],
-  [class*="bg-amber-"],
-  [class*="bg-purple-"],
-  [class*="bg-cyan-"],
-  [class*="bg-yellow-"],
-  [class*="bg-green-"],
-  [class*="bg-orange-"],
-  [class*="bg-teal-"],
-  [class*="bg-pink-"],
-  [class*="bg-sky-"],
-  [class*="bg-gradient-"],
+  [class*="bg-indigo-"], [class*="bg-emerald-"], [class*="bg-blue-"],
+  [class*="bg-red-"], [class*="bg-rose-"], [class*="bg-amber-"],
+  [class*="bg-purple-"], [class*="bg-cyan-"], [class*="bg-yellow-"],
+  [class*="bg-green-"], [class*="bg-orange-"], [class*="bg-teal-"],
+  [class*="bg-pink-"], [class*="bg-sky-"], [class*="bg-gradient-"],
   [class*="bg-black"]
-) {
-  color: #ffffff !important;
-}
-
-/* Restore white text inside colored background containers */
+),
 html:not(.dark) :is(
-  [class*="bg-indigo-"],
-  [class*="bg-emerald-"],
-  [class*="bg-blue-"],
-  [class*="bg-red-"],
-  [class*="bg-rose-"],
-  [class*="bg-amber-"],
-  [class*="bg-purple-"],
-  [class*="bg-cyan-"],
-  [class*="bg-yellow-"],
-  [class*="bg-green-"],
-  [class*="bg-orange-"],
-  [class*="bg-teal-"],
-  [class*="bg-pink-"],
-  [class*="bg-sky-"],
-  [class*="bg-gradient-"],
+  [class*="bg-indigo-"], [class*="bg-emerald-"], [class*="bg-blue-"],
+  [class*="bg-red-"], [class*="bg-rose-"], [class*="bg-amber-"],
+  [class*="bg-purple-"], [class*="bg-cyan-"], [class*="bg-yellow-"],
+  [class*="bg-green-"], [class*="bg-orange-"], [class*="bg-teal-"],
+  [class*="bg-pink-"], [class*="bg-sky-"], [class*="bg-gradient-"],
   [class*="bg-black"]
 ) .text-white {
   color: #ffffff !important;

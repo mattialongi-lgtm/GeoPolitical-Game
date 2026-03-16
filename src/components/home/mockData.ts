@@ -1,7 +1,7 @@
 /**
- * Mock data for the Home Dashboard components.
- * These fixtures provide realistic sample data for development and testing.
- * Replace with actual API calls when backend is ready.
+ * Type definitions and default (empty/zero) data for the Home Dashboard components.
+ * Default values show realistic zeros when no real data is available.
+ * Replace with actual API calls when backend endpoints are ready.
  */
 
 export interface WorldStats {
@@ -104,7 +104,7 @@ export interface GameEvent {
   icon: string;
 }
 
-// --- Mock Data ---
+// --- Default Data (zeros / empty) ---
 
 export const DEFAULT_WORLD_STATS: WorldStats = {
   totalPlayers: 0,
@@ -117,163 +117,51 @@ export const DEFAULT_WORLD_STATS: WorldStats = {
   totalFactories: 0,
 };
 
-export const MOCK_REGION_STATS: RegionStats = {
-  id: 'IT-RM',
-  name: 'Lazio',
-  population: 1245,
-  parties: 8,
-  factories: 34,
-  pollution: 23,
-  militaryAcademies: 3,
-  onlinePlayers: 18,
-  health: 7,
-  stability: 8,
+export const DEFAULT_REGION_STATS: RegionStats = {
+  id: '',
+  name: 'N/A',
+  population: 0,
+  parties: 0,
+  factories: 0,
+  pollution: 0,
+  militaryAcademies: 0,
+  onlinePlayers: 0,
+  health: 0,
+  stability: 0,
 };
 
-export const MOCK_STATE_STATS: StateStats = {
-  iso2: 'IT',
-  name: 'Italia',
-  population: 8432,
-  parties: 42,
-  factories: 187,
-  regions: 20,
-  leader: 'GiulioMaximus',
-  leaderSalary: 25000,
-  governmentForm: 'Repubblica Parlamentare',
-  capital: 'Lazio',
-  onlinePlayers: 67,
-  currentOrders: 'Concentrare le forze sulla difesa del confine nord-est. Priorità produzione uranio. Alleanza con FR attiva.',
+export const DEFAULT_STATE_STATS: StateStats = {
+  iso2: '',
+  name: 'N/A',
+  population: 0,
+  parties: 0,
+  factories: 0,
+  regions: 0,
+  leader: '',
+  leaderSalary: 0,
+  governmentForm: '',
+  capital: '',
+  onlinePlayers: 0,
+  currentOrders: '',
 };
 
-export const MOCK_PENDING_LAWS: PendingLaw[] = [
-  {
-    id: 'law-1',
-    title: 'Aumento budget difesa',
-    description: 'Trasferimento di 500.000€ al budget militare regionale',
-    target: 'Budget Militare',
-    cost: 500000,
-    proposedBy: 'GiulioMaximus',
-    votesFor: 45,
-    votesAgainst: 12,
-    abstentions: 8,
-    totalVoters: 100,
-    endsAt: Date.now() + 3600000 * 4,
-    status: 'pending',
-  },
-  {
-    id: 'law-2',
-    title: 'Costruzione ospedale regionale',
-    description: 'Approvazione costruzione di un nuovo ospedale nella regione di Lazio',
-    target: 'Infrastruttura Sanitaria',
-    cost: 1200000,
-    proposedBy: 'MarcoSenatore',
-    votesFor: 30,
-    votesAgainst: 25,
-    abstentions: 5,
-    totalVoters: 100,
-    endsAt: Date.now() + 3600000 * 8,
-    status: 'pending',
-  },
-];
+export const EMPTY_PENDING_LAWS: PendingLaw[] = [];
 
-export const MOCK_ACTIVE_WARS: ActiveWar[] = [
-  {
-    id: 'war-1',
-    attackerName: 'Francia',
-    attackerIso2: 'FR',
-    defenderName: 'Italia',
-    defenderIso2: 'IT',
-    attackerDamage: 1245890,
-    defenderDamage: 987340,
-    endsAt: Date.now() + 3600000 * 2,
-    regionName: 'Piemonte',
-  },
-  {
-    id: 'war-2',
-    attackerName: 'Germania',
-    attackerIso2: 'DE',
-    defenderName: 'Polonia',
-    defenderIso2: 'PL',
-    attackerDamage: 543210,
-    defenderDamage: 612340,
-    endsAt: Date.now() + 3600000 * 5,
-    regionName: 'Slesia',
-  },
-];
+export const EMPTY_ACTIVE_WARS: ActiveWar[] = [];
 
-export const MOCK_PARTY: PartyInfo = {
-  id: 'party-1',
-  name: 'Partito della Libertà',
-  members: 156,
-  logo: '🦅',
+export const EMPTY_PARTY: PartyInfo | null = null;
+
+export const DEFAULT_RESOURCES: PlayerResources = {
+  gold: 0,
+  oil: 0,
+  minerals: 0,
+  uranium: 0,
+  diamonds: 0,
+  energyDrinks: 0,
+  liquidOxygen: 0,
+  helium3: 0,
 };
 
-export const MOCK_RESOURCES: PlayerResources = {
-  gold: 1240,
-  oil: 890,
-  minerals: 2340,
-  uranium: 45,
-  diamonds: 12,
-  energyDrinks: 8,
-  liquidOxygen: 34,
-  helium3: 7,
-};
+export const EMPTY_SOLDIER_OF_HOUR: SoldierOfTheHour | null = null;
 
-export const MOCK_SOLDIER_OF_HOUR: SoldierOfTheHour = {
-  username: 'WarriorX99',
-  damage: 234567,
-  regionId: 'IT-RM',
-};
-
-export const MOCK_EVENTS: GameEvent[] = [
-  {
-    id: 'evt-1',
-    type: 'war_started',
-    title: 'Guerra dichiarata: Francia → Italia',
-    description: 'La Francia ha dichiarato guerra al Piemonte italiano',
-    timestamp: Date.now() - 3600000,
-    icon: '⚔️',
-  },
-  {
-    id: 'evt-2',
-    type: 'law_approved',
-    title: 'Legge approvata: Aumento tasse',
-    description: 'Il parlamento italiano ha approvato l\'aumento delle tasse commerciali al 12%',
-    values: '+12% tasse',
-    timestamp: Date.now() - 7200000,
-    icon: '📜',
-  },
-  {
-    id: 'evt-3',
-    type: 'conquest',
-    title: 'Conquista: Corsica',
-    description: 'L\'Italia ha conquistato la regione della Corsica dalla Francia',
-    timestamp: Date.now() - 14400000,
-    icon: '🏴',
-  },
-  {
-    id: 'evt-4',
-    type: 'treasury_transfer',
-    title: 'Trasferimento tesoro',
-    description: 'Trasferimento di 1.500.000€ dal tesoro nazionale al budget militare',
-    values: '€1,500,000',
-    timestamp: Date.now() - 21600000,
-    icon: '💰',
-  },
-  {
-    id: 'evt-5',
-    type: 'election',
-    title: 'Elezioni: Nuovo presidente Francia',
-    description: 'NapoleonRedux eletto presidente della Francia con il 67% dei voti',
-    timestamp: Date.now() - 28800000,
-    icon: '🗳️',
-  },
-  {
-    id: 'evt-6',
-    type: 'revolution',
-    title: 'Rivoluzione in Egitto',
-    description: 'Un colpo di stato ha rovesciato il governo egiziano',
-    timestamp: Date.now() - 43200000,
-    icon: '🔥',
-  },
-];
+export const EMPTY_EVENTS: GameEvent[] = [];

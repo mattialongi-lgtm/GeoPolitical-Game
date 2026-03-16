@@ -13,7 +13,7 @@
  * 9. Event history
  *
  * All data is passed as props from the parent App component.
- * Mock data is used as fallback where the backend is not ready.
+ * Default zero/empty values are shown when no real data is available.
  */
 import React from "react";
 import { motion } from "motion/react";
@@ -32,14 +32,13 @@ import EventHistoryCard from "./EventHistoryCard";
 
 import {
   DEFAULT_WORLD_STATS,
-  MOCK_REGION_STATS,
-  MOCK_STATE_STATS,
-  MOCK_PENDING_LAWS,
-  MOCK_ACTIVE_WARS,
-  MOCK_PARTY,
-  MOCK_RESOURCES,
-  MOCK_SOLDIER_OF_HOUR,
-  MOCK_EVENTS,
+  DEFAULT_REGION_STATS,
+  DEFAULT_STATE_STATS,
+  EMPTY_PENDING_LAWS,
+  EMPTY_ACTIVE_WARS,
+  EMPTY_PARTY,
+  EMPTY_SOLDIER_OF_HOUR,
+  EMPTY_EVENTS,
 } from "./mockData";
 import type { WorldStats } from "./mockData";
 
@@ -74,12 +73,12 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
         health: playerRegion.health || 5,
         stability: playerRegion.stability || 5,
       }
-    : MOCK_REGION_STATS;
+    : { ...DEFAULT_REGION_STATS, id: user.regionId || '', name: user.regionId || 'N/A' };
 
   // Build state stats from real data if available
   const stateStats = {
-    ...MOCK_STATE_STATS,
-    iso2: user.originalNation || user.regionId,
+    ...DEFAULT_STATE_STATS,
+    iso2: user.originalNation || user.regionId || '',
     name: user.originalNation || 'N/A',
   };
 
@@ -96,7 +95,7 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
         endsAt: typeof w.endsAt === 'number' ? w.endsAt : new Date(w.endsAt).getTime(),
         regionName: w.attackerCountryIso2 || 'Regione',
       }))
-    : MOCK_ACTIVE_WARS;
+    : EMPTY_ACTIVE_WARS;
 
   // Build resources from user data
   const playerResources = {
@@ -149,7 +148,7 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
 
       {/* Parliament / Laws */}
       <ParliamentCard
-        laws={MOCK_PENDING_LAWS}
+        laws={EMPTY_PENDING_LAWS}
         governmentForm={playerRegion?.governmentForm}
       />
 
@@ -167,16 +166,16 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
 
       {/* Party / Resources / Soldier / Hot War */}
       <PartySummaryCard
-        party={MOCK_PARTY}
+        party={EMPTY_PARTY}
         resources={playerResources}
-        soldier={MOCK_SOLDIER_OF_HOUR}
+        soldier={EMPTY_SOLDIER_OF_HOUR}
         hotWar={activeWarsMapped[0] || null}
       />
 
       <SectionDivider />
 
       {/* Event History */}
-      <EventHistoryCard events={MOCK_EVENTS} />
+      <EventHistoryCard events={EMPTY_EVENTS} />
     </motion.div>
   );
 }

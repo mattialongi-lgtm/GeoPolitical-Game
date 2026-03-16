@@ -78,6 +78,11 @@ import { MinistersView } from "./components/MinistersView";
 import WorldMap from "./components/WorldMap";
 import FactoryDetail from "./components/FactoryDetail";
 import FactoryMarket from "./components/FactoryMarket";
+import NationsList from "./components/NationsList";
+import PlayersList from "./components/PlayersList";
+import PartiesList from "./components/PartiesList";
+import WorldFactoriesList from "./components/WorldFactoriesList";
+import IndependentRegionsList from "./components/IndependentRegionsList";
 import ExtractionDashboard from "./components/ExtractionDashboard";
 import { HomePage } from "./components/home";
 import { DailyTasksPage } from "./components/daily";
@@ -1957,10 +1962,10 @@ const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFa
           <Globe className="w-10 h-10 text-slate-300 mx-auto mb-3" />
           <p className="text-slate-500 font-bold text-sm">Esplora le fabbriche di tutto il mondo</p>
           <button
-            onClick={() => navigate('/factory-market')}
+            onClick={() => navigate('/world-factories')}
             className="px-6 py-3 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs shadow-md hover:bg-emerald-600 transition-all"
           >
-            🏪 Mercato Fabbriche
+            🌍 Lista Fabbriche
           </button>
         </div>
       )}
@@ -4544,10 +4549,27 @@ export default function App() {
       } else {
         setUser(null);
       }
-      if (regionsRes.ok) setRegions(await regionsRes.json());
+      let regionsData: any[] = [];
+      if (regionsRes.ok) {
+        regionsData = await regionsRes.json();
+        setRegions(regionsData);
+      }
       if (articlesRes.ok) setArticles(await articlesRes.json());
       if (warsRes.ok) setWars(await warsRes.json());
-      if (worldStatsRes.ok) setWorldStats(await worldStatsRes.json());
+
+      let ws = worldStats;
+      if (worldStatsRes.ok) ws = await worldStatsRes.json();
+      if (regionsData.length > 0) {
+        const independentCount = regionsData.filter((r: any) => !r.nation_id).length;
+        const uniqueStates = new Set(regionsData.map((r: any) => r.nation_id).filter(Boolean)).size;
+        ws = {
+          ...ws,
+          totalRegions: regionsData.length,
+          independentRegions: Math.max(independentCount, ws.independentRegions || 0),
+          totalStates: Math.max(ws.totalStates || 0, uniqueStates),
+        };
+      }
+      setWorldStats(ws);
     } catch (err) {
       console.error(err);
     } finally {
@@ -4875,6 +4897,11 @@ export default function App() {
           <Route path="/market" element={<MarketView />} />
           <Route path="/storage" element={<StorageView user={user} />} />
           <Route path="/produce" element={<ProduceView user={user} />} />
+          <Route path="/states" element={<NationsList />} />
+          <Route path="/players" element={<PlayersList />} />
+          <Route path="/parties" element={<PartiesList />} />
+          <Route path="/world-factories" element={<WorldFactoriesList />} />
+          <Route path="/independent-regions" element={<IndependentRegionsList />} />
           <Route path="/articles" element={<ArticlesView articles={articles} setSelectedArticleId={setSelectedArticleId} />} />
           <Route path="/articles/:id" element={<ArticleDetailView articles={articles} user={user} fetchData={fetchData} />} />
           <Route path="/articles/new" element={<NewArticleView actionLoading={actionLoading} fetchData={fetchData} />} />

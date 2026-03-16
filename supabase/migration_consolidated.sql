@@ -32,13 +32,27 @@ ON CONFLICT (level_to) DO NOTHING;
 -- 1.3 Factory Upgrade Log table
 CREATE TABLE IF NOT EXISTS factory_upgrade_log (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  factory_id TEXT NOT NULL,
+  factory_id UUID NOT NULL REFERENCES factories(id),
   user_id UUID NOT NULL REFERENCES users(id),
   level_before INT NOT NULL,
   level_after INT NOT NULL,
   gold_cost INT NOT NULL,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Align legacy column type (text -> uuid) when upgrading existing databases
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'factory_upgrade_log'
+      AND column_name = 'factory_id'
+      AND data_type <> 'uuid'
+  ) THEN
+    ALTER TABLE factory_upgrade_log
+      ALTER COLUMN factory_id TYPE UUID USING factory_id::uuid;
+  END IF;
+END $$;
 
 -- 1.4 Indexes
 CREATE INDEX IF NOT EXISTS idx_factory_upgrade_log_factory ON factory_upgrade_log(factory_id);
@@ -64,7 +78,7 @@ CREATE POLICY "Service role can insert upgrade logs"
 
 -- 1.6 Transactional RPC: upgrade_factory
 CREATE OR REPLACE FUNCTION upgrade_factory(
-  p_factory_id TEXT,
+  p_factory_id UUID,
   p_target_level INT,
   p_user_id UUID
 )

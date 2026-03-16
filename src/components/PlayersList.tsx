@@ -9,6 +9,7 @@ type Player = {
   originalNation?: string | null;
   level?: number | null;
   lastLogin?: number | string | null;
+  avatarUrl?: string | null;
 };
 
 interface PlayersResponse {
@@ -121,8 +122,12 @@ export default function PlayersList() {
               key={p.id}
               className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 flex items-center gap-3"
             >
-              <div className="w-10 h-10 rounded-2xl bg-gray-800 flex items-center justify-center text-sm font-black text-white">
-                {(p.username || "?").slice(0, 2).toUpperCase()}
+              <div className="w-10 h-10 rounded-2xl bg-gray-800 flex items-center justify-center text-sm font-black text-white overflow-hidden">
+                {p.avatarUrl ? (
+                  <img src={p.avatarUrl} alt={p.username} className="w-full h-full object-cover" />
+                ) : (
+                  (p.username || "?").slice(0, 2).toUpperCase()
+                )}
               </div>
               <div className="flex-1">
                 <p className="text-sm font-black text-white leading-tight">{p.username}</p>

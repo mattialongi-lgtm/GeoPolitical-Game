@@ -81,8 +81,16 @@ export default function PartiesList() {
               key={p.id}
               className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 flex items-center gap-3"
             >
-              <div className="w-10 h-10 rounded-2xl bg-gray-800 flex items-center justify-center text-lg">
-                {p.logo || "🛡️"}
+              <div className="w-10 h-10 rounded-2xl bg-gray-800 flex items-center justify-center text-lg overflow-hidden">
+                {p.logo ? (
+                  p.logo.startsWith("http") ? (
+                    <img src={p.logo} alt={p.name} className="w-full h-full object-cover" />
+                  ) : (
+                    p.logo
+                  )
+                ) : (
+                  "🛡️"
+                )}
               </div>
               <div className="flex-1">
                 <p className="text-sm font-black text-white leading-tight">{p.name}</p>

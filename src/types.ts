@@ -27,6 +27,7 @@ export interface User {
   travelingUntil: number | null; // Timestamp when travel completes
   partyId?: string;
   partyName?: string;
+  partyLogo?: string;
 }
 
 export interface Perk {

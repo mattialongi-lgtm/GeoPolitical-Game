@@ -2262,13 +2262,13 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
   });
 
   return (
-    <div className="min-h-screen bg-[#2e2e2e] text-[#e0e0e0] font-sans pb-32 -mx-4 -mt-4">
+    <div className="min-h-screen bg-gray-950 text-gray-100 font-sans pb-32 -mx-4 -mt-4">
       <AnimatePresence>
         {toasts.map(({ id, message }) => <Toast key={id} message={message} onDismiss={() => { dismissToast(id); }} />)}
       </AnimatePresence>
 
-      <header className="bg-[#212121] h-16 flex items-center justify-between px-6 border-b border-[#1a1a1a]">
-        <button onClick={() => setShowMessages(true)} className="p-2 hover:bg-[#333] rounded-lg relative">
+      <header className="bg-gray-900/95 backdrop-blur-md sticky top-0 z-40 h-16 flex items-center justify-between px-6 border-b border-gray-800/50">
+        <button onClick={() => setShowMessages(true)} className="p-2 hover:bg-gray-800/80 rounded-lg relative">
           <Mail className="w-8 h-8 text-[#76ff03]" />
           {unreadCount > 0 && (
             <span className="absolute -top-1 -right-1 bg-red-600 text-[10px] min-w-[20px] h-5 flex items-center justify-center rounded-sm font-black px-1 border border-black shadow-lg">
@@ -2276,8 +2276,8 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
             </span>
           )}
         </button>
-        <h1 className="text-2xl font-black text-white uppercase tracking-tight military-font">IL MIO PROFILO</h1>
-        <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-[#333] rounded-lg">
+        <h1 className="text-2xl font-black text-gray-50 uppercase tracking-tight military-font">IL MIO PROFILO</h1>
+        <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-gray-800/80 rounded-lg">
           <Settings className="w-8 h-8 text-white" />
         </button>
       </header>
@@ -2285,7 +2285,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
       <main className="p-6 space-y-6">
         <div className="flex gap-6 items-start">
           <div 
-            className="w-32 h-32 bg-[#455a64] rounded-sm relative overflow-hidden shrink-0 cursor-pointer border-4 border-[#546e7a]/30 shadow-2xl"
+            className="w-32 h-32 bg-gray-800 rounded-sm relative overflow-hidden shrink-0 cursor-pointer border-4 border-gray-700/50 shadow-2xl"
             onClick={() => (document.getElementById("avatar-file-input") as HTMLInputElement)?.click()}
           >
              {user.avatarData ? (
@@ -2328,26 +2328,26 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
           <div className="flex-1 space-y-2 pt-1">
             <div className="flex items-center gap-3">
               <NationLogo iso2={user.displayedNation || "it"} logo={nations.find(n => n.id === user.displayedNation)?.logo} className="w-10 h-6 rounded-none" />
-              <span className="text-xl font-black text-white uppercase tracking-tight">{user.username}</span>
+              <span className="text-xl font-black text-gray-50 uppercase tracking-tight">{user.username}</span>
             </div>
-            <p className="text-xs text-[#9e9e9e] font-bold">In-game ID: {user.id.slice(0, 8)}...</p>
+            <p className="text-xs text-gray-400 font-bold">In-game ID: {user.id.slice(0, 8)}...</p>
             <div className="pt-4">
-                <p className="text-sm font-black text-white mb-2">Livello: {user.level || 1}</p>
-                <div className="w-full bg-[#1a1a1a] h-2 rounded-none overflow-hidden border border-black/20">
+                <p className="text-sm font-black text-gray-50 mb-2">Livello: {user.level || 1}</p>
+                <div className="w-full bg-black/40 h-2 rounded-none overflow-hidden border border-white/5">
                     <div className="bg-[#4caf50] h-full transition-all" style={{ width: `${levelProgress}%` }} />
                 </div>
             </div>
           </div>
         </div>
 
-        <div className="bg-[#212121] py-4 px-6 flex justify-between items-center shadow-inner border border-[#1a1a1a]">
+        <div className="bg-gray-900 py-4 px-6 flex justify-between items-center shadow-inner border border-gray-800/50">
             <div className="flex items-baseline gap-2">
-                <span className="text-2xl font-black text-white military-font tracking-wider">{(user.money || 0).toLocaleString()}</span>
-                <span className="text-2xl font-black text-white military-font">€</span>
+                <span className="text-2xl font-black text-gray-50 military-font tracking-wider">{(user.money || 0).toLocaleString()}</span>
+                <span className="text-2xl font-black text-gray-50 military-font">€</span>
             </div>
             <div className="flex items-center gap-2">
-                <span className="text-2xl font-black text-[#fbc02d] military-font tracking-wider">{(user.gold || 0).toLocaleString()}</span>
-                <span className="text-2xl font-black text-[#fbc02d] military-font">G</span>
+                <span className="text-2xl font-black text-amber-400 military-font tracking-wider">{(user.gold || 0).toLocaleString()}</span>
+                <span className="text-2xl font-black text-amber-400 military-font">G</span>
             </div>
         </div>
 
@@ -2355,16 +2355,16 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
             <button className="w-full bg-[#4caf50] hover:bg-[#43a047] text-white py-4 rounded-none font-black text-base shadow-xl transition-all active:scale-[0.99] uppercase tracking-widest">
                 Potenziamento Economico
             </button>
-            <button className="w-full bg-transparent hover:bg-white/5 text-[#9e9e9e] py-4 rounded-none font-bold text-sm uppercase border border-[#333] transition-all tracking-tight">
+            <button className="w-full bg-transparent hover:bg-white/5 text-gray-400 py-4 rounded-none font-bold text-sm uppercase border border-gray-800/50 transition-all tracking-tight">
                 Gestione Supporto Logistico
             </button>
         </div>
 
         <div className="space-y-1">
-            <div className="bg-[#333] p-4 flex justify-between items-center border-y border-[#1a1a1a]">
-                <span className="text-sm font-bold text-gray-400 uppercase tracking-widest text-[10px]">Informazioni Unità Operativa</span>
+            <div className="bg-gray-800 p-4 flex justify-between items-center border-y border-gray-700/50">
+                <span className="text-sm font-bold text-gray-300 uppercase tracking-widest text-[10px]">Informazioni Unità Operativa</span>
             </div>
-            <div className="bg-[#2a2a2a] p-5 space-y-6">
+            <div className="bg-gray-900/50 p-5 space-y-6">
                 <div className="flex gap-4 items-center">
                     <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center border border-gray-600/30 overflow-hidden shadow-lg">
                         {(() => {
@@ -2374,8 +2374,8 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         })()}
                     </div>
                     <div className="flex-1">
-                        <p className="text-sm font-black text-white uppercase tracking-tight">Posizione: {regions.find(r => r.id === user.regionId)?.name || user.regionId}</p>
-                        <p className="text-[11px] text-[#76ff03] font-black uppercase tracking-widest opacity-80">Settore Operativo</p>
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight">Posizione: {regions.find(r => r.id === user.regionId)?.name || user.regionId}</p>
+                        <p className="text-[11px] text-emerald-400 font-black uppercase tracking-widest opacity-80">Settore Operativo</p>
                     </div>
                 </div>
                 <div className="flex gap-4 items-center">
@@ -2387,7 +2387,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         })()}
                     </div>
                     <div className="flex-1">
-                        <p className="text-sm font-black text-white uppercase tracking-tight">Residenza: {regions.find(r => r.id === user.residenceId)?.name || user.residenceId}</p>
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight">Residenza: {regions.find(r => r.id === user.residenceId)?.name || user.residenceId}</p>
                         <p className="text-[11px] text-gray-500 font-bold uppercase">Registrato il: {new Date(user.createdAt || Date.now()).toLocaleDateString()}</p>
                     </div>
                 </div>
@@ -2396,7 +2396,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         <Landmark className="w-6 h-6 text-amber-500" />
                     </div>
                     <div className="flex-1">
-                        <p className="text-sm font-black text-white uppercase tracking-tight">Afiliazione: {user.partyId || "Nessuna Divisione"}</p>
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight">Afiliazione: {user.partyId || "Nessuna Divisione"}</p>
                         <button onClick={() => navigate("/party")} className="text-[11px] text-indigo-400 font-black uppercase tracking-wider hover:text-indigo-300 transition-colors">Visualizza Dati</button>
                     </div>
                 </div>
@@ -2415,8 +2415,8 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                 const canAffordGold = (user.gold || 0) >= goldCost;
 
                 return (
-                    <div key={perk.id} className="bg-[#212121] overflow-hidden border-b border-[#1a1a1a]">
-                        <button onClick={() => toggleStat(perk.id)} className="w-full p-5 flex items-center justify-between hover:bg-[#2a2a2a] transition-colors">
+                    <div key={perk.id} className="bg-gray-900 overflow-hidden border-b border-gray-800/50">
+                        <button onClick={() => toggleStat(perk.id)} className="w-full p-5 flex items-center justify-between hover:bg-gray-800/80 transition-colors">
                             <div className="flex items-center gap-5">
                                 <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg shadow-white/5">
                                     {perk.id === 'FORZA' && <Swords className="w-6 h-6 text-black" />}
@@ -2424,17 +2424,17 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                                     {perk.id === 'RESISTENZA' && <Activity className="w-6 h-6 text-black" />}
                                     {!['FORZA', 'ISTRUZIONE', 'RESISTENZA'].includes(perk.id) && <span className="text-xl filter invert">{perk.icon}</span>}
                                 </div>
-                                <span className="text-lg font-black uppercase tracking-tight text-white military-font">{perk.name}</span>
+                                <span className="text-lg font-black uppercase tracking-tight text-gray-50 military-font">{perk.name}</span>
                             </div>
                             <div className="flex items-center gap-4">
-                                <span className="text-2xl font-black text-white military-font leading-none">{currentLevel}</span>
+                                <span className="text-2xl font-black text-gray-50 military-font leading-none">{currentLevel}</span>
                                 <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                             </div>
                         </button>
                         <AnimatePresence>
                             {isExpanded && (
-                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-6 pb-8 pt-2 space-y-6 bg-[#1a1a1a]">
-                                    <p className="text-sm text-gray-400 font-medium leading-relaxed">{perk.description}</p>
+                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-6 pb-8 pt-2 space-y-6 bg-black/40">
+                                    <p className="text-sm text-gray-300 font-medium leading-relaxed">{perk.description}</p>
                                     {isUpgrading ? (
                                         <div className="p-5 bg-indigo-900/20 border border-indigo-500/30 rounded-none">
                                             <p className="text-[11px] font-black uppercase text-indigo-400 mb-3 tracking-widest">Potenziamento Tecnico in corso...</p>
@@ -2448,12 +2448,12 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                                         </div>
                                     ) : (
                                         <div className="grid grid-cols-2 gap-4">
-                                            <button onClick={() => handleUpgradePerk(perk.id, false)} disabled={actionLoading || !!activeUpgrade || !canAffordCash} className={`p-4 rounded-none border transition-all flex flex-col items-center gap-1 ${canAffordCash && !activeUpgrade ? 'bg-[#333] border-gray-600 hover:bg-[#444]' : 'bg-[#111] border-transparent opacity-40 cursor-not-allowed'}`}>
+                                            <button onClick={() => handleUpgradePerk(perk.id, false)} disabled={actionLoading || !!activeUpgrade || !canAffordCash} className={`p-4 rounded-none border transition-all flex flex-col items-center gap-1 ${canAffordCash && !activeUpgrade ? 'bg-gray-800 border-gray-700 hover:bg-gray-700' : 'bg-black/20 border-transparent opacity-40 cursor-not-allowed'}`}>
                                                 <span className="text-[10px] font-black uppercase text-gray-500 tracking-widest">Valuta Cash</span>
                                                 <span className={`text-base font-black ${canAffordCash ? 'text-white' : 'text-red-500'}`}>€{cashCost.toLocaleString()}</span>
                                                 <span className="text-[10px] font-bold text-gray-500">{formatDuration(Math.round(perk.baseTimeCashSec * Math.pow(1.3, currentLevel)))}</span>
                                             </button>
-                                            <button onClick={() => handleUpgradePerk(perk.id, true)} disabled={actionLoading || !!activeUpgrade || !canAffordGold} className={`p-4 rounded-none border transition-all flex flex-col items-center gap-1 ${canAffordGold && !activeUpgrade ? 'bg-[#333] border-yellow-950/30 hover:bg-[#444]' : 'bg-[#111] border-transparent opacity-40 cursor-not-allowed'}`}>
+                                            <button onClick={() => handleUpgradePerk(perk.id, true)} disabled={actionLoading || !!activeUpgrade || !canAffordGold} className={`p-4 rounded-none border transition-all flex flex-col items-center gap-1 ${canAffordGold && !activeUpgrade ? 'bg-gray-800 border-yellow-900/20 hover:bg-gray-700' : 'bg-black/20 border-transparent opacity-40 cursor-not-allowed'}`}>
                                                 <span className="text-[10px] font-black uppercase text-yellow-600 tracking-widest">Valuta Gold</span>
                                                 <span className={`text-base font-black ${canAffordGold ? 'text-[#fbc02d]' : 'text-red-500'}`}>G{goldCost}</span>
                                                 <span className="text-[10px] font-bold text-gray-500">{formatDuration(Math.round(perk.baseTimeGoldSec * Math.pow(1.3, currentLevel)))}</span>
@@ -2478,9 +2478,9 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
       <AnimatePresence>
         {showSettings && (
              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
-                <motion.div initial={{ scale: 0.9, y: 40 }} animate={{ scale: 1, y: 0 }} className="bg-[#212121] w-full max-w-md rounded-none border border-[#333] overflow-hidden shadow-2xl">
-                    <div className="p-5 bg-black/40 flex justify-between items-center border-b border-[#333]">
-                        <h3 className="text-base font-black text-white uppercase tracking-[0.2em] military-font">SISTEMA DI CONTROLLO</h3>
+                <motion.div initial={{ scale: 0.9, y: 40 }} animate={{ scale: 1, y: 0 }} className="bg-gray-900 w-full max-w-md rounded-none border border-gray-800 overflow-hidden shadow-2xl">
+                    <div className="p-5 bg-black/40 flex justify-between items-center border-b border-gray-800">
+                        <h3 className="text-base font-black text-gray-50 uppercase tracking-[0.2em] military-font">SISTEMA DI CONTROLLO</h3>
                         <button onClick={() => setShowSettings(false)} className="text-gray-500 hover:text-white p-2">✕</button>
                     </div>
                     <div className="p-8 space-y-6">
@@ -2488,10 +2488,10 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                                 const newName = prompt("Inserire nuovo identificativo:");
                                 if (newName) fetch("/api/profile/username", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: newName }) }).then(r => r.json()).then(d => { if(d.error) alert(d.error); else fetchData(); });
                             }} className="w-full p-5 bg-[#333] hover:bg-[#3d3d3d] rounded-none flex justify-between items-center transition-all border border-gray-700/30">
-                            <span className="text-xs font-black text-white uppercase tracking-wider">Identificativo Unico (5 G)</span>
+                            <span className="text-xs font-black text-gray-50 uppercase tracking-wider">Identificativo Unico (5 G)</span>
                             <ChevronRight className="w-5 h-5 text-gray-600" />
                         </button>
-                        <div className="p-5 bg-black/20 rounded-none border border-[#333] flex justify-between items-center">
+                        <div className="p-5 bg-black/20 rounded-none border border-gray-800 flex justify-between items-center">
                             <span className="text-xs font-black text-gray-500 uppercase tracking-widest">Logo Nazione (URL)</span>
                             <input 
                                 type="text"

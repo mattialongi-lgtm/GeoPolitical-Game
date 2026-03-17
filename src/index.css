@@ -10,13 +10,10 @@
   --military-border: #1a1a1a;
 }
 
-@font-face {
-  font-family: 'Military';
-  src: local('Impact'), local('Arial Black');
-}
-
 .military-font {
-  font-family: 'Military', sans-serif;
+  font-family: 'Rajdhani', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.05em;
 }
 
 /* Utility: hide scrollbar for horizontal carousels */

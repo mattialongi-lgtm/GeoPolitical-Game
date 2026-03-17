@@ -516,7 +516,7 @@ app.get("/api/dashboard-stats", authenticate, async (req: any, res) => {
       supabase.from('factories').select('id', { count: 'exact', head: true }).eq('regionId', isoId),
       supabase.from('users').select('id', { count: 'exact', head: true }).eq('regionId', isoId).gte('lastLogin', onlineThreshold),
       supabase.from('regions').select('id', { count: 'exact', head: true }).eq('nation_id', nationId),
-      supabase.from('parties').select('id', { count: 'exact', head: true }).eq('nationId', nationId),
+      supabase.from('parties').select('id', { count: 'exact', head: true }).ilike('regionId', `${nationId}%`),
       supabase.from('factories').select('id', { count: 'exact', head: true }).ilike('regionId', `${nationId}%`),
       supabase.from('users').select('id', { count: 'exact', head: true }).ilike('regionId', `${nationId}%`).gte('lastLogin', onlineThreshold),
     ]);

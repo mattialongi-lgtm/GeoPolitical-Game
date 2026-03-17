@@ -21,7 +21,6 @@ import {
   ShieldAlert,
   Zap,
   ArrowRightLeft,
-  Eye,
   Globe2,
   Gem,
   Factory as FactoryIcon,

@@ -499,9 +499,44 @@ app.get("/api/world-stats", authenticate, async (_req, res) => {
       totalParties: partiesRes.count || 0,
       totalFactories: factoriesRes.count || 0,
     });
-  } catch (err) {
-    console.error("Error fetching world stats:", err);
-    res.status(500).json({ error: "Failed to fetch world stats." });
+  } catch (error) {
+    res.status(500).json({ error: "Errore nel caricamento statistiche mondiali" });
+  }
+});
+
+app.get("/api/dashboard-stats", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const isoId = user.regionId;
+  const nationId = user.originalNation || user.regionId?.split('-')[0];
+  const onlineThreshold = Date.now() - 5 * 60 * 1000;
+
+  try {
+    const [regionParties, regionFactories, regionOnline, stateRegions, stateParties, stateFactories, stateOnline] = await Promise.all([
+      supabase.from('parties').select('id', { count: 'exact', head: true }).eq('regionId', isoId),
+      supabase.from('factories').select('id', { count: 'exact', head: true }).eq('regionId', isoId),
+      supabase.from('users').select('id', { count: 'exact', head: true }).eq('regionId', isoId).gte('lastLogin', onlineThreshold),
+      supabase.from('regions').select('id', { count: 'exact', head: true }).eq('nation_id', nationId),
+      supabase.from('parties').select('id', { count: 'exact', head: true }).eq('nationId', nationId),
+      supabase.from('factories').select('id', { count: 'exact', head: true }).ilike('regionId', `${nationId}%`),
+      supabase.from('users').select('id', { count: 'exact', head: true }).ilike('regionId', `${nationId}%`).gte('lastLogin', onlineThreshold),
+    ]);
+
+    res.json({
+      region: {
+        parties: regionParties.count || 0,
+        factories: regionFactories.count || 0,
+        online: regionOnline.count || 0,
+      },
+      state: {
+        regions: stateRegions.count || 0,
+        parties: stateParties.count || 0,
+        factories: stateFactories.count || 0,
+        online: stateOnline.count || 0,
+      }
+    });
+  } catch (error) {
+    console.error("[DashboardStats] Error:", error);
+    res.status(500).json({ error: "Errore nel caricamento statistiche dashboard" });
   }
 });
 
@@ -726,6 +761,13 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
     // 2. Generate stats (simplified, should eventually be in a trigger)
     const gameStats = generateGameStatsForCountry(isoId);
 
+    // 3. Get sibling regions
+    const { data: memberRegions } = await supabase
+      .from('regions')
+      .select('id, name, population, isCapital, isAutonomous')
+      .eq('nation_id', region.nation_id);
+
+
     // 2b. Count player citizens (users with regionId matching this region)
     const { count: citizenCount } = await supabase
       .from('users')
@@ -743,11 +785,6 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       memberPlayerCounts[u.regionId] = (memberPlayerCounts[u.regionId] || 0) + 1;
     });
 
-    // 3. Get sibling regions
-    const { data: memberRegions } = await supabase
-      .from('regions')
-      .select('id, name, population, isCapital, isAutonomous')
-      .eq('nation_id', region.nation_id);
 
     // 4. Construct response
     const response = {
@@ -1403,7 +1440,45 @@ app.post("/api/factories/upgrade", authenticate, async (req: any, res) => {
 });
 
 
+
+// ── All factories (world view) ──────────────
+app.get("/api/factories/all", authenticate, async (req: any, res) => {
+  try {
+    const { data: factories, error } = await supabase.from('factories')
+      .select('*')
+      .order('level', { ascending: false })
+      .limit(100);
+    
+    if (error) throw error;
+
+    const ownerIds = [...new Set((factories || []).map((f: any) => f.ownerUserId).filter(Boolean))];
+    const ownerMap: Record<string, string> = {};
+    if (ownerIds.length > 0) {
+      const { data: owners } = await supabase.from('users').select('id, username').in('id', ownerIds);
+      (owners || []).forEach((o: any) => { ownerMap[o.id] = o.username; });
+    }
+
+    const enriched = (factories || []).map((f: any) => {
+      const typeDef = FACTORY_CONFIG.TYPES[f.type] || {};
+      return {
+        ...f,
+        ownerName: ownerMap[f.ownerUserId] || 'Sconosciuto',
+        typeDef,
+        yieldMultiplier: Math.round(factoryYieldMultiplier(f.level || 1) * 100) / 100,
+        storageCapacity: factoryStorageLimit(f.type, f.level || 1),
+        estimatedValue: estimateFactoryValue(f.type, f.level || 1),
+      };
+    });
+
+    res.json(enriched);
+  } catch (error: any) {
+    console.error("[/api/factories/all] Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ── Factory Detail Endpoint ──────────────────────────────
+
 app.get("/api/factories/:id", authenticate, async (req: any, res) => {
   const { id } = req.params;
   try {
@@ -1607,40 +1682,6 @@ app.post("/api/factory-market/cancel", authenticate, async (req: any, res) => {
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: "Errore nell'annullamento: " + err.message });
-  }
-});
-
-// ── All factories (world view) ──────────────
-app.get("/api/factories/all", authenticate, async (req: any, res) => {
-  try {
-    const { data: factories, error } = await supabase.from('factories')
-      .select('*')
-      .order('level', { ascending: false })
-      .limit(100);
-    if (error) throw error;
-
-    const ownerIds = [...new Set((factories || []).map((f: any) => f.ownerUserId).filter(Boolean))];
-    const ownerMap: Record<string, string> = {};
-    if (ownerIds.length > 0) {
-      const { data: owners } = await supabase.from('users').select('id, username').in('id', ownerIds);
-      (owners || []).forEach((o: any) => { ownerMap[o.id] = o.username; });
-    }
-
-    const enriched = (factories || []).map((f: any) => {
-      const typeDef = FACTORY_CONFIG.TYPES[f.type] || {};
-      return {
-        ...f,
-        ownerName: ownerMap[f.ownerUserId] || 'Sconosciuto',
-        typeDef,
-        yieldMultiplier: Math.round(factoryYieldMultiplier(f.level || 1) * 100) / 100,
-        storageCapacity: factoryStorageLimit(f.type, f.level || 1),
-        estimatedValue: estimateFactoryValue(f.type, f.level || 1),
-      };
-    });
-
-    res.json(enriched);
-  } catch (err: any) {
-    res.status(500).json({ error: "Errore: " + err.message });
   }
 });
 

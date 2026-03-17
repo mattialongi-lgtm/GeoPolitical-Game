@@ -58,6 +58,15 @@ const SectionDivider = () => (
 export default function HomePage({ user, regions, wars, worldStats, navigateToCountry }: HomePageProps) {
   const navigate = useNavigate();
 
+  const [dashboardStats, setDashboardStats] = React.useState<any>(null);
+
+  React.useEffect(() => {
+    fetch("/api/dashboard-stats")
+      .then(r => r.json())
+      .then(d => { if (!d.error) setDashboardStats(d); })
+      .catch(e => console.error("Error fetching dashboard stats:", e));
+  }, []);
+
   // Build region stats from real data if available
   const playerRegion = regions.find(r => r.id === user.regionId);
   const regionStats = playerRegion
@@ -65,11 +74,11 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
         id: playerRegion.id,
         name: playerRegion.name || playerRegion.id,
         population: playerRegion.population || 0,
-        parties: 0, // TODO: fetch from API
-        factories: playerRegion.factoriesCount || 0,
+        parties: dashboardStats?.region?.parties || 0,
+        factories: dashboardStats?.region?.factories || playerRegion.factoriesCount || 0,
         pollution: playerRegion.pollution || 0,
-        militaryAcademies: 0, // TODO: fetch from API
-        onlinePlayers: 0, // TODO: fetch from API
+        militaryAcademies: 0, // TODO: fetch from API if needed
+        onlinePlayers: dashboardStats?.region?.online || 0,
         health: playerRegion.health || 5,
         stability: playerRegion.stability || 5,
       }
@@ -80,7 +89,12 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
     ...DEFAULT_STATE_STATS,
     iso2: user.originalNation || user.regionId || '',
     name: user.originalNation || 'N/A',
+    regions: dashboardStats?.state?.regions || 0,
+    parties: dashboardStats?.state?.parties || 0,
+    factories: dashboardStats?.state?.factories || 0,
+    onlinePlayers: dashboardStats?.state?.online || 0,
   };
+
 
   // Build war data from real wars if available
   const activeWarsMapped = wars.active.length > 0

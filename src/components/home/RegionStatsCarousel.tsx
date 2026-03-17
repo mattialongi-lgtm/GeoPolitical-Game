@@ -7,20 +7,23 @@ import { MapPin, Users, Factory, CloudRain, Shield, Wifi } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { RegionStats } from "./mockData";
 
+interface StatItem {
+  icon: React.ElementType;
+  label: string;
+  value: string | number;
+  color: string;
+  accent: string;
+  onClick: () => void;
+}
+
 interface RegionStatsCarouselProps {
   stats: RegionStats;
   userRegionId: string;
   navigateToCountry: (id: string) => void;
 }
 
-const MiniStat = ({ icon: Icon, label, value, color, accent, onClick }: {
-  icon: React.ElementType;
-  label: string;
-  value: number | string;
-  color: string;
-  accent: string;
-  onClick?: () => void;
-}) => (
+const MiniStat = ({ icon: Icon, label, value, color, accent, onClick }: StatItem & { key?: any }) => (
+
   <button
     onClick={onClick}
     className="flex items-center gap-2.5 p-3 rounded-xl bg-gray-800/50 border border-gray-700/40 hover:border-emerald-500/40 active:scale-[0.97] transition-all flex-1 min-w-[140px]"
@@ -39,17 +42,18 @@ export default function RegionStatsCarousel({ stats, userRegionId, navigateToCou
   const navigate = useNavigate();
   const [page, setPage] = useState(0);
 
-  const rows = [
+  const rows: StatItem[][] = [
     [
       { icon: MapPin, label: "La tua regione", value: stats.name, color: "bg-emerald-600", accent: "text-emerald-400", onClick: () => navigateToCountry(userRegionId) },
-      { icon: Users, label: "Partiti", value: stats.parties, color: "bg-purple-600", accent: "text-purple-400", onClick: () => {} },
-      { icon: Factory, label: "Fabbriche", value: stats.factories, color: "bg-amber-600", accent: "text-amber-400", onClick: () => {} },
+      { icon: Users, label: "Partiti", value: stats.parties, color: "bg-purple-600", accent: "text-purple-400", onClick: () => navigate("/parties") },
+      { icon: Factory, label: "Fabbriche", value: stats.factories, color: "bg-amber-600", accent: "text-amber-400", onClick: () => navigate("/world-factories") },
     ],
     [
-      { icon: CloudRain, label: "Inquinamento", value: `${stats.pollution}%`, color: "bg-red-600", accent: "text-red-400", onClick: () => {} },
-      { icon: Shield, label: "Accademie Mil.", value: stats.militaryAcademies, color: "bg-sky-600", accent: "text-sky-400", onClick: () => {} },
-      { icon: Wifi, label: "Online", value: stats.onlinePlayers, color: "bg-yellow-500", accent: "text-yellow-400", onClick: () => {} },
+      { icon: CloudRain, label: "Inquinamento", value: `${stats.pollution}%`, color: "bg-red-600", accent: "text-red-400", onClick: () => navigateToCountry(userRegionId) },
+      { icon: Shield, label: "Accademie Mil.", value: stats.militaryAcademies, color: "bg-sky-600", accent: "text-sky-400", onClick: () => navigateToCountry(userRegionId) },
+      { icon: Wifi, label: "Online", value: stats.onlinePlayers, color: "bg-yellow-500", accent: "text-yellow-400", onClick: () => navigate("/players?filter=online") },
     ],
+
   ];
 
   return (
@@ -69,7 +73,15 @@ export default function RegionStatsCarousel({ stats, userRegionId, navigateToCou
       <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
         <div className="flex gap-2 pb-1 flex-wrap">
           {rows[page].map((s, i) => (
-            <MiniStat key={i} {...s} />
+            <MiniStat 
+              key={i} 
+              icon={s.icon} 
+              label={s.label} 
+              value={s.value} 
+              color={s.color} 
+              accent={s.accent} 
+              onClick={s.onClick} 
+            />
           ))}
         </div>
       </div>

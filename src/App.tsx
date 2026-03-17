@@ -2352,17 +2352,17 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
         </div>
 
         <div className="space-y-3 pt-2">
-            <button className="w-full bg-[#4caf50] hover:bg-[#43a047] text-white py-4 rounded-none font-black text-base shadow-xl transition-all active:scale-[0.99] uppercase tracking-widest">
+            <button className="w-full bg-[#4caf50] hover:bg-[#43a047] text-white py-4 rounded-none font-black text-base shadow-xl transition-all active:scale-[0.99] uppercase tracking-widest military-font">
                 Potenziamento Economico
             </button>
-            <button className="w-full bg-transparent hover:bg-white/5 text-gray-400 py-4 rounded-none font-bold text-sm uppercase border border-gray-800/50 transition-all tracking-tight">
+            <button className="w-full bg-transparent hover:bg-white/5 text-gray-400 py-4 rounded-none font-bold text-sm uppercase border border-gray-800/50 transition-all tracking-tight military-font">
                 Gestione Supporto Logistico
             </button>
         </div>
 
         <div className="space-y-1">
             <div className="bg-gray-800 p-4 flex justify-between items-center border-y border-gray-700/50">
-                <span className="text-sm font-bold text-gray-300 uppercase tracking-widest text-[10px]">Informazioni Unità Operativa</span>
+                <span className="text-sm font-black text-gray-300 uppercase tracking-widest text-[11px] military-font">Informazioni Unità Operativa</span>
             </div>
             <div className="bg-gray-900/50 p-5 space-y-6">
                 <div className="flex gap-4 items-center">
@@ -2374,8 +2374,8 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         })()}
                     </div>
                     <div className="flex-1">
-                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight">Posizione: {regions.find(r => r.id === user.regionId)?.name || user.regionId}</p>
-                        <p className="text-[11px] text-emerald-400 font-black uppercase tracking-widest opacity-80">Settore Operativo</p>
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Posizione: {regions.find(r => r.id === user.regionId)?.name || user.regionId}</p>
+                        <p className="text-[11px] text-emerald-400 font-black uppercase tracking-widest opacity-80 military-font">Settore Operativo</p>
                     </div>
                 </div>
                 <div className="flex gap-4 items-center">
@@ -2387,8 +2387,8 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         })()}
                     </div>
                     <div className="flex-1">
-                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight">Residenza: {regions.find(r => r.id === user.residenceId)?.name || user.residenceId}</p>
-                        <p className="text-[11px] text-gray-500 font-bold uppercase">Registrato il: {new Date(user.createdAt || Date.now()).toLocaleDateString()}</p>
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Residenza: {regions.find(r => r.id === user.residenceId)?.name || user.residenceId}</p>
+                        <p className="text-[11px] text-gray-400 font-black uppercase military-font">Registrato il: {new Date(user.createdAt || Date.now()).toLocaleDateString()}</p>
                     </div>
                 </div>
                 <div className="flex gap-4 items-center">
@@ -2396,8 +2396,8 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         <Landmark className="w-6 h-6 text-amber-500" />
                     </div>
                     <div className="flex-1">
-                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight">Afiliazione: {user.partyId || "Nessuna Divisione"}</p>
-                        <button onClick={() => navigate("/party")} className="text-[11px] text-indigo-400 font-black uppercase tracking-wider hover:text-indigo-300 transition-colors">Visualizza Dati</button>
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Afiliazione: {user.partyId || "Nessuna Divisione"}</p>
+                        <button onClick={() => navigate("/party")} className="text-[11px] text-indigo-400 font-black uppercase tracking-wider hover:text-indigo-300 transition-colors military-font">Visualizza Dati</button>
                     </div>
                 </div>
             </div>
@@ -2488,11 +2488,11 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                                 const newName = prompt("Inserire nuovo identificativo:");
                                 if (newName) fetch("/api/profile/username", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: newName }) }).then(r => r.json()).then(d => { if(d.error) alert(d.error); else fetchData(); });
                             }} className="w-full p-5 bg-[#333] hover:bg-[#3d3d3d] rounded-none flex justify-between items-center transition-all border border-gray-700/30">
-                            <span className="text-xs font-black text-gray-50 uppercase tracking-wider">Identificativo Unico (5 G)</span>
+                            <span className="text-xs font-black text-gray-50 uppercase tracking-wider military-font">Identificativo Unico (5 G)</span>
                             <ChevronRight className="w-5 h-5 text-gray-600" />
                         </button>
                         <div className="p-5 bg-black/20 rounded-none border border-gray-800 flex justify-between items-center">
-                            <span className="text-xs font-black text-gray-500 uppercase tracking-widest">Logo Nazione (URL)</span>
+                            <span className="text-xs font-black text-gray-50 uppercase tracking-widest military-font">Logo Nazione (URL)</span>
                             <input 
                                 type="text"
                                 placeholder="https://..."

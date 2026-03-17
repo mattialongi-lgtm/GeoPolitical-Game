@@ -4698,10 +4698,12 @@ app.get("/api/blocs/:id", authenticate, async (req: any, res) => {
   const { data: bloc } = await supabase.from('blocs').select('*, users!ownerUserId(username), regions!ownerStateId(name)').eq('id', blocId).single();
   if (!bloc) return res.status(404).json({ error: "Blocco non trovato." });
 
-  const { data: members } = await supabase.from('bloc_memberships').select('*, regions!stateId(name, ownerUserId, users!ownerUserId(username))').eq('blocId', blocId).eq('status', 'active');
+  const { data: members } = await supabase.from('bloc_memberships').select('*, regions!stateId(name, ownerUserId, nation_id, users!ownerUserId(username), nations!nation_id(name, logo))').eq('blocId', blocId).eq('status', 'active');
   const mMapped = (members || []).map((m: any) => ({
     ...m,
     stateName: m.regions?.name,
+    nationName: m.regions?.nations?.name || null,
+    nationLogo: m.regions?.nations?.logo || null,
     leaderName: m.regions?.users?.username,
     ownerUserId: m.regions?.ownerUserId
   }));

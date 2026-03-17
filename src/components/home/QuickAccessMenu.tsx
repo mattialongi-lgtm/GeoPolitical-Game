@@ -28,20 +28,20 @@ export default function QuickAccessMenu() {
   const navigate = useNavigate();
 
   return (
-    <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
-      <div className="flex gap-2 pb-1" style={{ minWidth: 'min-content' }}>
+    <div className="-mx-1 px-1">
+      <div className="grid grid-cols-8 gap-1 pb-1">
         {QUICK_ACTIONS.map((action) => {
           const Icon = action.icon;
           return (
             <button
               key={action.route}
               onClick={() => navigate(action.route)}
-              className="flex flex-col items-center gap-1.5 min-w-[56px] shrink-0 active:scale-90 transition-all"
+              className="flex flex-col items-center gap-1.5 active:scale-90 transition-all"
             >
-              <div className={`w-11 h-11 rounded-2xl flex items-center justify-center ${action.color} shadow-lg`}>
+              <div className={`w-full aspect-square max-w-[3rem] rounded-2xl flex items-center justify-center ${action.color} shadow-lg`}>
                 <Icon className="w-5 h-5 text-white" />
               </div>
-              <span className="text-[9px] font-bold text-gray-400">{action.label}</span>
+              <span className="text-[9px] font-bold text-gray-400 truncate w-full text-center">{action.label}</span>
             </button>
           );
         })}

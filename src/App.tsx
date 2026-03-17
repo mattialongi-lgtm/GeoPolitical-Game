@@ -2412,7 +2412,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         )}
                     </div>
                     <div className="flex-1">
-                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Affiliazione: {user.partyName || "Nessuna Divisione"}</p>
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Partito: {user.partyName || "Nessuna Divisione"}</p>
                         <span className="text-[11px] text-indigo-400 font-black uppercase tracking-wider military-font">Visualizza Dati</span>
                     </div>
                 </button>

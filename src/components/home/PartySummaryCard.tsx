@@ -1,17 +1,16 @@
 /**
- * PartySummaryCard – Party info, player resources, soldier of the hour, and hot war.
+ * PartySummaryCard – Party info, player resources, and soldier of the hour.
  * A compact riepilogativa card for the Home dashboard.
  */
 import React from "react";
-import { Users, Award, Swords, ChevronRight } from "lucide-react";
+import { Users, Award, ChevronRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import type { PartyInfo, PlayerResources, SoldierOfTheHour, ActiveWar } from "./mockData";
+import type { PartyInfo, PlayerResources, SoldierOfTheHour } from "./mockData";
 
 interface PartySummaryCardProps {
   party: PartyInfo | null;
   resources: PlayerResources;
   soldier: SoldierOfTheHour | null;
-  hotWar: ActiveWar | null;
 }
 
 const resourceItems = [
@@ -25,7 +24,7 @@ const resourceItems = [
   { key: 'helium3' as const, emoji: '⚛️', label: 'He-3', color: 'text-teal-400' },
 ];
 
-export default function PartySummaryCard({ party, resources, soldier, hotWar }: PartySummaryCardProps) {
+export default function PartySummaryCard({ party, resources, soldier }: PartySummaryCardProps) {
   const navigate = useNavigate();
 
   return (
@@ -76,32 +75,17 @@ export default function PartySummaryCard({ party, resources, soldier, hotWar }: 
         </div>
       </div>
 
-      {/* Soldier of the Hour + Hot War */}
-      <div className="grid grid-cols-2 gap-2">
-        {soldier && (
-          <div className="bg-gray-800/50 border border-yellow-900/30 rounded-xl p-3 space-y-1">
-            <div className="flex items-center gap-1.5">
-              <Award className="w-3.5 h-3.5 text-yellow-400" />
-              <span className="text-[9px] font-black text-yellow-400/80 uppercase tracking-wider">Soldato dell'Ora</span>
-            </div>
-            <p className="text-sm font-black text-white truncate">{soldier.username}</p>
-            <p className="text-xs font-bold text-yellow-400 tabular-nums">⚔️ {soldier.damage.toLocaleString()}</p>
+      {/* Soldier of the Hour */}
+      {soldier && (
+        <div className="bg-gray-800/50 border border-yellow-900/30 rounded-xl p-3 space-y-1">
+          <div className="flex items-center gap-1.5">
+            <Award className="w-3.5 h-3.5 text-yellow-400" />
+            <span className="text-[9px] font-black text-yellow-400/80 uppercase tracking-wider">Soldato dell'Ora</span>
           </div>
-        )}
-        {hotWar && (
-          <button
-            onClick={() => navigate("/wars")}
-            className="bg-gray-800/50 border border-red-900/30 rounded-xl p-3 space-y-1 text-left hover:border-red-500/40 active:scale-[0.97] transition-all"
-          >
-            <div className="flex items-center gap-1.5">
-              <Swords className="w-3.5 h-3.5 text-red-400" />
-              <span className="text-[9px] font-black text-red-400/80 uppercase tracking-wider">Guerra Calda</span>
-            </div>
-            <p className="text-[10px] font-bold text-white truncate">{hotWar.attackerName} vs {hotWar.defenderName}</p>
-            <p className="text-[10px] text-gray-400">{hotWar.regionName}</p>
-          </button>
-        )}
-      </div>
+          <p className="text-sm font-black text-white truncate">{soldier.username}</p>
+          <p className="text-xs font-bold text-yellow-400 tabular-nums">⚔️ {soldier.damage.toLocaleString()}</p>
+        </div>
+      )}
     </div>
   );
 }

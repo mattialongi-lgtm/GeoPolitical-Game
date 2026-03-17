@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 240" role="img" aria-labelledby="title desc">
-  <title id="title">Territorial brand mark</title>
-  <desc id="desc">Metallic shield with globe and Territorial wordmark.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 240" role="img" aria-labelledby="territorial-brand-title territorial-brand-desc">
+  <title id="territorial-brand-title">Territorial brand mark</title>
+  <desc id="territorial-brand-desc">Metallic shield with globe and Territorial wordmark.</desc>
   <defs>
     <linearGradient id="metal" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#95a0a4"/>

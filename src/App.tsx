@@ -86,6 +86,7 @@ import IndependentRegionsList from "./components/IndependentRegionsList";
 import ExtractionDashboard from "./components/ExtractionDashboard";
 import { HomePage } from "./components/home";
 import { DailyTasksPage } from "./components/daily";
+import territorialBrand from "./assets/branding/territorial-brand.svg";
 
 // --- Utilities ---
 const getTs = (val: any) => {
@@ -302,6 +303,10 @@ const DarkCard = ({ children, className = "" }: { children: React.ReactNode, cla
   </div>
 );
 
+const TerritorialBrandLogo = ({ className = "", alt = "Territorial" }: { className?: string; alt?: string }) => (
+  <img src={territorialBrand} alt={alt} className={className} />
+);
+
 const Auth = ({ onLogin }: { onLogin: () => void }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -367,18 +372,21 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-      <div className="w-full max-w-sm">
+    <div className="relative min-h-screen overflow-hidden flex items-center justify-center bg-slate-950 p-6">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(180,140,72,0.22),_transparent_42%),linear-gradient(180deg,_rgba(4,14,20,0.96),_rgba(2,10,16,0.98))]" />
+      <div
+        className="absolute inset-0 bg-center bg-no-repeat opacity-25"
+        style={{ backgroundImage: `url(${territorialBrand})`, backgroundSize: "min(92vw, 58rem)" }}
+      />
+      <div className="absolute inset-0 bg-slate-950/45" />
+      <div className="relative z-10 w-full max-w-sm">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white p-8 rounded-[2rem] shadow-2xl shadow-slate-200/50 border border-slate-100"
+          className="bg-white/95 backdrop-blur-sm p-8 rounded-[2rem] shadow-2xl shadow-black/30 border border-white/40"
         >
           <div className="flex flex-col items-center mb-8">
-            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-xl shadow-indigo-200 mb-4">
-              <Globe className="w-7 h-7 text-white" />
-            </div>
-            <h1 className="text-2xl font-black text-slate-900 tracking-tight">Territorial</h1>
+            <TerritorialBrandLogo className="w-full max-w-[16rem] h-auto mb-5 drop-shadow-[0_16px_32px_rgba(2,10,16,0.28)]" />
             <p className="text-slate-400 text-sm font-medium mt-1">
               {isLogin ? "Bentornato, Comandante" : "Inizia la tua ascesa"}
             </p>
@@ -4366,10 +4374,7 @@ export default function App() {
       {!isDashboardRoute && (
         <header className="bg-gray-900/95 backdrop-blur-md border-b border-gray-800/50 sticky top-0 z-40 px-4 py-2.5 flex justify-between items-center gap-2">
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <Globe className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-black text-lg tracking-tight text-white">Territorial</span>
+            <TerritorialBrandLogo className="h-10 w-auto max-w-[11rem] object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,0.45)]" />
           </div>
           <div className="flex items-center gap-1.5 overflow-x-auto flex-1 justify-end">
             <div className="bg-emerald-900/30 px-2.5 py-1.5 rounded-xl border border-emerald-700/30 flex items-center gap-1 shrink-0">

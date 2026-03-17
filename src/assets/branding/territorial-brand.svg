@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 240" role="img" aria-labelledby="title desc">
+  <title id="title">Territorial brand mark</title>
+  <desc id="desc">Metallic shield with globe and Territorial wordmark.</desc>
+  <defs>
+    <linearGradient id="metal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#95a0a4"/>
+      <stop offset="35%" stop-color="#4c5960"/>
+      <stop offset="65%" stop-color="#c5c7bf"/>
+      <stop offset="100%" stop-color="#48545b"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="20%" y1="0%" x2="80%" y2="100%">
+      <stop offset="0%" stop-color="#f3df94"/>
+      <stop offset="45%" stop-color="#c09a4f"/>
+      <stop offset="100%" stop-color="#735221"/>
+    </linearGradient>
+    <linearGradient id="textMetal" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6f7d85"/>
+      <stop offset="50%" stop-color="#d5d8d1"/>
+      <stop offset="100%" stop-color="#46535a"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <g filter="url(#shadow)">
+    <g transform="translate(26 18)">
+      <path d="M94 2L184 30L214 112L184 194L94 222L4 194L-26 112L4 30Z" fill="url(#metal)" stroke="#273138" stroke-width="4"/>
+      <path d="M94 22L166 45L190 112L166 178L94 202L22 178L-2 112L22 45Z" fill="#172128" stroke="#3c4a52" stroke-width="3"/>
+      <circle cx="94" cy="112" r="66" fill="url(#gold)" stroke="#374146" stroke-width="5"/>
+      <path d="M71 68c-18 9-28 21-32 38 10 2 21 3 29 9 7 5 13 13 19 21 6-7 8-15 8-24 0-11-7-24-24-44zm56 1c11 8 19 18 23 32-7 6-14 11-17 19-4 10-3 21-6 31 13-8 26-16 38-27-2-22-15-42-38-55zm-16 22c-7 0-12 2-16 5-3 5-5 11-4 18 11 4 23 4 35 2 5-9 5-17 0-23-4-1-9-2-15-2zm-52 61c-8 4-15 11-20 21 17 12 37 18 60 18 6-6 9-13 10-22-13-12-32-18-50-17zm63 7c-4 11-2 20 5 28 18-4 34-13 46-26-10-7-24-9-38-10-6 1-10 4-13 8z" fill="#3a352b" opacity="0.72"/>
+      <path d="M36 112h116M94 46c-13 23-19 46-19 66 0 21 6 44 19 67m0-133c13 21 20 43 20 66 0 24-7 46-20 67" fill="none" stroke="#e8d391" stroke-opacity="0.45" stroke-width="2"/>
+    </g>
+
+    <g transform="translate(258 62)">
+      <text x="0" y="56" font-size="64" font-family="Inter, Arial, sans-serif" font-weight="900" letter-spacing="6" fill="url(#textMetal)" stroke="#20282d" stroke-width="2">TERRITORIAL</text>
+      <text x="2" y="110" font-size="24" font-family="Inter, Arial, sans-serif" font-weight="700" letter-spacing="5" fill="#b7bcb6">GEOPOLITICAL DOMINATION</text>
+    </g>
+  </g>
+</svg>

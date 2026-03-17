@@ -45,7 +45,7 @@ interface Region {
         logo: string;
         leaderUserId: string;
     } | null;
-    memberRegions: { id: string, name: string, population: number }[];
+    memberRegions: { id: string, name: string, population: number, playerCount?: number }[];
 }
 
 interface Application {
@@ -379,7 +379,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
                                                 >
                                                     <div>
                                                         <p className="font-black text-white text-sm uppercase tracking-tight">{mr.name}</p>
-                                                        <p className="text-[9px] text-slate-500 font-bold">POP. {mr.population.toLocaleString()}</p>
+                                                        <p className="text-[9px] text-slate-500 font-bold uppercase tracking-tighter">UTENTI {mr.playerCount || 0}</p>
                                                     </div>
                                                     <div className={`w-2 h-2 rounded-full ${mr.id === regionId ? 'bg-indigo-400' : 'bg-slate-700 group-hover:bg-slate-500'}`} />
                                                 </div>

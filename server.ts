@@ -652,6 +652,18 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
       .select('id, name, population, isCapital, isAutonomous')
       .eq('nation_id', region.nation_id);
 
+    // Count players in sibling regions
+    const regionIds = (memberRegions || []).map(mr => mr.id);
+    const { data: memberUserStats } = await supabase
+      .from('users')
+      .select('regionId')
+      .in('regionId', regionIds);
+    
+    const memberPlayerCounts: Record<string, number> = {};
+    (memberUserStats || []).forEach((u: any) => {
+      memberPlayerCounts[u.regionId] = (memberPlayerCounts[u.regionId] || 0) + 1;
+    });
+
     res.json({
       ...region,
       ownerName: region.owner?.username,
@@ -659,7 +671,11 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
       leaderLevel: region.leader?.level,
       governorName: region.governor?.username || null,
       economicAdviserName: region.economicAdviser?.username || null,
-      memberRegions: memberRegions || [region]
+      citizenCount: memberPlayerCounts[regionId] || 0,
+      memberRegions: (memberRegions || []).map(mr => ({
+        ...mr,
+        playerCount: memberPlayerCounts[mr.id] || 0
+      }))
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -715,6 +731,17 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       .from('users')
       .select('id', { count: 'exact', head: true })
       .eq('regionId', isoId);
+    // Count players in sibling regions
+    const regionIds = (memberRegions || []).map(mr => mr.id);
+    const { data: memberUserStats } = await supabase
+      .from('users')
+      .select('regionId')
+      .in('regionId', regionIds);
+    
+    const memberPlayerCounts: Record<string, number> = {};
+    (memberUserStats || []).forEach((u: any) => {
+      memberPlayerCounts[u.regionId] = (memberPlayerCounts[u.regionId] || 0) + 1;
+    });
 
     // 3. Get sibling regions
     const { data: memberRegions } = await supabase
@@ -731,7 +758,10 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       leaderLevel: region.leader?.level,
       governorName: region.governor?.username || null,
       citizenCount: citizenCount || 0,
-      memberRegions: memberRegions || [region],
+      memberRegions: (memberRegions || []).map(mr => ({
+        ...mr,
+        playerCount: memberPlayerCounts[mr.id] || 0
+      })) || [region],
       indicators: {
         ...(gameStats?.indicators || {}),
         health: region.health || 1,

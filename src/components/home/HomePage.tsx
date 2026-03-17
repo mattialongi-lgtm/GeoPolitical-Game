@@ -137,14 +137,15 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
       });
     });
     wars.ended.forEach(w => {
-      const winner = (w.attackerScore || 0) >= (w.defenderScore || 0) ? w.attackerCountryIso2 : w.defenderCountryIso2;
+      const winner = (w.attackerScore || 0) > (w.defenderScore || 0) ? w.attackerCountryIso2 : w.defenderCountryIso2;
+      const endTs = typeof w.endsAt === 'number' ? w.endsAt : new Date(w.endsAt).getTime();
       events.push({
         id: `war-ended-${w.id}`,
         type: 'war_ended',
         title: `Guerra terminata: ${w.attackerCountryIso2} vs ${w.defenderCountryIso2}`,
         description: `Vincitore: ${winner}`,
         icon: '🏁',
-        timestamp: typeof w.endsAt === 'number' ? w.endsAt : new Date(w.endsAt).getTime(),
+        timestamp: endTs > Date.now() ? Date.now() : endTs,
       });
     });
     events.sort((a, b) => b.timestamp - a.timestamp);

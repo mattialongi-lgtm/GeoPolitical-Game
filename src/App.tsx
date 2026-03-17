@@ -2396,7 +2396,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         <Landmark className="w-6 h-6 text-amber-500" />
                     </div>
                     <div className="flex-1">
-                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Afiliazione: {user.partyId || "Nessuna Divisione"}</p>
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Affiliazione: {user.partyName || "Nessuna Divisione"}</p>
                         <button onClick={() => navigate("/party")} className="text-[11px] text-indigo-400 font-black uppercase tracking-wider hover:text-indigo-300 transition-colors military-font">Visualizza Dati</button>
                     </div>
                 </div>

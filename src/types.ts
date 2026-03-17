@@ -25,6 +25,8 @@ export interface User {
   lastMedalClaim: number;
   travelingTo: string | null; // ISO code of destination while traveling
   travelingUntil: number | null; // Timestamp when travel completes
+  partyId?: string;
+  partyName?: string;
 }
 
 export interface Perk {

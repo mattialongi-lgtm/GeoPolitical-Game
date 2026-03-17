@@ -392,6 +392,18 @@ const authenticate = async (req: any, res: any, next: any) => {
     req.user = user;
     req.user.maxEnergy = GAME_CONFIG.ENERGY_MAX;
 
+    // Fetch party membership
+    const { data: membership } = await supabase
+      .from('party_members')
+      .select('partyId, parties(name)')
+      .eq('userId', user.id)
+      .maybeSingle() as any;
+
+    if (membership) {
+      req.user.partyId = membership.partyId;
+      req.user.partyName = membership.parties?.name;
+    }
+
     // Update lastLogin timestamp for activity tracking
     const nowLogin = Date.now();
     if (!user.lastLogin || nowLogin - (typeof user.lastLogin === 'number' ? user.lastLogin : new Date(user.lastLogin).getTime()) > 60000) {

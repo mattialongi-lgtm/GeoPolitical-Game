@@ -21,7 +21,7 @@ const StatChip = ({ icon: Icon, label, value, color, onClick }: {
 }) => (
   <button
     onClick={onClick}
-    className="flex flex-col items-center gap-1.5 min-w-[80px] shrink-0 p-3 rounded-2xl bg-gray-800/60 border border-gray-700/50 hover:border-indigo-500/50 active:scale-95 transition-all"
+    className="flex flex-col items-center gap-1.5 p-3 rounded-2xl bg-gray-800/60 border border-gray-700/50 hover:border-indigo-500/50 active:scale-95 transition-all"
   >
     <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${color}`}>
       <Icon className="w-4 h-4 text-white" />
@@ -64,8 +64,8 @@ export default function WorldStatsCarousel({ stats }: WorldStatsCarouselProps) {
           ))}
         </div>
       </div>
-      <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
-        <div className="flex gap-2 pb-1" style={{ minWidth: 'min-content' }}>
+      <div className="-mx-1 px-1">
+        <div className="grid grid-cols-4 gap-2 pb-1">
           {rows[page].map((s, i) => (
             <StatChip key={i} {...s} />
           ))}

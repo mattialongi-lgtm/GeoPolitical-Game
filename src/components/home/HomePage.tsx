@@ -8,7 +8,7 @@
  * 4. Player's state statistics (swipeable)
  * 5. Parliament / Laws preview
  * 6. Chat
- * 7. Party / Resources / Soldier of the hour / Hot war
+ * 7. Party / Resources / Soldier of the hour
  * 8. Event history
  *
  * All data is passed as props from the parent App component.
@@ -199,12 +199,11 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
 
       <SectionDivider />
 
-      {/* Party / Resources / Soldier / Hot War */}
+      {/* Party / Resources / Soldier */}
       <PartySummaryCard
         party={EMPTY_PARTY}
         resources={playerResources}
         soldier={EMPTY_SOLDIER_OF_HOUR}
-        hotWar={activeWarsMapped[0] || null}
       />
 
       <SectionDivider />

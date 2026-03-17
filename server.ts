@@ -525,6 +525,16 @@ app.get("/api/nations", authenticate, async (_req, res) => {
       regionCounts[r.nation_id].population += r.population || 0;
     });
 
+    // Count players per nation
+    const { data: userStats } = await supabase
+      .from('users')
+      .select('originalNation');
+    const playerCounts: Record<string, number> = {};
+    (userStats || []).forEach((u: any) => {
+      const nid = u.originalNation;
+      if (nid) playerCounts[nid] = (playerCounts[nid] || 0) + 1;
+    });
+
     const leaderIds = [...new Set((nations || []).map((n: any) => n.leaderUserId).filter(Boolean))];
     const leaderMap: Record<string, string> = {};
     if (leaderIds.length > 0) {
@@ -537,6 +547,7 @@ app.get("/api/nations", authenticate, async (_req, res) => {
       leaderName: n.leaderUserId ? (leaderMap[n.leaderUserId] || null) : null,
       regionCount: regionCounts[n.id]?.count || 0,
       population: regionCounts[n.id]?.population || 0,
+      playerCount: playerCounts[n.id] || 0,
     }));
 
     res.json(enriched);
@@ -576,25 +587,43 @@ app.get("/api/players", authenticate, async (req: any, res) => {
 });
 
 app.get("/api/regions", authenticate, async (req, res) => {
-  const { data: regions, error } = await supabase
-    .from('regions')
-    .select(`
-      *,
-      owner:users!ownerUserId(username),
-      leader:users!leaderUserId(username, level)
-    `);
+  try {
+    const { data: regions, error } = await supabase
+      .from('regions')
+      .select(`
+        *,
+        owner:users!ownerUserId(username),
+        leader:users!leaderUserId(username, level)
+      `);
 
-  if (error) return res.status(500).json({ error: error.message });
+    if (error) throw error;
 
-  // Format for backward compatibility if needed
-  const formatted = regions.map(r => ({
-    ...r,
-    ownerName: r.owner?.username,
-    leaderName: r.leader?.username,
-    leaderLevel: r.leader?.level
-  }));
+    // Count players currently in each region
+    const { data: userStats, error: userError } = await supabase
+      .from('users')
+      .select('regionId');
+    
+    const playerRegionCounts: Record<string, number> = {};
+    if (!userError && userStats) {
+      userStats.forEach((u: any) => {
+        const rid = u.regionId;
+        if (rid) playerRegionCounts[rid] = (playerRegionCounts[rid] || 0) + 1;
+      });
+    }
 
-  res.json(formatted);
+    const formatted = (regions || []).map(r => ({
+      ...r,
+      ownerName: r.owner?.username,
+      leaderName: r.leader?.username,
+      leaderLevel: r.leader?.level,
+      playerCount: playerRegionCounts[r.id] || 0
+    }));
+
+    res.json(formatted);
+  } catch (err: any) {
+    console.error("Error fetching regions:", err);
+    res.status(500).json({ error: "Errore nel caricamento delle regioni: " + err.message });
+  }
 });
 
 app.get("/api/regions/:id", authenticate, async (req, res) => {

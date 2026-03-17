@@ -1,5 +1,24 @@
 @import "tailwindcss";
 
+:root {
+  --military-green: #76ff03;
+  --military-bg: #2e2e2e;
+  --military-header: #212121;
+  --military-card: #333333;
+  --military-text: #e0e0e0;
+  --military-text-muted: #9e9e9e;
+  --military-border: #1a1a1a;
+}
+
+@font-face {
+  font-family: 'Military';
+  src: local('Impact'), local('Arial Black');
+}
+
+.military-font {
+  font-family: 'Military', sans-serif;
+}
+
 /* Utility: hide scrollbar for horizontal carousels */
 .scrollbar-hide {
   -ms-overflow-style: none;

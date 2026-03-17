@@ -10,6 +10,7 @@ type Nation = {
   leaderName?: string | null;
   regionCount?: number;
   population?: number;
+  playerCount?: number;
 };
 
 export default function NationsList() {
@@ -96,7 +97,7 @@ export default function NationsList() {
                 <p className="text-[11px] text-gray-400 uppercase font-bold">{n.id}</p>
                 <div className="flex gap-3 text-[11px] text-gray-400 font-semibold mt-1">
                   <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {n.regionCount || 0} regioni</span>
-                  <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {(n.population || 0).toLocaleString()}</span>
+                  <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {n.playerCount || 0} utenti</span>
                   {n.leaderName && (
                     <span className="flex items-center gap-1"><Crown className="w-3 h-3" /> {n.leaderName}</span>
                   )}

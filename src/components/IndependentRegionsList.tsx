@@ -6,6 +6,7 @@ type Region = {
   id: string;
   name: string;
   population?: number;
+  playerCount?: number;
   nation_id?: string | null;
   ownerName?: string;
 };
@@ -84,7 +85,7 @@ export default function IndependentRegionsList() {
                 <p className="text-sm font-black text-white leading-tight">{r.name}</p>
                 <div className="flex gap-3 text-[11px] text-gray-400 font-semibold mt-1 flex-wrap">
                   <span>{r.id}</span>
-                  <span>Pop. {(r.population || 0).toLocaleString()}</span>
+                  <span>{r.playerCount || 0} utenti</span>
                   {r.ownerName && <span>CEO {r.ownerName}</span>}
                 </div>
               </div>

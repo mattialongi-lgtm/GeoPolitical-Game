@@ -138,7 +138,7 @@ const NationalFlag = ({ iso2, className = "w-[1.2em] h-[0.9em]", style }: { iso2
   const countryCode = (upper.includes('-') ? upper.split('-')[0] : upper).toLowerCase();
   
   if (!countryCode || countryCode === 'st' || countryCode === 'world' || error) {
-    return <span className={className} style={{...style, fontSize: '1em'}}>🌍</span>;
+    return <span className={className} style={{...style, fontSize: '1em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center'}}>🌍</span>;
   }
 
   return (
@@ -150,6 +150,16 @@ const NationalFlag = ({ iso2, className = "w-[1.2em] h-[0.9em]", style }: { iso2
       onError={() => setError(true)}
     />
   );
+};
+
+const NationLogo = ({ iso2, logo, className = "w-10 h-6", style }: { iso2?: string; logo?: string | null; className?: string; style?: React.CSSProperties }) => {
+  if (logo && logo.startsWith("http")) {
+    return <img src={logo} alt={iso2 || "logo"} className={`object-cover rounded-none ${className}`} style={style} />;
+  }
+  if (logo && logo.length > 0 && logo.length <= 4) {
+    return <span className={`flex items-center justify-center text-xl ${className}`} style={style}>{logo}</span>;
+  }
+  return <NationalFlag iso2={iso2 || "it"} className={className} style={style} />;
 };
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -2189,26 +2199,15 @@ const Toast = ({ message, onDismiss }: { key?: React.Key; message: string; onDis
   </motion.div>
 );
 
-const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoading, fetchData }: { user: any, handleUpgradePerk: (id: string, useGold: boolean) => void, handleActivateBooster: (id: string, useGold: boolean) => void, actionLoading: boolean, fetchData: () => void }) => {
+const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoading, fetchData, regions, nations }: { user: any, handleUpgradePerk: (id: string, useGold: boolean) => void, handleActivateBooster: (id: string, useGold: boolean) => void, actionLoading: boolean, fetchData: () => void, regions: any[], nations: any[] }) => {
   const navigate = useNavigate();
   const [now, setNow] = useState(Date.now());
   const [toasts, setToasts] = useState<{ id: string; message: string }[]>([]);
-  const [selectedPerk, setSelectedPerk] = useState<string | null>(null);
-  // Track which perk IDs we already fired completion for (avoids repeated fetchData)
-  const notifiedRef = React.useRef<Set<string>>(new Set());
+  const [expandedStats, setExpandedStats] = useState<Set<string>>(new Set());
 
   // Messages state
   const [showMessages, setShowMessages] = useState(false);
-  const [messages, setMessages] = useState<any[]>([]);
-  const [msgFolder, setMsgFolder] = useState<'inbox' | 'sent'>('inbox');
-  const [msgLoading, setMsgLoading] = useState(false);
-  const [showCompose, setShowCompose] = useState(false);
-  const [composeReceiver, setComposeReceiver] = useState('');
-  const [composeSubject, setComposeSubject] = useState('');
-  const [composeBody, setComposeBody] = useState('');
-  const [composeSending, setComposeSending] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [selectedMessage, setSelectedMessage] = useState<any>(null);
 
   // Settings state
   const [showSettings, setShowSettings] = useState(false);
@@ -2220,76 +2219,14 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
 
   const dismissToast = (id: string) => setToasts(prev => prev.filter(t => t.id !== id));
 
-  // Single stable interval — always running while ProfileView is mounted
   useEffect(() => {
     const iv = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(iv);
   }, []);
 
-  // Fetch unread count on mount
   useEffect(() => {
     fetch("/api/messages/unread-count").then(r => r.json()).then(d => setUnreadCount(d.count || 0)).catch(() => {});
   }, []);
-
-  const loadMessages = async (folder: 'inbox' | 'sent') => {
-    setMsgLoading(true);
-    try {
-      const r = await fetch(`/api/messages?folder=${folder}`);
-      const data = await r.json();
-      setMessages(Array.isArray(data) ? data : []);
-    } catch { setMessages([]); }
-    setMsgLoading(false);
-  };
-
-  const sendMessage = async () => {
-    if (!composeReceiver.trim() || !composeBody.trim()) { alert("Compilare destinatario e messaggio."); return; }
-    setComposeSending(true);
-    try {
-      const r = await fetch("/api/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ receiverUsername: composeReceiver.trim(), subject: composeSubject.trim(), body: composeBody.trim() })
-      });
-      const data = await r.json();
-      if (data.error) alert(data.error);
-      else {
-        setShowCompose(false);
-        setComposeReceiver(''); setComposeSubject(''); setComposeBody('');
-        loadMessages(msgFolder);
-        alert("Messaggio inviato!");
-      }
-    } catch { alert("Errore nell'invio."); }
-    setComposeSending(false);
-  };
-
-  const markAsRead = async (msg: any) => {
-    if (!msg.read && msg.receiverId === user.id) {
-      await fetch(`/api/messages/${msg.id}/read`, { method: "PUT" });
-      setUnreadCount(prev => Math.max(0, prev - 1));
-    }
-    setSelectedMessage(msg);
-  };
-
-  // Reset notifiedRef when perkUpgrades changes (new upgrade started)
-  useEffect(() => {
-    const currentUpgradeKeys = Object.keys(user.perkUpgrades || {});
-    // Remove from notified set any perk that is no longer upgrading (was cleared by server)
-    notifiedRef.current.forEach(id => {
-      if (!currentUpgradeKeys.includes(id)) notifiedRef.current.delete(id);
-    });
-  }, [user.perkUpgrades]);
-
-  // Detect completions — fire once per perk using notifiedRef
-  useEffect(() => {
-    PERKS_DEFS.forEach(p => {
-      const u = user.perkUpgrades?.[p.id];
-      if (u && u.willCompleteAt > 0 && u.willCompleteAt <= now && !notifiedRef.current.has(p.id)) {
-        notifiedRef.current.add(p.id);
-        addToast(`✅ Upgrade completato: ${p.name}!`, p.id);
-        fetchData();
-      }
-    });
-  }, [now]);
 
   const handleDevCheat = async () => {
     try {
@@ -2299,680 +2236,316 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
         body: JSON.stringify({ cash: 10000, gold: 10000 })
       });
       if (res.ok) {
-        addToast("💰 Cheat attivato: +10k Cash, +10k Gold!", "cheat");
+        addToast("💰 Cheat attivato!", "cheat");
         fetchData();
       }
-    } catch (err) {
-      console.error("Cheat failed", err);
-    }
+    } catch (err) { console.error(err); }
   };
 
-  // Dummy WEAPONS_CATALOG for compilation, assuming it's defined elsewhere
-  const WEAPONS_CATALOG = [
-    { id: 'rifle', name: 'Fucile', limit: 100, emoji: '🔫' },
-    { id: 'tank', name: 'Carro Armato', limit: 10, emoji: '🪖' },
-    { id: 'plane', name: 'Aereo', limit: 5, emoji: '✈️' },
-  ];
+  const toggleStat = (id: string) => {
+    setExpandedStats(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const levelProgress = useMemo(() => {
+    const nextLevelXp = Math.floor(GAME_CONFIG.LEVEL_UP_BASE_XP * Math.pow(GAME_CONFIG.LEVEL_UP_FACTOR, (user.level || 1) - 1));
+    return Math.min(100, (user.xp / nextLevelXp) * 100);
+  }, [user.level, user.xp]);
+
+  const activeUpgrade = PERKS_DEFS.find(p => {
+    const u = user.perkUpgrades?.[p.id];
+    return u && getTs(u.willCompleteAt) > now;
+  });
 
   return (
-    <>
+    <div className="min-h-screen bg-[#2e2e2e] text-[#e0e0e0] font-sans pb-32 -mx-4 -mt-4">
       <AnimatePresence>
         {toasts.map(({ id, message }) => <Toast key={id} message={message} onDismiss={() => { dismissToast(id); }} />)}
       </AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
-        className="space-y-8"
-      >
-        {/* Profile Header with actions */}
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Il mio Profilo</h2>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => { setShowMessages(true); setShowSettings(false); loadMessages('inbox'); setMsgFolder('inbox'); setSelectedMessage(null); }}
-              className="p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:bg-indigo-50 transition-all relative"
-              title="Messaggi"
-            >
-              <Mail className="w-5 h-5 text-indigo-500" />
-              {unreadCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[9px] font-black w-5 h-5 flex items-center justify-center rounded-full">{unreadCount}</span>
-              )}
-            </button>
-            <button
-              onClick={() => { setShowSettings(true); setShowMessages(false); }}
-              className="p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:bg-slate-50 transition-all"
-              title="Impostazioni"
-            >
-              <Settings className="w-5 h-5 text-slate-500" />
-            </button>
-          </div>
-        </div>
 
-        {/* Messages Panel */}
-        {showMessages && (
-          <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-black tracking-tight uppercase">Messaggi</h3>
-              <button onClick={() => setShowMessages(false)} className="text-slate-400 hover:text-slate-600 text-lg font-black">✕</button>
-            </div>
+      <header className="bg-[#212121] h-16 flex items-center justify-between px-6 border-b border-[#1a1a1a]">
+        <button onClick={() => setShowMessages(true)} className="p-2 hover:bg-[#333] rounded-lg relative">
+          <Mail className="w-8 h-8 text-[#76ff03]" />
+          {unreadCount > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-600 text-[10px] min-w-[20px] h-5 flex items-center justify-center rounded-sm font-black px-1 border border-black shadow-lg">
+              {unreadCount}
+            </span>
+          )}
+        </button>
+        <h1 className="text-2xl font-black text-white uppercase tracking-tight military-font">IL MIO PROFILO</h1>
+        <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-[#333] rounded-lg">
+          <Settings className="w-8 h-8 text-white" />
+        </button>
+      </header>
 
-            {/* Tabs + Compose */}
-            <div className="flex items-center gap-2">
-              <button onClick={() => { setMsgFolder('inbox'); loadMessages('inbox'); setSelectedMessage(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${msgFolder === 'inbox' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                Ricevuti
-              </button>
-              <button onClick={() => { setMsgFolder('sent'); loadMessages('sent'); setSelectedMessage(null); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${msgFolder === 'sent' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                Inviati
-              </button>
-              <button onClick={() => { setShowCompose(true); setSelectedMessage(null); }} className="ml-auto px-4 py-2 rounded-xl text-xs font-black uppercase bg-emerald-500 text-white hover:bg-emerald-600">
-                ✉️ Nuovo
-              </button>
-            </div>
-
-            {/* Compose Form */}
-            {showCompose && (
-              <div className="bg-indigo-50 p-4 rounded-2xl border border-indigo-100 space-y-3">
-                <h4 className="font-black text-indigo-900 text-sm uppercase">Nuovo Messaggio</h4>
-                <input
-                  type="text"
-                  placeholder="Username destinatario"
-                  value={composeReceiver}
-                  onChange={e => setComposeReceiver(e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold"
-                />
-                <input
-                  type="text"
-                  placeholder="Oggetto (opzionale)"
-                  value={composeSubject}
-                  onChange={e => setComposeSubject(e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold"
-                />
-                <textarea
-                  placeholder="Scrivi il tuo messaggio..."
-                  value={composeBody}
-                  onChange={e => setComposeBody(e.target.value)}
-                  className="w-full px-4 py-2 rounded-xl border border-slate-200 text-sm font-bold h-24 resize-none"
-                  maxLength={2000}
-                />
-                <div className="flex gap-2">
-                  <button onClick={sendMessage} disabled={composeSending} className="flex-1 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase disabled:opacity-50">
-                    {composeSending ? 'Invio...' : 'Invia'}
-                  </button>
-                  <button onClick={() => setShowCompose(false)} className="px-4 py-2 bg-slate-100 text-slate-500 rounded-xl font-black text-xs uppercase">
-                    Annulla
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Selected Message Detail */}
-            {selectedMessage && (
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-black text-slate-900 text-sm">{selectedMessage.subject || '(Nessun oggetto)'}</h4>
-                  <button onClick={() => setSelectedMessage(null)} className="text-slate-400 text-xs font-black">← Torna</button>
-                </div>
-                <p className="text-[10px] font-bold text-slate-400">
-                  {msgFolder === 'inbox' ? `Da: ${selectedMessage.senderName}` : `A: ${selectedMessage.receiverName}`} — {new Date(selectedMessage.createdAt).toLocaleString()}
-                </p>
-                <p className="text-sm font-medium text-slate-700 whitespace-pre-wrap">{selectedMessage.body}</p>
-                {msgFolder === 'inbox' && (
-                  <button
-                    onClick={() => { setShowCompose(true); setComposeReceiver(selectedMessage.senderName); setComposeSubject(`Re: ${selectedMessage.subject || ''}`); setSelectedMessage(null); }}
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase"
-                  >
-                    ↩️ Rispondi
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Message List */}
-            {!selectedMessage && (
-              <div className="space-y-2 max-h-96 overflow-y-auto">
-                {msgLoading ? (
-                  <p className="text-center text-xs font-bold text-slate-400 py-4">Caricamento...</p>
-                ) : messages.length === 0 ? (
-                  <p className="text-center text-xs font-bold text-slate-400 py-4">Nessun messaggio.</p>
-                ) : messages.map((msg: any) => (
-                  <button
-                    key={msg.id}
-                    onClick={() => markAsRead(msg)}
-                    className={`w-full text-left p-3 rounded-2xl border transition-all hover:bg-slate-50 ${!msg.read && msgFolder === 'inbox' ? 'bg-indigo-50 border-indigo-200' : 'bg-white border-slate-100'}`}
-                  >
-                    <div className="flex justify-between items-center">
-                      <span className="font-black text-sm text-slate-900">
-                        {msgFolder === 'inbox' ? msg.senderName : msg.receiverName}
-                        {!msg.read && msgFolder === 'inbox' && <span className="ml-2 w-2 h-2 bg-indigo-500 rounded-full inline-block" />}
-                      </span>
-                      <span className="text-[9px] font-bold text-slate-400">{new Date(msg.createdAt).toLocaleDateString()}</span>
-                    </div>
-                    <p className="text-xs font-bold text-slate-500 truncate mt-0.5">{msg.subject || '(Nessun oggetto)'}</p>
-                    <p className="text-[10px] text-slate-400 truncate">{msg.body}</p>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Settings Panel */}
-        {showSettings && (
-          <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-xl font-black tracking-tight uppercase">Impostazioni</h3>
-              <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-slate-600 text-lg font-black">✕</button>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                <div>
-                  <p className="font-black text-slate-900 text-sm">Cambio Nome</p>
-                  <p className="text-[10px] font-bold text-slate-400">Modifica il tuo username (costo: 5 🪙)</p>
-                </div>
-                <button
-                  onClick={() => {
-                    const newName = prompt("Nuovo username (3-20 caratteri, solo lettere/numeri/_):");
-                    if (!newName) return;
-                    fetch("/api/profile/username", {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ username: newName.trim() })
-                    }).then(r => r.json()).then(d => {
-                      if (d.error) alert(d.error);
-                      else { alert("Username aggiornato!"); fetchData(); }
-                    }).catch(() => alert("Errore"));
-                  }}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase"
-                >
-                  Modifica
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                <div>
-                  <p className="font-black text-slate-900 text-sm">Foto Profilo</p>
-                  <p className="text-[10px] font-bold text-slate-400">Cambia la tua immagine profilo</p>
-                </div>
-                <button
-                  onClick={() => (document.getElementById("avatar-file-input") as HTMLInputElement)?.click()}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase"
-                >
-                  Cambia
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                <div>
-                  <p className="font-black text-slate-900 text-sm">Nazione Visualizzata</p>
-                  <p className="text-[10px] font-bold text-slate-400">Attuale: {user.displayedNation || 'N/A'}</p>
-                </div>
-                <NationalFlag iso2={user.displayedNation || ""} className="w-8 h-6 shadow-sm rounded-sm" />
-              </div>
-
-              <div className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl">
-                <div>
-                  <p className="font-black text-slate-900 text-sm">Account</p>
-                  <p className="text-[10px] font-bold text-slate-400">{user.email || 'Email non disponibile'}</p>
-                </div>
-                <span className="text-[10px] font-black text-slate-400 uppercase">Livello {user.level}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 text-center">
-          {/* Clickable avatar with upload */}
-          <div className="relative mx-auto w-24 h-24 mb-4">
-            <div
-              className="w-24 h-24 bg-indigo-100 rounded-[2rem] overflow-hidden flex items-center justify-center cursor-pointer group"
-              onClick={() => (document.getElementById("avatar-file-input") as HTMLInputElement)?.click()}
-              title="Cambia foto profilo"
-            >
-              {user.avatarData ? (
+      <main className="p-6 space-y-6">
+        <div className="flex gap-6 items-start">
+          <div 
+            className="w-32 h-32 bg-[#455a64] rounded-sm relative overflow-hidden shrink-0 cursor-pointer border-4 border-[#546e7a]/30 shadow-2xl"
+            onClick={() => (document.getElementById("avatar-file-input") as HTMLInputElement)?.click()}
+          >
+             {user.avatarData ? (
                 <img src={user.avatarData} alt="avatar" className="w-full h-full object-cover" />
               ) : (
-                <UserIcon className="w-12 h-12 text-indigo-600" />
-              )}
-              {/* Hover overlay */}
-              <div className="absolute inset-0 bg-black/30 rounded-[2rem] opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Camera className="w-6 h-6 text-white" />
-              </div>
-            </div>
-            {/* Level badge */}
-            <div className="absolute -bottom-2 -right-2 bg-indigo-600 text-white w-10 h-10 rounded-2xl flex items-center justify-center font-black border-4 border-white text-sm">
-              {user.level}
-            </div>
-            {/* Hidden file input */}
-            <input
-              id="avatar-file-input"
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                // Resize to 128x128 via canvas (center crop)
-                const img = new Image();
-                img.onload = async () => {
-                  const SIZE = 128;
-                  const canvas = document.createElement("canvas");
-                  canvas.width = SIZE;
-                  canvas.height = SIZE;
-                  const ctx = canvas.getContext("2d")!;
-                  const scale = Math.max(SIZE / img.width, SIZE / img.height);
-                  const sw = img.width * scale;
-                  const sh = img.height * scale;
-                  ctx.drawImage(img, (SIZE - sw) / 2, (SIZE - sh) / 2, sw, sh);
-                  const base64 = canvas.toDataURL("image/jpeg", 0.85);
-                  try {
-                    const res = await fetch("/api/profile/avatar", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ avatarData: base64 }),
-                    });
-                    const data = await res.json();
-                    if (data.error) alert(data.error);
-                    else fetchData();
-                  } catch (_) {
-                    alert("Errore nel caricamento dell'immagine");
-                  }
-                };
-                img.src = URL.createObjectURL(file);
-                // Reset input so same file can be re-selected
-                e.target.value = "";
-              }}
-            />
-          </div>
-          <UsernameEditor username={user.username} fetchData={fetchData} />
-
-          <div className="flex justify-center items-center gap-2 mt-2">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Comandante di Livello {user.level}</p>
-            <span className="text-[10px] font-black uppercase bg-rose-100 text-rose-600 px-2 py-0.5 rounded-lg flex items-center gap-1.5">
-              <NationalFlag iso2={user.displayedNation || ""} className="w-4 h-3" /> {user.displayedNation || 'ST'}
-            </span>
-          </div>
-
-          <div className="mt-6 space-y-2">
-            <div className="flex justify-between text-[10px] font-black uppercase text-slate-400 px-1">
-              <span>Esperienza (XP)</span>
-              <span>{user.xp} / {Math.floor(GAME_CONFIG.LEVEL_UP_BASE_XP * Math.pow(GAME_CONFIG.LEVEL_UP_FACTOR, user.level - 1))}</span>
-            </div>
-            <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
-              <div
-                className="bg-indigo-600 h-full transition-all duration-1000"
-                style={{ width: `${(user.xp / Math.floor(GAME_CONFIG.LEVEL_UP_BASE_XP * Math.pow(GAME_CONFIG.LEVEL_UP_FACTOR, user.level - 1))) * 100}%` }}
-              ></div>
-            </div>
-          </div>
-
-          {/* Premium Badge */}
-          {user.premium ? (
-            <div className="mt-4 flex items-center justify-center gap-2 bg-amber-50 border border-amber-200 rounded-2xl p-3">
-              <Crown className="w-4 h-4 text-amber-500" />
-              <span className="text-xs font-black text-amber-700 uppercase">Premium Attivo</span>
-              {user.premiumExpiry && <span className="text-[9px] font-bold text-amber-500">Scade: {new Date(user.premiumExpiry).toLocaleDateString()}</span>}
-            </div>
-          ) : (
-            <div className="mt-4 flex items-center justify-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl p-3">
-              <Crown className="w-4 h-4 text-slate-300" />
-              <span className="text-xs font-bold text-slate-400">Diventa Premium per vantaggi esclusivi</span>
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-8">
-            <div className="p-4 bg-emerald-50 rounded-3xl">
-              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Cash</p>
-              <p className="text-xl font-black text-emerald-700">${(user.money || 0).toLocaleString()}</p>
-            </div>
-            <div className="p-4 bg-amber-50 rounded-3xl">
-              <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Gold</p>
-              <p className="text-xl font-black text-amber-700">🪙{user.gold || 0}</p>
-            </div>
-            <div className="p-4 bg-slate-50 rounded-3xl col-span-1 border border-indigo-100 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-indigo-100 to-transparent rounded-bl-full opacity-50 pointer-events-none" />
-              <p className="text-[10px] font-black text-indigo-500 uppercase tracking-widest mb-1 relative z-10 flex items-center gap-1">
-                <MapPin className="w-3 h-3" /> {user.travelingUntil && user.travelingTo && Date.now() < user.travelingUntil ? "In Viaggio verso..." : "Posizione"}
-              </p>
-              <p className="text-xl font-black text-slate-900 relative z-10">
-                {user.travelingUntil && user.travelingTo && Date.now() < user.travelingUntil ? user.travelingTo : user.regionId}
-              </p>
-              {user.travelingUntil && user.travelingTo && Date.now() < user.travelingUntil && (
-                <p className="text-[9px] font-bold text-indigo-400 mt-1 relative z-10">
-                  ✈️ Arrivo tra <TravelTimer endsAt={user.travelingUntil} onComplete={fetchData} />
-                </p>
-              )}
-            </div>
-
-            <div className="p-4 bg-slate-50 rounded-3xl col-span-1 border border-emerald-100 relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-emerald-100 to-transparent rounded-bl-full opacity-50 pointer-events-none" />
-              <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1 relative z-10 flex items-center gap-1">
-                <Home className="w-3 h-3" /> Residenza in...
-              </p>
-              <p className="text-xl font-black text-slate-900 relative z-10">{user.residenceId || 'ST'}</p>
-              {user.workPermitId && (
-                <p className="text-[9px] font-bold text-slate-400 mt-1">➕ Visto: {user.workPermitId}</p>
-              )}
-            </div>
-          </div>
-
-          <button
-            onClick={handleDevCheat}
-            className="mt-6 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-400 text-[10px] font-black uppercase rounded-xl transition-all"
-          >
-            Dev: Aggiungi 10k Cash/Gold
-          </button>
-        </div>
-
-        {/* Missioni */}
-        <button
-          onClick={() => alert("Missioni — Placeholder: sistema missioni in arrivo!")}
-          className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 p-5 rounded-[2rem] shadow-lg shadow-emerald-200 flex items-center gap-4 text-left hover:scale-[1.01] active:scale-[0.99] transition-all"
-        >
-          <div className="p-3 rounded-2xl bg-white/20">
-            <Target className="w-6 h-6 text-white" />
-          </div>
-          <div className="flex-1">
-            <p className="text-white font-black text-base">Missioni Disponibili</p>
-            <p className="text-emerald-200 text-xs font-medium">Completa le missioni per ottenere ricompense</p>
-          </div>
-          <div className="bg-white/20 px-3 py-1.5 rounded-xl">
-            <span className="text-white font-black text-sm">3</span>
-          </div>
-          <ChevronRight className="w-5 h-5 text-white/60" />
-        </button>
-
-        {/* Abilità del Comandante — Full Upgrade Section */}
-        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xl font-black tracking-tight uppercase">Abilità del Comandante</h3>
-          </div>
-
-          {/* Slot occupato banner */}
-          {(() => {
-            const activeUpgrade = PERKS_DEFS.find(p => {
-              const u = user.perkUpgrades?.[p.id];
-              return u && getTs(u.willCompleteAt) > now;
-            });
-            return activeUpgrade ? (
-              <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-                <Timer className="w-4 h-4 text-amber-500 shrink-0" />
-                <p className="text-xs font-black text-amber-700">
-                  Slot di apprendimento occupato — stai potenziando {activeUpgrade.icon} {activeUpgrade.name}.
-                  <span className="font-medium text-amber-500"> Una sola abilità alla volta.</span>
-                </p>
-              </div>
-            ) : null;
-          })()}
-
-          <div className="grid grid-cols-1 gap-5">
-            {(() => {
-              const anyUpgrading = PERKS_DEFS.some(p => {
-                const u = user.perkUpgrades?.[p.id];
-                return u && getTs(u.willCompleteAt) > now;
-              });
-              return PERKS_DEFS.map(perk => {
-              const currentLevel = (user.perks || {})[perk.id] || 0;
-              const upgrade = user.perkUpgrades?.[perk.id];
-              const isThisUpgrading = !!upgrade && getTs(upgrade.willCompleteAt) > now;
-              const blocked = anyUpgrading && !isThisUpgrading;
-
-              // Costs scale with level (1.5x per level)
-              const cashCost = Math.round(perk.baseCashCost * Math.pow(1.5, currentLevel));
-              const goldCost = Math.ceil(perk.baseGoldCost * Math.pow(1.4, currentLevel));
-              const cashTimeSec = Math.round(perk.baseTimeCashSec * Math.pow(1.3, currentLevel));
-              const goldTimeSec = Math.round(perk.baseTimeGoldSec * Math.pow(1.3, currentLevel));
-
-              const canAffordCash = (user.money || 0) >= cashCost;
-              const canAffordGold = (user.gold || 0) >= goldCost;
-
-              return (
-                <div key={perk.id} id={`perk-card-${perk.id}`} className={`bg-white rounded-[2.5rem] border transition-all overflow-hidden ${isThisUpgrading ? "border-amber-200 shadow-amber-50 shadow-md" : blocked ? "border-slate-100 opacity-60" : "border-slate-100 shadow-sm"}`}>
-                  {/* Header */}
-                  <div className="p-6 pb-4">
-                    <div className="flex items-start justify-between mb-3 gap-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-3xl shrink-0">{perk.icon}</span>
-                        <div>
-                          <h4 className="font-black text-slate-900 text-base uppercase tracking-tight">{perk.name}</h4>
-                          <p className="text-[10px] text-slate-500 font-medium leading-snug mt-0.5">{perk.description}</p>
-                          {(perk as any).effects && (
-                            <ul className="mt-2 space-y-0.5">
-                              {((perk as any).effects as string[]).map((e, i) => (
-                                <li key={i} className="text-[9px] font-bold text-indigo-500 flex items-center gap-1">
-                                  <span className="w-1 h-1 bg-indigo-400 rounded-full shrink-0" />
-                                  {e}
-                                </li>
-                              ))}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <span className="text-2xl font-black text-slate-900">Lv {currentLevel}</span>
-                      </div>
-                    </div>
-
-                    {/* Level bar */}
-                    <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-700 rounded-full"
-                        style={{ width: `${isThisUpgrading && upgrade?.startedAt ? (1 - (getTs(upgrade.willCompleteAt) - Date.now()) / (getTs(upgrade.willCompleteAt) - getTs(upgrade.startedAt))) * 100 : currentLevel > 0 ? 100 : 0}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Action area */}
-                  <div id={`perk-actions-${perk.id}`} className="px-6 pb-6 space-y-4">
-                    {/* Booster Section */}
-                    <div className="pt-2 border-t border-slate-50">
-                      {(() => {
-                        const booster = user.boosters?.[perk.id];
-                        const isActive = booster && getTs(booster.expiresAt) > now;
-                        const inCooldown = booster && now < getTs(booster.lastActivatedAt) + BOOSTER_CONFIG.COOLDOWN_MS;
-
-                        if (isActive) {
-                          return (
-                            <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-3 flex flex-col gap-2">
-                              <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                  <Zap className="w-4 h-4 text-indigo-500 fill-indigo-500" />
-                                  <span className="text-[10px] font-black uppercase text-indigo-700">Booster Attivo (+100)</span>
-                                </div>
-                                <div className="text-[10px] font-black text-indigo-600 bg-white px-2 py-0.5 rounded-lg border border-indigo-100">
-                                  <PerkTimer willCompleteAt={booster.expiresAt} onComplete={fetchData} />
-                                </div>
-                              </div>
-                              <div className="w-full bg-indigo-100 h-1.5 rounded-full overflow-hidden">
-                                <motion.div
-                                  initial={{ width: 0 }}
-                                  animate={{ width: `${(1 - (getTs(booster.expiresAt) - now) / (getTs(booster.expiresAt) - getTs(booster.lastActivatedAt))) * 100}%` }}
-                                  className="h-full bg-indigo-500"
-                                />
-                              </div>
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div className="flex flex-col gap-2">
-                            <div className="flex items-center justify-between px-1">
-                              <span className="text-[10px] font-black uppercase text-slate-400">Boosters (+100 Lv)</span>
-                              {inCooldown && (
-                                <span className="text-[9px] font-bold text-amber-500 bg-amber-50 px-2 py-0.5 rounded-lg">
-                                  In ricarica: <PerkTimer willCompleteAt={getTs(booster.lastActivatedAt) + BOOSTER_CONFIG.COOLDOWN_MS} onComplete={fetchData} />
-                                </span>
-                              )}
-                            </div>
-                            <div className="grid grid-cols-2 gap-3">
-                              <button
-                                onClick={() => handleActivateBooster(perk.id, false)}
-                                disabled={actionLoading || inCooldown || user.money < BOOSTER_CONFIG.CASH_PRICE}
-                                className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${!inCooldown && user.money >= BOOSTER_CONFIG.CASH_PRICE ? "bg-white border-slate-200 hover:border-indigo-300 hover:bg-slate-50 text-slate-700" : "bg-slate-50 border-slate-100 text-slate-300"}`}
-                              >
-                                <div className="flex flex-col items-start leading-none">
-                                  <span className="text-[10px] font-black uppercase border-b-2 border-emerald-400/30">Standard</span>
-                                  <span className="text-[9px] font-bold opacity-60 mt-1">${BOOSTER_CONFIG.CASH_PRICE.toLocaleString()}</span>
-                                </div>
-                                <ChevronRight className="w-3 h-3" />
-                              </button>
-                              <button
-                                onClick={() => handleActivateBooster(perk.id, true)}
-                                disabled={actionLoading || inCooldown || user.gold < BOOSTER_CONFIG.GOLD_PRICE}
-                                className={`flex items-center justify-between px-3 py-2.5 rounded-xl border transition-all ${!inCooldown && user.gold >= BOOSTER_CONFIG.GOLD_PRICE ? "bg-white border-slate-200 hover:border-amber-300 hover:bg-slate-50 text-slate-700" : "bg-slate-50 border-slate-100 text-slate-300"}`}
-                              >
-                                <div className="flex flex-col items-start leading-none">
-                                  <span className="text-[10px] font-black uppercase border-b-2 border-amber-400/30">Extended</span>
-                                  <span className="text-[9px] font-bold opacity-60 mt-1">🪙 {BOOSTER_CONFIG.GOLD_PRICE}</span>
-                                </div>
-                                <div className="flex flex-col items-end">
-                                  <Zap className="w-3 h-3 text-amber-500 fill-amber-500" />
-                                  <span className="text-[8px] font-black text-amber-600">10x</span>
-                                </div>
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })()}
-                    </div>
-
-                    {/* Upgrade Section */}
-                    {isThisUpgrading ? (
-                      <div className="space-y-3 pt-2">
-                        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <Timer className="w-4 h-4 text-amber-500" />
-                            <span className="text-xs font-black text-amber-700 uppercase">In apprendimento → Lv {upgrade!.targetLevel}</span>
-                          </div>
-                          <PerkTimer willCompleteAt={upgrade!.willCompleteAt} onComplete={fetchData} />
-                        </div>
-                        {upgrade!.startedAt && (
-                          <div className="w-full bg-amber-100 h-2 rounded-full overflow-hidden">
-                            <PerkProgressBar startedAt={upgrade!.startedAt} willCompleteAt={upgrade!.willCompleteAt} />
-                          </div>
-                        )}
-                      </div>
-                    ) : blocked ? (
-                      <div className="flex items-center justify-center gap-2 py-3 bg-slate-50 rounded-2xl border border-slate-100">
-                        <Lock className="w-4 h-4 text-slate-300" />
-                        <span className="text-xs font-bold text-slate-400">Slot occupato da un altro potenziamento</span>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 gap-3 pt-2">
-                        <button
-                          onClick={() => handleUpgradePerk(perk.id, false)}
-                          disabled={actionLoading || !canAffordCash}
-                          className={`flex flex-col items-center gap-1.5 py-4 px-3 rounded-[1.5rem] border transition-all ${canAffordCash ? "bg-indigo-600 border-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100" : "bg-slate-50 border-slate-100 text-slate-300"}`}
-                        >
-                          <TrendingUp className="w-4 h-4" />
-                          <span className="text-[10px] font-black uppercase">Apprendi (Cash)</span>
-                          <span className="text-[10px] font-bold opacity-80">${cashCost.toLocaleString()}</span>
-                          <span className="text-[9px] opacity-60">⏱ {formatDuration(cashTimeSec)}</span>
-                        </button>
-                        <button
-                          onClick={() => handleUpgradePerk(perk.id, true)}
-                          disabled={actionLoading || !canAffordGold || !canAffordCash}
-                          className={`flex flex-col items-center gap-1.5 py-4 px-3 rounded-[1.5rem] border transition-all ${canAffordGold && canAffordCash ? "bg-amber-400 border-amber-400 text-white hover:bg-amber-500 shadow-lg shadow-amber-100" : "bg-slate-50 border-slate-100 text-slate-300"}`}
-                        >
-                          <Gem className="w-4 h-4" />
-                          <span className="text-[10px] font-black uppercase">Apprendi (Gold)</span>
-                          <span className="text-[10px] font-bold opacity-80">🪙 {goldCost}</span>
-                          <span className="text-[9px] opacity-60">⚡ {formatDuration(goldTimeSec)}</span>
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                <div className="w-full h-full flex items-center justify-center text-6xl font-black text-white/20">
+                    {user.username ? user.username[0].toUpperCase() : "?"}
                 </div>
-              );
-            });
-            })()}
+              )}
+              <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Camera className="w-8 h-8 text-white" />
+              </div>
+              <input id="avatar-file-input" type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const img = new Image();
+                    img.onload = async () => {
+                        const SIZE = 256;
+                        const canvas = document.createElement("canvas");
+                        canvas.width = SIZE; canvas.height = SIZE;
+                        const ctx = canvas.getContext("2d")!;
+                        const scale = Math.max(SIZE / img.width, SIZE / img.height);
+                        const sw = img.width * scale; const sh = img.height * scale;
+                        ctx.drawImage(img, (SIZE - sw) / 2, (SIZE - sh) / 2, sw, sh);
+                        const base64 = canvas.toDataURL("image/jpeg", 0.85);
+                        try {
+                            const res = await fetch("/api/profile/avatar", {
+                                method: "POST", headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ avatarData: base64 }),
+                            });
+                            if (res.ok) fetchData();
+                        } catch (_) { alert("Errore caricamento"); }
+                    };
+                    img.src = URL.createObjectURL(file);
+                    e.target.value = "";
+                }}
+              />
+          </div>
+
+          <div className="flex-1 space-y-2 pt-1">
+            <div className="flex items-center gap-3">
+              <NationLogo iso2={user.displayedNation || "it"} logo={nations.find(n => n.id === user.displayedNation)?.logo} className="w-10 h-6 rounded-none" />
+              <span className="text-xl font-black text-white uppercase tracking-tight">{user.username}</span>
+            </div>
+            <p className="text-xs text-[#9e9e9e] font-bold">In-game ID: {user.id.slice(0, 8)}...</p>
+            <div className="pt-4">
+                <p className="text-sm font-black text-white mb-2">Livello: {user.level || 1}</p>
+                <div className="w-full bg-[#1a1a1a] h-2 rounded-none overflow-hidden border border-black/20">
+                    <div className="bg-[#4caf50] h-full transition-all" style={{ width: `${levelProgress}%` }} />
+                </div>
+            </div>
           </div>
         </div>
 
-        {/* Future Placeholders */}
-        <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
-          <h3 className="text-sm font-black tracking-widest uppercase text-slate-400">Prossimamente</h3>
-          {[
-            { label: "Permessi di lavoro", icon: "📋" },
-            { label: "Cariche politiche", icon: "🏛️" },
-            { label: "Residenza & Casa", icon: "🏠" },
-            { label: "Medaglie", icon: "🏅" },
-            { label: "Danno in guerra", icon: "⚔️" },
-            { label: "Exp lavorativa", icon: "📊" },
-          ].map(item => (
-            <div key={item.label} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 border border-slate-100/50">
-              <span className="text-lg">{item.icon}</span>
-              <span className="text-sm font-bold text-slate-400">{item.label}</span>
-              <span className="ml-auto text-[9px] font-black text-slate-300 uppercase">In arrivo</span>
+        <div className="bg-[#212121] py-4 px-6 flex justify-between items-center shadow-inner border border-[#1a1a1a]">
+            <div className="flex items-baseline gap-2">
+                <span className="text-2xl font-black text-white military-font tracking-wider">{(user.money || 0).toLocaleString()}</span>
+                <span className="text-2xl font-black text-white military-font">€</span>
             </div>
-          ))}
+            <div className="flex items-center gap-2">
+                <span className="text-2xl font-black text-[#fbc02d] military-font tracking-wider">{(user.gold || 0).toLocaleString()}</span>
+                <span className="text-2xl font-black text-[#fbc02d] military-font">G</span>
+            </div>
         </div>
 
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-          <h3 className="text-xl font-black tracking-tight uppercase mb-6">Classifica Mondiale</h3>
-          <Leaderboard />
-        </div>
-
-        {/* Magazzino & Crafting */}
-        <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-          <h3 className="text-xl font-black tracking-tight uppercase">Magazzino & Crafting</h3>
-          <div className="bg-sky-50 border border-sky-100 rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm shrink-0">
-                <span className="text-2xl">🥤</span>
-              </div>
-              <div className="text-left">
-                <h4 className="font-black text-sky-900 text-lg leading-tight">Energy Drink</h4>
-                <p className="text-xs font-bold text-sky-600 mt-0.5">Ricarica 100⚡. Cooldown: 10m.</p>
-                <p className="text-[10px] font-black uppercase text-sky-400 mt-1">Posseduti: {user.energyDrinks || 0}</p>
-              </div>
-            </div>
-            <button
-              disabled={actionLoading || (user.gold || 0) < GAME_CONFIG.ENERGY_DRINK_COST_GOLD}
-              onClick={async () => {
-                try {
-                  const res = await fetch("/api/actions/craft-drink", { method: "POST" });
-                  const data = await res.json();
-                  if (data.error) alert(data.error);
-                  else fetchData();
-                } catch { alert("Errore nel crafting"); }
-              }}
-              className="px-6 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-indigo-100 hover:scale-[1.02] active:scale-95 transition-all disabled:opacity-50 shrink-0 w-full sm:w-auto"
-            >
-              Crea (10 🪙)
+        <div className="space-y-3 pt-2">
+            <button className="w-full bg-[#4caf50] hover:bg-[#43a047] text-white py-4 rounded-none font-black text-base shadow-xl transition-all active:scale-[0.99] uppercase tracking-widest">
+                Potenziamento Economico
             </button>
-          </div>
+            <button className="w-full bg-transparent hover:bg-white/5 text-[#9e9e9e] py-4 rounded-none font-bold text-sm uppercase border border-[#333] transition-all tracking-tight">
+                Gestione Supporto Logistico
+            </button>
         </div>
 
-        <PlayerFactoriesView user={user} fetchData={fetchData} />
-
-        {/* Private Storage (Mio Magazzino) */}
-        <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 flex-1 min-w-[300px]">
-          <h3 className="text-lg font-black uppercase tracking-tight mb-4 flex justify-between items-center text-indigo-900 border-b border-indigo-50 pb-2">
-            <span>Mio Magazzino</span>
-            <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-lg">Capacità: {user.storageCapacity}</span>
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { id: 'oil', label: 'Petrolio', limit: Infinity, emoji: '🛢️', val: user.oil || 0 },
-              { id: 'minerals', label: 'Minerali', limit: Infinity, emoji: '🪨', val: user.minerals || 0 },
-              { id: 'uranium', label: 'Uranio', limit: Infinity, emoji: '☢️', val: user.uranium || 0 },
-              { id: 'diamonds', label: 'Diamanti', limit: Infinity, emoji: '💎', val: user.diamonds || 0 },
-              ...WEAPONS_CATALOG.map(w => ({ id: w.id, label: w.name, limit: w.limit, emoji: w.emoji, val: user.inventory?.[w.id] || 0 }))
-            ].map(item => (
-              <div key={item.id} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 flex flex-col items-center justify-center text-center">
-                <span className="text-2xl mb-1">{item.emoji}</span>
-                <span className="text-[9px] font-black text-slate-400 tracking-widest uppercase">{item.label}</span>
-                <span className={`text-base font-black ${item.val > 0 ? "text-indigo-600" : "text-slate-300"}`}>{item.val}</span>
-                {item.limit !== Infinity && <span className="text-[8px] font-bold text-slate-400 mt-1 uppercase">Max {item.limit}</span>}
-              </div>
-            ))}
-          </div>
+        <div className="space-y-1">
+            <div className="bg-[#333] p-4 flex justify-between items-center border-y border-[#1a1a1a]">
+                <span className="text-sm font-bold text-gray-400 uppercase tracking-widest text-[10px]">Informazioni Unità Operativa</span>
+            </div>
+            <div className="bg-[#2a2a2a] p-5 space-y-6">
+                <div className="flex gap-4 items-center">
+                    <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center border border-gray-600/30 overflow-hidden shadow-lg">
+                        {(() => {
+                            const rData = regions.find(r => r.id === user.regionId);
+                            const nId = rData?.nation_id || rData?.id; 
+                            return <NationLogo iso2={nId || "it"} logo={nations.find(n => n.id === nId)?.logo} className="w-8 h-5" />;
+                        })()}
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-sm font-black text-white uppercase tracking-tight">Posizione: {regions.find(r => r.id === user.regionId)?.name || user.regionId}</p>
+                        <p className="text-[11px] text-[#76ff03] font-black uppercase tracking-widest opacity-80">Settore Operativo</p>
+                    </div>
+                </div>
+                <div className="flex gap-4 items-center">
+                    <div className="w-12 h-12 rounded-full bg-slate-950 flex items-center justify-center border border-gray-600/30 overflow-hidden shadow-lg">
+                        {(() => {
+                            const rData = regions.find(r => r.id === user.residenceId);
+                            const nId = rData?.nation_id || rData?.id; 
+                            return <NationLogo iso2={nId || "it"} logo={nations.find(n => n.id === nId)?.logo} className="w-8 h-5" />;
+                        })()}
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-sm font-black text-white uppercase tracking-tight">Residenza: {regions.find(r => r.id === user.residenceId)?.name || user.residenceId}</p>
+                        <p className="text-[11px] text-gray-500 font-bold uppercase">Registrato il: {new Date(user.createdAt || Date.now()).toLocaleDateString()}</p>
+                    </div>
+                </div>
+                <div className="flex gap-4 items-center">
+                    <div className="w-12 h-12 rounded-full bg-slate-950 flex items-center justify-center border border-gray-600/50 overflow-hidden shadow-lg">
+                        <Landmark className="w-6 h-6 text-amber-500" />
+                    </div>
+                    <div className="flex-1">
+                        <p className="text-sm font-black text-white uppercase tracking-tight">Afiliazione: {user.partyId || "Nessuna Divisione"}</p>
+                        <button onClick={() => navigate("/party")} className="text-[11px] text-indigo-400 font-black uppercase tracking-wider hover:text-indigo-300 transition-colors">Visualizza Dati</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
-      </motion.div>
-    </>
+        <div className="space-y-1 pt-4">
+            {PERKS_DEFS.map(perk => {
+                const isExpanded = expandedStats.has(perk.id);
+                const currentLevel = (user.perks || {})[perk.id] || 0;
+                const cashCost = Math.round(perk.baseCashCost * Math.pow(1.5, currentLevel));
+                const goldCost = Math.ceil(perk.baseGoldCost * Math.pow(1.4, currentLevel));
+                const upgrade = user.perkUpgrades?.[perk.id];
+                const isUpgrading = !!upgrade && getTs(upgrade.willCompleteAt) > now;
+                const canAffordCash = (user.money || 0) >= cashCost;
+                const canAffordGold = (user.gold || 0) >= goldCost;
+
+                return (
+                    <div key={perk.id} className="bg-[#212121] overflow-hidden border-b border-[#1a1a1a]">
+                        <button onClick={() => toggleStat(perk.id)} className="w-full p-5 flex items-center justify-between hover:bg-[#2a2a2a] transition-colors">
+                            <div className="flex items-center gap-5">
+                                <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg shadow-white/5">
+                                    {perk.id === 'FORZA' && <Swords className="w-6 h-6 text-black" />}
+                                    {perk.id === 'ISTRUZIONE' && <BookOpen className="w-6 h-6 text-black" />}
+                                    {perk.id === 'RESISTENZA' && <Activity className="w-6 h-6 text-black" />}
+                                    {!['FORZA', 'ISTRUZIONE', 'RESISTENZA'].includes(perk.id) && <span className="text-xl filter invert">{perk.icon}</span>}
+                                </div>
+                                <span className="text-lg font-black uppercase tracking-tight text-white military-font">{perk.name}</span>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <span className="text-2xl font-black text-white military-font leading-none">{currentLevel}</span>
+                                <ChevronDown className={`w-5 h-5 text-gray-500 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                            </div>
+                        </button>
+                        <AnimatePresence>
+                            {isExpanded && (
+                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="px-6 pb-8 pt-2 space-y-6 bg-[#1a1a1a]">
+                                    <p className="text-sm text-gray-400 font-medium leading-relaxed">{perk.description}</p>
+                                    {isUpgrading ? (
+                                        <div className="p-5 bg-indigo-900/20 border border-indigo-500/30 rounded-none">
+                                            <p className="text-[11px] font-black uppercase text-indigo-400 mb-3 tracking-widest">Potenziamento Tecnico in corso...</p>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-xs font-bold text-indigo-300">Tempo stimato:</span>
+                                                <span className="text-sm font-black text-indigo-200"><PerkTimer willCompleteAt={upgrade.willCompleteAt} onComplete={fetchData} /></span>
+                                            </div>
+                                            <div className="w-full bg-black h-2 rounded-none overflow-hidden">
+                                                <div className="bg-indigo-500 h-full animate-pulse transition-all" style={{ width: `${(1 - (getTs(upgrade.willCompleteAt) - now) / (getTs(upgrade.willCompleteAt) - getTs(upgrade.startedAt))) * 100}%` }} />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <button onClick={() => handleUpgradePerk(perk.id, false)} disabled={actionLoading || !!activeUpgrade || !canAffordCash} className={`p-4 rounded-none border transition-all flex flex-col items-center gap-1 ${canAffordCash && !activeUpgrade ? 'bg-[#333] border-gray-600 hover:bg-[#444]' : 'bg-[#111] border-transparent opacity-40 cursor-not-allowed'}`}>
+                                                <span className="text-[10px] font-black uppercase text-gray-500 tracking-widest">Valuta Cash</span>
+                                                <span className={`text-base font-black ${canAffordCash ? 'text-white' : 'text-red-500'}`}>€{cashCost.toLocaleString()}</span>
+                                                <span className="text-[10px] font-bold text-gray-500">{formatDuration(Math.round(perk.baseTimeCashSec * Math.pow(1.3, currentLevel)))}</span>
+                                            </button>
+                                            <button onClick={() => handleUpgradePerk(perk.id, true)} disabled={actionLoading || !!activeUpgrade || !canAffordGold} className={`p-4 rounded-none border transition-all flex flex-col items-center gap-1 ${canAffordGold && !activeUpgrade ? 'bg-[#333] border-yellow-950/30 hover:bg-[#444]' : 'bg-[#111] border-transparent opacity-40 cursor-not-allowed'}`}>
+                                                <span className="text-[10px] font-black uppercase text-yellow-600 tracking-widest">Valuta Gold</span>
+                                                <span className={`text-base font-black ${canAffordGold ? 'text-[#fbc02d]' : 'text-red-500'}`}>G{goldCost}</span>
+                                                <span className="text-[10px] font-bold text-gray-500">{formatDuration(Math.round(perk.baseTimeGoldSec * Math.pow(1.3, currentLevel)))}</span>
+                                            </button>
+                                        </div>
+                                    )}
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+                );
+            })}
+        </div>
+
+        <div className="flex justify-center p-12 opacity-0 hover:opacity-100 transition-opacity">
+            <button onClick={handleDevCheat} className="px-6 py-3 bg-red-900/20 text-red-500 text-xs font-black uppercase rounded-none border border-red-900/30 tracking-[0.3em]">
+                ADMIN: ADD RESOURCES
+            </button>
+        </div>
+      </main>
+
+      <AnimatePresence>
+        {showSettings && (
+             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-md flex items-center justify-center p-6">
+                <motion.div initial={{ scale: 0.9, y: 40 }} animate={{ scale: 1, y: 0 }} className="bg-[#212121] w-full max-w-md rounded-none border border-[#333] overflow-hidden shadow-2xl">
+                    <div className="p-5 bg-black/40 flex justify-between items-center border-b border-[#333]">
+                        <h3 className="text-base font-black text-white uppercase tracking-[0.2em] military-font">SISTEMA DI CONTROLLO</h3>
+                        <button onClick={() => setShowSettings(false)} className="text-gray-500 hover:text-white p-2">✕</button>
+                    </div>
+                    <div className="p-8 space-y-6">
+                        <button onClick={() => {
+                                const newName = prompt("Inserire nuovo identificativo:");
+                                if (newName) fetch("/api/profile/username", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ username: newName }) }).then(r => r.json()).then(d => { if(d.error) alert(d.error); else fetchData(); });
+                            }} className="w-full p-5 bg-[#333] hover:bg-[#3d3d3d] rounded-none flex justify-between items-center transition-all border border-gray-700/30">
+                            <span className="text-xs font-black text-white uppercase tracking-wider">Identificativo Unico (5 G)</span>
+                            <ChevronRight className="w-5 h-5 text-gray-600" />
+                        </button>
+                        <div className="p-5 bg-black/20 rounded-none border border-[#333] flex justify-between items-center">
+                            <span className="text-xs font-black text-gray-500 uppercase tracking-widest">Logo Nazione (URL)</span>
+                            <input 
+                                type="text"
+                                placeholder="https://..."
+                                className="bg-transparent border-b border-gray-700 text-[10px] text-white focus:outline-none focus:border-indigo-500 w-32"
+                                defaultValue={nations.find(n => n.id === user.displayedNation)?.logo || ""}
+                                onBlur={async (e) => {
+                                    const logo = e.target.value;
+                                    if (!logo || !user.displayedNation) return;
+                                    try {
+                                        const res = await fetch("/api/leader/nation/branding", {
+                                            method: "POST", headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ nationId: user.displayedNation, logo })
+                                        });
+                                        if (res.ok) fetchData();
+                                    } catch (_) {}
+                                }}
+                            />
+                        </div>
+                        <div className="pt-8 text-center space-y-2">
+                           <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em]">Protocollo v2.4.1</p>
+                           <p className="text-[10px] text-indigo-500/40 font-bold">{user.email}</p>
+                           <button onClick={() => { localStorage.removeItem('token'); window.location.reload(); }} className="mt-4 text-red-500/60 hover:text-red-500 text-[10px] font-black uppercase tracking-widest transition-colors">Disconnetti Unità</button>
+                        </div>
+                    </div>
+                </motion.div>
+             </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showMessages && (
+            <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} className="fixed inset-0 z-[200] bg-[#2e2e2e] flex flex-col shadow-2xl">
+                <header className="bg-[#212121] h-16 flex items-center px-6 border-b border-[#1a1a1a]">
+                    <button onClick={() => setShowMessages(false)} className="p-2 hover:bg-[#333] rounded-lg"><ChevronLeft /></button>
+                    <h1 className="flex-1 text-center font-black tracking-[0.3em] text-[#76ff03] military-font">COMUNICAZIONI</h1>
+                    <div className="w-10"></div>
+                </header>
+                <div className="flex-1 p-8 flex flex-col items-center justify-center space-y-6">
+                    <div className="w-20 h-20 rounded-full bg-slate-900 flex items-center justify-center border border-slate-700 shadow-2xl">
+                        <Mail className="w-10 h-10 text-slate-500" />
+                    </div>
+                    <div className="text-center space-y-2">
+                        <p className="text-sm font-black text-white uppercase tracking-[0.2em] military-font">Frequenza Criptata</p>
+                        <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Nessun segnale in arrivo</p>
+                    </div>
+                    <button onClick={() => setShowMessages(false)} className="px-10 py-4 bg-[#76ff03]/10 text-[#76ff03] border border-[#76ff03]/30 rounded-none font-black uppercase text-xs tracking-[0.3em] hover:bg-[#76ff03]/20 transition-all">
+                        Chiudi Canale
+                    </button>
+                </div>
+            </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 };
 
@@ -4503,6 +4076,7 @@ export default function App() {
   const navigate = useNavigate();
   const [user, setUser] = useState<(User & { perks: Record<string, number>, maxEnergy: number }) | null>(null);
   const [regions, setRegions] = useState<Region[]>([]);
+  const [nations, setNations] = useState<any[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [wars, setWars] = useState<{ active: War[], ended: War[] }>({ active: [], ended: [] });
   const [worldStats, setWorldStats] = useState<WorldStats>(DEFAULT_WORLD_STATS);
@@ -4536,9 +4110,10 @@ export default function App() {
 
   const fetchData = async () => {
     try {
-      const [userRes, regionsRes, articlesRes, warsRes, worldStatsRes] = await Promise.all([
+      const [userRes, regionsRes, nationsRes, articlesRes, warsRes, worldStatsRes] = await Promise.all([
         fetch("/api/me"),
         fetch("/api/regions"),
+        fetch("/api/nations"),
         fetch("/api/articles"),
         fetch("/api/wars"),
         fetch("/api/world-stats")
@@ -4553,6 +4128,9 @@ export default function App() {
       if (regionsRes.ok) {
         regionsData = await regionsRes.json();
         setRegions(regionsData);
+      }
+      if (nationsRes.ok) {
+        setNations(await nationsRes.json());
       }
       if (articlesRes.ok) setArticles(await articlesRes.json());
       if (warsRes.ok) setWars(await warsRes.json());
@@ -5020,7 +4598,7 @@ export default function App() {
           } />
           <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
-          <Route path="/profile" element={<ProfileView user={user} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
+          <Route path="/profile" element={<ProfileView user={user} regions={regions} nations={nations} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/factory/:id" element={user ? <FactoryDetail user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
           <Route path="/factory-market" element={user ? <FactoryMarket user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
           <Route path="/extraction/:id" element={user ? <ExtractionDashboard user={user} /> : <Navigate to="/" />} />

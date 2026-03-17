@@ -267,9 +267,18 @@ export const BlocDetail = ({ currentUser, regions }: { currentUser: any, regions
                     <div className="space-y-3 max-h-64 overflow-y-auto">
                         {members.map((m: any) => (
                             <div key={m.stateId} className="flex justify-between items-center p-3 border border-slate-100 rounded-xl">
-                                <div>
-                                    <p className="text-sm font-black text-slate-900">{m.stateName}</p>
-                                    <p className="text-[10px] font-bold text-slate-400">Leader: {m.leaderName}</p>
+                                <div className="flex items-center gap-3">
+                                    {m.nationLogo && (
+                                        <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 overflow-hidden bg-slate-50">
+                                            {(m.nationLogo || "").startsWith('http')
+                                                ? <img src={m.nationLogo} alt="logo" className="w-full h-full object-cover" />
+                                                : <span className="text-lg">{m.nationLogo}</span>}
+                                        </div>
+                                    )}
+                                    <div>
+                                        <p className="text-sm font-black text-slate-900">{m.nationName || m.stateName}</p>
+                                        <p className="text-[10px] font-bold text-slate-400">Leader: {m.leaderName}</p>
+                                    </div>
                                 </div>
                                 {m.stateId === bloc.ownerStateId && <span className="text-[9px] font-black uppercase bg-indigo-50 text-indigo-600 px-2 py-1 rounded-md">Fondatore</span>}
                             </div>

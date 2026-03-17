@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Globe, MapPin, Users, Search, Crown } from "lucide-react";
-import { getRegionImage } from "../regionImages";
 
 type Nation = {
   id: string;
@@ -77,46 +76,41 @@ export default function NationsList() {
         <div className="text-center text-gray-400 py-12">Nessuno stato trovato.</div>
       ) : (
         <div className="grid gap-3">
-          {filtered.map((n) => {
-            const regionImg = getRegionImage(n.id);
-            return (
-              <div
-                key={n.id}
-                className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 flex items-center gap-3 hover:border-indigo-500/40 transition-colors"
-              >
-                <div className="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center text-2xl overflow-hidden shrink-0">
-                  {regionImg ? (
-                    <img src={regionImg} alt={n.name || n.id} className="w-full h-full object-cover" />
-                  ) : n.logo ? (
-                    n.logo.startsWith("http") ? (
-                      <img src={n.logo} alt={n.name || n.id} className="w-full h-full object-cover" />
-                    ) : (
-                      n.logo
-                    )
+          {filtered.map((n) => (
+            <div
+              key={n.id}
+              className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 flex items-center gap-3 hover:border-indigo-500/40 transition-colors"
+            >
+              <div className="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center text-2xl overflow-hidden">
+                {n.logo ? (
+                  n.logo.startsWith("http") ? (
+                    <img src={n.logo} alt={n.name || n.id} className="w-full h-full object-cover" />
                   ) : (
-                    "🏛️"
+                    n.logo
+                  )
+                ) : (
+                  "🏛️"
+                )}
+              </div>
+              <div className="flex-1">
+                <p className="text-sm font-black text-white leading-tight">{n.name || n.id}</p>
+                <p className="text-[11px] text-gray-400 uppercase font-bold">{n.id}</p>
+                <div className="flex gap-3 text-[11px] text-gray-400 font-semibold mt-1">
+                  <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {n.regionCount || 0} regioni</span>
+                  <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {n.playerCount || 0} utenti</span>
+                  {n.leaderName && (
+                    <span className="flex items-center gap-1"><Crown className="w-3 h-3" /> {n.leaderName}</span>
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-black text-white leading-tight truncate">{n.name || n.id}</p>
-                  <p className="text-[11px] text-gray-400 uppercase font-bold">{n.id}</p>
-                  <div className="flex gap-3 text-[11px] text-gray-400 font-semibold mt-1">
-                    <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {n.regionCount || 0} regioni</span>
-                    <span className="flex items-center gap-1"><Users className="w-3 h-3" /> {n.playerCount || 0} utenti</span>
-                    {n.leaderName && (
-                      <span className="flex items-center gap-1"><Crown className="w-3 h-3" /> {n.leaderName}</span>
-                    )}
-                  </div>
-                </div>
-                <button
-                  onClick={() => navigate(`/states/${n.id}`)}
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors shrink-0"
-                >
-                  Dettagli
-                </button>
               </div>
-            );
-          })}
+              <button
+                onClick={() => navigate(`/countries/${n.id}`)}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors"
+              >
+                Dettagli
+              </button>
+            </div>
+          ))}
         </div>
       )}
     </div>

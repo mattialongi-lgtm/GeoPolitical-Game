@@ -79,7 +79,6 @@ import WorldMap from "./components/WorldMap";
 import FactoryDetail from "./components/FactoryDetail";
 import FactoryMarket from "./components/FactoryMarket";
 import NationsList from "./components/NationsList";
-import NationDetailView from "./components/NationDetailView";
 import PlayersList from "./components/PlayersList";
 import PartiesList from "./components/PartiesList";
 import WorldFactoriesList from "./components/WorldFactoriesList";
@@ -1260,11 +1259,8 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         const data = await res.json();
         if (data.error) {
           const errLower = (data.error || '').toLowerCase();
-          // Stop on energy/resource errors, war ended, or not found
-          if (errLower.includes('energia') || errLower.includes('energy') ||
-              errLower.includes('insufficiente') || errLower.includes('not found') ||
-              errLower.includes('inesistente') || errLower.includes('terminata') ||
-              errLower.includes('ended') || errLower.includes('fondi')) {
+          // Stop on energy/resource errors, not on cooldown
+          if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('insufficiente') || errLower.includes('not found')) {
             setAutoAttack(null);
           }
         }
@@ -1273,9 +1269,9 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         // Network error - retry next interval
       }
     };
-    // Execute immediately, then every 10 minutes + 15s buffer
+    // Execute immediately, then every 10 minutes
     doAutoAttack();
-    const iv = setInterval(doAutoAttack, 10 * 60 * 1000 + 15000);
+    const iv = setInterval(doAutoAttack, 10 * 60 * 1000);
     return () => { stopped = true; clearInterval(iv); };
   }, [autoAttack]);
 
@@ -1305,7 +1301,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
       }
     };
     doAutoTrain();
-    const iv = setInterval(doAutoTrain, 10 * 60 * 1000 + 15000);
+    const iv = setInterval(doAutoTrain, 10 * 60 * 1000);
     return () => { stopped = true; clearInterval(iv); };
   }, [autoTrain]);
 
@@ -4257,14 +4253,9 @@ export default function App() {
         });
         const data = await res.json();
         if (data.error) {
+          // Only stop on critical errors (energy, inactive, not found), not cooldown
           const errLower = (data.error || '').toLowerCase();
-          // Stop on critical errors: energy, factory not found/inactive, budget empty, storage full
-          if (errLower.includes('energia') || errLower.includes('energy') ||
-              errLower.includes('non trovata') || errLower.includes('not found') ||
-              errLower.includes('non attiva') ||
-              errLower.includes('fondi') || errLower.includes('budget') ||
-              errLower.includes('magazzino') || errLower.includes('pieno') ||
-              errLower.includes('storage')) {
+          if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('non trovata') || errLower.includes('not found') || errLower.includes('non attiva')) {
             setAutoWorkFactoryId(null);
           }
           // Cooldown errors are expected - just wait for next interval
@@ -4275,8 +4266,7 @@ export default function App() {
       }
     };
     doAutoWork();
-    // Use 10 min + 15 sec to avoid race condition with server's 10 min cooldown
-    const iv = setInterval(doAutoWork, 10 * 60 * 1000 + 15000);
+    const iv = setInterval(doAutoWork, 10 * 60 * 1000);
     return () => { stopped = true; clearInterval(iv); };
   }, [autoWorkFactoryId]);
 
@@ -4499,7 +4489,6 @@ export default function App() {
           <Route path="/storage" element={<StorageView user={user} />} />
           <Route path="/produce" element={<ProduceView user={user} />} />
           <Route path="/states" element={<NationsList />} />
-          <Route path="/states/:id" element={<NationDetailView user={user} />} />
           <Route path="/players" element={<PlayersList />} />
           <Route path="/parties" element={<PartiesList />} />
           <Route path="/world-factories" element={<WorldFactoriesList />} />

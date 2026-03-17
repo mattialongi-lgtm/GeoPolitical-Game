@@ -4374,7 +4374,7 @@ export default function App() {
       {!isDashboardRoute && (
         <header className="bg-gray-900/95 backdrop-blur-md border-b border-gray-800/50 sticky top-0 z-40 px-4 py-2.5 flex justify-between items-center gap-2">
           <div className="flex items-center gap-2 shrink-0">
-            <TerritorialBrandLogo className="h-10 w-auto max-w-[11rem] object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,0.45)]" />
+            <TerritorialBrandLogo className="h-10 w-auto max-w-[14rem] object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,0.45)]" />
           </div>
           <div className="flex items-center gap-1.5 overflow-x-auto flex-1 justify-end">
             <div className="bg-emerald-900/30 px-2.5 py-1.5 rounded-xl border border-emerald-700/30 flex items-center gap-1 shrink-0">

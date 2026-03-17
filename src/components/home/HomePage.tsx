@@ -7,10 +7,9 @@
  * 3. Player's region statistics (swipeable)
  * 4. Player's state statistics (swipeable)
  * 5. Parliament / Laws preview
- * 6. War quick panel
- * 7. Chat
- * 8. Party / Resources / Soldier of the hour / Hot war
- * 9. Event history
+ * 6. Chat
+ * 7. Party / Resources / Soldier of the hour / Hot war
+ * 8. Event history
  *
  * All data is passed as props from the parent App component.
  * Default zero/empty values are shown when no real data is available.
@@ -25,7 +24,6 @@ import WorldStatsCarousel from "./WorldStatsCarousel";
 import RegionStatsCarousel from "./RegionStatsCarousel";
 import StateStatsCarousel from "./StateStatsCarousel";
 import ParliamentCard from "./ParliamentCard";
-import WarQuickPanel from "./WarQuickPanel";
 import ChatPanel from "./ChatPanel";
 import PartySummaryCard from "./PartySummaryCard";
 import EventHistoryCard from "./EventHistoryCard";
@@ -38,9 +36,8 @@ import {
   EMPTY_ACTIVE_WARS,
   EMPTY_PARTY,
   EMPTY_SOLDIER_OF_HOUR,
-  EMPTY_EVENTS,
 } from "./mockData";
-import type { WorldStats } from "./mockData";
+import type { WorldStats, GameEvent } from "./mockData";
 
 interface HomePageProps {
   user: User & { perks?: Record<string, number>; maxEnergy?: number; [key: string]: any };
@@ -126,6 +123,35 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
   // World stats from API (real data)
   const resolvedWorldStats = worldStats || DEFAULT_WORLD_STATS;
 
+  // Build game events from wars data
+  const gameEvents: GameEvent[] = React.useMemo(() => {
+    const events: GameEvent[] = [];
+    wars.active.forEach(w => {
+      events.push({
+        id: `war-active-${w.id}`,
+        type: 'war_started',
+        title: `Guerra: ${w.attackerCountryIso2} vs ${w.defenderCountryIso2}`,
+        description: `Attacco in corso – Danno: ${(w.attackerScore || 0).toLocaleString()} vs ${(w.defenderScore || 0).toLocaleString()}`,
+        icon: '⚔️',
+        timestamp: typeof w.startedAt === 'number' ? w.startedAt : new Date(w.startedAt).getTime(),
+      });
+    });
+    wars.ended.forEach(w => {
+      const winner = (w.attackerScore || 0) > (w.defenderScore || 0) ? w.attackerCountryIso2 : w.defenderCountryIso2;
+      const endTs = typeof w.endsAt === 'number' ? w.endsAt : new Date(w.endsAt).getTime();
+      events.push({
+        id: `war-ended-${w.id}`,
+        type: 'war_ended',
+        title: `Guerra terminata: ${w.attackerCountryIso2} vs ${w.defenderCountryIso2}`,
+        description: `Vincitore: ${winner}`,
+        icon: '🏁',
+        timestamp: endTs > Date.now() ? Date.now() : endTs,
+      });
+    });
+    events.sort((a, b) => b.timestamp - a.timestamp);
+    return events;
+  }, [wars]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -168,11 +194,6 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
 
       <SectionDivider />
 
-      {/* War Quick Panel */}
-      <WarQuickPanel wars={activeWarsMapped} />
-
-      <SectionDivider />
-
       {/* Chat */}
       <ChatPanel currentUser={{ id: user.id, username: user.username, regionId: user.regionId }} />
 
@@ -189,7 +210,7 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
       <SectionDivider />
 
       {/* Event History */}
-      <EventHistoryCard events={EMPTY_EVENTS} />
+      <EventHistoryCard events={gameEvents} />
     </motion.div>
   );
 }

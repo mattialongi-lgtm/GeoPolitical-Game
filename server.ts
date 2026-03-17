@@ -395,13 +395,14 @@ const authenticate = async (req: any, res: any, next: any) => {
     // Fetch party membership
     const { data: membership } = await supabase
       .from('party_members')
-      .select('partyId, parties(name)')
+      .select('partyId, parties(name, logo)')
       .eq('userId', user.id)
       .maybeSingle() as any;
 
     if (membership) {
       req.user.partyId = membership.partyId;
       req.user.partyName = membership.parties?.name;
+      req.user.partyLogo = membership.parties?.logo;
     }
 
     // Update lastLogin timestamp for activity tracking

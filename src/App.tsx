@@ -2361,10 +2361,10 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
 
         <div className="space-y-3 pt-2">
             <button className="w-full bg-[#4caf50] hover:bg-[#43a047] text-white py-4 rounded-none font-black text-base shadow-xl transition-all active:scale-[0.99] uppercase tracking-widest military-font">
-                Potenziamento Economico
+                Compra Account Premium
             </button>
             <button className="w-full bg-transparent hover:bg-white/5 text-gray-400 py-4 rounded-none font-bold text-sm uppercase border border-gray-800/50 transition-all tracking-tight military-font">
-                Gestione Supporto Logistico
+                Compra Gold
             </button>
         </div>
 
@@ -2373,7 +2373,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                 <span className="text-sm font-black text-gray-300 uppercase tracking-widest text-[11px] military-font">Informazioni Unità Operativa</span>
             </div>
             <div className="bg-gray-900/50 p-5 space-y-6">
-                <div className="flex gap-4 items-center">
+                <button onClick={() => navigate(`/regions/${user.regionId}`)} className="flex gap-4 items-center w-full text-left hover:bg-white/5 rounded-lg p-1 -m-1 transition-colors">
                     <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center border border-gray-600/30 overflow-hidden shadow-lg">
                         {(() => {
                             const rData = regions.find(r => r.id === user.regionId);
@@ -2385,8 +2385,8 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Posizione: {regions.find(r => r.id === user.regionId)?.name || user.regionId}</p>
                         <p className="text-[11px] text-emerald-400 font-black uppercase tracking-widest opacity-80 military-font">Settore Operativo</p>
                     </div>
-                </div>
-                <div className="flex gap-4 items-center">
+                </button>
+                <button onClick={() => navigate(`/regions/${user.residenceId}`)} className="flex gap-4 items-center w-full text-left hover:bg-white/5 rounded-lg p-1 -m-1 transition-colors">
                     <div className="w-12 h-12 rounded-full bg-slate-950 flex items-center justify-center border border-gray-600/30 overflow-hidden shadow-lg">
                         {(() => {
                             const rData = regions.find(r => r.id === user.residenceId);
@@ -2398,16 +2398,24 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Residenza: {regions.find(r => r.id === user.residenceId)?.name || user.residenceId}</p>
                         <p className="text-[11px] text-gray-400 font-black uppercase military-font">Registrato il: {new Date(user.createdAt || Date.now()).toLocaleDateString()}</p>
                     </div>
-                </div>
-                <div className="flex gap-4 items-center">
+                </button>
+                <button onClick={() => navigate("/party")} className="flex gap-4 items-center w-full text-left hover:bg-white/5 rounded-lg p-1 -m-1 transition-colors">
                     <div className="w-12 h-12 rounded-full bg-slate-950 flex items-center justify-center border border-gray-600/50 overflow-hidden shadow-lg">
-                        <Landmark className="w-6 h-6 text-amber-500" />
+                        {user.partyLogo ? (
+                            user.partyLogo.startsWith("http") ? (
+                                <img src={user.partyLogo} alt="party" className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-xl">{user.partyLogo}</span>
+                            )
+                        ) : (
+                            <Landmark className="w-6 h-6 text-amber-500" />
+                        )}
                     </div>
                     <div className="flex-1">
                         <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Affiliazione: {user.partyName || "Nessuna Divisione"}</p>
-                        <button onClick={() => navigate("/party")} className="text-[11px] text-indigo-400 font-black uppercase tracking-wider hover:text-indigo-300 transition-colors military-font">Visualizza Dati</button>
+                        <span className="text-[11px] text-indigo-400 font-black uppercase tracking-wider military-font">Visualizza Dati</span>
                     </div>
-                </div>
+                </button>
             </div>
         </div>
 

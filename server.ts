@@ -3977,8 +3977,109 @@ app.get("/api/nations/:id", authenticate, async (req: any, res) => {
 
   if (!nation) return res.status(404).json({ error: "Nazione non trovata." });
 
-  const { data: regions } = await supabase.from('regions').select('id, name, population, economyLevel').eq('nation_id', nation.id);
-  res.json({ ...nation, leaderName: (nation as any).users?.username, regions: regions || [] });
+  // Fetch all regions belonging to this nation with full details
+  const { data: regions } = await supabase.from('regions').select('*').eq('nation_id', nation.id);
+  const regionList = regions || [];
+  const regionIds = regionList.map((r: any) => r.id);
+
+  // Count players per region
+  const { data: playerStats } = regionIds.length > 0
+    ? await supabase.from('users').select('regionId, residenceId').in('regionId', regionIds)
+    : { data: [] };
+  const playerCountByRegion: Record<string, number> = {};
+  (playerStats || []).forEach((u: any) => {
+    playerCountByRegion[u.regionId] = (playerCountByRegion[u.regionId] || 0) + 1;
+  });
+
+  // Aggregate nation-level stats
+  let totalPopulation = 0;
+  let totalTreasury = 0;
+  let totalEnergyGeneration = 0;
+  let totalEnergyConsumption = 0;
+  let totalPlayerCount = 0;
+  const capitalRegion = regionList.find((r: any) => r.isCapital);
+  let autonomousCount = 0;
+
+  regionList.forEach((r: any) => {
+    totalPopulation += r.population || 0;
+    totalTreasury += r.treasury || 0;
+    totalEnergyGeneration += r.energyGeneration || 0;
+    totalEnergyConsumption += r.energyConsumption || 0;
+    totalPlayerCount += playerCountByRegion[r.id] || 0;
+    if (r.isAutonomous) autonomousCount++;
+  });
+
+  // Get active wars involving this nation's regions
+  let activeWars: any[] = [];
+  if (regionIds.length > 0) {
+    const { data: attackerWars } = await supabase.from('wars').select('*').eq('status', 'active').in('attackerCountryIso2', regionIds);
+    const { data: defenderWars } = await supabase.from('wars').select('*').eq('status', 'active').in('defenderCountryIso2', regionIds);
+    const warMap = new Map<string, any>();
+    [...(attackerWars || []), ...(defenderWars || [])].forEach(w => warMap.set(w.id, w));
+    activeWars = Array.from(warMap.values());
+  }
+
+  // Get sanctions from/to nation regions
+  let sanctionsList: any[] = [];
+  if (regionIds.length > 0) {
+    const { data: fromSanctions } = await supabase.from('sanctions').select('*').eq('status', 'ACTIVE').in('fromStateId', regionIds);
+    const { data: toSanctions } = await supabase.from('sanctions').select('*').eq('status', 'ACTIVE').in('targetStateId', regionIds);
+    sanctionsList = [...(fromSanctions || []), ...(toSanctions || [])];
+  }
+
+  // Get migration agreements
+  let migrationAgreements: any[] = [];
+  if (regionIds.length > 0) {
+    const { data: fromAgreements } = await supabase.from('migration_agreements').select('*').eq('status', 'ACTIVE').in('fromStateId', regionIds);
+    const { data: toAgreements } = await supabase.from('migration_agreements').select('*').eq('status', 'ACTIVE').in('toStateId', regionIds);
+    const agMap = new Map<string, any>();
+    [...(fromAgreements || []), ...(toAgreements || [])].forEach(a => agMap.set(a.id, a));
+    migrationAgreements = Array.from(agMap.values());
+  }
+
+  // Get capital region details for government info
+  const govRegion = capitalRegion || regionList[0];
+
+  res.json({
+    ...nation,
+    leaderName: (nation as any).users?.username,
+    regions: regionList.map((r: any) => ({
+      id: r.id,
+      name: r.name,
+      population: r.population || 0,
+      economyLevel: r.economyLevel || 1,
+      health: r.health || 1,
+      education: r.education || 1,
+      military: r.military || 1,
+      stability: r.stability || 5,
+      treasury: r.treasury || 0,
+      isCapital: r.isCapital || false,
+      isAutonomous: r.isAutonomous || false,
+      energyGeneration: r.energyGeneration || 0,
+      energyConsumption: r.energyConsumption || 0,
+      playerCount: playerCountByRegion[r.id] || 0,
+    })),
+    // Aggregated nation stats
+    totalPopulation,
+    totalTreasury,
+    totalEnergyGeneration,
+    totalEnergyConsumption,
+    totalPlayerCount,
+    regionCount: regionList.length,
+    autonomousCount,
+    activeWarsCount: activeWars.length,
+    activeWars,
+    sanctions: sanctionsList,
+    migrationAgreements,
+    // Government info from capital/first region
+    governmentForm: govRegion?.governmentForm || 'PARLIAMENTARY_REPUBLIC',
+    workRestrictions: govRegion?.workRestrictions || 0,
+    residencePolicy: govRegion?.residencePolicy || 'open',
+    leaderTitle: govRegion?.leaderTitle || 'Leader',
+    nextLeaderElectionAt: govRegion?.nextLeaderElectionAt || null,
+    capitalRegionId: capitalRegion?.id || null,
+    capitalRegionName: capitalRegion?.name || null,
+  });
 });
 
 app.post("/api/leader/nation/branding", authenticate, async (req: any, res) => {

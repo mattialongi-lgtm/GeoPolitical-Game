@@ -86,6 +86,7 @@ import IndependentRegionsList from "./components/IndependentRegionsList";
 import ExtractionDashboard from "./components/ExtractionDashboard";
 import { HomePage } from "./components/home";
 import { DailyTasksPage } from "./components/daily";
+import { StatePage } from "./components/state";
 import territorialBrand from "./assets/branding/territorial-brand.svg";
 
 // --- Utilities ---
@@ -4489,6 +4490,7 @@ export default function App() {
           <Route path="/storage" element={<StorageView user={user} />} />
           <Route path="/produce" element={<ProduceView user={user} />} />
           <Route path="/states" element={<NationsList />} />
+          <Route path="/state/:id" element={<StatePage user={user} />} />
           <Route path="/players" element={<PlayersList />} />
           <Route path="/parties" element={<PartiesList />} />
           <Route path="/world-factories" element={<WorldFactoriesList />} />

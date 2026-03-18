@@ -104,7 +104,7 @@ export default function NationsList() {
                 </div>
               </div>
               <button
-                onClick={() => navigate(`/countries/${n.id}`)}
+                onClick={() => navigate(`/state/${n.id}`)}
                 className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-colors"
               >
                 Dettagli

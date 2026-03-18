@@ -11,6 +11,8 @@ console.log("Starting server.ts...");
 
 const app = express();
 const PORT = 3000;
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+const ENABLE_DEV_ENDPOINTS = process.env.ENABLE_DEV_ENDPOINTS === 'true';
 
 const generateSecureId = (length: number = 9): string =>
   randomBytes(Math.ceil(length / 2)).toString("hex").slice(0, length);
@@ -96,6 +98,8 @@ const getUserPerks = async (userId: string, boosterInfo?: Record<string, any>) =
 
 // Helper to validate ISO2 country codes (prevents injection in .or() queries)
 const isValidIso2 = (code: string): boolean => /^[A-Z]{2,4}$/.test(code);
+const isAllowedAvatarDataUrl = (value: string): boolean =>
+  /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=\r\n]+$/i.test(value);
 
 // Helper to calculate XP and Level Up
 const addXP = async (userId: string, amount: number) => {
@@ -253,36 +257,6 @@ const calculateTravelTimeMs = (fromIso2: string, toIso2: string): number => {
   const distKm = haversineDistance(from[0], from[1], to[0], to[1]);
   const minutes = Math.max(TRAVEL_MIN_MINUTES, Math.min(TRAVEL_MAX_MINUTES, Math.round(distKm / TRAVEL_KM_PER_MINUTE)));
   return minutes * 60 * 1000;
-};
-
-// Helper to auto-create a region in Supabase if it doesn't exist
-const ensureRegionExists = async (regionId: string) => {
-  const isoId = regionId.toUpperCase();
-  const { data: existing } = await supabase
-    .from('regions')
-    .select('id')
-    .eq('id', isoId)
-    .maybeSingle();
-
-  if (existing) return true;
-
-  const { error: createError } = await supabase
-    .from('regions')
-    .insert({
-      id: isoId,
-      name: isoId,
-      population: 1000000,
-      health: 1,
-      education: 1,
-      military: 1,
-      stability: 5
-    });
-
-  if (createError && createError.code !== '23505') { // 23505 = unique constraint (race condition)
-    console.error("Error auto-creating region:", createError);
-    return false;
-  }
-  return true;
 };
 
 // Middleware to verify Supabase JWT and update user state
@@ -1821,20 +1795,47 @@ app.post("/api/actions/craft-drink", authenticate, async (req: any, res) => {
 
 app.post("/api/actions/use-drink", authenticate, async (req: any, res) => {
   const user = req.user;
-  if (user.energyDrinks <= 0) return res.status(400).json({ error: "Non hai Energy Drinks disponibili nell'inventario." });
-
   const now = Date.now();
-  if (now - (user.lastEnergyDrink || 0) < GAME_CONFIG.ENERGY_DRINK_COOLDOWN) {
-    const remainingMin = Math.ceil((GAME_CONFIG.ENERGY_DRINK_COOLDOWN - (now - user.lastEnergyDrink)) / 60000);
-    return res.status(400).json({ error: `Drink in cooldown. Attendi altri ${remainingMin} minuti.` });
-  }
 
   try {
-    await supabase.from('users').update({
-      energyDrinks: user.energyDrinks - 1,
-      energy: GAME_CONFIG.ENERGY_MAX,
-      lastEnergyDrink: now
-    }).eq('id', user.id);
+    const { data: freshUser, error: readError } = await supabase
+      .from('users')
+      .select('energyDrinks, lastEnergyDrink')
+      .eq('id', user.id)
+      .single();
+    if (readError) throw readError;
+
+    if ((freshUser.energyDrinks || 0) <= 0) {
+      return res.status(400).json({ error: "Non hai Energy Drinks disponibili nell'inventario." });
+    }
+
+    const elapsed = now - (freshUser.lastEnergyDrink || 0);
+    if (elapsed < GAME_CONFIG.ENERGY_DRINK_COOLDOWN) {
+      const remainingMin = Math.ceil((GAME_CONFIG.ENERGY_DRINK_COOLDOWN - elapsed) / 60000);
+      return res.status(400).json({ error: `Drink in cooldown. Attendi altri ${remainingMin} minuti.` });
+    }
+
+    let updateQuery = supabase
+      .from('users')
+      .update({
+        energyDrinks: freshUser.energyDrinks - 1,
+        energy: GAME_CONFIG.ENERGY_MAX,
+        lastEnergyDrink: now
+      })
+      .eq('id', user.id)
+      .eq('energyDrinks', freshUser.energyDrinks);
+
+    if (freshUser.lastEnergyDrink == null) {
+      updateQuery = updateQuery.is('lastEnergyDrink', null);
+    } else {
+      updateQuery = updateQuery.eq('lastEnergyDrink', freshUser.lastEnergyDrink);
+    }
+
+    const { data: updatedUsers, error: updateError } = await updateQuery.select('id');
+    if (updateError) throw updateError;
+    if (!updatedUsers || updatedUsers.length === 0) {
+      return res.status(409).json({ error: "Conflitto durante l'utilizzo del drink. Riprova." });
+    }
 
     res.json({ success: true, newEnergy: GAME_CONFIG.ENERGY_MAX });
   } catch (err: any) {
@@ -1848,7 +1849,9 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
   const user = req.user;
   const { regionId } = req.body;
   if (!regionId) return res.status(400).json({ error: "Nessuna destinazione specificata." });
-  if (user.regionId === regionId) return res.status(400).json({ error: "Sei già in questa regione." });
+  const normalizedRegionId = String(regionId).trim().toUpperCase();
+  if (!isValidIso2(normalizedRegionId)) return res.status(400).json({ error: "Regione non valida." });
+  if (user.regionId === normalizedRegionId) return res.status(400).json({ error: "Sei già in questa regione." });
 
   // Block travel if already traveling
   if (user.travelingUntil && Date.now() < user.travelingUntil) {
@@ -1856,15 +1859,11 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
     return res.status(400).json({ error: `Sei già in viaggio verso ${user.travelingTo}. Arrivo tra ${remainingMin} minuti.` });
   }
 
-  // Auto-create region if it doesn't exist
-  const created = await ensureRegionExists(regionId);
-  if (!created) return res.status(500).json({ error: "Errore nella creazione della regione." });
-
   // 1. Fetch target region info (use * to avoid errors if optional columns are missing)
   const { data: targetRegion, error: regionError } = await supabase
     .from('regions')
     .select('*')
-    .eq('id', regionId.toUpperCase())
+    .eq('id', normalizedRegionId)
     .single();
 
   if (regionError || !targetRegion) return res.status(404).json({ error: "Regione non trovata." });
@@ -1876,7 +1875,7 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
   // 2. Bloc check
   const [{ data: userBloc }, { data: targetBloc }] = await Promise.all([
     supabase.from('bloc_memberships').select('blocId').eq('stateId', sourceStateId).eq('status', 'active').maybeSingle(),
-    supabase.from('bloc_memberships').select('blocId').eq('stateId', regionId).eq('status', 'active').maybeSingle()
+    supabase.from('bloc_memberships').select('blocId').eq('stateId', normalizedRegionId).eq('status', 'active').maybeSingle()
   ]);
 
   if (userBloc && targetBloc && userBloc.blocId === targetBloc.blocId) {
@@ -1892,7 +1891,7 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
     const { data: agreement } = await supabase
       .from('migration_agreements')
       .select('id')
-      .eq('fromStateId', regionId)
+      .eq('fromStateId', normalizedRegionId)
       .eq('toStateId', sourceStateId)
       .eq('status', 'ACTIVE')
       .maybeSingle();
@@ -1910,12 +1909,12 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
 
   try {
     // 5. Calculate travel time
-    const travelTimeMs = calculateTravelTimeMs(user.regionId, regionId);
+    const travelTimeMs = calculateTravelTimeMs(user.regionId, normalizedRegionId);
     const travelingUntil = Date.now() + travelTimeMs;
     const travelMinutes = Math.round(travelTimeMs / 60000);
 
     // 6. Start travel (set travelingTo and travelingUntil instead of instant move)
-    const updateData: any = { travelingTo: regionId.toUpperCase(), travelingUntil };
+    const updateData: any = { travelingTo: normalizedRegionId, travelingUntil };
     if (isRestricted && travelFee > 0) {
       updateData.money = user.money - travelFee;
     }
@@ -1926,7 +1925,7 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
     if (isRestricted && travelFee > 0) {
       await supabase.rpc('add_budget_transaction', {
         p_owner_type: 'REGION',
-        p_owner_id: regionId,
+        p_owner_id: normalizedRegionId,
         p_type: 'INCOME',
         p_subtype: 'TRAVEL_FEE',
         p_money_delta: travelFee,
@@ -1936,7 +1935,7 @@ app.post("/api/actions/travel", authenticate, async (req: any, res) => {
       });
     }
 
-    res.json({ success: true, regionId, travelMinutes, travelingUntil });
+    res.json({ success: true, regionId: normalizedRegionId, travelMinutes, travelingUntil });
   } catch (err: any) {
     console.error("Travel error:", err);
     res.status(500).json({ error: "Errore durante il viaggio" });
@@ -2283,29 +2282,28 @@ app.delete("/api/ministers/market-offer/:id", authenticate, async (req: any, res
 app.post("/api/actions/apply", authenticate, async (req: any, res) => {
   const user = req.user;
   const { regionId, type } = req.body;
+  const normalizedRegionId = String(regionId || '').trim().toUpperCase();
 
   if (!["residence", "work_permit"].includes(type)) return res.status(400).json({ error: "Tipo di richiesta non valido." });
-  if (type === "residence" && user.residenceId === regionId) return res.status(400).json({ error: "Siedi già in questa regione." });
-  if (type === "work_permit" && user.workPermitId === regionId) return res.status(400).json({ error: "Hai già un permesso di lavoro qui." });
+  if (!isValidIso2(normalizedRegionId)) return res.status(400).json({ error: "Regione non valida." });
+  if (type === "residence" && user.residenceId === normalizedRegionId) return res.status(400).json({ error: "Siedi già in questa regione." });
+  if (type === "work_permit" && user.workPermitId === normalizedRegionId) return res.status(400).json({ error: "Hai già un permesso di lavoro qui." });
 
   const { data: existing } = await supabase
     .from('applications')
     .select('id')
     .eq('userId', user.id)
-    .eq('regionId', regionId)
+    .eq('regionId', normalizedRegionId)
     .eq('type', type)
     .eq('status', 'pending')
     .maybeSingle();
 
   if (existing) return res.status(400).json({ error: "Hai già inviato una richiesta in attesa di approvazione." });
 
-  // Auto-create region if it doesn't exist
-  await ensureRegionExists(regionId);
-
   const { data: region } = await supabase
     .from('regions')
     .select('ownerUserId')
-    .eq('id', regionId)
+    .eq('id', normalizedRegionId)
     .single();
 
   if (!region) return res.status(404).json({ error: "Regione non trovata." });
@@ -2315,18 +2313,18 @@ app.post("/api/actions/apply", authenticate, async (req: any, res) => {
 
   if (!region.ownerUserId) {
     if (type === 'residence') {
-      await supabase.from('users').update({ residenceId: regionId }).eq('id', user.id);
+      await supabase.from('users').update({ residenceId: normalizedRegionId }).eq('id', user.id);
     } else {
-      await supabase.from('users').update({ workPermitId: regionId }).eq('id', user.id);
+      await supabase.from('users').update({ workPermitId: normalizedRegionId }).eq('id', user.id);
     }
     await supabase.from('applications').insert({
-      id, userId: user.id, username: user.username, regionId, type, status: 'accepted', createdAt: now
+      id, userId: user.id, username: user.username, regionId: normalizedRegionId, type, status: 'accepted', createdAt: now
     });
     return res.json({ success: true, autoAccepted: true });
   }
 
   await supabase.from('applications').insert({
-    id, userId: user.id, username: user.username, regionId, type, status: 'pending', createdAt: now
+    id, userId: user.id, username: user.username, regionId: normalizedRegionId, type, status: 'pending', createdAt: now
   });
 
   res.json({ success: true, autoAccepted: false });
@@ -2583,6 +2581,16 @@ app.post("/api/actions/change-original-nation", authenticate, async (req: any, r
   const user = req.user;
   const { nationId } = req.body;
   if (!nationId) return res.status(400).json({ error: "Nessuna nazione specificata." });
+  const normalizedNationId = String(nationId).trim().toUpperCase();
+
+  const { data: nationExists, error: nationError } = await supabase
+    .from('nations')
+    .select('id')
+    .eq('id', normalizedNationId)
+    .maybeSingle();
+
+  if (nationError) return res.status(500).json({ error: "Errore nel controllo della nazione." });
+  if (!nationExists) return res.status(400).json({ error: "Nazione non valida." });
 
   const now = Date.now();
   const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
@@ -2592,11 +2600,11 @@ app.post("/api/actions/change-original-nation", authenticate, async (req: any, r
   }
 
   await supabase.from('users').update({
-    originalNation: nationId,
+    originalNation: normalizedNationId,
     lastOriginalNationChange: now
   }).eq('id', user.id);
 
-  res.json({ success: true, originalNation: nationId, lastOriginalNationChange: now });
+  res.json({ success: true, originalNation: normalizedNationId, lastOriginalNationChange: now });
 });
 
 app.post("/api/actions/attack", authenticate, async (req: any, res) => {
@@ -2939,23 +2947,48 @@ app.post("/api/articles/:id/vote", authenticate, async (req: any, res) => {
 // Military Training
 app.post("/api/actions/train", authenticate, async (req: any, res) => {
   const user = req.user;
-  if (user.energy < 10) return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+  const TRAIN_ENERGY_COST = 10;
 
-  const newEnergy = user.energy - 10;
-  const militaryExp = (user.militaryExp || 0) + 5;
+  try {
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: 0,
+      p_gold_cost: 0,
+      p_energy_cost: TRAIN_ENERGY_COST,
+    });
+    if (deductError) {
+      const msg = (deductError.message || '').toLowerCase();
+      if (msg.includes('energia') || msg.includes('energy') || msg.includes('insufficient')) {
+        return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+      }
+      throw deductError;
+    }
+    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+    if (deductData?.error) {
+      return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+    }
 
-  const { error } = await supabase.from('users').update({
-    energy: newEnergy,
-    militaryExp,
-    lastEnergyUpdate: Date.now(),
-  }).eq('id', user.id);
+    const { data: currentUser, error: currentError } = await supabase
+      .from('users')
+      .select('energy, militaryExp')
+      .eq('id', user.id)
+      .single();
+    if (currentError) throw currentError;
 
-  if (error) return res.status(500).json({ error: error.message });
+    const militaryExp = (currentUser.militaryExp || 0) + 5;
+    const { error: expError } = await supabase.from('users').update({
+      militaryExp,
+      lastEnergyUpdate: Date.now(),
+    }).eq('id', user.id);
+    if (expError) throw expError;
 
-  // Grant XP
-  await addXP(user.id, 5);
+    // Grant XP
+    await addXP(user.id, 5);
 
-  res.json({ success: true, militaryExp, energy: newEnergy });
+    res.json({ success: true, militaryExp, energy: currentUser.energy });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Chat API
@@ -3134,8 +3167,8 @@ app.post("/api/profile/avatar", authenticate, async (req: any, res) => {
   if (!avatarData || typeof avatarData !== "string") {
     return res.status(400).json({ error: "Dati immagine mancanti" });
   }
-  // Must be a valid base64 data URL (jpeg or png only)
-  if (!avatarData.startsWith("data:image/")) {
+  // Must be a valid base64 data URL (png/jpeg/webp only)
+  if (!isAllowedAvatarDataUrl(avatarData)) {
     return res.status(400).json({ error: "Formato immagine non valido" });
   }
   // Limit: ~512KB base64
@@ -3148,15 +3181,25 @@ app.post("/api/profile/avatar", authenticate, async (req: any, res) => {
 
 // Dev: Add currency (use for testing)
 app.post("/api/dev/add-currency", authenticate, async (req: any, res) => {
+  if (IS_PRODUCTION || !ENABLE_DEV_ENDPOINTS) {
+    return res.status(404).json({ error: "Endpoint non disponibile." });
+  }
+
   const { cash = 10000, gold = 10000 } = req.body;
+  const cashNum = Number(cash);
+  const goldNum = Number(gold);
+  if (!Number.isFinite(cashNum) || !Number.isFinite(goldNum) || cashNum < 0 || goldNum < 0) {
+    return res.status(400).json({ error: "Valori non validi." });
+  }
+
   const { data: user } = await supabase.from('users').select('money, gold').eq('id', req.user.id).single();
   if (user) {
     await supabase.from('users').update({
-      money: (user.money || 0) + Number(cash),
-      gold: (user.gold || 0) + Number(gold)
+      money: (user.money || 0) + cashNum,
+      gold: (user.gold || 0) + goldNum
     }).eq('id', req.user.id);
   }
-  res.json({ success: true, cash, gold });
+  res.json({ success: true, cash: cashNum, gold: goldNum });
 });
 
 // ==========================================
@@ -3950,12 +3993,32 @@ app.post("/api/produce/claim", authenticate, async (req: any, res) => {
   const { id } = req.body;
   if (!id) return res.status(400).json({ error: "ID richiesto" });
 
-  const { data: d } = await supabase.from('production_queue').select('*').eq('id', id).eq('userId', req.user.id).single();
-  if (!d) return res.status(404).json({ error: "Item non trovato" });
-  if (d.status === "claimed") return res.status(400).json({ error: "Già ritirato" });
-  if (new Date(d.willCompleteAt).getTime() > Date.now()) return res.status(400).json({ error: "Produzione in corso" });
+  const nowIso = new Date().toISOString();
+  const { data: claimedRows, error: claimError } = await supabase
+    .from('production_queue')
+    .update({ status: 'claimed' })
+    .eq('id', id)
+    .eq('userId', req.user.id)
+    .neq('status', 'claimed')
+    .lte('willCompleteAt', nowIso)
+    .select('*');
 
-  await supabase.from('production_queue').update({ status: 'claimed' }).eq('id', id);
+  if (claimError) return res.status(500).json({ error: "Errore durante il ritiro." });
+  if (!claimedRows || claimedRows.length === 0) {
+    const { data: existingItem } = await supabase
+      .from('production_queue')
+      .select('id, status, willCompleteAt')
+      .eq('id', id)
+      .eq('userId', req.user.id)
+      .maybeSingle();
+
+    if (!existingItem) return res.status(404).json({ error: "Item non trovato" });
+    if (existingItem.status === 'claimed') return res.status(400).json({ error: "Già ritirato" });
+    if (new Date(existingItem.willCompleteAt).getTime() > Date.now()) return res.status(400).json({ error: "Produzione in corso" });
+    return res.status(409).json({ error: "Conflitto di stato produzione. Riprova." });
+  }
+
+  const d = claimedRows[0];
 
   const { data: inv } = await supabase.from('user_inventory').select('quantity').eq('userId', req.user.id).eq('itemId', d.weaponType).single();
   if (inv) {
@@ -4681,7 +4744,7 @@ app.get("/api/blocs", authenticate, async (req: any, res) => {
   res.json(filtered);
 });
 
-app.get("/api/blocs-map", async (req, res) => {
+app.get("/api/blocs-map", authenticate, async (req, res) => {
   const { data } = await supabase.from('bloc_memberships').select('stateId, blocId, blocs(name)').eq('status', 'active');
   const mapped = (data || []).map((m: any) => ({
     stateId: m.stateId,
@@ -7022,18 +7085,23 @@ app.post("/api/resources/deep-exploration/activate", authenticate, async (req: a
   }
 
   try {
-    // 1. Check user is leader of a region in this nation
-    const { data: leaderRegions } = await supabase
+    // 1. Check user is authorized on the nation's capital region
+    const { data: nationRegions } = await supabase
       .from('regions')
-      .select('id, ownerUserId, economicAdviserId, nation_id')
+      .select('id, ownerUserId, economicAdviserId, nation_id, isCapital')
       .eq('nation_id', nationId);
 
-    if (!leaderRegions || leaderRegions.length === 0) {
+    if (!nationRegions || nationRegions.length === 0) {
       return res.status(404).json({ error: "Nazione non trovata." });
     }
 
-    const isLeaderOfNation = leaderRegions.some((r: any) => r.ownerUserId === user.id);
-    const isEconomyMinisterOfNation = leaderRegions.some((r: any) => r.economicAdviserId === user.id);
+    const capitalRegion = nationRegions.find((r: any) => r.isCapital);
+    if (!capitalRegion) {
+      return res.status(400).json({ error: "Capitale nazionale non configurata." });
+    }
+
+    const isLeaderOfNation = capitalRegion.ownerUserId === user.id;
+    const isEconomyMinisterOfNation = capitalRegion.economicAdviserId === user.id;
 
     if (!isLeaderOfNation && !isEconomyMinisterOfNation) {
       return res.status(403).json({ error: "Solo il Leader/Dittatore o il Ministro dell'Economia può attivare Deep Exploration." });
@@ -7060,7 +7128,7 @@ app.post("/api/resources/deep-exploration/activate", authenticate, async (req: a
 
     // 4. Check & deduct treasury (EUR from budget of first region in nation)
     // Use the first region's budget as the national treasury
-    const primaryRegionId = leaderRegions[0].id;
+    const primaryRegionId = capitalRegion.id;
 
     // Helper: rollback already-deducted costs on failure
     const rollbackCosts = async (refundEur: boolean, refundDiamonds: boolean, reason: string) => {

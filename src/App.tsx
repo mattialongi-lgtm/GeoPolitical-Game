@@ -308,6 +308,16 @@ const TerritorialBrandLogo = ({ className = "", alt = "Territorial" }: { classNa
   <img src={territorialBrand} alt={alt} className={className} />
 );
 
+const setBackendAuthCookie = (token: string) => {
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `sb-access-token=${token}; path=/; max-age=${604800}; SameSite=Lax${secure}`;
+};
+
+const clearBackendAuthCookie = () => {
+  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
+  document.cookie = `sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${secure}`;
+};
+
 const Auth = ({ onLogin }: { onLogin: () => void }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
@@ -343,7 +353,7 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
       }
       // Explicitly set cookie before fetching data to avoid race conditions
       if (session) {
-        document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${604800}; SameSite=Lax`;
+        setBackendAuthCookie(session.access_token);
       }
       onLogin();
     } catch (err: any) {
@@ -2440,7 +2450,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         <div className="pt-8 text-center space-y-2">
                            <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em]">Protocollo v2.4.1</p>
                            <p className="text-[10px] text-indigo-500/40 font-bold">{user.email}</p>
-                           <button onClick={() => { localStorage.removeItem('token'); window.location.reload(); }} className="mt-4 text-red-500/60 hover:text-red-500 text-[10px] font-black uppercase tracking-widest transition-colors">Disconnetti Unità</button>
+                           <button onClick={async () => { await supabase.auth.signOut(); clearBackendAuthCookie(); window.location.reload(); }} className="mt-4 text-red-500/60 hover:text-red-500 text-[10px] font-black uppercase tracking-widest transition-colors">Disconnetti Unità</button>
                         </div>
                     </div>
                 </motion.div>
@@ -4087,7 +4097,7 @@ export default function App() {
     // Check for existing session before initial data fetch to avoid race conditions
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {
-        document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${604800}; SameSite=Lax`;
+        setBackendAuthCookie(session.access_token);
       }
       fetchData();
     });
@@ -4109,11 +4119,11 @@ export default function App() {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         // Set cookie for backend authentication
-        document.cookie = `sb-access-token=${session.access_token}; path=/; max-age=${604800}; SameSite=Lax`;
+        setBackendAuthCookie(session.access_token);
         fetchData();
       } else {
         // Clear cookie on logout
-        document.cookie = "sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT";
+        clearBackendAuthCookie();
         setUser(null);
         setLoading(false);
       }
@@ -4216,6 +4226,7 @@ export default function App() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    clearBackendAuthCookie();
     setUser(null);
   };
 

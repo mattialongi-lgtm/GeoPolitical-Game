@@ -43,7 +43,7 @@ export default function StateStatsCarousel({ stats, navigateToCountry }: StateSt
 
   const rows: StatItem[][] = [
     [
-      { icon: Flag, label: "Stato", value: stats.name, color: "bg-sky-600", accent: "text-sky-400", onClick: () => navigateToCountry(stats.iso2) },
+      { icon: Flag, label: "Stato", value: stats.name, color: "bg-sky-600", accent: "text-sky-400", onClick: () => navigate("/state/" + stats.iso2) },
       { icon: Users, label: "Partiti", value: stats.parties, color: "bg-purple-600", accent: "text-purple-400", onClick: () => navigate("/parties") },
       { icon: Factory, label: "Fabbriche", value: stats.factories, color: "bg-amber-600", accent: "text-amber-400", onClick: () => navigate("/world-factories") },
     ],

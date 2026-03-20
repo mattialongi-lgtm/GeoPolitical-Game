@@ -4,6 +4,7 @@
  */
 import React, { useState } from "react";
 import { History, ChevronRight, ChevronDown } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import type { GameEvent } from "./mockData";
 
 interface EventHistoryCardProps {
@@ -33,7 +34,33 @@ const formatEventTime = (ts: number): string => {
 
 export default function EventHistoryCard({ events }: EventHistoryCardProps) {
   const [expanded, setExpanded] = useState(false);
+  const navigate = useNavigate();
   const visibleEvents = expanded ? events : events.slice(0, 4);
+
+  const handleEventClick = (evt: GameEvent) => {
+    switch (evt.type) {
+      case 'war_started':
+      case 'war_ended':
+      case 'conquest':
+        navigate(evt.targetId ? `/war/${evt.targetId}/summary` : '/wars');
+        break;
+      case 'law_proposed':
+      case 'law_approved':
+      case 'law_rejected':
+      case 'election':
+        navigate('/parliament');
+        break;
+      case 'government_change':
+      case 'revolution':
+        navigate('/nation');
+        break;
+      case 'treasury_transfer':
+        navigate('/nation');
+        break;
+      default:
+        break;
+    }
+  };
 
   return (
     <div className="space-y-2">
@@ -62,17 +89,27 @@ export default function EventHistoryCard({ events }: EventHistoryCardProps) {
             return (
               <button
                 key={evt.id}
-                className={`w-full flex items-start gap-2.5 p-2.5 rounded-xl border transition-all hover:scale-[1.01] active:scale-[0.99] ${colors}`}
+                onClick={() => handleEventClick(evt)}
+                className={`w-full flex items-start gap-2.5 p-2.5 rounded-xl border transition-all hover:scale-[1.01] active:scale-[0.99] group ${colors}`}
               >
-                <span className="text-base shrink-0 mt-0.5">{evt.icon}</span>
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-xs font-bold text-white truncate">{evt.title}</p>
-                  {evt.values && (
-                    <span className="text-[10px] font-bold text-yellow-400">{evt.values}</span>
-                  )}
-                  <p className="text-[10px] text-gray-400 truncate mt-0.5">{evt.description}</p>
+                <div className="flex-1 text-left min-w-0 flex gap-2.5">
+                  <span className="text-base shrink-0 mt-0.5">{evt.icon}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-bold text-white group-hover:text-indigo-200 transition-colors truncate">
+                      {evt.title}
+                    </p>
+                    {evt.values && (
+                      <span className="text-[10px] font-bold text-yellow-400">{evt.values}</span>
+                    )}
+                    <p className="text-[10px] text-gray-400 group-hover:text-gray-300 transition-colors truncate mt-0.5">
+                      {evt.description}
+                    </p>
+                  </div>
                 </div>
-                <span className="text-[9px] font-bold text-gray-500 shrink-0 mt-0.5">{formatEventTime(evt.timestamp)}</span>
+                <div className="flex flex-col items-end shrink-0 gap-1 mt-0.5">
+                  <span className="text-[9px] font-bold text-gray-500">{formatEventTime(evt.timestamp)}</span>
+                  <ChevronRight className="w-3 h-3 text-gray-600 group-hover:text-indigo-400 transition-colors" />
+                </div>
               </button>
             );
           })
@@ -81,3 +118,4 @@ export default function EventHistoryCard({ events }: EventHistoryCardProps) {
     </div>
   );
 }
+

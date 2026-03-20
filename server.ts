@@ -2932,6 +2932,21 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
       await supabase.from('wars').update({ defenderScore: (war.defenderScore || 0) + totalDamage }).eq('id', warId);
     }
 
+    // Log the deployment for stats
+    await supabase.from('action_logs').insert({
+      userId: user.id,
+      action: 'WAR_DEPLOY',
+      details: JSON.stringify({
+        warId,
+        side,
+        weaponId,
+        damage: totalDamage,
+        username: user.username,
+        isPatriot
+      }),
+      timestamp: Date.now()
+    });
+
     res.json({ success: true, damageDealt: totalDamage, side });
   } catch (err) {
     res.status(500).json({ error: "Errore durante lo schieramento in battaglia." });
@@ -3637,10 +3652,49 @@ app.get("/api/wars", authenticate, async (req: any, res) => {
   res.json({ active: active || [], ended: ended || [] });
 });
 
-app.get("/api/wars/:id", authenticate, async (req: any, res) => {
-  const { data: war } = await supabase.from('wars').select('*').eq('id', req.params.id).single();
-  if (!war) return res.status(404).json({ error: "War not found" });
-  res.json(war);
+app.get("/api/wars/:id/stats", authenticate, async (req: any, res) => {
+  const { id } = req.params;
+  const { data: war } = await supabase.from('wars').select('*').eq('id', id).single();
+  if (!war) return res.status(404).json({ error: "Guerra non trovata." });
+
+  // Get all damage logs for this war
+  // We use ilike as a broad filter and refinement in Node for safety on JSON fields
+  const { data: logs } = await supabase.from('action_logs')
+    .select('*')
+    .eq('action', 'WAR_DEPLOY')
+    .filter('details', 'ilike', `%${id}%`);
+
+  const attackerDamage: Record<string, any> = {};
+  const defenderDamage: Record<string, any> = {};
+
+  (logs || []).forEach((log: any) => {
+    try {
+      const details = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+      if (details.warId !== id) return;
+
+      const targetMap = details.side === 'attacker' ? attackerDamage : defenderDamage;
+      const uid = log.userId;
+
+      if (!targetMap[uid]) {
+        targetMap[uid] = {
+          userId: uid,
+          username: details.username || 'Guerriero',
+          totalDamage: 0,
+          hits: 0
+        };
+      }
+      targetMap[uid].totalDamage += details.damage;
+      targetMap[uid].hits += 1;
+    } catch (e) { /* skip malformed */ }
+  });
+
+  res.json({
+    war,
+    stats: {
+      attacker: Object.values(attackerDamage).sort((a: any, b: any) => b.totalDamage - a.totalDamage),
+      defender: Object.values(defenderDamage).sort((a: any, b: any) => b.totalDamage - a.totalDamage)
+    }
+  });
 });
 
 app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {

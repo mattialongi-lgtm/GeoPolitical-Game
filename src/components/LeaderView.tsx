@@ -57,7 +57,7 @@ interface Application {
     createdAt: number;
 }
 
-export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionId: propRegionId, user }) => {
+export const LeaderView: React.FC<{ regionId?: string; user: any; fetchData?: () => void | Promise<void> }> = ({ regionId: propRegionId, user, fetchData: parentFetchData }) => {
     const { iso2 } = useParams();
     const navigate = useNavigate();
     const routeStateId = (propRegionId || iso2 || '').toUpperCase();
@@ -146,6 +146,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
                 alert('Identità aggiornata con successo!');
             }
             fetchData();
+            parentFetchData?.();
         } catch {
             alert('Errore durante l\'aggiornamento.');
         }
@@ -160,6 +161,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
         if (res.ok) {
             setNewOrder({ title: '', body: '', audience: 'ALL' });
             fetchData();
+            parentFetchData?.();
         }
     };
 
@@ -169,7 +171,10 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ applicationId: appId, action })
         });
-        if (res.ok) fetchData();
+        if (res.ok) {
+            fetchData();
+            parentFetchData?.();
+        }
     };
 
     const handleAssignMinister = async (role: string, ministerId: string | null) => {
@@ -178,7 +183,10 @@ export const LeaderView: React.FC<{ regionId?: string; user: any }> = ({ regionI
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ regionId, role, ministerId })
         });
-        if (res.ok) fetchData();
+        if (res.ok) {
+            fetchData();
+            parentFetchData?.();
+        }
     };
 
     if (loading) return <div className="p-8 text-center text-slate-400">Caricamento...</div>;

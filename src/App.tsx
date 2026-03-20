@@ -60,6 +60,8 @@ import {
   Flag,
   Sun,
   Moon,
+  ArrowLeft,
+  ShieldAlert,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP, FACTORY_CONFIG } from "./types";
@@ -1151,6 +1153,8 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
 
 
 const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: any, fetchData: () => void, actionLoading: boolean }) => {
+  const { warId } = useParams();
+  const navigate = useNavigate();
   const [training, setTraining] = useState(false);
   const [militaryExp, setMilitaryExp] = useState(user?.militaryExp || 0);
 
@@ -1265,6 +1269,11 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         </div>
         <h2 className="text-2xl font-black text-slate-900">Ministero della Guerra</h2>
         <p className="text-slate-400 text-sm font-medium mt-1">Conflitti globali e conquiste territoriali.</p>
+        {warId && (
+          <button onClick={() => navigate('/wars')} className="mt-4 text-xs font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-700 transition-colors">
+            ← Mostra tutte le guerre
+          </button>
+        )}
       </div>
 
       {/* Military Training Section */}
@@ -1345,8 +1354,8 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         <div className="space-y-4">
           <h3 className="text-lg font-black uppercase tracking-tight">Guerre in Corso</h3>
           <div className="grid grid-cols-1 gap-4">
-            {wars.active.map((war: any) => {
-              const [expanded, setExpanded] = useState(false);
+            {(warId ? wars.active.filter((w: any) => w.id === warId) : wars.active).map((war: any) => {
+              const [expanded, setExpanded] = useState(war.id === warId);
               const [deploying, setDeploying] = useState(false);
 
               const isAttackerPatriot = war.attackerCountryIso2 === user.originalNation;
@@ -1536,29 +1545,171 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
       <div className="space-y-4">
         <h3 className="text-lg font-black uppercase tracking-tight">Storico Recente</h3>
         <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-          {wars.ended.map((war: any, i: number) => (
-            <div key={war.id} className={`p-4 flex justify-between items-center ${i !== wars.ended.length - 1 ? "border-b border-slate-50" : ""}`}>
-              <div className="flex items-center gap-3">
-                <span className="font-black text-slate-900">{war.attackerCountryIso2}</span>
-                <ArrowRight className="w-3 h-3 text-slate-300" />
-                <span className="font-black text-slate-900">{war.defenderCountryIso2}</span>
+          {(warId ? wars.ended.filter((w: any) => w.id === warId) : wars.ended).map((war: any, i: number) => {
+            const list = warId ? wars.ended.filter((w: any) => w.id === warId) : wars.ended;
+            return (
+              <div 
+                key={war.id} 
+                onClick={() => navigate(`/war/${war.id}/summary`)} 
+                className={`p-4 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition-colors ${i !== list.length - 1 ? "border-b border-slate-50" : ""}`}
+              >
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-slate-900">{war.attackerCountryIso2}</span>
+                  <ArrowRight className="w-3 h-3 text-slate-300" />
+                  <span className="font-black text-slate-900">{war.defenderCountryIso2}</span>
+                </div>
+                <div className="text-right flex items-center gap-3">
+                  <div>
+                    <p className={`text-[10px] font-black uppercase ${war.attackerScore > war.defenderScore ? "text-emerald-600" : "text-rose-600"}`}>
+                      {war.attackerScore > war.defenderScore ? "Vittoria" : "Sconfitta"}
+                    </p>
+                    <p className="text-[9px] font-bold text-slate-400 mt-0.5">{new Date(war.endsAt).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-300" />
+                </div>
               </div>
-              <div className="text-right">
-                <p className={`text-xs font-black uppercase ${war.attackerScore > war.defenderScore ? "text-emerald-600" : "text-rose-600"}`}>
-                  {war.attackerScore > war.defenderScore ? "Vittoria" : "Sconfitta"}
-                </p>
-                <p className="text-[10px] text-slate-400 font-bold">
-                  {new Date(war.endsAt).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                </p>
-              </div>
-            </div>
-          ))}
-          {wars.ended.length === 0 && (
+            );
+          })}
+          {(warId ? wars.ended.filter((w: any) => w.id === warId) : wars.ended).length === 0 && (
             <div className="p-8 text-center text-slate-400 font-medium">Nessuna guerra terminata di recente.</div>
           )}
         </div>
       </div>
     </motion.div>
+  );
+};
+
+const WarStatsView = ({ user }: { user: any }) => {
+  const { warId } = useParams();
+  const navigate = useNavigate();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/wars/${warId}/stats`);
+        if (res.ok) setData(await res.json());
+      } catch (err) { }
+      setLoading(false);
+    };
+    fetchStats();
+  }, [warId]);
+
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-600 w-8 h-8" /></div>;
+  if (!data) return <div className="text-center p-12">Guerra non trovata.</div>;
+
+  const { war, stats } = data;
+  const totalScore = (war.attackerScore || 0) + (war.defenderScore || 0) || 1;
+  const attackerPct = ((war.attackerScore || 0) / totalScore) * 100;
+  const defenderPct = ((war.defenderScore || 0) / totalScore) * 100;
+
+  return (
+    <div className="space-y-6">
+       <button onClick={() => navigate(-1)} className="px-5 py-2.5 bg-white border border-slate-100 rounded-2xl shadow-sm text-xs font-black text-slate-500 uppercase tracking-widest hover:text-indigo-600 hover:border-indigo-100 transition-all flex items-center gap-2 group">
+         <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Indietro
+       </button>
+
+       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 text-center relative overflow-hidden">
+          <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-rose-500" />
+          <h2 className="text-2xl font-black text-slate-900 uppercase">Riepilogo Battaglia</h2>
+          <p className="text-slate-400 text-[10px] font-black mt-1 uppercase tracking-[0.2em]">{war.id}</p>
+       </div>
+
+       <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/40 to-rose-900/40 opacity-50" />
+          <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
+          
+          <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
+             <div className="text-center">
+                <p className="text-4xl font-black text-white mb-1 uppercase tracking-tighter">{war.attackerCountryIso2}</p>
+                <div className="inline-block px-3 py-1 bg-indigo-500/20 rounded-full border border-indigo-500/30">
+                   <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Attaccante</p>
+                </div>
+                <p className="text-3xl font-black text-indigo-400 mt-6 font-mono tracking-tighter">{(war.attackerScore).toLocaleString()}</p>
+             </div>
+
+             <div className="flex flex-col items-center gap-5">
+                <div className="w-20 h-20 bg-white/5 rounded-[2rem] flex items-center justify-center border border-white/10 backdrop-blur-xl shadow-inner">
+                   <Swords className="w-10 h-10 text-white/40" />
+                </div>
+                <div className="w-full space-y-3">
+                   <div className="flex justify-between text-[11px] font-black text-white/50 uppercase tracking-widest px-1">
+                      <span>{Math.round(attackerPct)}%</span>
+                      <span>{Math.round(defenderPct)}%</span>
+                   </div>
+                   <div className="w-full h-4 bg-white/5 rounded-full overflow-hidden flex border border-white/5 p-1 backdrop-blur-sm">
+                      <div className="bg-indigo-500 h-full rounded-full shadow-[0_0_15px_rgba(99,102,241,0.5)] transition-all duration-1000" style={{ width: `${attackerPct}%` }} />
+                      <div className="bg-rose-500 h-full rounded-full shadow-[0_0_15px_rgba(244,63,94,0.5)] transition-all duration-1000" style={{ width: `${defenderPct}%` }} />
+                   </div>
+                </div>
+             </div>
+
+             <div className="text-center">
+                <p className="text-4xl font-black text-white mb-1 uppercase tracking-tighter">{war.defenderCountryIso2}</p>
+                <div className="inline-block px-3 py-1 bg-rose-500/20 rounded-full border border-rose-500/30">
+                   <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Difensore</p>
+                </div>
+                <p className="text-3xl font-black text-rose-400 mt-6 font-mono tracking-tighter">{(war.defenderScore).toLocaleString()}</p>
+             </div>
+          </div>
+       </div>
+
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500" />
+             <h3 className="text-xs font-black text-indigo-600 uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
+                <div className="p-2 bg-indigo-50 rounded-xl"><Shield className="w-4 h-4" /></div> Top Danni Attaccanti
+             </h3>
+             <div className="space-y-4">
+                {stats.attacker.length === 0 ? (
+                  <div className="text-center py-12 space-y-3 bg-slate-50/50 rounded-3xl border border-slate-100">
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Nessun danno registrato</p>
+                    <p className="text-[9px] text-slate-300 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
+                  </div>
+                ) : stats.attacker.map((s: any, i: number) => (
+                  <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-indigo-50/30 rounded-2xl transition-all border border-transparent hover:border-indigo-100 group">
+                     <div className="flex items-center gap-4">
+                        <span className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-black group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">{i+1}</span>
+                        <div>
+                          <p className="text-sm font-black text-slate-800 tracking-tight">{s.username}</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{s.hits} colpi messi a segno</p>
+                        </div>
+                     </div>
+                     <p className="text-base font-black text-indigo-600 font-mono tracking-tighter">{(s.totalDamage).toLocaleString()}</p>
+                  </div>
+                ))}
+             </div>
+          </div>
+
+          <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden">
+             <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500" />
+             <h3 className="text-xs font-black text-rose-600 uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
+                <div className="p-2 bg-rose-50 rounded-xl"><ShieldAlert className="w-4 h-4" /></div> Top Danni Difensori
+             </h3>
+             <div className="space-y-4">
+                {stats.defender.length === 0 ? (
+                  <div className="text-center py-12 space-y-3 bg-slate-50/50 rounded-3xl border border-slate-100">
+                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Nessun danno registrato</p>
+                    <p className="text-[9px] text-slate-300 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
+                  </div>
+                ) : stats.defender.map((s: any, i: number) => (
+                  <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-rose-50/30 rounded-2xl transition-all border border-transparent hover:border-rose-100 group">
+                     <div className="flex items-center gap-4">
+                        <span className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-xs font-black group-hover:bg-rose-600 group-hover:text-white transition-all shadow-sm">{i+1}</span>
+                        <div>
+                          <p className="text-sm font-black text-slate-800 tracking-tight">{s.username}</p>
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{s.hits} colpi messi a segno</p>
+                        </div>
+                     </div>
+                     <p className="text-base font-black text-rose-600 font-mono tracking-tighter">{(s.totalDamage).toLocaleString()}</p>
+                  </div>
+                ))}
+             </div>
+          </div>
+       </div>
+    </div>
   );
 };
 
@@ -4010,7 +4161,7 @@ const MarketView = () => {
 
 export default function App() {
   const navigate = useNavigate();
-  const [user, setUser] = useState<(User & { perks: Record<string, number>, maxEnergy: number }) | null>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [regions, setRegions] = useState<Region[]>([]);
   const [nations, setNations] = useState<any[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -4532,6 +4683,8 @@ export default function App() {
             ) : <Navigate to="/" />
           } />
           <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
+          <Route path="/wars/:warId" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
+          <Route path="/war/:warId/summary" element={<WarStatsView user={user} />} />
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} regions={regions} nations={nations} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/factory/:id" element={user ? <FactoryDetail user={user} fetchData={fetchData} /> : <Navigate to="/" />} />

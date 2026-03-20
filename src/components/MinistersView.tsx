@@ -40,6 +40,12 @@ interface Region {
     sanctionsScope: string; // JSON
     economicAdviserId: string | null;
     foreignMinisterId: string | null;
+    nation: {
+        id: string;
+        name: string;
+        logo: string;
+        leaderUserId: string;
+    } | null;
 }
 
 interface Application {
@@ -51,7 +57,7 @@ interface Application {
     createdAt: number;
 }
 
-export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
+export const MinistersView: React.FC<{ user: any; fetchData?: () => any }> = ({ user, fetchData: parentFetchData }) => {
     const { iso2 } = useParams();
     
     // Robust stateId resolution: URL param > Region > Residence
@@ -135,6 +141,7 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
             else {
                 setTargetUserId("");
                 fetchData();
+                parentFetchData?.();
             }
         } finally {
             setActionLoading(false);
@@ -150,7 +157,10 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ iso2: stateId, role })
             });
-            if (res.ok) fetchData();
+            if (res.ok) {
+                fetchData();
+                parentFetchData?.();
+            }
             else {
                 const data = await res.json();
                 alert(data.error || "Errore nella revoca.");
@@ -168,7 +178,10 @@ export const MinistersView: React.FC<{ user: any }> = ({ user }) => {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ applicationId: appId, action })
             });
-            if (res.ok) fetchData();
+            if (res.ok) {
+                fetchData();
+                parentFetchData?.();
+            }
         } finally {
             setActionLoading(false);
         }

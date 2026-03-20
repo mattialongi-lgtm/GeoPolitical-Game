@@ -28,6 +28,16 @@ export interface User {
   partyId?: string;
   partyName?: string;
   partyLogo?: string;
+  perks: Record<string, number>;
+  maxEnergy: number;
+  perkUpgrades?: Record<string, any>;
+  avatarData?: string;
+  dailyExtracted?: number;
+  dailyLimit?: number;
+  oilExp?: number;
+  mineralsExp?: number;
+  uraniumExp?: number;
+  diamondsExp?: number;
 }
 
 export interface Perk {

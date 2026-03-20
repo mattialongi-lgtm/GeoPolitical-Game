@@ -133,6 +133,7 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
         title: `Guerra: ${w.attackerCountryIso2} vs ${w.defenderCountryIso2}`,
         description: `Attacco in corso – Danno: ${(w.attackerScore || 0).toLocaleString()} vs ${(w.defenderScore || 0).toLocaleString()}`,
         icon: '⚔️',
+        targetId: w.id,
         timestamp: typeof w.startedAt === 'number' ? w.startedAt : new Date(w.startedAt).getTime(),
       });
     });
@@ -145,6 +146,7 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
         title: `Guerra terminata: ${w.attackerCountryIso2} vs ${w.defenderCountryIso2}`,
         description: `Vincitore: ${winner}`,
         icon: '🏁',
+        targetId: w.id,
         timestamp: endTs > Date.now() ? Date.now() : endTs,
       });
     });

@@ -100,6 +100,7 @@ export interface GameEvent {
   title: string;
   description: string;
   values?: string;
+  targetId?: string;
   timestamp: number;
   icon: string;
 }

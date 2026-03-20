@@ -52,15 +52,12 @@ export default function StatePage({ user }: StatePageProps) {
     const loadState = async () => {
       setLoading(true);
       try {
-        // TODO: Replace with real API call: const res = await fetch(`/api/state/${id}`);
-        // For now, use mock data
-        await new Promise(resolve => setTimeout(resolve, 300)); // Simulate network delay
-        if (id) {
-          setStateData({ ...MOCK_STATE_DATA, id });
-        } else {
-          setStateData(MOCK_STATE_DATA);
-        }
-      } catch {
+        const res = await fetch(`/api/state/${id}`);
+        if (!res.ok) throw new Error("Failed to fetch state data");
+        const data = await res.json();
+        setStateData(data);
+      } catch (err) {
+        console.error("Error loading state:", err);
         setStateData(EMPTY_STATE_DATA);
       } finally {
         setLoading(false);

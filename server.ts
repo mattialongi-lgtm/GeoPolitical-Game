@@ -64,8 +64,8 @@ const generateGameStatsForCountry = (iso2: string) => {
 };
 
 // Initialize Supabase Client (Service Role for admin bypass)
-const supabaseUrl = process.env.VITE_SUPABASE_URL || "";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const supabaseUrl = (process.env.VITE_SUPABASE_URL || "").trim();
+const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 
 if (!supabaseUrl || !supabaseKey) {
   throw new Error("Supabase URL or SUPABASE_SERVICE_ROLE_KEY missing in Environment Variables.");
@@ -277,13 +277,18 @@ const authenticate = async (req: any, res: any, next: any) => {
   try {
     // Verify token with Supabase
     // We use the default client (anon/user) to verify the token
+    console.log(`[Auth] Verifying token (length: ${token?.length}): ${token?.substring(0, 10)}...${token?.substring(token.length - 10)}`);
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !authUser) {
+      console.error("[Auth] Token verification failed:", {
+        message: authError?.message,
+        status: authError?.status,
+        code: authError?.code,
+        fullError: authError
+      });
       if (authError?.message?.includes("token is expired")) {
         // Routine expiration, no need to log as error
-      } else {
-        console.error("Token verification failed:", authError);
       }
       return res.status(401).json({ error: "Unauthorized: Invalid session." });
     }
@@ -605,6 +610,171 @@ app.get("/api/players", authenticate, async (req: any, res) => {
   } catch (err: any) {
     console.error("Error fetching players:", err);
     res.status(500).json({ error: "Errore nel caricamento dei giocatori: " + err.message });
+  }
+});
+
+// New endpoint for the State page
+app.get("/api/state/:id", authenticate, async (req, res) => {
+  try {
+    const nationId = (req.params.id || '').toUpperCase();
+    
+    // 1. Fetch main nation data
+    const { data: nation, error: nationError } = await supabase
+      .from('nations')
+      .select(`
+        *,
+        leader:users!leaderUserId(id, username, avatarData)
+      `)
+      .eq('id', nationId)
+      .single();
+
+    if (nationError || !nation) {
+      // Fallback: if nation record doesn't exist, we might want to return 404
+      // or a basic "independent" state view.
+      return res.status(404).json({ error: "Stato non trovato" });
+    }
+
+    // 2. Fetch Ministers
+    const { data: ministers } = await supabase
+      .from('ministers')
+      .select('*, user:users(id, username, avatarData)')
+      .eq('stateId', nationId)
+      .eq('status', 'ACTIVE');
+
+    const economyMinister = ministers?.find(m => m.role === 'economics' || m.role === 'ECONOMICS');
+    const foreignMinister = ministers?.find(m => m.role === 'foreign' || m.role === 'FOREIGN');
+
+    // 3. Fetch Regions count and IDs
+    const { data: regions } = await supabase
+      .from('regions')
+      .select('id, name, population, mainResource, developmentLevel, governor:users!governorPlayerId(username)')
+      .eq('nation_id', nationId);
+
+    const regionIds = (regions || []).map(r => r.id);
+    console.log(`[StatePage] Nation ${nationId} has ${regions?.length || 0} regions:`, regionIds);
+
+    // 4. Counts: Citizens, Residents, Parties, Factories
+    const [citizenCount, residentCount, partyCount, factoryCount] = await Promise.all([
+      // Citizens: users whose originalNation matches
+      supabase.from('users').select('id', { count: 'exact', head: true }).eq('originalNation', nationId),
+      // Residents: users currently in these regions
+      supabase.from('users').select('id', { count: 'exact', head: true }).in('regionId', regionIds),
+      // Parties: in these regions
+      supabase.from('parties').select('id', { count: 'exact', head: true }).in('regionId', regionIds),
+      // Factories: in these regions
+      supabase.from('factories').select('id', { count: 'exact', head: true }).in('regionId', regionIds),
+    ]);
+
+    // 5. Military Agreements
+    const { data: militaryAgreements } = await supabase
+      .from('military_agreements')
+      .select(`
+        *,
+        partner:nations!partner_nation_id(id, name, logo)
+      `)
+      .eq('nation_id', nationId)
+      .eq('status', 'ACTIVE');
+
+    // 6. Sanctions (Received or Imposed)
+    const { data: sanctions } = await supabase
+      .from('sanctions')
+      .select(`
+        *,
+        sourceNation:regions!fromStateId(id, nation:nations(id, name, logo)),
+        targetNation:regions!targetStateId(id, nation:nations(id, name, logo))
+      `)
+      .or(`fromStateId.in.(${regionIds.join(',')}),targetStateId.in.(${regionIds.join(',')})`)
+      .eq('status', 'ACTIVE');
+
+    // Format output to match StatePage expectations
+    const responseBody = {
+      id: nation.id,
+      name: nation.name,
+      flag: nation.logo || '', // Emoji fallback handled by frontend if needed
+      flagUrl: nation.logo?.startsWith('http') ? nation.logo : `https://flagcdn.com/${nation.id.toLowerCase()}.svg`,
+      representativeImage: nation.representative_image || undefined,
+      regionCount: regions?.length || 0,
+      governmentForm: nation.government_form || 'Repubblica Parlamentare',
+      headOfState: nation.leader ? {
+        name: nation.leader.username,
+        role: 'Capo di Stato e Comandante',
+        avatar: nation.leader.avatarData,
+        salary: nation.leader_salary
+      } : undefined,
+      economyMinister: economyMinister ? {
+        name: economyMinister.user?.username || 'Incaricato',
+        role: "Ministro dell'Economia",
+        avatar: economyMinister.user?.avatarData,
+        salary: nation.minister_salary
+      } : undefined,
+      foreignMinister: foreignMinister ? {
+        name: foreignMinister.user?.username || 'Incaricato',
+        role: 'Ministro degli Esteri',
+        avatar: foreignMinister.user?.avatarData,
+        salary: nation.minister_salary
+      } : undefined,
+      geopoliticalBloc: nation.geopolitical_bloc || undefined,
+      stats: {
+        citizens: citizenCount.count || 0,
+        residents: residentCount.count || 0,
+        parties: partyCount.count || 0,
+        factories: factoryCount.count || 0,
+      },
+      treasury: {
+        balance: nation.treasury_balance || 0,
+        dailyIncome: nation.treasury_daily_income || 0,
+        dailyExpenses: nation.treasury_daily_expenses || 0,
+        netBalance: (nation.treasury_daily_income || 0) - (nation.treasury_daily_expenses || 0),
+        goldReserve: nation.gold_reserve || 0,
+        specialFunds: nation.special_funds || 0,
+      },
+      details: {
+        workPermits: nation.work_permits || 0,
+        mandateStart: nation.mandate_start ? new Date(nation.mandate_start).toLocaleString('it-IT') : '-',
+        nextElections: nation.next_elections ? new Date(nation.next_elections).toLocaleString('it-IT') : '-',
+        autonomies: nation.autonomies || 0,
+        entryTax: nation.entry_tax || 0,
+        borders: nation.borders_status || 'open',
+        residenceToWork: nation.residence_to_work || 'Non necessaria',
+        residence: nation.residence_policy || 'Aperta',
+        energyProduction: nation.energy_production || 0,
+        energyConsumption: nation.energy_consumption || 0,
+        foundationDate: nation.foundation_date ? new Date(nation.foundation_date).toLocaleString('it-IT') : '-',
+        ongoingWars: 0, // TODO: Link to wars table
+      },
+      bestDepartment: nation.best_department_name ? {
+        name: nation.best_department_name,
+        value: nation.best_department_value
+      } : undefined,
+      regions: (regions || []).map(r => ({
+        id: r.id,
+        name: r.name,
+        population: r.population || 0,
+        mainResource: r.mainResource,
+        developmentLevel: r.developmentLevel,
+        governor: (r as any).governor ? (Array.isArray((r as any).governor) ? (r as any).governor[0]?.username : (r as any).governor?.username) : undefined
+      })),
+      militaryAgreements: (militaryAgreements || []).map(a => ({
+        type: a.agreement_type,
+        partnerName: a.partner?.name || 'Sconosciuto',
+        partnerFlag: a.partner?.logo,
+        status: a.status,
+        expiresAt: a.expires_at ? new Date(a.expires_at).toLocaleDateString('it-IT') : undefined
+      })),
+      migrationAgreements: [], // TBD if separate table exists
+      sanctions: (sanctions || []).map(s => ({
+        type: regionIds.includes(s.targetStateId) ? 'sanction_received' : 'sanction_imposed',
+        partnerName: regionIds.includes(s.targetStateId) ? s.sourceNation?.nation?.name : s.targetNation?.nation?.name,
+        partnerFlag: regionIds.includes(s.targetStateId) ? s.sourceNation?.nation?.logo : s.targetNation?.nation?.logo,
+        status: s.status,
+        expiresAt: s.revokedAt ? new Date(s.revokedAt).toLocaleDateString('it-IT') : undefined
+      })),
+    };
+
+    res.json(responseBody);
+  } catch (err: any) {
+    console.error("Error fetching state data:", err);
+    res.status(500).json({ error: "Errore nel caricamento dei dati dello stato: " + err.message });
   }
 });
 

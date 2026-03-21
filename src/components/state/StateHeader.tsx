@@ -9,10 +9,11 @@ import { useNavigate } from 'react-router-dom';
 interface StateHeaderProps {
   name: string;
   regionCount: number;
+  population: number;
   onHelpClick?: () => void;
 }
 
-export default function StateHeader({ name, regionCount, onHelpClick }: StateHeaderProps) {
+export default function StateHeader({ name, regionCount, population, onHelpClick }: StateHeaderProps) {
   const navigate = useNavigate();
 
   return (
@@ -26,7 +27,7 @@ export default function StateHeader({ name, regionCount, onHelpClick }: StateHea
       <div className="text-center flex-1">
         <h1 className="text-xl font-black text-white uppercase tracking-wide">{name}</h1>
         <p className="text-[11px] text-gray-500 font-semibold">
-          Stato, regioni: {regionCount}
+           Stato • {regionCount} {regionCount === 1 ? 'Regione' : 'Regioni'} • {population.toLocaleString('it-IT')} Abitanti
         </p>
       </div>
       <button

@@ -59,19 +59,17 @@ export default function PartySummaryCard({ party, resources, soldier }: PartySum
       {/* Resources Carousel */}
       <div className="space-y-2">
         <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest px-1">🎒 Magazzino</h3>
-        <div className="overflow-x-auto scrollbar-hide -mx-1 px-1">
-          <div className="flex gap-2 pb-1" style={{ minWidth: 'min-content' }}>
-            {resourceItems.map((r) => (
-              <div
-                key={r.key}
-                className="flex flex-col items-center gap-1 min-w-[60px] p-2.5 rounded-xl bg-gray-800/50 border border-gray-700/30"
-              >
-                <span className="text-lg">{r.emoji}</span>
-                <span className={`text-xs font-black tabular-nums ${r.color}`}>{(resources[r.key] || 0).toLocaleString()}</span>
-                <span className="text-[8px] font-bold text-gray-500 uppercase">{r.label}</span>
-              </div>
-            ))}
-          </div>
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 sm:gap-2">
+          {resourceItems.map((r) => (
+            <div
+              key={r.key}
+              className="flex flex-col items-center gap-1 p-2 rounded-xl bg-gray-800/50 border border-gray-700/30 transition-all hover:bg-gray-800/80"
+            >
+              <span className="text-lg">{r.emoji}</span>
+              <span className={`text-[11px] sm:text-xs font-black tabular-nums ${r.color}`}>{(resources[r.key] || 0).toLocaleString()}</span>
+              <span className="text-[7px] sm:text-[8px] font-bold text-gray-500 uppercase truncate w-full text-center">{r.label}</span>
+            </div>
+          ))}
         </div>
       </div>
 

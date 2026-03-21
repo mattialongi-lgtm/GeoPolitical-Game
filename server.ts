@@ -616,7 +616,8 @@ app.get("/api/players", authenticate, async (req: any, res) => {
 // New endpoint for the State page
 app.get("/api/state/:id", authenticate, async (req, res) => {
   try {
-    const nationId = (req.params.id || '').toUpperCase();
+    let nationId = (req.params.id || '').toUpperCase();
+    if (nationId.includes('-')) nationId = nationId.split('-')[0];
     
     // 1. Fetch main nation data
     const { data: nation, error: nationError } = await supabase
@@ -653,17 +654,25 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     const regionIds = (regions || []).map(r => r.id);
     console.log(`[StatePage] Nation ${nationId} has ${regions?.length || 0} regions:`, regionIds);
 
-    // 4. Counts: Citizens, Residents, Parties, Factories
+    // 5. Counts: Citizens, Residents, Parties, Factories
     const [citizenCount, residentCount, partyCount, factoryCount] = await Promise.all([
       // Citizens: users whose originalNation matches
       supabase.from('users').select('id', { count: 'exact', head: true }).eq('originalNation', nationId),
       // Residents: users currently in these regions
-      supabase.from('users').select('id', { count: 'exact', head: true }).in('regionId', regionIds),
+      regionIds.length > 0
+        ? supabase.from('users').select('id', { count: 'exact', head: true }).in('regionId', regionIds)
+        : { count: 0 },
       // Parties: in these regions
-      supabase.from('parties').select('id', { count: 'exact', head: true }).in('regionId', regionIds),
+      regionIds.length > 0
+        ? supabase.from('parties').select('id', { count: 'exact', head: true }).in('regionId', regionIds)
+        : { count: 0 },
       // Factories: in these regions
-      supabase.from('factories').select('id', { count: 'exact', head: true }).in('regionId', regionIds),
+      regionIds.length > 0
+        ? supabase.from('factories').select('id', { count: 'exact', head: true }).in('regionId', regionIds)
+        : { count: 0 },
     ]);
+
+    const totalPopulation = (regions || []).reduce((acc, r) => acc + (r.population || 0), 0);
 
     // 5. Military Agreements
     const { data: militaryAgreements } = await supabase
@@ -675,16 +684,18 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
       .eq('nation_id', nationId)
       .eq('status', 'ACTIVE');
 
-    // 6. Sanctions (Received or Imposed)
-    const { data: sanctions } = await supabase
-      .from('sanctions')
-      .select(`
-        *,
-        sourceNation:regions!fromStateId(id, nation:nations(id, name, logo)),
-        targetNation:regions!targetStateId(id, nation:nations(id, name, logo))
-      `)
-      .or(`fromStateId.in.(${regionIds.join(',')}),targetStateId.in.(${regionIds.join(',')})`)
-      .eq('status', 'ACTIVE');
+    const sanctionsQuery = regionIds.length > 0
+        ? supabase.from('sanctions')
+            .select(`
+                *,
+                sourceNation:regions!fromStateId(id, nation:nations(id, name, logo)),
+                targetNation:regions!targetStateId(id, nation:nations(id, name, logo))
+            `)
+            .or(`fromStateId.in.(${regionIds.join(',')}),targetStateId.in.(${regionIds.join(',')})`)
+            .eq('status', 'ACTIVE')
+        : { data: [] };
+    
+    const { data: sanctions } = await (sanctionsQuery as any);
 
     // Format output to match StatePage expectations
     const responseBody = {
@@ -694,6 +705,7 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
       flagUrl: nation.logo?.startsWith('http') ? nation.logo : `https://flagcdn.com/${nation.id.toLowerCase()}.svg`,
       representativeImage: nation.representative_image || undefined,
       regionCount: regions?.length || 0,
+      population: totalPopulation,
       governmentForm: nation.government_form || 'Repubblica Parlamentare',
       headOfState: nation.leader ? {
         name: nation.leader.username,

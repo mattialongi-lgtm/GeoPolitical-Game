@@ -12,6 +12,7 @@ export interface StateData {
   flagUrl?: string;
   representativeImage?: string;
   regionCount: number;
+  population: number;
   governmentForm: string;
   headOfState?: {
     name: string;
@@ -101,6 +102,7 @@ export const MOCK_STATE_DATA: StateData = {
   flagUrl: 'https://flagcdn.com/it.svg',
   representativeImage: undefined,
   regionCount: 6,
+  population: 1243500,
   governmentForm: 'Repubblica Parlamentare',
   headOfState: {
     name: 'Marco Bianchi',
@@ -172,6 +174,7 @@ export const EMPTY_STATE_DATA: StateData = {
   name: 'Stato Sconosciuto',
   flag: '🌍',
   regionCount: 0,
+  population: 0,
   governmentForm: 'Non definito',
   stats: {
     citizens: 0,

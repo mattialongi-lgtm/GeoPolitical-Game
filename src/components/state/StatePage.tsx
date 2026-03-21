@@ -95,7 +95,7 @@ export default function StatePage({ user }: StatePageProps) {
       className="space-y-4 max-w-3xl mx-auto pb-24"
     >
       {/* 1. HEADER */}
-      <StateHeader name={s.name} regionCount={s.regionCount} />
+      <StateHeader name={s.name} regionCount={s.regionCount} population={s.population} />
 
       {/* 2. IDENTITY BLOCK */}
       <StateIdentityCard

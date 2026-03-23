@@ -642,14 +642,18 @@ app.get("/api/players", authenticate, async (req: any, res) => {
 });
 
 app.get("/api/players/:id", authenticate, async (req: any, res) => {
+  console.log(`[ProfileRequest] Fetching player ${req.params.id}`);
   try {
     const { data: player, error } = await supabase
       .from('users')
       .select('*')
       .eq('id', req.params.id)
       .single();
-    if (error || !player) return res.status(404).json({ error: "Giocatore non trovato" });
-    
+    if (error || !player) {
+      console.log(`[ProfileRequest] Player ${req.params.id} NOT FOUND in users table. Supabase error:`, error?.message);
+      return res.status(404).json({ error: "Giocatore non trovato" });
+    }
+    console.log(`[ProfileRequest] Player FOUND: ${player.username}, sending data...`);
     // Remove sensitive data
     delete player.email;
     delete player.password;
@@ -5035,8 +5039,7 @@ app.get("/api/lobbies/:regionId", authenticate, async (req: any, res) => {
                 });
               }
             }
-          })
-          .catch((err: any) => console.error("[lobbies] Expire error:", err));
+          }).catch((err: any) => console.error("[lobbies] Expire error:", err));
         return false;
       }
       return true;

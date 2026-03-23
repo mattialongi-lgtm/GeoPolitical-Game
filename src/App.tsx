@@ -2258,7 +2258,7 @@ const WarStatsView = ({ user }: { user: any }) => {
                     <p className="text-[9px] text-slate-300 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
                   </div>
                 ) : stats.attacker.map((s: any, i: number) => (
-                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-indigo-50/10 rounded-2xl transition-all border border-transparent hover:border-indigo-500/20 group cursor-pointer" onClick={() => navigate(`/profile/${s.userId}`)}>
+                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-indigo-50/10 rounded-2xl transition-all border border-transparent hover:border-indigo-500/20 group cursor-pointer" onClick={() => { console.log('Navigating to profile:', s.userId); navigate(`/profile/${s.userId}`); }}>
                        <div className="flex items-center gap-4">
                           <div className="relative shrink-0">
                             <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-black text-sm overflow-hidden border border-indigo-500/20">
@@ -2295,7 +2295,7 @@ const WarStatsView = ({ user }: { user: any }) => {
                     <p className="text-[9px] text-slate-300 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
                   </div>
                 ) : stats.defender.map((s: any, i: number) => (
-                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-rose-50/10 rounded-2xl transition-all border border-transparent hover:border-rose-500/20 group cursor-pointer" onClick={() => navigate(`/profile/${s.userId}`)}>
+                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-rose-50/10 rounded-2xl transition-all border border-transparent hover:border-rose-500/20 group cursor-pointer" onClick={() => { console.log('Navigating to profile:', s.userId); navigate(`/profile/${s.userId}`); }}>
                        <div className="flex items-center gap-4">
                           <div className="relative shrink-0">
                             <div className="w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-400 font-black text-sm overflow-hidden border border-rose-500/20">
@@ -3269,13 +3269,24 @@ const PublicProfileView = ({ regions, nations }: { regions: any[], nations: any[
     fetch(`/api/players/${userId}`)
       .then(r => r.json())
       .then(d => {
-        if (!d.error) setTargetUser(d);
+        console.log('[PublicProfileView] Fetch Success:', d);
+        if (d && !d.error) {
+          console.log('[PublicProfileView] Setting Target User:', d.username);
+          setTargetUser(d);
+        } else {
+          console.error('[PublicProfileView] Server returned error or empty:', d);
+          setTargetUser({ error: d?.error || "Unknown error" });
+        }
         setLoading(false);
       })
-      .catch(() => {
+      .catch(err => {
+        console.error('[PublicProfileView] Fetch Exception:', err);
+        setTargetUser({ error: err.message });
         setLoading(false);
       });
   }, [userId]);
+
+  console.log('[PublicProfileView] Rendering with userId:', userId, 'loading:', loading, 'targetUser:', !!targetUser);
 
   if (userId === "all" || !userId) return <Navigate to="/" />;
 

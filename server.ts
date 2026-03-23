@@ -9662,10 +9662,10 @@ async function checkAndResolveWars() {
           }
 
           // Territory transfer
-          if (effects.territoryTransfer && winner === 'attacker' && war.defenderRegionId && war.attackerCountryIso2) {
+          if (effects.territoryTransfer && winner === 'attacker' && war.defenderRegionId && war.attackerRegionId) {
             const { data: attackerRegion } = await supabase.from('regions')
               .select('ownerUserId, leaderUserId, nation_id, stateColor, governmentForm, leaderTitle, dictatorship')
-              .eq('id', war.attackerRegionId || war.attackerCountryIso2)
+              .eq('id', war.attackerRegionId)
               .single();
 
             if (attackerRegion) {
@@ -9856,32 +9856,32 @@ async function checkAndResolveWars() {
           // Fire auto-attack via internal deploy logic
           try {
             const { data: autoUser } = await supabase.from('users').select('*').eq('id', aa.userId).single();
-            if (autoUser && autoUser.energy >= (TROOP_ENERGY_COST[aa.troopType as TroopType] || 10)) {
-              // Simple deploy: deduct energy, add damage
-              const baseDmg = TROOP_BASE_DAMAGE[aa.troopType as TroopType] || 10;
-              const energyCost = TROOP_ENERGY_COST[aa.troopType as TroopType] || 10;
+            if (!autoUser) continue;
 
-              if (aa.autoType === 'hourly') {
-                // Hourly: free (no energy cost)
-              } else {
-                // Maximum: costs energy
-                await supabase.from('users').update({
-                  energy: autoUser.energy - energyCost,
-                }).eq('id', aa.userId);
-              }
+            const baseDmg = TROOP_BASE_DAMAGE[aa.troopType as TroopType] || 10;
+            const energyCost = TROOP_ENERGY_COST[aa.troopType as TroopType] || 10;
 
-              const scoreField = aa.side === 'attacker' ? 'attackerScore' : 'defenderScore';
-              const { data: currentWar } = await supabase.from('wars').select(scoreField).eq('id', aa.warId).single();
-
-              await supabase.from('wars').update({
-                [scoreField]: (currentWar?.[scoreField] || 0) + baseDmg,
-                updatedAt: new Date().toISOString(),
-              }).eq('id', aa.warId);
-
-              await supabase.from('war_auto_attacks').update({
-                lastFiredAt: new Date().toISOString(),
-              }).eq('id', aa.id);
+            if (aa.autoType === 'hourly') {
+              // Hourly: free (no energy cost)
+            } else {
+              // Maximum: costs energy — skip if insufficient
+              if (autoUser.energy < energyCost) continue;
+              await supabase.from('users').update({
+                energy: autoUser.energy - energyCost,
+              }).eq('id', aa.userId);
             }
+
+            const scoreField = aa.side === 'attacker' ? 'attackerScore' : 'defenderScore';
+            const { data: currentWar } = await supabase.from('wars').select(scoreField).eq('id', aa.warId).single();
+
+            await supabase.from('wars').update({
+              [scoreField]: (currentWar?.[scoreField] || 0) + baseDmg,
+              updatedAt: new Date().toISOString(),
+            }).eq('id', aa.warId);
+
+            await supabase.from('war_auto_attacks').update({
+              lastFiredAt: new Date().toISOString(),
+            }).eq('id', aa.id);
           } catch (_e) { /* skip failed auto-attacks */ }
 
           // Check expiration

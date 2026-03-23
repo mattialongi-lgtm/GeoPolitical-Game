@@ -247,6 +247,166 @@ export interface War {
   defenderScore: number;
 }
 
+// === WAR SYSTEM TYPES ===
+
+export type WarType = 'training' | 'land' | 'naval' | 'space' | 'lunar' | 'revolution' | 'coup';
+export type TroopType = 'tank' | 'aircraft' | 'missile' | 'bomber' | 'battleship' | 'lunar_tank' | 'space_station';
+export type WarSide = 'attacker' | 'defender';
+export type AutoAttackType = 'hourly' | 'maximum';
+export type AgreementType = 'bilateral' | 'unilateral';
+export type DepartmentType = 'land' | 'naval' | 'space';
+
+export interface WarFull extends War {
+  warType: WarType;
+  attackerRegionId: string | null;
+  defenderRegionId: string | null;
+  navalPhase: number;
+  phase1AttackerScore: number;
+  phase1DefenderScore: number;
+  initialAttackDamage: number;
+  initialDefenseDamage: number;
+  distancePenalty: number;
+  resolvedAt: string | null;
+  winnerId: WarSide | null;
+  lootValue: number;
+  chainWarId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WarParticipant {
+  id: string;
+  warId: string;
+  userId: string;
+  side: WarSide;
+  totalDamage: number;
+  troopsDeployed: Record<TroopType, number>;
+  joinedAt: string;
+}
+
+export interface WarDeployment {
+  id: string;
+  warId: string;
+  userId: string;
+  side: WarSide;
+  troopType: TroopType;
+  quantity: number;
+  baseDamage: number;
+  finalDamage: number;
+  bonuses: DamageBreakdown;
+  deployedAt: string;
+}
+
+export interface WarAutoAttack {
+  id: string;
+  warId: string;
+  userId: string;
+  side: WarSide;
+  autoType: AutoAttackType;
+  troopType: TroopType;
+  isActive: boolean;
+  lastFiredAt: string | null;
+  activatedAt: string;
+  expiresAt: string | null;
+}
+
+export interface Revolution {
+  id: string;
+  regionId: string;
+  initiatorIds: string[];
+  goldCost: number;
+  status: 'active' | 'succeeded' | 'failed' | 'expired';
+  warId: string | null;
+  cooldownUntil: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface Coup {
+  id: string;
+  regionId: string;
+  initiatorIds: string[];
+  status: 'active' | 'succeeded' | 'failed';
+  warId: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+export interface WarMilitaryAgreement {
+  id: string;
+  stateA: string;
+  stateB: string;
+  agreementType: AgreementType;
+  initiatorState: string;
+  status: 'pending' | 'active' | 'expired' | 'cancelled';
+  createdAt: string;
+  expiresAt: string | null;
+  updatedAt: string;
+}
+
+export interface WarDepartment {
+  id: string;
+  stateId: string;
+  departmentType: DepartmentType;
+  level: number;
+  bonusPercent: number;
+  ranking: number;
+  updatedAt: string;
+}
+
+export interface WarHistoryEntry {
+  id: string;
+  warId: string;
+  eventType: 'war_started' | 'war_ended' | 'phase_change' | 'deployment' | 'resolution' | 'building_destroyed' | 'territory_transferred' | 'loot';
+  eventData: Record<string, unknown>;
+  createdAt: string;
+}
+
+export interface DamageBreakdown {
+  baseDamage: number;
+  quantity: number;
+  militaryIndex: number;
+  missileSystems: number;
+  navalPorts: number;
+  airports: number;
+  academies: number;
+  forza: number;
+  nationBonus: number;
+  education: number;
+  resistance: number;
+  level: number;
+  distancePenalty: number;
+  randomFactor: number;
+  departmentBonus: number;
+  patriotBonus: number;
+  troopBaseDamage: number;
+  finalDamage: number;
+}
+
+export interface WarCreationParams {
+  attackerRegionId: string;
+  defenderRegionId: string;
+  warType: WarType;
+  attackerUserId: string;
+}
+
+export interface DeployParams {
+  warId: string;
+  userId: string;
+  side: WarSide;
+  troopType: TroopType;
+  quantity: number;
+}
+
+export interface WarResolution {
+  warId: string;
+  winner: WarSide;
+  attackerTotal: number;
+  defenderTotal: number;
+  lootValue: number;
+  status: 'ended';
+}
+
 export interface MarketOffer {
   id: string;
   sellerId: string;
@@ -288,6 +448,65 @@ export const GAME_CONFIG = {
   STORAGE_BASE_CAPACITY: 10000,
   MARKET_OFFER_COOLDOWN_MS: 5 * 60 * 1000, // 5 minutes
   MARKET_ANTI_ABUSE_PERCENTAGE: 1.10, // 110%
+  // War System Config
+  WAR_DURATION_MS: 24 * 60 * 60 * 1000,           // 24 hours
+  WAR_NAVAL_PHASE_DURATION_MS: 24 * 60 * 60 * 1000, // 24h per phase
+  WAR_DEPLOY_COOLDOWN_MS: 60 * 1000,               // 1 minute between deploys
+  WAR_AUTO_HOURLY_INTERVAL_MS: 60 * 60 * 1000,     // 1 hour
+  WAR_AUTO_MAX_INTERVAL_MS: 10 * 60 * 1000,        // 10 minutes
+  WAR_AUTO_EXPIRE_MS: 24 * 60 * 60 * 1000,         // 24h
+  WAR_DISTANCE_PENALTY_MAX: 0.999,                  // max 99.9%
+  WAR_RANDOM_FACTOR: 0.125,                         // ±12.5%
+  WAR_REVOLUTION_GOLD_COST: 50,
+  WAR_REVOLUTION_MIN_PLAYERS: 3,
+  WAR_REVOLUTION_COOLDOWN_MS: 4 * 24 * 60 * 60 * 1000, // 4 days
+  WAR_REVOLUTION_BUILDING_PENALTY: 0.5,             // -50% buildings
+  WAR_COUP_MIN_PLAYERS: 3,
+  WAR_COUP_MAX_DEVELOPMENT: 1,                      // development must be 1
+  WAR_NAVAL_MAX_DISTANCE_KM: 1000,
+  WAR_LOOT_PERCENTAGE: 0.5,                         // 50% of building value
+  WAR_DEPLOY_ENERGY_BASE: 10,
+  WAR_MAX_DEPARTMENT_BONUS: 0.10,                   // +10% max
+};
+
+export const TROOP_BASE_DAMAGE: Record<TroopType, number> = {
+  tank: 10,
+  aircraft: 75,
+  missile: 900,
+  bomber: 800,
+  battleship: 2000,
+  lunar_tank: 2000,
+  space_station: 5000,
+};
+
+export const TROOP_ENERGY_COST: Record<TroopType, number> = {
+  tank: 5,
+  aircraft: 15,
+  missile: 30,
+  bomber: 25,
+  battleship: 40,
+  lunar_tank: 35,
+  space_station: 50,
+};
+
+export const TROOP_MONEY_COST: Record<TroopType, number> = {
+  tank: 200,
+  aircraft: 1500,
+  missile: 5000,
+  bomber: 4000,
+  battleship: 10000,
+  lunar_tank: 8000,
+  space_station: 25000,
+};
+
+export const WAR_TYPE_ALLOWED_TROOPS: Record<WarType, TroopType[]> = {
+  training: ['tank', 'aircraft', 'missile', 'bomber'],
+  land: ['tank', 'aircraft', 'missile', 'bomber'],
+  naval: ['battleship', 'tank', 'aircraft', 'missile', 'bomber'],
+  space: ['space_station'],
+  lunar: ['lunar_tank'],
+  revolution: ['tank', 'aircraft', 'missile', 'bomber'],
+  coup: ['tank', 'aircraft', 'missile', 'bomber'],
 };
 
 // ── Factory System Configuration ──────────────────────────

@@ -64,7 +64,7 @@ import {
   ShieldAlert,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP, FACTORY_CONFIG } from "./types";
+import { User, Region, GAME_CONFIG, PERKS_DEFS, Article, ArticleBlock, Factory, War, BOOSTER_CONFIG, RESOURCE_TYPES, RESOURCE_LABELS, RESOURCE_ICONS_MAP, FACTORY_CONFIG } from "./types";
 import type { ResourceType, DeepCostPreview } from "./types";
 import type { WorldStats } from "./components/home/mockData";
 import { DEFAULT_WORLD_STATS } from "./components/home/mockData";
@@ -90,6 +90,8 @@ import { HomePage } from "./components/home";
 import { DailyTasksPage } from "./components/daily";
 import { StatePage } from "./components/state";
 import { WarCreatePanel, RevolutionPanel, WarDamageBar, WarHistoryList } from "./components/war";
+import { ArticleBlockRenderer } from "./components/ArticleBlockRenderer";
+import { ArticleEditor } from "./components/ArticleEditor";
 import type { WarType, TroopType, WarSide } from "./types";
 import territorialBrand from "./assets/branding/territorial-brand.svg";
 
@@ -694,10 +696,10 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
   );
 };
 
-const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles: Article[], setSelectedArticleId: (id: string) => void }) => {
+const ArticlesView = ({ articles: _articles, setSelectedArticleId, actionLoading, fetchData }: { articles: Article[], setSelectedArticleId: (id: string) => void, actionLoading: boolean, fetchData: () => void }) => {
   const navigate = useNavigate();
   const [section, setSection] = useState<'global' | 'local'>('global');
-  const [category, setCategory] = useState<'all' | 'best' | 'guides' | 'subscriptions'>('all');
+  const [category, setCategory] = useState<'all' | 'best' | 'guides' | 'newspapers'>('all');
   const [localArticles, setLocalArticles] = useState<Article[]>([]);
   const [loadingArticles, setLoadingArticles] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -740,8 +742,51 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
     { id: 'all' as const, label: 'Tutti' },
     { id: 'best' as const, label: 'Migliori' },
     { id: 'guides' as const, label: 'Guide' },
-    { id: 'subscriptions' as const, label: 'Iscrizioni' },
+    { id: 'newspapers' as const, label: 'Giornali' },
   ];
+
+  const [showCreateNewspaper, setShowCreateNewspaper] = useState(false);
+  const [newspapers, setNewspapers] = useState<any[]>([]);
+  const [loadingNewspapers, setLoadingNewspapers] = useState(false);
+  const [npName, setNpName] = useState('');
+  const [npDesc, setNpDesc] = useState('');
+  const [npLogo, setNpLogo] = useState('');
+
+  useEffect(() => {
+    if (category === 'newspapers') {
+      const fetchNewspapers = async () => {
+        setLoadingNewspapers(true);
+        try {
+          const res = await fetch("/api/newspapers");
+          if (res.ok) setNewspapers(await res.json());
+        } catch {}
+        setLoadingNewspapers(false);
+      };
+      fetchNewspapers();
+    }
+  }, [category]);
+
+  const handleCreateNewspaper = async () => {
+    if (!npName.trim()) return alert("Nome richiesto");
+    try {
+      const res = await fetch("/api/newspapers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: npName, description: npDesc, logoUrl: npLogo })
+      });
+      if (res.ok) {
+        setShowCreateNewspaper(false);
+        const resList = await fetch("/api/newspapers");
+        if (resList.ok) setNewspapers(await resList.json());
+        fetchData(); // Update user money
+      } else {
+        const data = await res.json();
+        alert(data.error);
+      }
+    } catch {
+      alert("Errore di connessione");
+    }
+  };
 
   return (
     <motion.div
@@ -753,6 +798,14 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Articoli</h2>
         <div className="flex items-center gap-2">
+          {category === 'newspapers' && (
+            <button
+              onClick={() => setShowCreateNewspaper(true)}
+              className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 flex items-center gap-2"
+            >
+              <Plus className="w-3 h-3" /> Crea Giornale
+            </button>
+          )}
           <button
             onClick={() => setShowSearch(!showSearch)}
             className="p-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:bg-slate-50 transition-all"
@@ -810,8 +863,32 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
         ))}
       </div>
 
-      {loadingArticles ? (
+      {loadingArticles || loadingNewspapers ? (
         <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
+      ) : category === 'newspapers' ? (
+        <div className="grid gap-4">
+          {newspapers.map(np => (
+            <button
+              key={np.id}
+              onClick={() => navigate(`/newspapers/${np.id}`)}
+              className="w-full bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 text-left hover:border-indigo-600 transition-all group flex items-center gap-6"
+            >
+              <div className="w-16 h-16 bg-indigo-50 rounded-2xl flex items-center justify-center overflow-hidden shrink-0 group-hover:bg-indigo-600 transition-colors">
+                 {np.logoUrl ? (
+                   <img src={np.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+                 ) : (
+                   <BookOpen className="w-8 h-8 text-indigo-400 group-hover:text-white" />
+                 )}
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{np.name}</h3>
+                <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest mt-1">Fondato da {np.authorName || 'un player'}</p>
+                <p className="text-slate-500 text-sm mt-2 line-clamp-1 font-medium">{np.description || "Nessuna descrizione."}</p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-slate-200 group-hover:text-indigo-400" />
+            </button>
+          ))}
+        </div>
       ) : (
         <div className="space-y-4">
           {displayArticles.map(article => (
@@ -820,8 +897,20 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
               onClick={() => { navigate(`/articles/${article.id}`); }}
               className="w-full bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 text-left hover:border-indigo-600 transition-all group"
             >
-              <h3 className="text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors">{article.title}</h3>
-              <p className="text-slate-500 text-sm mt-2 line-clamp-2 leading-relaxed">{article.content}</p>
+              {article.newspaperId && (
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-5 h-5 rounded-lg overflow-hidden bg-slate-100 border border-slate-100 shadow-sm shrink-0">
+                    {article.newspaperLogo ? (
+                      <img src={article.newspaperLogo} alt="Logo" className="w-full h-full object-cover" />
+                    ) : (
+                      <BookOpen className="w-3 h-3 text-indigo-400 m-auto mt-1" />
+                    )}
+                  </div>
+                  <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest">{article.newspaperName || 'Giornale'}</span>
+                </div>
+              )}
+              <h3 className="text-lg font-black text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight">{article.title}</h3>
+              <p className="text-slate-500 text-sm mt-2 line-clamp-2 leading-relaxed font-medium">{article.content}</p>
               <div className="flex justify-between items-center mt-4">
                 <div className="flex items-center gap-2">
                   <div className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center">
@@ -830,7 +919,7 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
                   <span className="text-[10px] font-black text-slate-400 uppercase">{article.authorName}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-[10px] font-black text-indigo-500 flex items-center gap-1">
+                  <span className="text-[10px] font-black text-emerald-500 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-lg">
                     <ThumbsUp className="w-3 h-3" /> {article.likeCount || 0}
                   </span>
                   <span className="text-[10px] font-bold text-slate-300 uppercase">{new Date(article.createdAt).toLocaleDateString()}</span>
@@ -845,6 +934,50 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId }: { articles:
           )}
         </div>
       )}
+
+      {/* Create Newspaper Modal */}
+      <AnimatePresence>
+        {showCreateNewspaper && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowCreateNewspaper(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-md" />
+            <motion.div initial={{ scale: 0.9, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.9, opacity: 0, y: 20 }} className="bg-white w-full max-w-lg rounded-[3rem] shadow-2xl relative z-10 overflow-hidden border border-slate-100">
+                <div className="bg-indigo-600 p-8 text-white relative">
+                   <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16" />
+                   <h3 className="text-2xl font-black uppercase tracking-tight relative z-10">Crea il tuo Giornale</h3>
+                   <p className="text-indigo-100 text-xs font-bold mt-1 opacity-80 uppercase tracking-widest relative z-10">Diventa un magnate dell'informazione</p>
+                </div>
+                <div className="p-8 space-y-6">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Nome della Testata</label>
+                      <input value={npName} onChange={e => setNpName(e.target.value)} placeholder="es. The Daily Globe" className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-black text-slate-900" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Descrizione / Linea Editoriale</label>
+                      <textarea value={npDesc} onChange={e => setNpDesc(e.target.value)} placeholder="Di cosa parlerà il tuo giornale?" rows={3} className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">URL Logo (opzionale)</label>
+                      <input value={npLogo} onChange={e => setNpLogo(e.target.value)} placeholder="https://..." className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-600" />
+                    </div>
+                  </div>
+                  
+                  <div className="bg-indigo-50 p-6 rounded-[2rem] border border-indigo-100">
+                    <div className="flex justify-between items-center text-xs font-black uppercase tracking-widest">
+                       <span className="text-slate-400">Costo di Fondazione</span>
+                       <span className="text-indigo-600">$10,000</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-2">
+                    <button onClick={() => setShowCreateNewspaper(false)} className="flex-1 py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-slate-400 bg-slate-50 hover:bg-slate-100 transition-all">Annulla</button>
+                    <button disabled={actionLoading} onClick={handleCreateNewspaper} className="flex-[2] py-4 rounded-2xl font-black text-xs uppercase tracking-widest text-white bg-indigo-600 shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all disabled:opacity-50">Fonda Giornale</button>
+                  </div>
+                </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
@@ -956,18 +1089,42 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
         <div>
           <h2 className="text-3xl font-black text-slate-900 leading-tight">{article.title}</h2>
-          <div className="flex items-center gap-3 mt-4">
-            <div className="w-10 h-10 bg-indigo-50 rounded-2xl flex items-center justify-center">
-              <UserIcon className="w-5 h-5 text-indigo-600" />
+          <div className="flex items-center gap-4 mt-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-indigo-50 rounded-2xl flex items-center justify-center shadow-sm">
+                <UserIcon className="w-5 h-5 text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Autore</p>
+                <p className="text-sm font-black text-slate-900">{article.authorName}</p>
+              </div>
             </div>
-            <div>
-              <p className="text-sm font-black text-slate-900">{article.authorName}</p>
-              <p className="text-[10px] font-bold text-slate-400 uppercase">{new Date(article.createdAt).toLocaleString()}</p>
-            </div>
+            {article.newspaperId && (
+              <button 
+                onClick={() => navigate(`/newspapers/${article.newspaperId}`)}
+                className="flex items-center gap-3 pl-4 border-l border-slate-100 hover:opacity-80 transition-opacity"
+              >
+                <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100 overflow-hidden">
+                  {article.newspaperLogo ? (
+                    <img src={article.newspaperLogo} alt="Logo" className="w-full h-full object-cover" />
+                  ) : (
+                    <BookOpen className="w-5 h-5 text-white" />
+                  )}
+                </div>
+                <div className="text-left">
+                  <p className="text-xs font-black text-indigo-500 uppercase tracking-widest">Giornale</p>
+                  <p className="text-sm font-black text-slate-900">{article.newspaperName || 'Giornale'}</p>
+                </div>
+              </button>
+            )}
           </div>
         </div>
         <div className="text-slate-700 leading-loose font-medium whitespace-pre-wrap">
-          {article.content}
+          {article.blocks && article.blocks.length > 0 ? (
+            <ArticleBlockRenderer blocks={article.blocks} />
+          ) : (
+            article.content
+          )}
         </div>
 
         {/* Vote section */}
@@ -1005,6 +1162,12 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
 
         {article.authorId === user.id && (
           <div className="pt-6 border-t border-slate-50 flex gap-3">
+             <button
+              onClick={() => navigate(`/articles/edit/${id}`)}
+              className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-indigo-50 text-indigo-600 font-black text-sm hover:bg-indigo-100 transition-all"
+            >
+              <Edit2 className="w-4 h-4" /> Modifica
+            </button>
             <button
               onClick={async () => {
                 if (!confirm("Sei sicuro di voler eliminare questo articolo?")) return;
@@ -1073,12 +1236,273 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
   );
 };
 
+const NewspaperDetailView = ({ user }: { user: any }) => {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [newspaper, setNewspaper] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [showEdit, setShowEdit] = useState(false);
+  const [newMemberId, setNewMemberId] = useState('');
+  const [newMemberRole, setNewMemberRole] = useState<'editor' | 'writer'>('writer');
+  const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
+  const [editLogoUrl, setEditLogoUrl] = useState('');
+  const [updating, setUpdating] = useState(false);
+
+  const fetchNewspaper = async () => {
+    try {
+      const res = await fetch(`/api/newspapers/${id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setNewspaper(data);
+        setEditName(data.name);
+        setEditDescription(data.description || '');
+        setEditLogoUrl(data.logoUrl || '');
+      }
+    } catch { }
+    setLoading(false);
+  };
+
+  const handleUpdateNewspaper = async () => {
+    if (!editName.trim()) return;
+    setUpdating(true);
+    try {
+      const res = await fetch(`/api/newspapers/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName, description: editDescription, logoUrl: editLogoUrl })
+      });
+      if (res.ok) {
+        setShowEdit(false);
+        fetchNewspaper();
+      } else {
+        const data = await res.json();
+        alert(data.error);
+      }
+    } catch {
+      alert("Errore nell'aggiornamento");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchNewspaper();
+  }, [id]);
+
+  const handleAddMember = async () => {
+    if (!newMemberId.trim()) return;
+    try {
+      const res = await fetch(`/api/newspapers/${id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: newMemberId, role: newMemberRole })
+      });
+      if (res.ok) {
+        setShowAddMember(false);
+        setNewMemberId('');
+        fetchNewspaper();
+      } else {
+        const data = await res.json();
+        alert(data.error);
+      }
+    } catch {
+      alert("Errore di connessione");
+    }
+  };
+
+  const myMembership = newspaper?.members?.find((m: any) => m.userId === user?.id);
+  const isOwner = myMembership && myMembership.role === 'owner';
+  const canManage = myMembership && (myMembership.role === 'owner' || myMembership.role === 'editor');
+
+  if (loading) return <div className="p-12 text-center flex flex-col items-center gap-4"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /><p className="text-slate-400 font-bold">Caricamento Redazione...</p></div>;
+  if (!newspaper) return <div className="p-12 text-center bg-white rounded-[2.5rem] border border-slate-100"><p className="text-slate-400 font-bold">Giornale non trovato</p><button onClick={() => navigate("/articles")} className="mt-4 text-indigo-600 font-black text-sm">← Torna agli Articoli</button></div>;
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
+      <div className="bg-white p-8 rounded-[3rem] shadow-sm border border-slate-100 relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-50/50 rounded-full -mr-16 -mt-16 blur-3xl" />
+        <div className="flex flex-col md:flex-row items-center md:items-start gap-8 relative z-10">
+          <div className="w-32 h-32 bg-indigo-600 rounded-[2.5rem] flex items-center justify-center shadow-2xl shadow-indigo-100 overflow-hidden shrink-0">
+            {newspaper.logoUrl ? (
+              <img src={newspaper.logoUrl} alt="Logo" className="w-full h-full object-cover" />
+            ) : (
+              <BookOpen className="w-12 h-12 text-white" />
+            )}
+          </div>
+          <div className="flex-1 text-center md:text-left">
+            <h2 className="text-4xl font-black text-slate-900 tracking-tight leading-tight uppercase">{newspaper.name}</h2>
+            <p className="text-slate-500 font-medium mt-3 text-lg leading-relaxed max-w-xl">{newspaper.description || 'Nessuna descrizione disponibile.'}</p>
+            <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-6">
+              <div className="bg-indigo-50 px-4 py-2 rounded-2xl border border-indigo-100 flex flex-col items-center min-w-[80px]">
+                <span className="text-sm font-black text-indigo-600">{newspaper.members?.length || 0}</span>
+                <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Membri</span>
+              </div>
+              <div className="bg-emerald-50 px-4 py-2 rounded-2xl border border-emerald-100 flex flex-col items-center min-w-[80px]">
+                <span className="text-sm font-black text-emerald-600">{newspaper.articles?.length || 0}</span>
+                <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">Articoli</span>
+              </div>
+              {canManage && (
+                <button
+                  onClick={() => setShowAddMember(!showAddMember)}
+                  className="bg-indigo-600 text-white px-6 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 hover:scale-105 transition-all flex items-center gap-2 self-center"
+                >
+                  <Plus className="w-3 h-3" /> Gestione Membri
+                </button>
+              )}
+              {isOwner && (
+                <button
+                  onClick={() => setShowEdit(true)}
+                  className="bg-slate-900 text-white px-6 py-2 rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-slate-100 hover:scale-105 transition-all flex items-center gap-2 self-center"
+                >
+                  <Edit2 className="w-3 h-3" /> Modifica
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <AnimatePresence>
+          {showAddMember && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="mt-8 pt-8 border-t border-slate-50 overflow-hidden">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Aggiungi Collaboratore</h4>
+              <div className="grid md:grid-cols-3 gap-3">
+                <input value={newMemberId} onChange={e => setNewMemberId(e.target.value)} placeholder="User ID (es. 1234)" className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-100 text-xs font-bold" />
+                <select value={newMemberRole} onChange={e => setNewMemberRole(e.target.value as any)} className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-100 text-xs font-bold uppercase tracking-widest">
+                  <option value="writer">Scrittore</option>
+                  <option value="editor">Editor</option>
+                </select>
+                <button onClick={handleAddMember} className="bg-emerald-600 text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-emerald-50">Invita</button>
+              </div>
+              <div className="mt-6 space-y-2">
+                {newspaper.members?.map((m: any) => (
+                  <div key={m.userId} className="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100">
+                    <span className="text-xs font-black text-slate-700">{m.username || m.userId}</span>
+                    <span className="text-[8px] font-black uppercase tracking-widest bg-white px-2 py-1 rounded-lg border border-slate-100 text-indigo-400">{m.role}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <div className="space-y-4">
+        <div className="flex items-center justify-between px-4">
+          <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Archivio Notizie</h3>
+          <div className="h-px bg-slate-100 flex-1 mx-4" />
+        </div>
+
+        <div className="grid gap-4">
+          {newspaper.articles?.length === 0 ? (
+            <div className="bg-white p-12 rounded-[2.5rem] text-center text-slate-400 font-bold border border-dashed border-slate-200">
+              Nessun articolo pubblicato da questa redazione.
+            </div>
+          ) : (
+            newspaper.articles.map((article: any) => (
+              <button
+                key={article.id}
+                onClick={() => navigate(`/articles/${article.id}`)}
+                className="w-full bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 text-left hover:border-indigo-600 transition-all group flex items-start gap-4"
+              >
+                <div className="flex-1">
+                  <h3 className="text-xl font-black text-slate-900 group-hover:text-indigo-600 transition-colors uppercase tracking-tight leading-tight">{article.title}</h3>
+                  <p className="text-slate-500 text-sm mt-2 line-clamp-2 leading-relaxed font-medium">{article.content}</p>
+                  <div className="flex items-center gap-3 mt-4">
+                    <span className="text-[10px] font-black text-emerald-500 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-lg">
+                      <ThumbsUp className="w-3 h-3" /> {article.likeCount || 0}
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-300 uppercase">{new Date(article.createdAt).toLocaleDateString()}</span>
+                  </div>
+                </div>
+                <ChevronRight className="w-5 h-5 text-slate-200 mt-2 group-hover:text-indigo-400 transition-colors" />
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
+};
+
 const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, fetchData: () => void }) => {
+  const { editId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const initialSection = params.get('section') === 'local' ? 'local' : 'global';
   const [articleSection, setArticleSection] = useState<'global' | 'local'>(initialSection);
+  const [blocks, setBlocks] = useState<ArticleBlock[]>([{ id: '1', type: 'text', content: '' }]);
+  const [title, setTitle] = useState('');
+  const [newspapers, setNewspapers] = useState<any[]>([]);
+  const [selectedNewspaperId, setSelectedNewspaperId] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [loading, setLoading] = useState(!!editId);
+
+  useEffect(() => {
+    const fetchMyNewspapers = async () => {
+      try {
+        const res = await fetch("/api/my-newspapers");
+        if (res.ok) setNewspapers(await res.json());
+      } catch {}
+    };
+    
+    const fetchEditData = async () => {
+      if (!editId) return;
+      try {
+        const res = await fetch(`/api/articles/${editId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTitle(data.title);
+          setBlocks(data.blocks || []);
+          setArticleSection(data.section || 'global');
+          setSelectedNewspaperId(data.newspaperId);
+        }
+      } catch {}
+      setLoading(false);
+    };
+
+    fetchMyNewspapers();
+    if (editId) fetchEditData();
+  }, [editId]);
+
+  const handlePublish = async () => {
+    if (!title.trim() || blocks.every(b => !b.content.trim())) {
+      return alert("Titolo e contenuto necessari");
+    }
+    
+    setIsSubmitting(true);
+    try {
+      const url = editId ? `/api/articles/${editId}` : "/api/articles";
+      const method = editId ? "PUT" : "POST";
+      
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          title, 
+          blocks, 
+          section: articleSection,
+          newspaperId: selectedNewspaperId 
+        }),
+      });
+      if (res.ok) {
+        fetchData();
+        navigate("/articles");
+      } else {
+        const data = await res.json();
+        alert(data.error);
+      }
+    } catch (err) {
+      alert("Errore di connessione");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (loading) return <div className="p-12 text-center"><Loader2 className="w-8 h-8 animate-spin text-indigo-600 m-auto" /></div>;
+
   return (
     <motion.div
       key="article-new"
@@ -1086,66 +1510,73 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
       animate={{ opacity: 1, scale: 1 }}
       className="space-y-6"
     >
-      <button
-        onClick={() => navigate("/articles")}
-        className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1"
-      >
-        ← Annulla
-      </button>
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
-        <h2 className="text-2xl font-black text-slate-900">Nuovo Articolo</h2>
-        <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Sezione</label>
-            <div className="flex gap-2">
-              <button onClick={() => setArticleSection('global')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${articleSection === 'global' ? "bg-indigo-600 text-white shadow-lg" : "bg-slate-50 text-slate-400 border border-slate-200"}`}>
-                🌍 Globale
-              </button>
-              <button onClick={() => setArticleSection('local')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${articleSection === 'local' ? "bg-indigo-600 text-white shadow-lg" : "bg-slate-50 text-slate-400 border border-slate-200"}`}>
-                🏠 Locale
-              </button>
-            </div>
-          </div>
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => navigate("/articles")}
+          className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100"
+        >
+          ← Annulla
+        </button>
+        <button
+          onClick={handlePublish}
+          disabled={actionLoading || isSubmitting}
+          className="bg-indigo-600 text-white px-6 py-2 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-100 hover:bg-indigo-700 disabled:opacity-50 transition-all flex items-center gap-2"
+        >
+          {(actionLoading || isSubmitting) ? <Loader2 className="w-3 h-3 animate-spin" /> : editId ? <Check className="w-3 h-3" /> : <Send className="w-3 h-3" />}
+          {editId ? 'Salva Modifiche' : 'Pubblica'}
+        </button>
+      </div>
+
+      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-8">
+        <div className="space-y-6">
           <input
             type="text"
-            placeholder="Titolo dell'articolo"
-            className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-black text-slate-900"
-            id="article-title"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+            placeholder="Scrivi un titolo d'impatto..."
+            className="w-full bg-transparent border-none text-3xl font-black text-slate-900 placeholder:text-slate-100 outline-none p-0 focus:ring-0"
           />
-          <textarea
-            placeholder="Contenuto dell'articolo..."
-            rows={8}
-            className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700 leading-relaxed"
-            id="article-content"
-          />
-          <button
-            onClick={async () => {
-              const title = (document.getElementById("article-title") as HTMLInputElement).value;
-              const content = (document.getElementById("article-content") as HTMLTextAreaElement).value;
-              if (!title || !content) return alert("Compila tutti i campi");
 
-              try {
-                const res = await fetch("/api/articles", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ title, content, section: articleSection }),
-                });
-                if (res.ok) {
-                  fetchData();
-                  navigate("/articles");
-                } else {
-                  const data = await res.json();
-                  alert(data.error);
-                }
-              } catch (err) {
-                alert("Errore di connessione");
-              }
-            }}
-            disabled={actionLoading}
-            className="w-full bg-indigo-600 text-white py-5 rounded-3xl font-black text-lg shadow-xl shadow-indigo-100 hover:bg-indigo-700 transition-all active:scale-[0.98] disabled:opacity-50"
-          >
-            {actionLoading ? <Loader2 className="w-6 h-6 animate-spin mx-auto" /> : "Pubblica Articolo"}
-          </button>
+          <div className="h-px bg-slate-50" />
+
+          {/* Publishing controls */}
+          <div className="flex flex-wrap gap-4 items-end">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Sezione Pubblicazione</label>
+              <div className="bg-slate-50 p-1.5 rounded-2xl flex gap-1 border border-slate-100">
+                <button onClick={() => setArticleSection('global')} className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${articleSection === 'global' ? "bg-white text-indigo-600 shadow-sm border border-indigo-100" : "text-slate-400 hover:bg-white/50"}`}>
+                  🌍 Globale
+                </button>
+                <button onClick={() => setArticleSection('local')} className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${articleSection === 'local' ? "bg-white text-indigo-600 shadow-sm border border-indigo-100" : "text-slate-400 hover:bg-white/50"}`}>
+                  🏠 Locale
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Firma come</label>
+              <div className="relative">
+                <select 
+                  value={selectedNewspaperId || ''} 
+                  onChange={e => setSelectedNewspaperId(e.target.value || null)}
+                  className="w-full pl-4 pr-10 py-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs font-black text-slate-700 appearance-none cursor-pointer focus:ring-2 focus:ring-indigo-100 outline-none"
+                >
+                  <option value="">👤 Pubblica come Me</option>
+                  {newspapers.map(n => (
+                    <option key={n.id} value={n.id}>📰 {n.name}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="h-px bg-slate-50" />
+
+        {/* The Editor */}
+        <div className="min-h-[300px]">
+          <ArticleEditor blocks={blocks} setBlocks={setBlocks} />
         </div>
       </div>
     </motion.div>
@@ -4623,9 +5054,11 @@ export default function App() {
           <Route path="/parties" element={<PartiesList />} />
           <Route path="/world-factories" element={<WorldFactoriesList />} />
           <Route path="/independent-regions" element={<IndependentRegionsList />} />
-          <Route path="/articles" element={<ArticlesView articles={articles} setSelectedArticleId={setSelectedArticleId} />} />
+          <Route path="/articles" element={<ArticlesView articles={articles} setSelectedArticleId={setSelectedArticleId} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/articles/:id" element={<ArticleDetailView articles={articles} user={user} fetchData={fetchData} />} />
           <Route path="/articles/new" element={<NewArticleView actionLoading={actionLoading} fetchData={fetchData} />} />
+          <Route path="/articles/edit/:editId" element={<NewArticleView actionLoading={actionLoading} fetchData={fetchData} />} />
+          <Route path="/newspapers/:id" element={<NewspaperDetailView user={user} />} />
           <Route path="/work" element={
             user ? (
               <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">

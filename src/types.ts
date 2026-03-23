@@ -222,12 +222,49 @@ export interface Application {
   createdAt: number;
 }
 
+export type ArticleBlockType = 'text' | 'image' | 'video' | 'link';
+
+export interface ArticleBlock {
+  id: string;
+  type: ArticleBlockType;
+  content: string;
+  metadata?: {
+    caption?: string;
+    anchorText?: string;
+    title?: string;
+  };
+}
+
+export interface Newspaper {
+  id: string;
+  name: string;
+  description: string;
+  logoUrl?: string;
+  ownerId: string;
+  authorName?: string;
+  createdAt: string;
+}
+
+export type NewspaperRole = 'owner' | 'editor' | 'writer';
+
+export interface NewspaperMember {
+  id: string;
+  newspaperId: string;
+  userId: string;
+  role: NewspaperRole;
+  joinedAt: string;
+}
+
 export interface Article {
   id: string;
   authorId: string;
   authorName: string;
+  newspaperId?: string | null;
+  newspaperName?: string | null;
+  newspaperLogo?: string | null;
   title: string;
-  content: string;
+  content: string; // Used as summary or for legacy support
+  blocks?: ArticleBlock[];
   section: 'global' | 'local';
   createdAt: number;
   updatedAt: number;

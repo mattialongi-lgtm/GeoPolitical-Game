@@ -2973,33 +2973,95 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
 });
 
 // Articles API
+// Articles API
 app.get("/api/articles", authenticate, async (req: any, res) => {
   const section = req.query.section;
-  let query = supabase.from('articles').select('*').order('createdAt', { ascending: false }).limit(50);
+  let query = supabase
+    .from('articles')
+    .select(`
+      *,
+      newspapers (
+        name,
+        logo_url
+      )
+    `)
+    .order('createdAt', { ascending: false })
+    .limit(50);
+    
   if (section === 'local') {
     query = query.eq('section', req.user.residenceId || req.user.regionId);
   } else {
     query = query.eq('section', 'global');
   }
+  
   const { data: articles, error } = await query;
   if (error) {
     console.error("Articles fetch error:", error);
     return res.json([]);
   }
-  res.json(articles || []);
+  
+  // Format articles to include newspaper info and handle legacy content
+  const formatted = (articles || []).map((a: any) => ({
+    ...a,
+    newspaperId: a.newspaper_id,
+    newspaperName: a.newspapers?.name,
+    newspaperLogo: a.newspapers?.logo_url,
+    // Backward compatibility: if blocks is empty, create a default text block
+    blocks: a.blocks && Array.isArray(a.blocks) && a.blocks.length > 0 
+      ? a.blocks 
+      : [{ id: 'legacy', type: 'text', content: a.content }]
+  }));
+  
+  res.json(formatted);
 });
 
 app.get("/api/articles/:id", authenticate, async (req, res) => {
-  const { data: article } = await supabase.from('articles').select('*').eq('id', req.params.id).single();
+  const { data: article } = await supabase
+    .from('articles')
+    .select(`
+      *,
+      newspapers (
+        name,
+        logo_url
+      )
+    `)
+    .eq('id', req.params.id)
+    .single();
+    
   if (!article) return res.status(404).json({ error: "Article not found" });
-  res.json(article);
+  
+  const formatted = {
+    ...article,
+    newspaperId: article.newspaper_id,
+    newspaperName: article.newspapers?.name,
+    newspaperLogo: article.newspapers?.logo_url,
+    blocks: article.blocks && Array.isArray(article.blocks) && article.blocks.length > 0 
+      ? article.blocks 
+      : [{ id: 'legacy', type: 'text', content: article.content }]
+  };
+  
+  res.json(formatted);
 });
 
 app.post("/api/articles", authenticate, async (req: any, res) => {
-  const { title, content, section } = req.body;
-  if (!title || !content) return res.status(400).json({ error: "Title and content required" });
+  const { title, content, blocks, section, newspaperId } = req.body;
+  if (!title || (!content && !blocks)) return res.status(400).json({ error: "Titolo e contenuto richiesti" });
 
-  // section: 'global' or 'local' (stored as user's residenceId)
+  // If newspaperId is provided, check if user has permission
+  if (newspaperId) {
+    const { data: member } = await supabase
+      .from('newspaper_members')
+      .select('role')
+      .eq('newspaper_id', newspaperId)
+      .eq('user_id', req.user.id)
+      .eq('status', 'active')
+      .maybeSingle();
+      
+    if (!member || (member.role !== 'owner' && member.role !== 'editor' && member.role !== 'writer')) {
+      return res.status(403).json({ error: "Non hai i permessi per pubblicare tramite questo giornale." });
+    }
+  }
+
   const resolvedSection = section === 'local' ? (req.user.residenceId || req.user.regionId || 'global') : 'global';
 
   // Rate limit: max 5 per hour
@@ -3009,7 +3071,7 @@ app.post("/api/articles", authenticate, async (req: any, res) => {
     .eq('authorId', req.user.id)
     .gt('createdAt', oneHourAgo);
 
-  if (count && count >= 5) return res.status(429).json({ error: "Rate limit exceeded (max 5 articles per hour)" });
+  if (count && count >= 5) return res.status(429).json({ error: "Limite raggiunto (max 5 articoli all'ora)" });
 
   const id = generateSecureId(7);
   const now = new Date().toISOString();
@@ -3017,8 +3079,10 @@ app.post("/api/articles", authenticate, async (req: any, res) => {
     id,
     authorId: req.user.id,
     authorName: req.user.username,
+    newspaper_id: newspaperId || null,
     title,
-    content,
+    content: content || (blocks?.[0]?.type === 'text' ? blocks[0].content : "Multimediale"),
+    blocks: blocks || [],
     section: resolvedSection,
     createdAt: now,
     updatedAt: now
@@ -3033,18 +3097,197 @@ app.post("/api/articles", authenticate, async (req: any, res) => {
 });
 
 app.put("/api/articles/:id", authenticate, async (req: any, res) => {
-  const { title, content } = req.body;
-  const { data: article } = await supabase.from('articles').select('authorId').eq('id', req.params.id).single();
+  const { title, content, blocks } = req.body;
+  const { data: article } = await supabase.from('articles').select('authorId, content').eq('id', req.params.id).single();
   if (!article) return res.status(404).json({ error: "Article not found" });
-  if (article.authorId !== req.user.id) return res.status(403).json({ error: "Forbidden" });
+  if (article.authorId !== req.user.id) return res.status(403).json({ error: "Non autorizzato" });
 
   await supabase.from('articles').update({
     title,
-    content,
+    content: content || article.content,
+    blocks: blocks || [],
     updatedAt: new Date().toISOString()
   }).eq('id', req.params.id);
 
   res.json({ success: true });
+});
+
+// Newspaper API
+app.get("/api/newspapers", authenticate, async (req, res) => {
+  const { data: newspapers } = await supabase.from('newspapers').select('*').limit(50);
+  const formatted = (newspapers || []).map((n: any) => ({
+    ...n,
+    logoUrl: n.logo_url,
+    ownerId: n.owner_id,
+    createdAt: n.created_at
+  }));
+  res.json(formatted);
+});
+
+app.post("/api/newspapers", authenticate, async (req: any, res) => {
+  const { name, description, logoUrl } = req.body;
+  if (!name) return res.status(400).json({ error: "Nome giornale richiesto" });
+  
+  // Cost: 50 Gold or 10,000 Money? Let's say 10,000 Money for now.
+  const cost = 10000;
+  if (req.user.money < cost) return res.status(400).json({ error: `Fondi insufficienti (serve $${cost})` });
+
+  try {
+    const id = generateSecureId(8);
+    // 1. Create newspaper
+    const { error: nsError } = await supabase.from('newspapers').insert({
+      id,
+      name,
+      description: description || "",
+      logo_url: logoUrl || "",
+      owner_id: req.user.id,
+      created_at: new Date().toISOString()
+    });
+    if (nsError) throw nsError;
+
+    // 2. Add owner as member
+    await supabase.from('newspaper_members').insert({
+      newspaper_id: id,
+      user_id: req.user.id,
+      role: 'owner',
+      status: 'active',
+      joined_at: new Date().toISOString()
+    });
+
+    // 3. Deduct money
+    await supabase.from('users').update({ money: req.user.money - cost }).eq('id', req.user.id);
+
+    res.json({ success: true, id });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put("/api/newspapers/:id", authenticate, async (req: any, res) => {
+  const { name, description, logoUrl } = req.body;
+  if (!name) return res.status(400).json({ error: "Nome richiesto" });
+
+  try {
+    // Check ownership
+    const { data: member } = await supabase
+      .from('newspaper_members')
+      .select('role')
+      .eq('newspaper_id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (!member || member.role !== 'owner') {
+      return res.status(403).json({ error: "Solo il proprietario può modificare il giornale." });
+    }
+
+    const { error } = await supabase.from('newspapers').update({
+      name,
+      description: description || "",
+      logo_url: logoUrl || ""
+    }).eq('id', req.params.id);
+
+    if (error) throw error;
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/api/newspapers/:id", authenticate, async (req, res) => {
+  const { data: newspaper } = await supabase.from('newspapers').select('*').eq('id', req.params.id).single();
+  if (!newspaper) return res.status(404).json({ error: "Giornale non trovato" });
+
+  const { data: members } = await supabase
+    .from('newspaper_members')
+    .select('*, users(username)')
+    .eq('newspaper_id', req.params.id)
+    .eq('status', 'active');
+
+  const { data: articles } = await supabase
+    .from('articles')
+    .select('*')
+    .eq('newspaper_id', req.params.id)
+    .order('createdAt', { ascending: false });
+
+  res.json({ 
+    ...newspaper, 
+    logoUrl: newspaper.logo_url,
+    ownerId: newspaper.owner_id,
+    createdAt: newspaper.created_at,
+    members: (members || []).map((m: any) => ({ 
+      ...m, 
+      newspaperId: m.newspaper_id,
+      userId: m.user_id,
+      joinedAt: m.joined_at,
+      username: m.users?.username 
+    })),
+    articles: (articles || []).map((a: any) => ({
+      ...a,
+      newspaperId: a.newspaper_id
+    }))
+  });
+});
+
+app.get("/api/my-newspapers", authenticate, async (req: any, res) => {
+  const { data: memberships } = await supabase
+    .from('newspaper_members')
+    .select(`
+      newspaper_id,
+      role,
+      newspapers (
+        id,
+        name,
+        logo_url
+      )
+    `)
+    .eq('user_id', req.user.id)
+    .eq('status', 'active');
+
+  const formatted = (memberships || []).map((m: any) => ({
+    id: m.newspapers?.id,
+    name: m.newspapers?.name,
+    logoUrl: m.newspapers?.logo_url,
+    role: m.role,
+    newspaperId: m.newspaper_id
+  }));
+
+  res.json(formatted);
+});
+
+app.post("/api/newspapers/:id/members", authenticate, async (req: any, res) => {
+  const { userId, role } = req.body;
+  const newspaperId = req.params.id;
+
+  // Check if current user is owner or editor
+  const { data: myMember } = await supabase
+    .from('newspaper_members')
+    .select('role')
+    .eq('newspaper_id', newspaperId)
+    .eq('user_id', req.user.id)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (!myMember || (myMember.role !== 'owner' && myMember.role !== 'editor')) {
+    return res.status(403).json({ error: "Non hai i permessi per gestire i membri." });
+  }
+
+  // Writer can't add anyone. Editor can only add writers.
+  if (myMember.role === 'editor' && role === 'editor') {
+    return res.status(403).json({ error: "Gli editor possono solo invitare scrittori." });
+  }
+
+  try {
+    await supabase.from('newspaper_members').insert({
+      newspaper_id: newspaperId,
+      user_id: userId,
+      role: role || 'writer',
+      status: 'active',
+      joined_at: new Date().toISOString()
+    });
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 app.delete("/api/articles/:id", authenticate, async (req: any, res) => {

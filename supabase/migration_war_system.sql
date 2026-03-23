@@ -18,6 +18,7 @@ ALTER TABLE wars ADD COLUMN IF NOT EXISTS "phase1DefenderScore" BIGINT DEFAULT 0
 ALTER TABLE wars ADD COLUMN IF NOT EXISTS "initialAttackDamage" BIGINT DEFAULT 0;
 ALTER TABLE wars ADD COLUMN IF NOT EXISTS "initialDefenseDamage" BIGINT DEFAULT 0;
 ALTER TABLE wars ADD COLUMN IF NOT EXISTS "distancePenalty" NUMERIC(5,4) DEFAULT 0;
+-- "distancePenalty" è un decimale 0.0000–9.9999 (es. 0.1500 = 15% penalità)
 ALTER TABLE wars ADD COLUMN IF NOT EXISTS "resolvedAt" TIMESTAMPTZ;
 ALTER TABLE wars ADD COLUMN IF NOT EXISTS "winnerId" TEXT;
 ALTER TABLE wars ADD COLUMN IF NOT EXISTS "lootValue" BIGINT DEFAULT 0;
@@ -419,14 +420,21 @@ BEGIN
   -- 6. Se vince l'attaccante: conseguenze territoriali
   IF v_winner = 'attacker' THEN
 
-    -- 6a. Riduci edifici della regione difensore del 50%
+    -- 6a. Calcola loot PRIMA della riduzione (somma livelli originali × 1000)
+    IF v_war."defenderRegionId" IS NOT NULL THEN
+      SELECT COALESCE(SUM(level) * 1000, 0) INTO v_loot
+      FROM regional_buildings
+      WHERE "regionId" = v_war."defenderRegionId";
+    END IF;
+
+    -- 6b. Riduci edifici della regione difensore del 50% (danno di guerra)
     IF v_war."defenderRegionId" IS NOT NULL THEN
       UPDATE regional_buildings
       SET level = GREATEST(0, FLOOR(level * 0.5)::INTEGER)
       WHERE "regionId" = v_war."defenderRegionId";
     END IF;
 
-    -- 6b. Trasferisci proprietà della regione difensore all'attaccante
+    -- 6c. Trasferisci proprietà della regione difensore all'attaccante
     IF v_war."defenderRegionId" IS NOT NULL
        AND v_war."attackerCountryIso2" IS NOT NULL THEN
       UPDATE regions
@@ -434,11 +442,6 @@ BEGIN
           "nation_id"   = v_war."attackerCountryIso2"
       WHERE id = v_war."defenderRegionId";
     END IF;
-
-    -- 6c. Calcola valore loot (somma livelli edifici distrutti × 1000)
-    SELECT COALESCE(SUM(level) * 1000, 0) INTO v_loot
-    FROM regional_buildings
-    WHERE "regionId" = v_war."defenderRegionId";
 
   END IF;
   -- Se vince il difensore: nessuna modifica al territorio
@@ -546,7 +549,7 @@ BEGIN
     WHEN 'battleship'     THEN 15000
     WHEN 'lunar_tank'     THEN 20000
     WHEN 'space_station'  THEN 50000
-    ELSE 100  -- fanteria / default
+    ELSE 100  -- fanteria / tipo sconosciuto (danno minimo di fallback)
   END;
 
   -- 5. Bonus patriota (+10% se nazione originale == nazione del lato)
@@ -586,7 +589,7 @@ BEGIN
   -- 7. Penalità distanza dalla guerra
   v_distance_penalty := COALESCE(v_war."distancePenalty", 0);
 
-  -- 8. Calcola moltiplicatore totale (minimo 0.1 per evitare danno zero/negativo)
+  -- 8. Calcola moltiplicatore totale (floor a 0.1 = 10% danno minimo garantito)
   v_multiplier := GREATEST(0.1, 1.0 + v_patriot_bonus + v_perk_bonus + v_dept_bonus - v_distance_penalty);
 
   -- 9. Danno finale = baseDamage × quantity × multiplier

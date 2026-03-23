@@ -165,12 +165,13 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
       const data = await res.json();
       if (data.error) alert(data.error);
       else {
+        const expMsg = data.workExpGain ? `\n📊 EXP lavoro: +${data.workExpGain}` : '';
         if (data.isGoldMine) {
-          alert(`Hai lavorato! +€${data.earnings} +🪙${data.goldEarnings} Gold`);
+          alert(`Hai lavorato! +€${data.earnings} +🪙${data.goldEarnings} Gold${expMsg}`);
         } else if (data.resourceOutput) {
-          alert(`Hai lavorato! +${data.resourceOutput.player} risorse per te, ${data.resourceOutput.ownerCut} al proprietario`);
+          alert(`Hai lavorato! +${data.resourceOutput.player} risorse per te, ${data.resourceOutput.ownerCut} al proprietario${expMsg}`);
         } else {
-          alert(`Hai lavorato! +€${data.earnings}`);
+          alert(`Hai lavorato! +€${data.earnings}${expMsg}`);
         }
         fetchData(); load();
       }

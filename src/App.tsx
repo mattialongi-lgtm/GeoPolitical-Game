@@ -86,6 +86,7 @@ import PartiesList from "./components/PartiesList";
 import WorldFactoriesList from "./components/WorldFactoriesList";
 import IndependentRegionsList from "./components/IndependentRegionsList";
 import ExtractionDashboard from "./components/ExtractionDashboard";
+import ShopPage from "./components/ShopPage";
 import { HomePage } from "./components/home";
 import { DailyTasksPage } from "./components/daily";
 import { StatePage } from "./components/state";
@@ -5121,6 +5122,9 @@ export default function App() {
                       <button onClick={() => { navigate("/produce"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
                         <Hammer className="w-4 h-4 text-orange-400" /> PRODUCI ARMI
                       </button>
+                      <button onClick={() => { navigate("/shop"); setIsMenuOpen(false); }} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                        <Gem className="w-4 h-4 text-yellow-400" /> NEGOZIO
+                      </button>
                       <div className="h-px bg-gray-700/50 my-1" />
                       <button onClick={() => { setIsDarkMode(prev => !prev); setIsMenuOpen(false); }} aria-label={isDarkMode ? 'Passa alla modalità chiara' : 'Passa alla modalità scura'} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
                         {isDarkMode ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4 text-blue-400" />}
@@ -5277,6 +5281,7 @@ export default function App() {
           <Route path="/war/:warId/summary" element={<WarStatsView user={user} />} />
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} regions={regions} nations={nations} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
+          <Route path="/shop" element={user ? <ShopPage user={user} /> : <Navigate to="/" />} />
           <Route path="/factory/:id" element={user ? <FactoryDetail user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
           <Route path="/factory-market" element={user ? <FactoryMarket user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
           <Route path="/extraction/:id" element={user ? <ExtractionDashboard user={user} /> : <Navigate to="/" />} />

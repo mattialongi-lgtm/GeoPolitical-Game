@@ -89,6 +89,8 @@ import ExtractionDashboard from "./components/ExtractionDashboard";
 import { HomePage } from "./components/home";
 import { DailyTasksPage } from "./components/daily";
 import { StatePage } from "./components/state";
+import { WarCreatePanel, RevolutionPanel, WarDamageBar, WarHistoryList } from "./components/war";
+import type { WarType, TroopType, WarSide } from "./types";
 import territorialBrand from "./assets/branding/territorial-brand.svg";
 
 // --- Utilities ---
@@ -1252,8 +1254,55 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
     }
   };
 
-  const handleJoinRevolution = () => {
-    alert("Funzionalità in arrivo! La rivoluzione sarà disponibile presto. (Placeholder)");
+  const [warCreating, setWarCreating] = useState(false);
+  const [revLoading, setRevLoading] = useState(false);
+
+  const handleCreateWar = async (attackerRegionId: string, defenderRegionId: string, warType: WarType) => {
+    setWarCreating(true);
+    try {
+      const res = await fetch("/api/wars/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attackerRegionId, defenderRegionId, warType }),
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else {
+        fetchData();
+        if (data.warId) navigate(`/wars/${data.warId}`);
+      }
+    } catch { alert("Errore nella dichiarazione di guerra."); }
+    finally { setWarCreating(false); }
+  };
+
+  const handleStartRevolution = async (regionId: string, initiatorIds: string[]) => {
+    setRevLoading(true);
+    try {
+      const res = await fetch("/api/wars/revolution", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regionId, initiatorIds }),
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert(data.message || "Rivoluzione iniziata!"); fetchData(); }
+    } catch { alert("Errore nell'avvio della rivoluzione."); }
+    finally { setRevLoading(false); }
+  };
+
+  const handleStartCoup = async (regionId: string, initiatorIds: string[]) => {
+    setRevLoading(true);
+    try {
+      const res = await fetch("/api/wars/coup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ regionId, initiatorIds }),
+      });
+      const data = await res.json();
+      if (data.error) alert(data.error);
+      else { alert(data.message || "Colpo di stato iniziato!"); fetchData(); }
+    } catch { alert("Errore nell'avvio del colpo di stato."); }
+    finally { setRevLoading(false); }
   };
 
   return (
@@ -1331,24 +1380,23 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         )}
       </div>
 
-      {/* Revolution / Coup CTA */}
-      <div className="bg-gradient-to-r from-rose-600 to-rose-700 p-6 rounded-[2.5rem] shadow-lg shadow-rose-200 text-white space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-white/20">
-            <Flag className="w-6 h-6 text-white" />
-          </div>
-          <div>
-            <h3 className="font-black uppercase tracking-tight">Rivoluzione / Golpe</h3>
-            <p className="text-rose-200 text-xs font-medium">Unisciti o organizza un colpo di stato</p>
-          </div>
-        </div>
-        <button
-          onClick={handleJoinRevolution}
-          className="w-full py-3 bg-white/20 hover:bg-white/30 text-white rounded-2xl font-black uppercase text-xs tracking-widest transition-all border border-white/20"
-        >
-          🔥 Unisciti alla Rivoluzione (Placeholder)
-        </button>
-      </div>
+      {/* Declare War Panel */}
+      <WarCreatePanel
+        userRegionId={user.regionId || ''}
+        onCreateWar={handleCreateWar}
+        loading={warCreating}
+      />
+
+      {/* Revolution / Coup Panel */}
+      <RevolutionPanel
+        regionId={user.regionId || ''}
+        userId={user.id}
+        userGold={user.gold || 0}
+        regionDevelopment={1}
+        onStartRevolution={handleStartRevolution}
+        onStartCoup={handleStartCoup}
+        loading={revLoading}
+      />
 
       {wars.active.length > 0 && (
         <div className="space-y-4">
@@ -1423,13 +1471,22 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                     </div>
                   </div>
 
-                  <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden flex mb-2 relative">
-                    <div className="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${attackerPct}%` }}></div>
-                    <div className="bg-rose-500 h-full transition-all duration-500" style={{ width: `${defenderPct}%` }}></div>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <div className="w-1 h-full bg-white/50"></div>
+                  <WarDamageBar
+                    attackerScore={war.attackerScore}
+                    defenderScore={war.defenderScore}
+                    height="h-4"
+                    showPercentages={false}
+                  />
+
+                  {/* War Type Badge */}
+                  {war.warType && war.warType !== 'land' && (
+                    <div className="flex justify-center mt-2">
+                      <span className="bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg">
+                        {war.warType === 'naval' ? '🚢 Navale' : war.warType === 'space' ? '🚀 Spaziale' : war.warType === 'lunar' ? '🌙 Lunare' : war.warType === 'revolution' ? '🔥 Rivoluzione' : war.warType === 'coup' ? '⚡ Golpe' : war.warType === 'training' ? '🎯 Addestramento' : war.warType}
+                        {war.warType === 'naval' && war.navalPhase ? ` (Fase ${war.navalPhase})` : ''}
+                      </span>
                     </div>
-                  </div>
+                  )}
 
                   {/* Expanded Deploy Section */}
                   <AnimatePresence>

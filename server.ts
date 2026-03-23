@@ -6,6 +6,13 @@ import cookieParser from "cookie-parser";
 import { randomBytes } from "crypto";
 import { GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, RESOURCE_TYPES, AUTONOMY_CONFIG, BUILDING_LABELS, FACTORY_CONFIG, EXTRACTION_CONFIG, factoryYieldMultiplier, factoryStorageLimit, estimateFactoryValue } from "./src/types";
 import type { ResourceType, DeepCostPreview, BuildingType, FactoryType, ExtractionBreakdown } from "./src/types";
+import { TROOP_BASE_DAMAGE, TROOP_ENERGY_COST, TROOP_MONEY_COST, WAR_TYPE_ALLOWED_TROOPS } from "./src/types";
+import type { WarType, TroopType, WarSide, DamageBreakdown, WarFull } from "./src/types";
+import { calculateDamage, calculateInitialAttackDamage, calculateInitialDefensePoints, calculateDamageCap } from "./src/services/damageCalculator";
+import { validateTroopDeployment, getMaxDeployableTroops, getAvailableTroops } from "./src/services/troopManager";
+import { validateWarCreation, getWarDuration, calculateDistancePenalty, shouldTransitionNavalPhase } from "./src/services/warService";
+import { getResolutionEffects, resolveWar as resolveWarLogic } from "./src/services/battleResolver";
+import { shouldAutoAttackFire, getWarsToResolve, getNavalWarsForPhaseTransition } from "./src/services/warScheduler";
 
 console.log("Starting server.ts...");
 
@@ -3707,6 +3714,831 @@ app.get("/api/wars/:id/stats", authenticate, async (req: any, res) => {
       defender: Object.values(defenderDamage).sort((a: any, b: any) => b.totalDamage - a.totalDamage)
     }
   });
+});
+
+// ══════════════════════════════════════════════════════════════════
+// WAR SYSTEM — Complete Routes
+// ══════════════════════════════════════════════════════════════════
+
+// Create a new war (declare war between regions)
+app.post("/api/wars/create", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { attackerRegionId, defenderRegionId, warType } = req.body as {
+      attackerRegionId: string;
+      defenderRegionId: string;
+      warType: WarType;
+    };
+
+    if (!attackerRegionId || !defenderRegionId || !warType) {
+      return res.status(400).json({ error: "Dati mancanti: attackerRegionId, defenderRegionId, warType." });
+    }
+
+    // Fetch attacker and defender regions
+    const [{ data: attackerRegion }, { data: defenderRegion }] = await Promise.all([
+      supabase.from('regions').select('*').eq('id', attackerRegionId).single(),
+      supabase.from('regions').select('*').eq('id', defenderRegionId).single(),
+    ]);
+
+    if (!attackerRegion) return res.status(404).json({ error: "Regione attaccante non trovata." });
+    if (!defenderRegion) return res.status(404).json({ error: "Regione difensore non trovata." });
+
+    // Check user is leader/owner of attacker region
+    if (attackerRegion.ownerUserId !== user.id && attackerRegion.leaderUserId !== user.id) {
+      return res.status(403).json({ error: "Devi essere il leader della regione attaccante." });
+    }
+
+    // Check if defender is already under active attack
+    const { data: existingWar } = await supabase.from('wars')
+      .select('id')
+      .eq('status', 'active')
+      .or(`"attackerRegionId".eq.${defenderRegionId},"defenderRegionId".eq.${defenderRegionId}`)
+      .limit(1)
+      .maybeSingle();
+
+    const defenderUnderAttack = !!existingWar;
+
+    // Check for active revolutions or coups on defender
+    const [{ data: activeRevolution }, { data: activeCoup }] = await Promise.all([
+      supabase.from('revolutions').select('id').eq('regionId', defenderRegionId).eq('status', 'active').limit(1).maybeSingle(),
+      supabase.from('coups').select('id').eq('regionId', defenderRegionId).eq('status', 'active').limit(1).maybeSingle(),
+    ]);
+
+    // Bloc check
+    const [{ data: attackerBloc }, { data: defenderBloc }] = await Promise.all([
+      supabase.from('bloc_memberships').select('blocId').eq('stateId', attackerRegion.nation_id).eq('status', 'active').maybeSingle(),
+      supabase.from('bloc_memberships').select('blocId').eq('stateId', defenderRegion.nation_id).eq('status', 'active').maybeSingle(),
+    ]);
+
+    // Validate war creation
+    const validation = validateWarCreation({
+      attackerRegionId,
+      defenderRegionId,
+      warType: warType as WarType,
+      attackerNationId: attackerRegion.nation_id,
+      defenderNationId: defenderRegion.nation_id,
+      attackerBlocId: attackerBloc?.blocId || null,
+      defenderBlocId: defenderBloc?.blocId || null,
+      defenderUnderAttack,
+      defenderInForcedPeace: false,
+      defenderHasRevolution: !!activeRevolution,
+      defenderHasCoup: !!activeCoup,
+      areAdjacent: true, // Simplified: adjacency check would require geo data
+      attackerHasSeaAccess: true,
+      defenderHasSeaAccess: true,
+      distanceKm: 500,
+      attackerHasSpaceport: true,
+    });
+
+    if (!validation.valid) {
+      return res.status(400).json({ error: validation.error });
+    }
+
+    // Calculate initial damages from buildings
+    const [attackerBuildings, defenderBuildings] = await Promise.all([
+      getRegionBuildings(attackerRegionId),
+      getRegionBuildings(defenderRegionId),
+    ]);
+
+    const initialAttack = calculateInitialAttackDamage(attackerBuildings['military_academy'] || 0);
+    const initialDefense = calculateInitialDefensePoints(defenderBuildings);
+
+    // Calculate distance penalty
+    const distancePenalty = calculateDistancePenalty(500, 20000); // Simplified distance
+
+    // Create war
+    const warId = generateSecureId(9);
+    const duration = getWarDuration(warType as WarType);
+    const now = new Date();
+    const endsAt = new Date(now.getTime() + duration);
+
+    const warData: any = {
+      id: warId,
+      attackerCountryIso2: attackerRegion.nation_id || attackerRegionId,
+      defenderCountryIso2: defenderRegion.nation_id || defenderRegionId,
+      attackerUserId: user.id,
+      defenderUserId: defenderRegion.leaderUserId || defenderRegion.ownerUserId || null,
+      status: 'active',
+      startedAt: now.toISOString(),
+      endsAt: endsAt.toISOString(),
+      attackerScore: initialAttack,
+      defenderScore: initialDefense,
+      warType: warType,
+      attackerRegionId,
+      defenderRegionId,
+      navalPhase: warType === 'naval' ? 1 : 0,
+      initialAttackDamage: initialAttack,
+      initialDefenseDamage: initialDefense,
+      distancePenalty,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+
+    const { error: insertError } = await supabase.from('wars').insert(warData);
+    if (insertError) {
+      return res.status(500).json({ error: "Errore nella creazione della guerra: " + insertError.message });
+    }
+
+    // Add war creator as first participant
+    await supabase.from('war_participants').insert({
+      warId: warId,
+      userId: user.id,
+      side: 'attacker',
+      totalDamage: 0,
+      troopsDeployed: {},
+    });
+
+    // Log war history event
+    await supabase.from('war_history').insert({
+      warId: warId,
+      eventType: 'war_started',
+      eventData: {
+        warType,
+        attackerRegionId,
+        defenderRegionId,
+        attackerNation: attackerRegion.nation_id,
+        defenderNation: defenderRegion.nation_id,
+        initiatorUserId: user.id,
+      },
+    });
+
+    res.json({ success: true, warId, war: warData });
+  } catch (err: any) {
+    console.error("War creation error:", err);
+    res.status(500).json({ error: "Errore nella dichiarazione di guerra." });
+  }
+});
+
+// Deploy troops to an active war (enhanced version)
+app.post("/api/wars/deploy-troops", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { warId, side, troopType, quantity } = req.body as {
+      warId: string;
+      side: WarSide;
+      troopType: TroopType;
+      quantity: number;
+    };
+
+    if (!warId || !side || !troopType) {
+      return res.status(400).json({ error: "Dati mancanti." });
+    }
+
+    const qty = Math.max(1, Math.floor(quantity || 1));
+
+    // Fetch war
+    const { data: war } = await supabase.from('wars').select('*').eq('id', warId).single();
+    if (!war) return res.status(404).json({ error: "Guerra inesistente." });
+    if (war.status !== 'active') return res.status(400).json({ error: "Questa guerra è già terminata." });
+
+    // Validate troop deployment
+    const troopValidation = validateTroopDeployment(
+      troopType as TroopType,
+      qty,
+      (war.warType || 'land') as WarType,
+      war.navalPhase || 0,
+      user.energy,
+      user.money
+    );
+
+    if (!troopValidation.valid) {
+      return res.status(400).json({ error: troopValidation.error });
+    }
+
+    // Check max deployable troops
+    const perks = await getUserPerks(user.id);
+    const resistance = perks['RESISTENZA'] || 0;
+    const maxTroops = getMaxDeployableTroops(
+      troopType as TroopType,
+      user.level || 1,
+      resistance,
+      !!user.isPremium
+    );
+
+    if (qty > maxTroops) {
+      return res.status(400).json({ error: `Massimo ${maxTroops} truppe di tipo ${troopType} dispiegabili.` });
+    }
+
+    // Build damage context
+    const warRegionId = side === 'attacker' ? war.attackerRegionId : war.defenderRegionId;
+    let militaryIndex = 1;
+    let missileSystems = 0;
+    let navalPorts = 0;
+    let airports = 0;
+    let academies = 0;
+
+    if (warRegionId) {
+      try {
+        const buildings = await getRegionBuildings(warRegionId);
+        const indices = calculateRegionalIndices(buildings);
+        militaryIndex = indices.militaryIndex;
+        missileSystems = buildings['missile_system'] || 0;
+        navalPorts = buildings['naval_port'] || 0;
+        airports = buildings['airport'] || 0;
+        academies = buildings['military_academy'] || 0;
+      } catch (_e) { /* use defaults */ }
+    }
+
+    // Department bonus
+    let departmentBonus = 0;
+    const nationId = side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2;
+    if (nationId) {
+      const deptType = ['battleship'].includes(troopType) ? 'naval'
+        : ['lunar_tank', 'space_station'].includes(troopType) ? 'space'
+        : 'land';
+      const { data: dept } = await supabase.from('war_departments')
+        .select('bonusPercent')
+        .eq('stateId', nationId)
+        .eq('departmentType', deptType)
+        .maybeSingle();
+      if (dept) departmentBonus = (dept.bonusPercent || 0) / 100;
+    }
+
+    // Patriot check
+    let isPatriot = false;
+    if (user.regionId) {
+      const { data: userRegion } = await supabase.from('regions').select('nation_id').eq('id', user.regionId).maybeSingle();
+      if (userRegion?.nation_id === nationId) isPatriot = true;
+    }
+
+    // Calculate damage
+    const damageResult = calculateDamage({
+      troopType: troopType as TroopType,
+      quantity: qty,
+      militaryIndex,
+      missileSystems,
+      navalPorts,
+      airports,
+      academies,
+      forza: perks['FORZA'] || 0,
+      nationBonus: 1,
+      education: perks['ISTRUZIONE'] || 0,
+      resistance,
+      playerLevel: user.level || 1,
+      distancePenalty: war.distancePenalty || 0,
+      departmentBonus,
+      isPatriot,
+      side: side as WarSide,
+    });
+
+    // Deduct resources
+    await supabase.from('users').update({
+      energy: user.energy - troopValidation.energyCost,
+      money: user.money - troopValidation.moneyCost,
+    }).eq('id', user.id);
+
+    // Update war scores
+    const scoreField = side === 'attacker' ? 'attackerScore' : 'defenderScore';
+    // For naval phase 1, update phase1 scores
+    const isNavalPhase1 = war.warType === 'naval' && war.navalPhase === 1;
+    const updateField = isNavalPhase1
+      ? (side === 'attacker' ? 'phase1AttackerScore' : 'phase1DefenderScore')
+      : scoreField;
+
+    await supabase.from('wars').update({
+      [updateField]: (war[updateField] || 0) + damageResult.finalDamage,
+      updatedAt: new Date().toISOString(),
+    }).eq('id', warId);
+
+    // Record deployment
+    await supabase.from('war_deployments').insert({
+      warId,
+      userId: user.id,
+      side,
+      troopType,
+      quantity: qty,
+      baseDamage: damageResult.baseDamage,
+      finalDamage: damageResult.finalDamage,
+      bonuses: damageResult,
+    });
+
+    // Upsert participant
+    const { data: existingParticipant } = await supabase.from('war_participants')
+      .select('id, totalDamage, troopsDeployed')
+      .eq('warId', warId)
+      .eq('userId', user.id)
+      .maybeSingle();
+
+    if (existingParticipant) {
+      const deployed = existingParticipant.troopsDeployed || {};
+      deployed[troopType] = (deployed[troopType] || 0) + qty;
+      await supabase.from('war_participants').update({
+        totalDamage: (existingParticipant.totalDamage || 0) + damageResult.finalDamage,
+        troopsDeployed: deployed,
+      }).eq('id', existingParticipant.id);
+    } else {
+      await supabase.from('war_participants').insert({
+        warId,
+        userId: user.id,
+        side,
+        totalDamage: damageResult.finalDamage,
+        troopsDeployed: { [troopType]: qty },
+      });
+    }
+
+    // Log action
+    await supabase.from('action_logs').insert({
+      userId: user.id,
+      action: 'WAR_DEPLOY',
+      details: JSON.stringify({
+        warId, side, troopType, quantity: qty,
+        damage: damageResult.finalDamage,
+        username: user.username, isPatriot,
+      }),
+      timestamp: Date.now(),
+    });
+
+    // XP reward
+    await addXP(user.id, GAME_CONFIG.XP_PER_ATTACK);
+
+    res.json({
+      success: true,
+      damageDealt: damageResult.finalDamage,
+      breakdown: damageResult,
+      side,
+      troopType,
+      quantity: qty,
+    });
+  } catch (err: any) {
+    console.error("War deploy error:", err);
+    res.status(500).json({ error: "Errore durante lo schieramento." });
+  }
+});
+
+// Join an existing war as participant
+app.post("/api/wars/:warId/join", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { warId } = req.params;
+    const { side } = req.body;
+
+    if (!side || (side !== 'attacker' && side !== 'defender')) {
+      return res.status(400).json({ error: "Schieramento non valido." });
+    }
+
+    const { data: war } = await supabase.from('wars').select('*').eq('id', warId).single();
+    if (!war) return res.status(404).json({ error: "Guerra inesistente." });
+    if (war.status !== 'active') return res.status(400).json({ error: "Guerra già terminata." });
+
+    // Check not already participating
+    const { data: existing } = await supabase.from('war_participants')
+      .select('id')
+      .eq('warId', warId)
+      .eq('userId', user.id)
+      .maybeSingle();
+
+    if (existing) return res.status(400).json({ error: "Sei già partecipante a questa guerra." });
+
+    // Check military agreement for external wars
+    const nationId = side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2;
+    if (user.regionId) {
+      const { data: userRegion } = await supabase.from('regions').select('nation_id').eq('id', user.regionId).maybeSingle();
+      if (userRegion?.nation_id !== nationId) {
+        // External player — check military agreement
+        const { data: agreement } = await supabase.from('war_military_agreements')
+          .select('id')
+          .eq('status', 'active')
+          .or(`"stateA".eq.${userRegion?.nation_id},"stateB".eq.${userRegion?.nation_id}`)
+          .or(`"stateA".eq.${nationId},"stateB".eq.${nationId}`)
+          .maybeSingle();
+
+        if (!agreement) {
+          return res.status(403).json({ error: "Serve un accordo militare per combattere guerre esterne." });
+        }
+      }
+    }
+
+    await supabase.from('war_participants').insert({
+      warId,
+      userId: user.id,
+      side,
+      totalDamage: 0,
+      troopsDeployed: {},
+    });
+
+    res.json({ success: true, message: "Ti sei unito alla guerra." });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nell'unirsi alla guerra." });
+  }
+});
+
+// Get war participants
+app.get("/api/wars/:warId/participants", authenticate, async (req: any, res) => {
+  const { warId } = req.params;
+  const { data: participants } = await supabase.from('war_participants')
+    .select('*')
+    .eq('warId', warId)
+    .order('totalDamage', { ascending: false });
+
+  res.json({ participants: participants || [] });
+});
+
+// Get war deployments (history)
+app.get("/api/wars/:warId/deployments", authenticate, async (req: any, res) => {
+  const { warId } = req.params;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const { data: deployments } = await supabase.from('war_deployments')
+    .select('*')
+    .eq('warId', warId)
+    .order('deployedAt', { ascending: false })
+    .limit(limit);
+
+  res.json({ deployments: deployments || [] });
+});
+
+// Get war history events
+app.get("/api/wars/:warId/history", authenticate, async (req: any, res) => {
+  const { warId } = req.params;
+  const { data: history } = await supabase.from('war_history')
+    .select('*')
+    .eq('warId', warId)
+    .order('createdAt', { ascending: false });
+
+  res.json({ history: history || [] });
+});
+
+// Get available troops for a war
+app.get("/api/wars/:warId/available-troops", authenticate, async (req: any, res) => {
+  const { warId } = req.params;
+  const { data: war } = await supabase.from('wars').select('warType, navalPhase').eq('id', warId).single();
+  if (!war) return res.status(404).json({ error: "Guerra inesistente." });
+
+  const troops = getAvailableTroops((war.warType || 'land') as WarType, war.navalPhase || 0);
+  const troopDetails = troops.map((t: TroopType) => ({
+    type: t,
+    baseDamage: TROOP_BASE_DAMAGE[t],
+    energyCost: TROOP_ENERGY_COST[t],
+    moneyCost: TROOP_MONEY_COST[t],
+  }));
+
+  res.json({ troops: troopDetails });
+});
+
+// === AUTO-ATTACK ===
+
+// Set auto-attack for a war
+app.post("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { warId } = req.params;
+    const { side, troopType, autoType, enabled } = req.body;
+
+    const { data: war } = await supabase.from('wars').select('status').eq('id', warId).single();
+    if (!war || war.status !== 'active') return res.status(400).json({ error: "Guerra non attiva." });
+
+    if (enabled === false) {
+      // Disable auto-attack
+      await supabase.from('war_auto_attacks')
+        .update({ isActive: false })
+        .eq('warId', warId)
+        .eq('userId', user.id);
+      return res.json({ success: true, message: "Auto-attacco disattivato." });
+    }
+
+    if (!side || !troopType || !autoType) {
+      return res.status(400).json({ error: "Dati mancanti per auto-attacco." });
+    }
+
+    const expiresAt = new Date(Date.now() + GAME_CONFIG.WAR_AUTO_EXPIRE_MS).toISOString();
+
+    // Upsert auto-attack
+    await supabase.from('war_auto_attacks').upsert({
+      warId,
+      userId: user.id,
+      side,
+      troopType,
+      autoType: autoType || 'hourly',
+      isActive: true,
+      activatedAt: new Date().toISOString(),
+      expiresAt,
+    }, { onConflict: 'warId,userId' });
+
+    res.json({ success: true, message: `Auto-attacco ${autoType} attivato.`, expiresAt });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nell'impostazione dell'auto-attacco." });
+  }
+});
+
+// Get user's auto-attack status
+app.get("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { warId } = req.params;
+  const { data: autoAttack } = await supabase.from('war_auto_attacks')
+    .select('*')
+    .eq('warId', warId)
+    .eq('userId', user.id)
+    .eq('isActive', true)
+    .maybeSingle();
+
+  res.json({ autoAttack: autoAttack || null });
+});
+
+// === REVOLUTION ===
+
+app.post("/api/wars/revolution", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { regionId, initiatorIds } = req.body;
+
+    if (!regionId || !initiatorIds || !Array.isArray(initiatorIds)) {
+      return res.status(400).json({ error: "Dati mancanti." });
+    }
+
+    if (initiatorIds.length < GAME_CONFIG.WAR_REVOLUTION_MIN_PLAYERS) {
+      return res.status(400).json({ error: `Servono almeno ${GAME_CONFIG.WAR_REVOLUTION_MIN_PLAYERS} giocatori per una rivoluzione.` });
+    }
+
+    if (!initiatorIds.includes(user.id)) {
+      return res.status(400).json({ error: "Devi essere tra gli iniziatori." });
+    }
+
+    // Check cooldown
+    const { data: lastRevolution } = await supabase.from('revolutions')
+      .select('cooldownUntil')
+      .eq('regionId', regionId)
+      .order('createdAt', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (lastRevolution?.cooldownUntil && new Date(lastRevolution.cooldownUntil).getTime() > Date.now()) {
+      return res.status(400).json({ error: "Rivoluzione in cooldown per questa regione." });
+    }
+
+    // Check no active war/revolution/coup
+    const { data: activeWar } = await supabase.from('wars')
+      .select('id').eq('status', 'active')
+      .or(`"attackerRegionId".eq.${regionId},"defenderRegionId".eq.${regionId}`)
+      .maybeSingle();
+    if (activeWar) return res.status(400).json({ error: "Regione già in guerra." });
+
+    const { data: activeRev } = await supabase.from('revolutions')
+      .select('id').eq('regionId', regionId).eq('status', 'active').maybeSingle();
+    if (activeRev) return res.status(400).json({ error: "Rivoluzione già in corso." });
+
+    // Deduct gold from each initiator
+    const goldCost = GAME_CONFIG.WAR_REVOLUTION_GOLD_COST;
+    for (const uid of initiatorIds) {
+      const { data: p } = await supabase.from('users').select('gold').eq('id', uid).single();
+      if (!p || (p.gold || 0) < goldCost) {
+        return res.status(400).json({ error: `Giocatore ${uid} non ha abbastanza gold.` });
+      }
+    }
+
+    for (const uid of initiatorIds) {
+      await supabase.from('users').update({
+        gold: supabase.rpc ? undefined : 0, // Will use raw decrement below
+      }).eq('id', uid);
+      // Decrement gold
+      const { data: currentUser } = await supabase.from('users').select('gold').eq('id', uid).single();
+      if (currentUser) {
+        await supabase.from('users').update({ gold: (currentUser.gold || 0) - goldCost }).eq('id', uid);
+      }
+    }
+
+    // Create revolution war
+    const warId = generateSecureId(9);
+    const now = new Date();
+    const { data: region } = await supabase.from('regions').select('*').eq('id', regionId).single();
+
+    await supabase.from('wars').insert({
+      id: warId,
+      attackerCountryIso2: 'REV',
+      defenderCountryIso2: region?.nation_id || regionId,
+      attackerUserId: user.id,
+      defenderUserId: region?.leaderUserId || region?.ownerUserId || null,
+      status: 'active',
+      startedAt: now.toISOString(),
+      endsAt: new Date(now.getTime() + GAME_CONFIG.WAR_DURATION_MS).toISOString(),
+      attackerScore: 0,
+      defenderScore: 0,
+      warType: 'revolution',
+      attackerRegionId: regionId,
+      defenderRegionId: regionId,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+
+    const cooldownUntil = new Date(now.getTime() + GAME_CONFIG.WAR_REVOLUTION_COOLDOWN_MS).toISOString();
+
+    await supabase.from('revolutions').insert({
+      regionId,
+      initiatorIds,
+      goldCost: goldCost * initiatorIds.length,
+      status: 'active',
+      warId,
+      cooldownUntil,
+    });
+
+    // Add all initiators as participants
+    for (const uid of initiatorIds) {
+      await supabase.from('war_participants').insert({
+        warId, userId: uid, side: 'attacker', totalDamage: 0, troopsDeployed: {},
+      });
+    }
+
+    await supabase.from('war_history').insert({
+      warId,
+      eventType: 'war_started',
+      eventData: { warType: 'revolution', regionId, initiatorIds, goldCost: goldCost * initiatorIds.length },
+    });
+
+    res.json({ success: true, warId, message: "Rivoluzione iniziata!" });
+  } catch (err: any) {
+    console.error("Revolution error:", err);
+    res.status(500).json({ error: "Errore nell'avvio della rivoluzione." });
+  }
+});
+
+// === COUP D'ÉTAT ===
+
+app.post("/api/wars/coup", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { regionId, initiatorIds } = req.body;
+
+    if (!regionId || !initiatorIds || !Array.isArray(initiatorIds)) {
+      return res.status(400).json({ error: "Dati mancanti." });
+    }
+
+    if (initiatorIds.length < GAME_CONFIG.WAR_COUP_MIN_PLAYERS) {
+      return res.status(400).json({ error: `Servono almeno ${GAME_CONFIG.WAR_COUP_MIN_PLAYERS} giocatori.` });
+    }
+
+    // Check development level must be 1
+    const { data: region } = await supabase.from('regions').select('*').eq('id', regionId).single();
+    if (!region) return res.status(404).json({ error: "Regione non trovata." });
+
+    const buildings = await getRegionBuildings(regionId);
+    const indices = calculateRegionalIndices(buildings);
+    if (indices.developmentIndex > GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT) {
+      return res.status(400).json({ error: "Colpo di stato possibile solo con sviluppo = 1." });
+    }
+
+    // Check no active war/revolution/coup
+    const { data: activeWar } = await supabase.from('wars')
+      .select('id').eq('status', 'active')
+      .or(`"attackerRegionId".eq.${regionId},"defenderRegionId".eq.${regionId}`)
+      .maybeSingle();
+    if (activeWar) return res.status(400).json({ error: "Regione già in guerra." });
+
+    const { data: activeCoup } = await supabase.from('coups')
+      .select('id').eq('regionId', regionId).eq('status', 'active').maybeSingle();
+    if (activeCoup) return res.status(400).json({ error: "Colpo di stato già in corso." });
+
+    // Create coup war
+    const warId = generateSecureId(9);
+    const now = new Date();
+
+    await supabase.from('wars').insert({
+      id: warId,
+      attackerCountryIso2: 'COUP',
+      defenderCountryIso2: region.nation_id || regionId,
+      attackerUserId: user.id,
+      defenderUserId: region.leaderUserId || region.ownerUserId || null,
+      status: 'active',
+      startedAt: now.toISOString(),
+      endsAt: new Date(now.getTime() + GAME_CONFIG.WAR_DURATION_MS).toISOString(),
+      attackerScore: 0,
+      defenderScore: 0,
+      warType: 'coup',
+      attackerRegionId: regionId,
+      defenderRegionId: regionId,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    });
+
+    await supabase.from('coups').insert({
+      regionId,
+      initiatorIds,
+      status: 'active',
+      warId,
+    });
+
+    for (const uid of initiatorIds) {
+      await supabase.from('war_participants').insert({
+        warId, userId: uid, side: 'attacker', totalDamage: 0, troopsDeployed: {},
+      });
+    }
+
+    await supabase.from('war_history').insert({
+      warId,
+      eventType: 'war_started',
+      eventData: { warType: 'coup', regionId, initiatorIds },
+    });
+
+    res.json({ success: true, warId, message: "Colpo di stato iniziato!" });
+  } catch (err: any) {
+    console.error("Coup error:", err);
+    res.status(500).json({ error: "Errore nell'avvio del colpo di stato." });
+  }
+});
+
+// === MILITARY AGREEMENTS ===
+
+app.post("/api/military-agreements", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { targetStateId, agreementType } = req.body;
+
+    if (!targetStateId || !agreementType) {
+      return res.status(400).json({ error: "Dati mancanti." });
+    }
+
+    // User must be leader of their nation
+    const { data: userRegion } = await supabase.from('regions').select('nation_id, leaderUserId').eq('id', user.regionId).maybeSingle();
+    if (!userRegion || userRegion.leaderUserId !== user.id) {
+      return res.status(403).json({ error: "Solo il leader nazionale può proporre accordi militari." });
+    }
+
+    const initiatorState = userRegion.nation_id;
+    if (!initiatorState) return res.status(400).json({ error: "Nazione non trovata." });
+
+    // Normalize state pair (alphabetical order for uniqueness)
+    const [stateA, stateB] = [initiatorState, targetStateId].sort();
+
+    // Check existing
+    const { data: existing } = await supabase.from('war_military_agreements')
+      .select('id, status')
+      .eq('stateA', stateA)
+      .eq('stateB', stateB)
+      .maybeSingle();
+
+    if (existing && existing.status === 'active') {
+      return res.status(400).json({ error: "Accordo militare già attivo." });
+    }
+
+    if (existing && existing.status === 'pending') {
+      // If other side proposed, accept it
+      if (agreementType === 'bilateral') {
+        await supabase.from('war_military_agreements').update({
+          status: 'active',
+          updatedAt: new Date().toISOString(),
+        }).eq('id', existing.id);
+        return res.json({ success: true, message: "Accordo militare accettato!" });
+      }
+    }
+
+    // Create new agreement
+    await supabase.from('war_military_agreements').upsert({
+      stateA,
+      stateB,
+      agreementType,
+      initiatorState,
+      status: agreementType === 'unilateral' ? 'active' : 'pending',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }, { onConflict: 'stateA,stateB' });
+
+    res.json({ success: true, message: agreementType === 'unilateral' ? 'Accordo unilaterale attivato.' : 'Proposta di accordo inviata.' });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nella creazione dell'accordo militare." });
+  }
+});
+
+// List military agreements for a state
+app.get("/api/military-agreements/:stateId", authenticate, async (req: any, res) => {
+  const { stateId } = req.params;
+  const { data: agreements } = await supabase.from('war_military_agreements')
+    .select('*')
+    .or(`"stateA".eq.${stateId},"stateB".eq.${stateId}`)
+    .eq('status', 'active');
+
+  res.json({ agreements: agreements || [] });
+});
+
+// === WAR DEPARTMENTS ===
+
+app.get("/api/war-departments/:stateId", authenticate, async (req: any, res) => {
+  const { stateId } = req.params;
+  const { data: departments } = await supabase.from('war_departments')
+    .select('*')
+    .eq('stateId', stateId);
+
+  res.json({ departments: departments || [] });
+});
+
+// Get active revolutions for a region
+app.get("/api/revolutions/:regionId", authenticate, async (req: any, res) => {
+  const { regionId } = req.params;
+  const { data: revolutions } = await supabase.from('revolutions')
+    .select('*')
+    .eq('regionId', regionId)
+    .order('createdAt', { ascending: false })
+    .limit(10);
+
+  res.json({ revolutions: revolutions || [] });
+});
+
+// Get active coups for a region
+app.get("/api/coups/:regionId", authenticate, async (req: any, res) => {
+  const { regionId } = req.params;
+  const { data: coups } = await supabase.from('coups')
+    .select('*')
+    .eq('regionId', regionId)
+    .order('createdAt', { ascending: false })
+    .limit(10);
+
+  res.json({ coups: coups || [] });
 });
 
 app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {
@@ -8795,76 +9627,269 @@ async function budgetMaintenanceTick() {
 // War Resolution Cronjob
 async function checkAndResolveWars() {
   try {
+    // 1. Resolve expired wars
     const { data: expiredWars } = await supabase
       .from('wars')
       .select('*')
       .eq('status', 'active')
       .lt('endsAt', new Date().toISOString());
 
-    if (!expiredWars || expiredWars.length === 0) return;
+    if (expiredWars && expiredWars.length > 0) {
+      for (const war of expiredWars) {
+        try {
+          const attackerTotal = (war.attackerScore || 0) + (war.phase1AttackerScore || 0);
+          const defenderTotal = (war.defenderScore || 0) + (war.phase1DefenderScore || 0);
+          const winner: string = attackerTotal > defenderTotal ? 'attacker' : 'defender';
 
-    for (const war of expiredWars) {
-      let winner = null;
-      let loser = null;
+          const effects = getResolutionEffects(war.warType || 'land', winner as WarSide);
 
-      if (war.attackerScore > war.defenderScore) {
-        winner = war.attackerCountryIso2;
-        loser = war.defenderCountryIso2;
-      } else if (war.defenderScore > war.attackerScore) {
-        winner = war.defenderCountryIso2;
-        loser = war.attackerCountryIso2;
-      }
+          // Apply building reduction if attacker wins
+          if (effects.buildingReduction > 0 && war.defenderRegionId) {
+            await supabase.from('regional_buildings')
+              .select('regionId, buildingType, level')
+              .eq('regionId', war.defenderRegionId)
+              .then(async ({ data: buildings }) => {
+                if (buildings) {
+                  for (const b of buildings) {
+                    const newLevel = Math.max(0, Math.floor((b.level || 0) * (1 - effects.buildingReduction)));
+                    await supabase.from('regional_buildings')
+                      .update({ level: newLevel })
+                      .eq('regionId', b.regionId)
+                      .eq('buildingType', b.buildingType);
+                  }
+                }
+              });
+          }
 
-      if (winner && loser) {
-        // Transfer Treasury (Loot)
-        const { data: loserBudget } = await supabase.from('budgets').select('moneyEUR').eq('ownerType', 'REGION').eq('ownerId', loser).single();
-        if (loserBudget && loserBudget.moneyEUR > 0) {
-          const loot = loserBudget.moneyEUR;
+          // Territory transfer
+          if (effects.territoryTransfer && winner === 'attacker' && war.defenderRegionId && war.attackerRegionId) {
+            const { data: attackerRegion } = await supabase.from('regions')
+              .select('ownerUserId, leaderUserId, nation_id, stateColor, governmentForm, leaderTitle, dictatorship')
+              .eq('id', war.attackerRegionId)
+              .single();
 
-          await supabase.rpc('add_budget_transaction', {
-            p_owner_type: 'REGION',
-            p_owner_id: loser,
-            p_type: 'EXPENSE',
-            p_subtype: 'WAR_LOOT_LOST',
-            p_money_delta: -loot,
-            p_metadata: { to: winner, warId: war.id }
-          });
+            if (attackerRegion) {
+              const conquestLeader = attackerRegion.leaderUserId || attackerRegion.ownerUserId;
+              await supabase.from('regions').update({
+                ownerUserId: conquestLeader,
+                leaderUserId: conquestLeader,
+                nation_id: attackerRegion.nation_id || war.attackerCountryIso2,
+                stateColor: attackerRegion.stateColor,
+                governmentForm: attackerRegion.governmentForm,
+                leaderTitle: attackerRegion.leaderTitle,
+                dictatorship: attackerRegion.dictatorship,
+                stability: 30,
+              }).eq('id', war.defenderRegionId);
 
-          await supabase.rpc('add_budget_transaction', {
-            p_owner_type: 'REGION',
-            p_owner_id: winner,
-            p_type: 'INCOME',
-            p_subtype: 'WAR_LOOT_WON',
-            p_money_delta: loot,
-            p_metadata: { from: loser, warId: war.id }
-          });
+              console.log(`[WAR] ${war.attackerCountryIso2} CONQUERED ${war.defenderRegionId}`);
+            }
+          }
 
-          console.log(`[WAR] ${winner} looted ${loot} EUR from ${loser}`);
-        }
-
-        // Conquest Logic: If Attacker wins, they take over the defender's region
-        if (winner === war.attackerCountryIso2) {
-          const { data: attackerRegion } = await supabase.from('regions').select('ownerUserId, leaderUserId, nation_id, stateColor, governmentForm, leaderTitle, dictatorship').eq('id', winner).single();
-          const conquestLeader = attackerRegion?.leaderUserId || attackerRegion?.ownerUserId;
-          const conquestNation = attackerRegion?.nation_id || `nation_${winner}`;
-          if (attackerRegion && conquestLeader) {
+          // Independence for revolution/coup
+          if (effects.independenceGrant && winner === 'attacker' && war.defenderRegionId) {
             await supabase.from('regions').update({
-              ownerUserId: conquestLeader,
-              leaderUserId: conquestLeader,
-              nation_id: conquestNation,
-              stateColor: attackerRegion.stateColor,
-              governmentForm: attackerRegion.governmentForm,
-              leaderTitle: attackerRegion.leaderTitle,
-              dictatorship: attackerRegion.dictatorship,
-              stability: 30
-            }).eq('id', loser);
+              nation_id: null,
+              ownerUserId: war.attackerUserId,
+              leaderUserId: war.attackerUserId,
+              stability: 50,
+            }).eq('id', war.defenderRegionId);
 
-            console.log(`[WAR] ${winner} CONQUERED ${loser}. Region added to nation: ${conquestNation}`);
+            if (effects.governmentChange) {
+              await supabase.from('regions').update({
+                governmentForm: 'PARLIAMENTARY_REPUBLIC',
+              }).eq('id', war.defenderRegionId);
+            }
+          }
+
+          // Loot calculation
+          let lootValue = 0;
+          if (effects.lootPercentage > 0 && war.defenderRegionId) {
+            const { data: loserBudget } = await supabase.from('budgets')
+              .select('moneyEUR')
+              .eq('ownerType', 'REGION')
+              .eq('ownerId', war.defenderRegionId)
+              .single();
+
+            if (loserBudget && loserBudget.moneyEUR > 0) {
+              lootValue = Math.floor(loserBudget.moneyEUR * effects.lootPercentage);
+
+              await supabase.rpc('add_budget_transaction', {
+                p_owner_type: 'REGION',
+                p_owner_id: war.defenderRegionId,
+                p_type: 'EXPENSE',
+                p_subtype: 'WAR_LOOT_LOST',
+                p_money_delta: -lootValue,
+                p_metadata: { warId: war.id },
+              });
+
+              if (war.attackerRegionId) {
+                await supabase.rpc('add_budget_transaction', {
+                  p_owner_type: 'REGION',
+                  p_owner_id: war.attackerRegionId,
+                  p_type: 'INCOME',
+                  p_subtype: 'WAR_LOOT_WON',
+                  p_money_delta: lootValue,
+                  p_metadata: { warId: war.id },
+                });
+              }
+            }
+          }
+
+          // Update war status
+          await supabase.from('wars').update({
+            status: 'ended',
+            winnerId: winner,
+            resolvedAt: new Date().toISOString(),
+            lootValue,
+            updatedAt: new Date().toISOString(),
+          }).eq('id', war.id);
+
+          // Update linked revolution/coup
+          if (war.warType === 'revolution') {
+            await supabase.from('revolutions').update({
+              status: winner === 'attacker' ? 'succeeded' : 'failed',
+              resolvedAt: new Date().toISOString(),
+            }).eq('warId', war.id);
+          } else if (war.warType === 'coup') {
+            await supabase.from('coups').update({
+              status: winner === 'attacker' ? 'succeeded' : 'failed',
+              resolvedAt: new Date().toISOString(),
+            }).eq('warId', war.id);
+          }
+
+          // War history
+          await supabase.from('war_history').insert({
+            warId: war.id,
+            eventType: 'war_ended',
+            eventData: {
+              winner,
+              attackerTotal,
+              defenderTotal,
+              lootValue,
+              effects,
+            },
+          });
+
+          console.log(`[WAR] Resolved: ${war.id} — Winner: ${winner}, Loot: ${lootValue}`);
+        } catch (warErr) {
+          console.error(`[WAR] Error resolving war ${war.id}:`, warErr);
+        }
+      }
+    }
+
+    // 2. Handle naval phase transitions
+    const { data: navalWars } = await supabase
+      .from('wars')
+      .select('*')
+      .eq('status', 'active')
+      .eq('warType', 'naval')
+      .eq('navalPhase', 1);
+
+    if (navalWars && navalWars.length > 0) {
+      const now = Date.now();
+      for (const war of navalWars) {
+        const phaseEnd = new Date(war.createdAt).getTime() + GAME_CONFIG.WAR_NAVAL_PHASE_DURATION_MS;
+        if (now >= phaseEnd) {
+          const attackerWinsPhase1 = (war.phase1AttackerScore || 0) > (war.phase1DefenderScore || 0);
+
+          if (attackerWinsPhase1) {
+            // Phase 2: land war with bonus
+            const bonusDamage = (war.phase1AttackerScore || 0) - (war.phase1DefenderScore || 0);
+            const newEndsAt = new Date(now + GAME_CONFIG.WAR_DURATION_MS).toISOString();
+
+            await supabase.from('wars').update({
+              navalPhase: 2,
+              attackerScore: bonusDamage,
+              defenderScore: 0,
+              endsAt: newEndsAt,
+              updatedAt: new Date().toISOString(),
+            }).eq('id', war.id);
+
+            await supabase.from('war_history').insert({
+              warId: war.id,
+              eventType: 'phase_change',
+              eventData: {
+                from: 1, to: 2,
+                phase1Winner: 'attacker',
+                bonusDamage,
+              },
+            });
+
+            console.log(`[WAR] Naval war ${war.id} → Phase 2 (attacker won phase 1, bonus: ${bonusDamage})`);
+          } else {
+            // Attacker lost phase 1 — war ends
+            await supabase.from('wars').update({
+              status: 'ended',
+              winnerId: 'defender',
+              resolvedAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }).eq('id', war.id);
+
+            await supabase.from('war_history').insert({
+              warId: war.id,
+              eventType: 'war_ended',
+              eventData: { winner: 'defender', reason: 'naval_phase1_lost' },
+            });
+
+            console.log(`[WAR] Naval war ${war.id} ended — Attacker lost phase 1`);
           }
         }
       }
+    }
 
-      await supabase.from('wars').update({ status: 'ended', endsAt: new Date().toISOString() }).eq('id', war.id);
+    // 3. Process auto-attacks
+    const { data: activeAutoAttacks } = await supabase
+      .from('war_auto_attacks')
+      .select('*')
+      .eq('isActive', true);
+
+    if (activeAutoAttacks && activeAutoAttacks.length > 0) {
+      for (const aa of activeAutoAttacks) {
+        if (shouldAutoAttackFire(aa.autoType, aa.lastFiredAt, aa.activatedAt)) {
+          // Check war is still active
+          const { data: war } = await supabase.from('wars').select('status').eq('id', aa.warId).single();
+          if (!war || war.status !== 'active') {
+            await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+            continue;
+          }
+
+          // Fire auto-attack via internal deploy logic
+          try {
+            const { data: autoUser } = await supabase.from('users').select('*').eq('id', aa.userId).single();
+            if (!autoUser) continue;
+
+            const baseDmg = TROOP_BASE_DAMAGE[aa.troopType as TroopType] || 10;
+            const energyCost = TROOP_ENERGY_COST[aa.troopType as TroopType] || 10;
+
+            if (aa.autoType === 'hourly') {
+              // Hourly: free (no energy cost)
+            } else {
+              // Maximum: costs energy — skip if insufficient
+              if (autoUser.energy < energyCost) continue;
+              await supabase.from('users').update({
+                energy: autoUser.energy - energyCost,
+              }).eq('id', aa.userId);
+            }
+
+            const scoreField = aa.side === 'attacker' ? 'attackerScore' : 'defenderScore';
+            const { data: currentWar } = await supabase.from('wars').select(scoreField).eq('id', aa.warId).single();
+
+            await supabase.from('wars').update({
+              [scoreField]: (currentWar?.[scoreField] || 0) + baseDmg,
+              updatedAt: new Date().toISOString(),
+            }).eq('id', aa.warId);
+
+            await supabase.from('war_auto_attacks').update({
+              lastFiredAt: new Date().toISOString(),
+            }).eq('id', aa.id);
+          } catch (_e) { /* skip failed auto-attacks */ }
+
+          // Check expiration
+          if (aa.expiresAt && new Date(aa.expiresAt).getTime() <= Date.now()) {
+            await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+          }
+        }
+      }
     }
   } catch (error) {
     console.error("Error in checkAndResolveWars:", error);

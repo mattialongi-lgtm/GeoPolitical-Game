@@ -1387,8 +1387,9 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
     // Work Experience Gain — increment per-resource work experience
     let workExpGain = 0;
+    const WORK_EXP_PER_ISTRUZIONE_LEVEL = 0.5;
     if (!isGoldMine && factoryType) {
-      workExpGain = 1 + Math.floor((perks['ISTRUZIONE'] || 0) * 0.5);
+      workExpGain = 1 + Math.floor((perks['ISTRUZIONE'] || 0) * WORK_EXP_PER_ISTRUZIONE_LEVEL);
       try {
         await incrementPlayerWorkExperience(user.id, factoryType, workExpGain);
       } catch (expErr) {
@@ -4145,6 +4146,7 @@ app.get("/api/wars/:id/stats", authenticate, async (req: any, res) => {
   }
 
   // Secondary source: action_logs (for old weapon-based deployments not in war_participants)
+  const participantUserIds = new Set((participants || []).map((p: any) => p.userId));
   const { data: logs } = await supabase.from('action_logs')
     .select('*')
     .eq('action', 'WAR_DEPLOY');
@@ -4167,7 +4169,7 @@ app.get("/api/wars/:id/stats", authenticate, async (req: any, res) => {
         };
       }
       // Only add damage from action_logs if not already covered by war_participants
-      if (!participants || !participants.find((p: any) => p.userId === uid)) {
+      if (!participantUserIds.has(uid)) {
         targetMap[uid].totalDamage += details.damage || 0;
         targetMap[uid].hits += 1;
       }

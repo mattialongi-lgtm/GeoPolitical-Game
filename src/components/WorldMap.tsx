@@ -270,7 +270,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
                 return blocEntries.map((bloc) => (
                   <div key={bloc.blocId} className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: hashColor(bloc.blocId) }} />
-                    <span className="text-[8px] font-bold text-slate-200 truncate">{bloc.logo || ''} {bloc.blocName || 'Blocco'}</span>
+                    <span className="text-[8px] font-bold text-slate-200 truncate">{bloc.logo ? `${bloc.logo} ` : ''}{bloc.blocName || 'Blocco'}</span>
                   </div>
                 ));
               })()}

@@ -11,6 +11,8 @@ interface ShopPageProps {
   user: any;
 }
 
+const COMING_SOON_MSG = "Il sistema di pagamento sarà disponibile a breve. Resta sintonizzato!";
+
 const GOLD_PACKAGES = [
   { id: "gold_100", amount: 100, price: "€1,99", highlight: false, bonus: "" },
   { id: "gold_500", amount: 500, price: "€7,99", highlight: false, bonus: "+50 bonus" },
@@ -121,7 +123,7 @@ export default function ShopPage({ user }: ShopPageProps) {
 
               <button
                 className="w-full py-4 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-2xl font-black uppercase tracking-wider text-sm shadow-lg shadow-amber-200 hover:shadow-xl hover:from-amber-600 hover:to-amber-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
-                onClick={() => alert("Il sistema di pagamento sarà disponibile a breve. Resta sintonizzato!")}
+                onClick={() => alert(COMING_SOON_MSG)}
               >
                 <Crown className="w-5 h-5" /> Diventa Premium
                 <ChevronRight className="w-4 h-4" />
@@ -160,7 +162,7 @@ export default function ShopPage({ user }: ShopPageProps) {
             {GOLD_PACKAGES.map((pkg) => (
               <button
                 key={pkg.id}
-                onClick={() => alert("Il sistema di pagamento sarà disponibile a breve. Resta sintonizzato!")}
+                onClick={() => alert(COMING_SOON_MSG)}
                 className={`w-full p-4 rounded-2xl border-2 transition-all active:scale-[0.98] flex items-center justify-between ${
                   pkg.highlight
                     ? "bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-400 shadow-lg shadow-yellow-100"

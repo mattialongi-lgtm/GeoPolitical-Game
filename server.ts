@@ -1572,44 +1572,82 @@ app.post("/api/factories/upgrade", authenticate, async (req: any, res) => {
 
   if (!factoryId) return res.status(400).json({ error: "Parametri non validi." });
 
-  // Determine target: if targetLevel specified use it, otherwise +1
-  const resolvedTarget = targetLevel ? parseInt(targetLevel) : null;
-
-  if (!resolvedTarget) {
-    // Fallback: get current level and +1
-    const { data: factory } = await supabase.from('factories').select('level').eq('id', factoryId).maybeSingle();
+  try {
+    // Fetch factory
+    const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).maybeSingle();
     if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
-    const nextLevel = (factory.level || 1) + 1;
-    if (nextLevel > 800) return res.status(400).json({ error: "Livello massimo raggiunto (800)." });
+    if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario di questa fabbrica." });
+
+    const currentLevel = factory.level || 1;
+    const resolvedTarget = targetLevel ? parseInt(targetLevel) : currentLevel + 1;
+
+    if (resolvedTarget <= currentLevel) return res.status(400).json({ error: "Il livello target deve essere maggiore di quello attuale." });
+    if (resolvedTarget > 800) return res.status(400).json({ error: "Livello massimo è 800." });
+
+    // Try RPC first, fallback to manual calculation
+    let upgradeSucceeded = false;
+    let resultNewLevel = resolvedTarget;
+    let resultGoldCost = 0;
 
     try {
       const { data, error } = await supabase.rpc('upgrade_factory', {
         p_factory_id: factoryId,
-        p_target_level: nextLevel,
+        p_target_level: resolvedTarget,
         p_user_id: user.id,
       });
+      if (!error && data) {
+        const result = typeof data === 'string' ? JSON.parse(data) : data;
+        if (result.error) return res.status(400).json({ error: result.error });
+        return res.json({ success: true, newLevel: result.levelAfter, goldCost: result.goldCost });
+      }
       if (error) throw error;
-      const result = typeof data === 'string' ? JSON.parse(data) : data;
-      if (result.error) return res.status(400).json({ error: result.error });
-      res.json({ success: true, newLevel: result.levelAfter, goldCost: result.goldCost });
-    } catch (err: any) {
-      res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
+    } catch (rpcErr: any) {
+      // RPC not available - use manual fallback
+      console.log("[factory-upgrade] RPC fallback:", rpcErr.message);
+
+      // Calculate cost manually
+      const { data: currentRow } = await supabase.from('factory_upgrade_costs')
+        .select('aggregate_cost').eq('level_to', currentLevel).maybeSingle();
+      const { data: targetRow } = await supabase.from('factory_upgrade_costs')
+        .select('aggregate_cost').eq('level_to', resolvedTarget).maybeSingle();
+
+      let goldCost: number;
+      if (targetRow) {
+        const currentAgg = currentRow?.aggregate_cost || 0;
+        goldCost = targetRow.aggregate_cost - currentAgg;
+      } else {
+        // Table not populated - use formula: cost = sum of 5*level for each level
+        let cost = 0;
+        for (let l = currentLevel + 1; l <= resolvedTarget; l++) {
+          cost += l === 1 ? 500 : 5 * l;
+        }
+        goldCost = cost;
+      }
+
+      if (goldCost <= 0) return res.status(400).json({ error: "Costo calcolato non valido." });
+
+      // Check user gold
+      const { data: freshUser } = await supabase.from('users').select('gold').eq('id', user.id).single();
+      if (!freshUser || (freshUser.gold || 0) < goldCost) {
+        return res.status(400).json({ error: `Gold insufficiente. Servono ${goldCost} Gold, hai ${Math.floor(freshUser?.gold || 0)}.` });
+      }
+
+      // Deduct gold and upgrade - with rollback if level update fails
+      await supabase.from('users').update({ gold: (freshUser.gold || 0) - goldCost }).eq('id', user.id);
+      const { error: levelErr } = await supabase.from('factories').update({ level: resolvedTarget }).eq('id', factoryId);
+      if (levelErr) {
+        // Rollback gold deduction
+        await supabase.from('users').update({ gold: (freshUser.gold || 0) }).eq('id', user.id);
+        return res.status(500).json({ error: "Errore nell'aggiornamento livello fabbrica." });
+      }
+
+      resultGoldCost = goldCost;
+      upgradeSucceeded = true;
     }
-    return;
-  }
 
-  if (resolvedTarget > 800) return res.status(400).json({ error: "Livello massimo è 800." });
-
-  try {
-    const { data, error } = await supabase.rpc('upgrade_factory', {
-      p_factory_id: factoryId,
-      p_target_level: resolvedTarget,
-      p_user_id: user.id,
-    });
-    if (error) throw error;
-    const result = typeof data === 'string' ? JSON.parse(data) : data;
-    if (result.error) return res.status(400).json({ error: result.error });
-    res.json({ success: true, newLevel: result.levelAfter, goldCost: result.goldCost });
+    if (upgradeSucceeded) {
+      res.json({ success: true, newLevel: resultNewLevel, goldCost: resultGoldCost });
+    }
   } catch (err: any) {
     res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
   }
@@ -2897,10 +2935,16 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
   if (!war) return res.status(404).json({ error: "Guerra inesistente." });
   if (war.status !== 'active') return res.status(400).json({ error: "Questa guerra è già terminata." });
 
+  // Naval Phase 1 restriction: only battleship allowed in first 24h
+  if (war.warType === 'naval' && war.navalPhase === 1 && weaponId !== 'battleship') {
+    return res.status(400).json({ error: "Solo corazzate navali permesse nella Fase 1 (prime 24h) della battaglia navale." });
+  }
+
   const weapons: any = {
     infantry: { energy: 10, cash: 50, damage: 100 },
     tank: { energy: 30, cash: 500, damage: 1000 },
-    airstrike: { energy: 50, cash: 2000, damage: 5000 }
+    airstrike: { energy: 50, cash: 2000, damage: 5000 },
+    battleship: { energy: 40, cash: 10000, damage: 2000 }
   };
 
   const weapon = weapons[weaponId];
@@ -3193,6 +3237,34 @@ app.put("/api/newspapers/:id", authenticate, async (req: any, res) => {
   }
 });
 
+app.delete("/api/newspapers/:id", authenticate, async (req: any, res) => {
+  try {
+    // Check ownership
+    const { data: member } = await supabase
+      .from('newspaper_members')
+      .select('role')
+      .eq('newspaper_id', req.params.id)
+      .eq('user_id', req.user.id)
+      .maybeSingle();
+
+    if (!member || member.role !== 'owner') {
+      return res.status(403).json({ error: "Solo il proprietario può cancellare il giornale." });
+    }
+
+    // Remove all members first
+    await supabase.from('newspaper_members').delete().eq('newspaper_id', req.params.id);
+    // Unlink articles (set newspaper_id to null)
+    await supabase.from('articles').update({ newspaper_id: null }).eq('newspaper_id', req.params.id);
+    // Delete the newspaper
+    const { error } = await supabase.from('newspapers').delete().eq('id', req.params.id);
+    if (error) throw error;
+
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get("/api/newspapers/:id", authenticate, async (req, res) => {
   const { data: newspaper } = await supabase.from('newspapers').select('*').eq('id', req.params.id).single();
   if (!newspaper) return res.status(404).json({ error: "Giornale non trovato" });
@@ -3397,22 +3469,44 @@ app.post("/api/actions/train", authenticate, async (req: any, res) => {
   const TRAIN_ENERGY_COST = 10;
 
   try {
-    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: 0,
-      p_gold_cost: 0,
-      p_energy_cost: TRAIN_ENERGY_COST,
-    });
-    if (deductError) {
-      const msg = (deductError.message || '').toLowerCase();
-      if (msg.includes('energia') || msg.includes('energy') || msg.includes('insufficient')) {
+    // Try RPC first, fallback to manual deduction
+    let deducted = false;
+    try {
+      const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+        p_user_id: user.id,
+        p_money_cost: 0,
+        p_gold_cost: 0,
+        p_energy_cost: TRAIN_ENERGY_COST,
+      });
+      if (deductError) {
+        const msg = (deductError.message || '').toLowerCase();
+        if (msg.includes('energia') || msg.includes('energy') || msg.includes('insufficient')) {
+          return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+        }
+        throw deductError;
+      }
+      const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+      if (deductData?.error) {
         return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
       }
-      throw deductError;
-    }
-    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-    if (deductData?.error) {
-      return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+      deducted = true;
+    } catch (rpcErr: any) {
+      // RPC not available - fallback to manual deduction
+      console.log("[train] safe_deduct_currency fallback:", rpcErr.message);
+      const { data: freshUser } = await supabase.from('users').select('energy').eq('id', user.id).single();
+      if (!freshUser || (freshUser.energy || 0) < TRAIN_ENERGY_COST) {
+        return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+      }
+      const { data: updated, error: updErr } = await supabase.from('users')
+        .update({ energy: (freshUser.energy || 0) - TRAIN_ENERGY_COST })
+        .eq('id', user.id)
+        .gte('energy', TRAIN_ENERGY_COST)
+        .select('id')
+        .maybeSingle();
+      if (updErr || !updated) {
+        return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+      }
+      deducted = true;
     }
 
     const { data: currentUser, error: currentError } = await supabase
@@ -3773,10 +3867,18 @@ app.post("/api/work", authenticate, async (req: any, res) => {
       }
 
       // Give owner their share of resources - now goes to factory storage
-      await supabase.rpc('increment_factory_storage', {
-        p_factory_id: factoryId,
-        p_amount: ownerShare
-      });
+      try {
+        await supabase.rpc('increment_factory_storage', {
+          p_factory_id: factoryId,
+          p_amount: ownerShare
+        });
+      } catch (_e) {
+        // RPC not available - fallback to manual update
+        try {
+          const { data: fac } = await supabase.from('factories').select('currentStorage').eq('id', factoryId).single();
+          await supabase.from('factories').update({ currentStorage: (fac?.currentStorage || 0) + ownerShare }).eq('id', factoryId);
+        } catch { /* non-critical */ }
+      }
 
       // State gets its share via budget transaction
       if (stateShare > 0) {
@@ -3795,6 +3897,11 @@ app.post("/api/work", authenticate, async (req: any, res) => {
       // XP Gain
       const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
       await addXP(user.id, xpGain);
+
+      // Work experience gain
+      try {
+        await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN);
+      } catch (_e) { /* non-critical */ }
 
       res.json({ success: true, earnings: 0, output: playerShare, ownerShare, stateShare, xpGain, payMode: 'resource' });
     } catch (err: any) {
@@ -3827,19 +3934,51 @@ app.post("/api/work", authenticate, async (req: any, res) => {
 
   // EXECUTE WORK
   try {
-    await supabase.rpc('execute_factory_work', {
-      p_user_id: user.id,
-      p_factory_id: factoryId,
-      p_wage: finalWage,
-      p_output_item: factory.type,
-      p_output_qty: finalOutput,
-      p_energy_cost: energyCost,
-      p_owner_id: owner.id
-    });
+    try {
+      await supabase.rpc('execute_factory_work', {
+        p_user_id: user.id,
+        p_factory_id: factoryId,
+        p_wage: finalWage,
+        p_output_item: factory.type,
+        p_output_qty: finalOutput,
+        p_energy_cost: energyCost,
+        p_owner_id: owner.id
+      });
+    } catch (rpcErr: any) {
+      // RPC not available - fallback to manual execution
+      console.log("[work] execute_factory_work fallback:", rpcErr.message);
+      // Fetch fresh user state to avoid stale values
+      const { data: freshUsr } = await supabase.from('users').select('energy, money').eq('id', user.id).single();
+      if (!freshUsr || (freshUsr.energy || 0) < energyCost) {
+        return res.status(400).json({ error: "Energia insufficiente." });
+      }
+      // Deduct energy from user, add wage
+      await supabase.from('users').update({ energy: (freshUsr.energy || 0) - energyCost, money: (freshUsr.money || 0) + finalWage }).eq('id', user.id);
+      // Deduct wage from factory budget
+      await supabase.from('factories').update({ budget: (factory.budget || 0) - finalWage }).eq('id', factoryId);
+      // Set cooldown
+      await supabase.from('user_factory_cooldowns').upsert({
+        userId: user.id, factoryId, lastUsed: new Date().toISOString()
+      });
+      // Add output to owner's inventory
+      const { data: ownerInvItem } = await supabase.from('user_inventory')
+        .select('quantity').eq('userId', owner.id).eq('itemId', factory.type).maybeSingle();
+      if (ownerInvItem) {
+        await supabase.from('user_inventory').update({ quantity: ownerInvItem.quantity + finalOutput })
+          .eq('userId', owner.id).eq('itemId', factory.type);
+      } else {
+        await supabase.from('user_inventory').insert({ userId: owner.id, itemId: factory.type, quantity: finalOutput });
+      }
+    }
 
     // XP Gain
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
     await addXP(user.id, xpGain);
+
+    // Work experience gain
+    try {
+      await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN);
+    } catch (_e) { /* non-critical */ }
 
     res.json({ success: true, earnings: finalWage, output: finalOutput, xpGain });
   } catch (err: any) {
@@ -3920,11 +4059,10 @@ app.get("/api/wars/:id/stats", authenticate, async (req: any, res) => {
   if (!war) return res.status(404).json({ error: "Guerra non trovata." });
 
   // Get all damage logs for this war
-  // We use ilike as a broad filter and refinement in Node for safety on JSON fields
+  // Fetch all WAR_DEPLOY logs and filter in JS (ilike doesn't work reliably on JSONB columns)
   const { data: logs } = await supabase.from('action_logs')
     .select('*')
-    .eq('action', 'WAR_DEPLOY')
-    .filter('details', 'ilike', `%${id}%`);
+    .eq('action', 'WAR_DEPLOY');
 
   const attackerDamage: Record<string, any> = {};
   const defenderDamage: Record<string, any> = {};
@@ -4478,21 +4616,23 @@ app.get("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => {
 
 // === REVOLUTION ===
 
+// Create or join a revolution lobby
 app.post("/api/wars/revolution", authenticate, async (req: any, res) => {
   try {
     const user = req.user;
-    const { regionId, initiatorIds } = req.body;
+    const { regionId } = req.body;
 
-    if (!regionId || !initiatorIds || !Array.isArray(initiatorIds)) {
-      return res.status(400).json({ error: "Dati mancanti." });
+    if (!regionId) {
+      return res.status(400).json({ error: "Dati mancanti: regionId richiesto." });
     }
 
-    if (initiatorIds.length < GAME_CONFIG.WAR_REVOLUTION_MIN_PLAYERS) {
-      return res.status(400).json({ error: `Servono almeno ${GAME_CONFIG.WAR_REVOLUTION_MIN_PLAYERS} giocatori per una rivoluzione.` });
-    }
+    const goldCost = GAME_CONFIG.WAR_REVOLUTION_GOLD_COST;
+    const minPlayers = GAME_CONFIG.WAR_REVOLUTION_MIN_PLAYERS;
 
-    if (!initiatorIds.includes(user.id)) {
-      return res.status(400).json({ error: "Devi essere tra gli iniziatori." });
+    // Check user has enough gold
+    const { data: freshUser } = await supabase.from('users').select('gold').eq('id', user.id).single();
+    if (!freshUser || (freshUser.gold || 0) < goldCost) {
+      return res.status(400).json({ error: `Gold insufficiente. Servono ${goldCost} Gold.` });
     }
 
     // Check cooldown
@@ -4507,7 +4647,7 @@ app.post("/api/wars/revolution", authenticate, async (req: any, res) => {
       return res.status(400).json({ error: "Rivoluzione in cooldown per questa regione." });
     }
 
-    // Check no active war/revolution/coup
+    // Check no active war
     const { data: activeWar } = await supabase.from('wars')
       .select('id').eq('status', 'active')
       .or(`"attackerRegionId".eq.${regionId},"defenderRegionId".eq.${regionId}`)
@@ -4518,74 +4658,108 @@ app.post("/api/wars/revolution", authenticate, async (req: any, res) => {
       .select('id').eq('regionId', regionId).eq('status', 'active').maybeSingle();
     if (activeRev) return res.status(400).json({ error: "Rivoluzione già in corso." });
 
-    // Deduct gold from each initiator
-    const goldCost = GAME_CONFIG.WAR_REVOLUTION_GOLD_COST;
-    for (const uid of initiatorIds) {
-      const { data: p } = await supabase.from('users').select('gold').eq('id', uid).single();
-      if (!p || (p.gold || 0) < goldCost) {
-        return res.status(400).json({ error: `Giocatore ${uid} non ha abbastanza gold.` });
+    // Check for existing pending lobby
+    const { data: existingLobby } = await supabase.from('revolution_lobbies')
+      .select('*')
+      .eq('regionId', regionId)
+      .eq('lobbyType', 'revolution')
+      .eq('status', 'pending')
+      .maybeSingle();
+
+    if (existingLobby) {
+      // Join existing lobby
+      if ((existingLobby.participantIds || []).includes(user.id)) {
+        return res.status(400).json({ error: "Sei già in questa lobby." });
       }
-    }
 
-    for (const uid of initiatorIds) {
-      await supabase.from('users').update({
-        gold: supabase.rpc ? undefined : 0, // Will use raw decrement below
-      }).eq('id', uid);
-      // Decrement gold
-      const { data: currentUser } = await supabase.from('users').select('gold').eq('id', uid).single();
-      if (currentUser) {
-        await supabase.from('users').update({ gold: (currentUser.gold || 0) - goldCost }).eq('id', uid);
+      const newParticipants = [...(existingLobby.participantIds || []), user.id];
+
+      // Deduct gold from joining player
+      await supabase.from('users').update({ gold: (freshUser.gold || 0) - goldCost }).eq('id', user.id);
+
+      if (newParticipants.length >= minPlayers) {
+        // Lobby is full - start the revolution!
+        await supabase.from('revolution_lobbies').update({
+          participantIds: newParticipants,
+          status: 'started',
+          updatedAt: new Date().toISOString(),
+        }).eq('id', existingLobby.id);
+
+        // Create war
+        const warId = generateSecureId(9);
+        const now = new Date();
+        const { data: region } = await supabase.from('regions').select('*').eq('id', regionId).single();
+
+        await supabase.from('wars').insert({
+          id: warId,
+          attackerCountryIso2: 'REV',
+          defenderCountryIso2: region?.nation_id || regionId,
+          attackerUserId: existingLobby.creatorId,
+          defenderUserId: region?.leaderUserId || region?.ownerUserId || null,
+          status: 'active',
+          startedAt: now.toISOString(),
+          endsAt: new Date(now.getTime() + GAME_CONFIG.WAR_DURATION_MS).toISOString(),
+          attackerScore: 0, defenderScore: 0,
+          warType: 'revolution',
+          attackerRegionId: regionId, defenderRegionId: regionId,
+          createdAt: now.toISOString(), updatedAt: now.toISOString(),
+        });
+
+        const cooldownUntil = new Date(now.getTime() + GAME_CONFIG.WAR_REVOLUTION_COOLDOWN_MS).toISOString();
+
+        await supabase.from('revolutions').insert({
+          regionId,
+          initiatorIds: newParticipants,
+          goldCost: goldCost * newParticipants.length,
+          status: 'active',
+          warId,
+          cooldownUntil,
+        });
+
+        for (const uid of newParticipants) {
+          await supabase.from('war_participants').insert({
+            warId, userId: uid, side: 'attacker', totalDamage: 0, troopsDeployed: {},
+          });
+        }
+
+        await supabase.from('war_history').insert({
+          warId,
+          eventType: 'war_started',
+          eventData: { warType: 'revolution', regionId, initiatorIds: newParticipants, goldCost: goldCost * newParticipants.length },
+        });
+
+        res.json({ success: true, warId, message: "Rivoluzione iniziata!", started: true, participants: newParticipants.length, required: minPlayers });
+      } else {
+        // Update lobby with new participant
+        await supabase.from('revolution_lobbies').update({
+          participantIds: newParticipants,
+          updatedAt: new Date().toISOString(),
+        }).eq('id', existingLobby.id);
+
+        res.json({ success: true, message: `Ti sei unito alla lobby! ${newParticipants.length}/${minPlayers} giocatori.`, started: false, participants: newParticipants.length, required: minPlayers, lobbyId: existingLobby.id });
       }
+    } else {
+      // Create new lobby
+      // Deduct gold from creator
+      await supabase.from('users').update({ gold: (freshUser.gold || 0) - goldCost }).eq('id', user.id);
+
+      const { data: lobby, error: lobbyError } = await supabase.from('revolution_lobbies').insert({
+        regionId,
+        lobbyType: 'revolution',
+        creatorId: user.id,
+        participantIds: [user.id],
+        requiredPlayers: minPlayers,
+        status: 'pending',
+        goldCostPerPlayer: goldCost,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      }).select().single();
+
+      if (lobbyError) throw lobbyError;
+
+      res.json({ success: true, message: `Lobby rivoluzione creata! ${1}/${minPlayers} giocatori. In attesa di altri...`, started: false, participants: 1, required: minPlayers, lobbyId: lobby.id });
     }
-
-    // Create revolution war
-    const warId = generateSecureId(9);
-    const now = new Date();
-    const { data: region } = await supabase.from('regions').select('*').eq('id', regionId).single();
-
-    await supabase.from('wars').insert({
-      id: warId,
-      attackerCountryIso2: 'REV',
-      defenderCountryIso2: region?.nation_id || regionId,
-      attackerUserId: user.id,
-      defenderUserId: region?.leaderUserId || region?.ownerUserId || null,
-      status: 'active',
-      startedAt: now.toISOString(),
-      endsAt: new Date(now.getTime() + GAME_CONFIG.WAR_DURATION_MS).toISOString(),
-      attackerScore: 0,
-      defenderScore: 0,
-      warType: 'revolution',
-      attackerRegionId: regionId,
-      defenderRegionId: regionId,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    });
-
-    const cooldownUntil = new Date(now.getTime() + GAME_CONFIG.WAR_REVOLUTION_COOLDOWN_MS).toISOString();
-
-    await supabase.from('revolutions').insert({
-      regionId,
-      initiatorIds,
-      goldCost: goldCost * initiatorIds.length,
-      status: 'active',
-      warId,
-      cooldownUntil,
-    });
-
-    // Add all initiators as participants
-    for (const uid of initiatorIds) {
-      await supabase.from('war_participants').insert({
-        warId, userId: uid, side: 'attacker', totalDamage: 0, troopsDeployed: {},
-      });
-    }
-
-    await supabase.from('war_history').insert({
-      warId,
-      eventType: 'war_started',
-      eventData: { warType: 'revolution', regionId, initiatorIds, goldCost: goldCost * initiatorIds.length },
-    });
-
-    res.json({ success: true, warId, message: "Rivoluzione iniziata!" });
   } catch (err: any) {
     console.error("Revolution error:", err);
     res.status(500).json({ error: "Errore nell'avvio della rivoluzione." });
@@ -4597,15 +4771,13 @@ app.post("/api/wars/revolution", authenticate, async (req: any, res) => {
 app.post("/api/wars/coup", authenticate, async (req: any, res) => {
   try {
     const user = req.user;
-    const { regionId, initiatorIds } = req.body;
+    const { regionId } = req.body;
 
-    if (!regionId || !initiatorIds || !Array.isArray(initiatorIds)) {
-      return res.status(400).json({ error: "Dati mancanti." });
+    if (!regionId) {
+      return res.status(400).json({ error: "Dati mancanti: regionId richiesto." });
     }
 
-    if (initiatorIds.length < GAME_CONFIG.WAR_COUP_MIN_PLAYERS) {
-      return res.status(400).json({ error: `Servono almeno ${GAME_CONFIG.WAR_COUP_MIN_PLAYERS} giocatori.` });
-    }
+    const minPlayers = GAME_CONFIG.WAR_COUP_MIN_PLAYERS;
 
     // Check development level must be 1
     const { data: region } = await supabase.from('regions').select('*').eq('id', regionId).single();
@@ -4617,7 +4789,7 @@ app.post("/api/wars/coup", authenticate, async (req: any, res) => {
       return res.status(400).json({ error: "Colpo di stato possibile solo con sviluppo = 1." });
     }
 
-    // Check no active war/revolution/coup
+    // Check no active war/coup
     const { data: activeWar } = await supabase.from('wars')
       .select('id').eq('status', 'active')
       .or(`"attackerRegionId".eq.${regionId},"defenderRegionId".eq.${regionId}`)
@@ -4628,51 +4800,163 @@ app.post("/api/wars/coup", authenticate, async (req: any, res) => {
       .select('id').eq('regionId', regionId).eq('status', 'active').maybeSingle();
     if (activeCoup) return res.status(400).json({ error: "Colpo di stato già in corso." });
 
-    // Create coup war
-    const warId = generateSecureId(9);
-    const now = new Date();
+    // Check for existing pending lobby
+    const { data: existingLobby } = await supabase.from('revolution_lobbies')
+      .select('*')
+      .eq('regionId', regionId)
+      .eq('lobbyType', 'coup')
+      .eq('status', 'pending')
+      .maybeSingle();
 
-    await supabase.from('wars').insert({
-      id: warId,
-      attackerCountryIso2: 'COUP',
-      defenderCountryIso2: region.nation_id || regionId,
-      attackerUserId: user.id,
-      defenderUserId: region.leaderUserId || region.ownerUserId || null,
-      status: 'active',
-      startedAt: now.toISOString(),
-      endsAt: new Date(now.getTime() + GAME_CONFIG.WAR_DURATION_MS).toISOString(),
-      attackerScore: 0,
-      defenderScore: 0,
-      warType: 'coup',
-      attackerRegionId: regionId,
-      defenderRegionId: regionId,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    });
+    if (existingLobby) {
+      // Join existing lobby
+      if ((existingLobby.participantIds || []).includes(user.id)) {
+        return res.status(400).json({ error: "Sei già in questa lobby." });
+      }
 
-    await supabase.from('coups').insert({
-      regionId,
-      initiatorIds,
-      status: 'active',
-      warId,
-    });
+      const newParticipants = [...(existingLobby.participantIds || []), user.id];
 
-    for (const uid of initiatorIds) {
-      await supabase.from('war_participants').insert({
-        warId, userId: uid, side: 'attacker', totalDamage: 0, troopsDeployed: {},
-      });
+      if (newParticipants.length >= minPlayers) {
+        // Lobby is full - start the coup!
+        await supabase.from('revolution_lobbies').update({
+          participantIds: newParticipants,
+          status: 'started',
+          updatedAt: new Date().toISOString(),
+        }).eq('id', existingLobby.id);
+
+        const warId = generateSecureId(9);
+        const now = new Date();
+
+        await supabase.from('wars').insert({
+          id: warId,
+          attackerCountryIso2: 'COUP',
+          defenderCountryIso2: region.nation_id || regionId,
+          attackerUserId: existingLobby.creatorId,
+          defenderUserId: region.leaderUserId || region.ownerUserId || null,
+          status: 'active',
+          startedAt: now.toISOString(),
+          endsAt: new Date(now.getTime() + GAME_CONFIG.WAR_DURATION_MS).toISOString(),
+          attackerScore: 0, defenderScore: 0,
+          warType: 'coup',
+          attackerRegionId: regionId, defenderRegionId: regionId,
+          createdAt: now.toISOString(), updatedAt: now.toISOString(),
+        });
+
+        await supabase.from('coups').insert({
+          regionId,
+          initiatorIds: newParticipants,
+          status: 'active',
+          warId,
+        });
+
+        for (const uid of newParticipants) {
+          await supabase.from('war_participants').insert({
+            warId, userId: uid, side: 'attacker', totalDamage: 0, troopsDeployed: {},
+          });
+        }
+
+        await supabase.from('war_history').insert({
+          warId,
+          eventType: 'war_started',
+          eventData: { warType: 'coup', regionId, initiatorIds: newParticipants },
+        });
+
+        res.json({ success: true, warId, message: "Colpo di stato iniziato!", started: true, participants: newParticipants.length, required: minPlayers });
+      } else {
+        await supabase.from('revolution_lobbies').update({
+          participantIds: newParticipants,
+          updatedAt: new Date().toISOString(),
+        }).eq('id', existingLobby.id);
+
+        res.json({ success: true, message: `Ti sei unito alla lobby! ${newParticipants.length}/${minPlayers} giocatori.`, started: false, participants: newParticipants.length, required: minPlayers, lobbyId: existingLobby.id });
+      }
+    } else {
+      // Create new lobby
+      const { data: lobby, error: lobbyError } = await supabase.from('revolution_lobbies').insert({
+        regionId,
+        lobbyType: 'coup',
+        creatorId: user.id,
+        participantIds: [user.id],
+        requiredPlayers: minPlayers,
+        status: 'pending',
+        goldCostPerPlayer: 0,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      }).select().single();
+
+      if (lobbyError) throw lobbyError;
+
+      res.json({ success: true, message: `Lobby colpo di stato creata! ${1}/${minPlayers} giocatori. In attesa di altri...`, started: false, participants: 1, required: minPlayers, lobbyId: lobby.id });
     }
-
-    await supabase.from('war_history').insert({
-      warId,
-      eventType: 'war_started',
-      eventData: { warType: 'coup', regionId, initiatorIds },
-    });
-
-    res.json({ success: true, warId, message: "Colpo di stato iniziato!" });
   } catch (err: any) {
     console.error("Coup error:", err);
     res.status(500).json({ error: "Errore nell'avvio del colpo di stato." });
+  }
+});
+
+// Get lobby status for a region
+app.get("/api/lobbies/:regionId", authenticate, async (req: any, res) => {
+  try {
+    const { regionId } = req.params;
+    const { data: lobbies } = await supabase.from('revolution_lobbies')
+      .select('*')
+      .eq('regionId', regionId)
+      .eq('status', 'pending')
+      .order('createdAt', { ascending: false });
+
+    // Expire old lobbies (use status check to prevent duplicate processing)
+    const now = Date.now();
+    const active = (lobbies || []).filter((l: any) => {
+      if (l.expiresAt && new Date(l.expiresAt).getTime() < now) {
+        // Expire it atomically (only if still pending to prevent race conditions)
+        supabase.from('revolution_lobbies')
+          .update({ status: 'expired' })
+          .eq('id', l.id)
+          .eq('status', 'pending')
+          .select('id')
+          .maybeSingle()
+          .then(({ data: expired }) => {
+            // Only refund if we successfully set it to expired (prevents duplicate refunds)
+            if (expired && l.goldCostPerPlayer > 0) {
+              for (const uid of (l.participantIds || [])) {
+                supabase.from('users').select('gold').eq('id', uid).single().then(({ data: u }) => {
+                  if (u) supabase.from('users').update({ gold: (u.gold || 0) + l.goldCostPerPlayer }).eq('id', uid).then(() => {});
+                });
+              }
+            }
+          })
+          .catch((err: any) => console.error("[lobbies] Expire error:", err));
+        return false;
+      }
+      return true;
+    });
+
+    // Get usernames for participants
+    const allParticipantIds = active.flatMap((l: any) => l.participantIds || []);
+    const { data: users } = allParticipantIds.length > 0
+      ? await supabase.from('users').select('id, username').in('id', allParticipantIds)
+      : { data: [] };
+
+    const usernameMap: Record<string, string> = {};
+    (users || []).forEach((u: any) => { usernameMap[u.id] = u.username; });
+
+    const result = active.map((l: any) => ({
+      id: l.id,
+      lobbyType: l.lobbyType,
+      regionId: l.regionId,
+      participants: (l.participantIds || []).map((uid: string) => ({ id: uid, username: usernameMap[uid] || uid })),
+      required: l.requiredPlayers,
+      current: (l.participantIds || []).length,
+      goldCostPerPlayer: l.goldCostPerPlayer,
+      createdAt: l.createdAt,
+      expiresAt: l.expiresAt,
+      isJoined: (l.participantIds || []).includes(req.user.id),
+    }));
+
+    res.json({ lobbies: result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 

@@ -1386,6 +1386,57 @@ const NewspaperDetailView = ({ user }: { user: any }) => {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Edit Newspaper Modal */}
+        <AnimatePresence>
+          {showEdit && (
+            <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="mt-8 pt-8 border-t border-slate-50 overflow-hidden">
+              <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Modifica Giornale</h4>
+              <div className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Nome della Testata</label>
+                  <input value={editName} onChange={e => setEditName(e.target.value)} placeholder="Nome del giornale" className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-100 text-sm font-bold" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">Descrizione</label>
+                  <textarea value={editDescription} onChange={e => setEditDescription(e.target.value)} placeholder="Descrizione / Linea editoriale" className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-100 text-sm font-medium resize-none" rows={3} />
+                </div>
+                <div>
+                  <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1 block">URL Logo</label>
+                  <input value={editLogoUrl} onChange={e => setEditLogoUrl(e.target.value)} placeholder="https://..." className="w-full px-4 py-3 rounded-xl bg-slate-50 border border-slate-100 text-sm font-bold" />
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={() => setShowEdit(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all">Annulla</button>
+                  <button onClick={handleUpdateNewspaper} disabled={updating || !editName.trim()} className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all disabled:opacity-50">
+                    {updating ? 'Salvataggio...' : 'Salva Modifiche'}
+                  </button>
+                </div>
+              </div>
+              {/* Delete Newspaper */}
+              <div className="mt-6 pt-6 border-t border-rose-100">
+                <button
+                  onClick={async () => {
+                    if (!window.confirm('Sei sicuro di voler cancellare questo giornale? Questa azione è irreversibile. Gli articoli non verranno eliminati ma scollegati.')) return;
+                    try {
+                      const res = await fetch(`/api/newspapers/${id}`, { method: "DELETE" });
+                      if (res.ok) {
+                        alert("Giornale cancellato.");
+                        navigate("/articles");
+                      } else {
+                        const data = await res.json();
+                        alert(data.error || "Errore nella cancellazione.");
+                      }
+                    } catch { alert("Errore di connessione."); }
+                  }}
+                  className="w-full py-3 bg-rose-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-rose-100 hover:bg-rose-600 transition-all flex items-center justify-center gap-2"
+                >
+                  🗑️ Cancella Giornale
+                </button>
+                <p className="text-[9px] text-rose-400 font-bold mt-2 text-center">Questa azione è irreversibile. Gli articoli verranno scollegati.</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="space-y-4">
@@ -1706,13 +1757,13 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
     finally { setWarCreating(false); }
   };
 
-  const handleStartRevolution = async (regionId: string, initiatorIds: string[]) => {
+  const handleStartRevolution = async (regionId: string) => {
     setRevLoading(true);
     try {
       const res = await fetch("/api/wars/revolution", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ regionId, initiatorIds }),
+        body: JSON.stringify({ regionId }),
       });
       const data = await res.json();
       if (data.error) alert(data.error);
@@ -1721,13 +1772,13 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
     finally { setRevLoading(false); }
   };
 
-  const handleStartCoup = async (regionId: string, initiatorIds: string[]) => {
+  const handleStartCoup = async (regionId: string) => {
     setRevLoading(true);
     try {
       const res = await fetch("/api/wars/coup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ regionId, initiatorIds }),
+        body: JSON.stringify({ regionId }),
       });
       const data = await res.json();
       if (data.error) alert(data.error);
@@ -1928,59 +1979,103 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                         exit={{ height: 0, opacity: 0 }}
                         className="overflow-hidden mt-6 pt-6 border-t border-slate-50"
                       >
+                        {/* View Stats Button */}
+                        <div className="flex justify-center mb-4">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); navigate(`/war/${war.id}/summary`); }}
+                            className="px-6 py-2 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-slate-800 hover:scale-105 transition-all flex items-center gap-2"
+                          >
+                            📊 Visualizza Statistiche e Top Danni
+                          </button>
+                        </div>
+
                         <h4 className="text-center text-sm font-black text-slate-800 uppercase tracking-widest mb-4">Schieramento Militare</h4>
+
+                        {/* Naval Phase 1 Warning */}
+                        {war.warType === 'naval' && war.navalPhase === 1 && (
+                          <div className="mb-4 bg-blue-50 border border-blue-200 rounded-2xl p-3 flex items-center gap-2">
+                            <span className="text-lg">🚢</span>
+                            <span className="text-xs font-black text-blue-800">Fase 1 Navale: solo corazzate navali disponibili (prime 24h)</span>
+                          </div>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                           {/* Attacker Side */}
                           <div className="space-y-3 bg-indigo-50 rounded-3xl p-4 border border-indigo-100/50">
                             <h5 className="text-center text-xs font-black text-indigo-700 uppercase mb-3">Supporta Attaccante</h5>
-                            <button disabled={deploying} onClick={() => handleDeploy('attacker', 'infantry')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                              <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs font-black text-indigo-600">+100 Danni</span>
-                                <span className="text-[10px] font-bold text-slate-400">-10⚡ -$50</span>
-                              </div>
-                            </button>
-                            <button disabled={deploying} onClick={() => handleDeploy('attacker', 'tank')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                              <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs font-black text-indigo-600">+1000 Danni</span>
-                                <span className="text-[10px] font-bold text-slate-400">-30⚡ -$500</span>
-                              </div>
-                            </button>
-                            <button disabled={deploying} onClick={() => handleDeploy('attacker', 'airstrike')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                              <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs font-black text-indigo-600">+5000 Danni</span>
-                                <span className="text-[10px] font-bold text-slate-400">-50⚡ -$2000</span>
-                              </div>
-                            </button>
+                            {!(war.warType === 'naval' && war.navalPhase === 1) && (
+                              <>
+                                <button disabled={deploying} onClick={() => handleDeploy('attacker', 'infantry')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                  <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-xs font-black text-indigo-600">+100 Danni</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-10⚡ -$50</span>
+                                  </div>
+                                </button>
+                                <button disabled={deploying} onClick={() => handleDeploy('attacker', 'tank')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                  <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-xs font-black text-indigo-600">+1000 Danni</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-30⚡ -$500</span>
+                                  </div>
+                                </button>
+                                <button disabled={deploying} onClick={() => handleDeploy('attacker', 'airstrike')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                  <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-xs font-black text-indigo-600">+5000 Danni</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-50⚡ -$2000</span>
+                                  </div>
+                                </button>
+                              </>
+                            )}
+                            {war.warType === 'naval' && (
+                              <button disabled={deploying} onClick={() => handleDeploy('attacker', 'battleship')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
+                                <div className="flex flex-col items-end">
+                                  <span className="text-xs font-black text-indigo-600">+2000 Danni</span>
+                                  <span className="text-[10px] font-bold text-slate-400">-40⚡ -$10000</span>
+                                </div>
+                              </button>
+                            )}
                           </div>
 
                           {/* Defender Side */}
                           <div className="space-y-3 bg-rose-50 rounded-3xl p-4 border border-rose-100/50">
                             <h5 className="text-center text-xs font-black text-rose-700 uppercase mb-3">Supporta Difensore</h5>
-                            <button disabled={deploying} onClick={() => handleDeploy('defender', 'infantry')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                              <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs font-black text-rose-600">+100 Danni</span>
-                                <span className="text-[10px] font-bold text-slate-400">-10⚡ -$50</span>
-                              </div>
-                            </button>
-                            <button disabled={deploying} onClick={() => handleDeploy('defender', 'tank')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                              <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs font-black text-rose-600">+1000 Danni</span>
-                                <span className="text-[10px] font-bold text-slate-400">-30⚡ -$500</span>
-                              </div>
-                            </button>
-                            <button disabled={deploying} onClick={() => handleDeploy('defender', 'airstrike')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                              <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
-                              <div className="flex flex-col items-end">
-                                <span className="text-xs font-black text-rose-600">+5000 Danni</span>
-                                <span className="text-[10px] font-bold text-slate-400">-50⚡ -$2000</span>
-                              </div>
-                            </button>
+                            {!(war.warType === 'naval' && war.navalPhase === 1) && (
+                              <>
+                                <button disabled={deploying} onClick={() => handleDeploy('defender', 'infantry')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                  <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-xs font-black text-rose-600">+100 Danni</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-10⚡ -$50</span>
+                                  </div>
+                                </button>
+                                <button disabled={deploying} onClick={() => handleDeploy('defender', 'tank')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                  <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-xs font-black text-rose-600">+1000 Danni</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-30⚡ -$500</span>
+                                  </div>
+                                </button>
+                                <button disabled={deploying} onClick={() => handleDeploy('defender', 'airstrike')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                  <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
+                                  <div className="flex flex-col items-end">
+                                    <span className="text-xs font-black text-rose-600">+5000 Danni</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-50⚡ -$2000</span>
+                                  </div>
+                                </button>
+                              </>
+                            )}
+                            {war.warType === 'naval' && (
+                              <button disabled={deploying} onClick={() => handleDeploy('defender', 'battleship')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
+                                <div className="flex flex-col items-end">
+                                  <span className="text-xs font-black text-rose-600">+2000 Danni</span>
+                                  <span className="text-[10px] font-bold text-slate-400">-40⚡ -$10000</span>
+                                </div>
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -2001,7 +2096,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                             <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
                               <span className="animate-pulse text-lg">⚔️</span>
                               <span className="text-xs font-black text-amber-800">
-                                Auto-attacco attivo: {autoAttack.side === 'attacker' ? 'Attaccante' : 'Difensore'} con {autoAttack.weaponId === 'infantry' ? 'Fanteria' : autoAttack.weaponId === 'tank' ? 'Corazzata' : 'Aereo'}
+                                Auto-attacco attivo: {autoAttack.side === 'attacker' ? 'Attaccante' : 'Difensore'} con {autoAttack.weaponId === 'infantry' ? 'Fanteria' : autoAttack.weaponId === 'tank' ? 'Corazzata' : autoAttack.weaponId === 'battleship' ? 'Corazzata Navale' : 'Aereo'}
                               </span>
                             </div>
                           ) : (
@@ -2009,11 +2104,16 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                               {(['attacker', 'defender'] as const).map(side => (
                                 <div key={side} className="space-y-1">
                                   <p className="text-[9px] font-black text-center uppercase text-amber-700">{side === 'attacker' ? 'Attaccante' : 'Difensore'}</p>
-                                  {(['infantry', 'tank', 'airstrike'] as const).map(wep => (
+                                  {!(war.warType === 'naval' && war.navalPhase === 1) && (['infantry', 'tank', 'airstrike'] as const).map(wep => (
                                     <button key={wep} onClick={() => setAutoAttack({ warId: war.id, side, weaponId: wep })} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
                                       {wep === 'infantry' ? '🪖 Fanteria' : wep === 'tank' ? '🛡️ Corazzata' : '✈️ Aereo'}
                                     </button>
                                   ))}
+                                  {war.warType === 'naval' && (
+                                    <button onClick={() => setAutoAttack({ warId: war.id, side, weaponId: 'battleship' })} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
+                                      🚢 Corazzata Navale
+                                    </button>
+                                  )}
                                 </div>
                               ))}
                             </div>

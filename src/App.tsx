@@ -2258,16 +2258,27 @@ const WarStatsView = ({ user }: { user: any }) => {
                     <p className="text-[9px] text-slate-300 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
                   </div>
                 ) : stats.attacker.map((s: any, i: number) => (
-                  <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-indigo-50/30 rounded-2xl transition-all border border-transparent hover:border-indigo-100 group">
-                     <div className="flex items-center gap-4">
-                        <span className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xs font-black group-hover:bg-indigo-600 group-hover:text-white transition-all shadow-sm">{i+1}</span>
-                        <div>
-                          <p className="text-sm font-black text-slate-800 tracking-tight">{s.username}</p>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{s.hits} colpi messi a segno</p>
-                        </div>
-                     </div>
-                     <p className="text-base font-black text-indigo-600 font-mono tracking-tighter">{(s.totalDamage).toLocaleString()}</p>
-                  </div>
+                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-indigo-50/10 rounded-2xl transition-all border border-transparent hover:border-indigo-500/20 group cursor-pointer" onClick={() => navigate(`/profile/${s.userId}`)}>
+                       <div className="flex items-center gap-4">
+                          <div className="relative shrink-0">
+                            <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-black text-sm overflow-hidden border border-indigo-500/20">
+                              {s.avatarData ? (
+                                <img src={s.avatarData} alt={s.username} className="w-full h-full object-cover" />
+                              ) : (
+                                s.username.slice(0, 2).toUpperCase()
+                              )}
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 bg-indigo-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md border border-indigo-400 shadow-sm">
+                              LV.{s.level || 1}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-sm font-black text-white group-hover:text-indigo-400 transition-colors tracking-tight">{s.username}</p>
+                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{(s.totalDamage || 0).toLocaleString()} danni inflitti</p>
+                          </div>
+                       </div>
+                       <p className="text-base font-black text-indigo-400 font-mono tracking-tighter">{(s.totalDamage).toLocaleString()}</p>
+                    </div>
                 ))}
              </div>
           </div>
@@ -2284,16 +2295,27 @@ const WarStatsView = ({ user }: { user: any }) => {
                     <p className="text-[9px] text-slate-300 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
                   </div>
                 ) : stats.defender.map((s: any, i: number) => (
-                  <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-rose-50/30 rounded-2xl transition-all border border-transparent hover:border-rose-100 group">
-                     <div className="flex items-center gap-4">
-                        <span className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center text-xs font-black group-hover:bg-rose-600 group-hover:text-white transition-all shadow-sm">{i+1}</span>
-                        <div>
-                          <p className="text-sm font-black text-slate-800 tracking-tight">{s.username}</p>
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{s.hits} colpi messi a segno</p>
-                        </div>
-                     </div>
-                     <p className="text-base font-black text-rose-600 font-mono tracking-tighter">{(s.totalDamage).toLocaleString()}</p>
-                  </div>
+                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-rose-50/10 rounded-2xl transition-all border border-transparent hover:border-rose-500/20 group cursor-pointer" onClick={() => navigate(`/profile/${s.userId}`)}>
+                       <div className="flex items-center gap-4">
+                          <div className="relative shrink-0">
+                            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-400 font-black text-sm overflow-hidden border border-rose-500/20">
+                              {s.avatarData ? (
+                                <img src={s.avatarData} alt={s.username} className="w-full h-full object-cover" />
+                              ) : (
+                                s.username.slice(0, 2).toUpperCase()
+                              )}
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 bg-rose-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-md border border-rose-400 shadow-sm">
+                              LV.{s.level || 1}
+                            </div>
+                          </div>
+                          <div>
+                            <p className="text-sm font-black text-white group-hover:text-rose-400 transition-colors tracking-tight">{s.username}</p>
+                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{(s.totalDamage || 0).toLocaleString()} danni inflitti</p>
+                          </div>
+                       </div>
+                       <p className="text-base font-black text-rose-400 font-mono tracking-tighter">{(s.totalDamage).toLocaleString()}</p>
+                    </div>
                 ))}
              </div>
           </div>
@@ -2867,7 +2889,7 @@ const Toast = ({ message, onDismiss }: { key?: React.Key; message: string; onDis
   </motion.div>
 );
 
-const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoading, fetchData, regions, nations }: { user: any, handleUpgradePerk: (id: string, useGold: boolean) => void, handleActivateBooster: (id: string, useGold: boolean) => void, actionLoading: boolean, fetchData: () => void, regions: any[], nations: any[] }) => {
+const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoading, fetchData, regions, nations, isPublic }: { user: any, handleUpgradePerk?: (id: string, useGold: boolean) => void, handleActivateBooster?: (id: string, useGold: boolean) => void, actionLoading?: boolean, fetchData?: () => void, regions: any[], nations: any[], isPublic?: boolean }) => {
   const navigate = useNavigate();
   const [now, setNow] = useState(Date.now());
   const [toasts, setToasts] = useState<{ id: string; message: string }[]>([]);
@@ -2936,25 +2958,33 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
       </AnimatePresence>
 
       <header className="bg-gray-900/95 backdrop-blur-md sticky top-0 z-40 h-16 flex items-center justify-between px-6 border-b border-gray-800/50">
-        <button onClick={() => setShowMessages(true)} className="p-2 hover:bg-gray-800/80 rounded-lg relative">
-          <Mail className="w-8 h-8 text-[#76ff03]" />
-          {unreadCount > 0 && (
-            <span className="absolute -top-1 -right-1 bg-red-600 text-[10px] min-w-[20px] h-5 flex items-center justify-center rounded-sm font-black px-1 border border-black shadow-lg">
-              {unreadCount}
-            </span>
-          )}
-        </button>
-        <h1 className="text-2xl font-black text-gray-50 uppercase tracking-tight military-font">IL MIO PROFILO</h1>
-        <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-gray-800/80 rounded-lg">
-          <Settings className="w-8 h-8 text-white" />
-        </button>
+        {!isPublic ? (
+          <button onClick={() => setShowMessages(true)} className="p-2 hover:bg-gray-800/80 rounded-lg relative">
+            <Mail className="w-8 h-8 text-[#76ff03]" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-600 text-[10px] min-w-[20px] h-5 flex items-center justify-center rounded-sm font-black px-1 border border-black shadow-lg">
+                {unreadCount}
+              </span>
+            )}
+          </button>
+        ) : (
+          <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-800/80 rounded-lg">
+            <ArrowLeft className="w-8 h-8 text-white" />
+          </button>
+        )}
+        <h1 className="text-2xl font-black text-gray-50 uppercase tracking-tight military-font">{isPublic ? "PROFILO PLAYER" : "IL MIO PROFILO"}</h1>
+        {!isPublic ? (
+          <button onClick={() => setShowSettings(true)} className="p-2 hover:bg-gray-800/80 rounded-lg">
+            <Settings className="w-8 h-8 text-white" />
+          </button>
+        ) : <div className="w-12 h-12" />}
       </header>
 
       <main className="p-6 space-y-6">
         <div className="flex gap-6 items-start">
           <div 
-            className="w-32 h-32 bg-gray-800 rounded-sm relative overflow-hidden shrink-0 cursor-pointer border-4 border-gray-700/50 shadow-2xl"
-            onClick={() => (document.getElementById("avatar-file-input") as HTMLInputElement)?.click()}
+            className={`w-32 h-32 bg-gray-800 rounded-sm relative overflow-hidden shrink-0 border-4 border-gray-700/50 shadow-2xl ${!isPublic ? 'cursor-pointer' : ''}`}
+            onClick={() => !isPublic && (document.getElementById("avatar-file-input") as HTMLInputElement)?.click()}
           >
              {user.avatarData ? (
                 <img src={user.avatarData} alt="avatar" className="w-full h-full object-cover" />
@@ -2963,9 +2993,11 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                     {user.username ? user.username[0].toUpperCase() : "?"}
                 </div>
               )}
-              <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Camera className="w-8 h-8 text-white" />
-              </div>
+              {!isPublic && (
+                <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Camera className="w-8 h-8 text-white" />
+                </div>
+              )}
               <input id="avatar-file-input" type="file" accept="image/*" className="hidden" onChange={async (e) => {
                     const file = e.target.files?.[0];
                     if (!file) return;
@@ -3223,6 +3255,50 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
       </AnimatePresence>
     </div>
   );
+};
+
+const PublicProfileView = ({ regions, nations }: { regions: any[], nations: any[] }) => {
+  const { userId } = useParams();
+  const [targetUser, setTargetUser] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!userId) return;
+    setLoading(true);
+    fetch(`/api/players/${userId}`)
+      .then(r => r.json())
+      .then(d => {
+        if (!d.error) setTargetUser(d);
+        setLoading(false);
+      })
+      .catch(() => {
+        setLoading(false);
+      });
+  }, [userId]);
+
+  if (userId === "all" || !userId) return <Navigate to="/" />;
+
+  if (loading) return (
+    <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <Loader2 className="w-12 h-12 text-[#76ff03] animate-spin" />
+    </div>
+  );
+
+  if (!targetUser || targetUser.error) return (
+    <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center text-white gap-6">
+      <AlertCircle className="w-16 h-16 text-rose-500" />
+      <div className="text-center">
+        <p className="text-xl font-black uppercase tracking-widest text-[#76ff03]">Errore 404</p>
+        <p className="text-slate-400 font-bold mt-2">Giocatore non trovato o profilo rimosso.</p>
+      </div>
+      <button onClick={() => navigate(-1)} className="px-10 py-4 bg-white/5 border border-white/10 rounded-none font-black uppercase text-xs tracking-[0.2em] hover:bg-white/10 transition-all">
+        Rientra in Base
+      </button>
+    </div>
+  );
+
+  return <ProfileView user={targetUser} regions={regions} nations={nations} isPublic={true} />;
 };
 
 const BudgetView = ({ regionId, user, isLeader }: { regionId: string, user: any, isLeader: boolean }) => {
@@ -5281,6 +5357,7 @@ export default function App() {
           <Route path="/war/:warId/summary" element={<WarStatsView user={user} />} />
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} regions={regions} nations={nations} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
+          <Route path="/profile/:userId" element={<PublicProfileView regions={regions} nations={nations} />} />
           <Route path="/shop" element={user ? <ShopPage user={user} /> : <Navigate to="/" />} />
           <Route path="/factory/:id" element={user ? <FactoryDetail user={user} fetchData={fetchData} /> : <Navigate to="/" />} />
           <Route path="/factory-market" element={user ? <FactoryMarket user={user} fetchData={fetchData} /> : <Navigate to="/" />} />

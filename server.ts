@@ -641,6 +641,25 @@ app.get("/api/players", authenticate, async (req: any, res) => {
   }
 });
 
+app.get("/api/players/:id", authenticate, async (req: any, res) => {
+  try {
+    const { data: player, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
+    if (error || !player) return res.status(404).json({ error: "Giocatore non trovato" });
+    
+    // Remove sensitive data
+    delete player.email;
+    delete player.password;
+    
+    res.json(player);
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nel caricamento del profilo" });
+  }
+});
+
 // New endpoint for the State page
 app.get("/api/state/:id", authenticate, async (req, res) => {
   try {
@@ -4127,17 +4146,20 @@ app.get("/api/wars/:id/stats", authenticate, async (req: any, res) => {
   if (participants && participants.length > 0) {
     // Fetch usernames for participants
     const userIds = participants.map((p: any) => p.userId);
-    const { data: usersData } = await supabase.from('users').select('id, username').in('id', userIds);
-    const usernameMap: Record<string, string> = {};
-    (usersData || []).forEach((u: any) => { usernameMap[u.id] = u.username; });
+    const { data: usersData } = await supabase.from('users').select('id, username, level, avatarData').in('id', userIds);
+    const userMap: Record<string, any> = {};
+    (usersData || []).forEach((u: any) => { userMap[u.id] = u; });
 
     participants.forEach((p: any) => {
       const targetMap = p.side === 'attacker' ? attackerDamage : defenderDamage;
       const deployed = p.troopsDeployed || {};
       const hits = Object.values(deployed).reduce((sum: number, qty: any) => sum + (Number(qty) || 0), 0);
+      const u = userMap[p.userId];
       targetMap[p.userId] = {
         userId: p.userId,
-        username: usernameMap[p.userId] || 'Guerriero',
+        username: u?.username || 'Guerriero',
+        level: u?.level || 1,
+        avatarData: u?.avatarData || null,
         totalDamage: p.totalDamage || 0,
         hits: hits || 1,
         side: p.side

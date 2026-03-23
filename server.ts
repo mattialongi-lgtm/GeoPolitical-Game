@@ -1632,9 +1632,14 @@ app.post("/api/factories/upgrade", authenticate, async (req: any, res) => {
         return res.status(400).json({ error: `Gold insufficiente. Servono ${goldCost} Gold, hai ${Math.floor(freshUser?.gold || 0)}.` });
       }
 
-      // Deduct gold and upgrade
+      // Deduct gold and upgrade - with rollback if level update fails
       await supabase.from('users').update({ gold: (freshUser.gold || 0) - goldCost }).eq('id', user.id);
-      await supabase.from('factories').update({ level: resolvedTarget }).eq('id', factoryId);
+      const { error: levelErr } = await supabase.from('factories').update({ level: resolvedTarget }).eq('id', factoryId);
+      if (levelErr) {
+        // Rollback gold deduction
+        await supabase.from('users').update({ gold: (freshUser.gold || 0) }).eq('id', user.id);
+        return res.status(500).json({ error: "Errore nell'aggiornamento livello fabbrica." });
+      }
 
       resultGoldCost = goldCost;
       upgradeSucceeded = true;
@@ -3492,7 +3497,15 @@ app.post("/api/actions/train", authenticate, async (req: any, res) => {
       if (!freshUser || (freshUser.energy || 0) < TRAIN_ENERGY_COST) {
         return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
       }
-      await supabase.from('users').update({ energy: (freshUser.energy || 0) - TRAIN_ENERGY_COST }).eq('id', user.id);
+      const { data: updated, error: updErr } = await supabase.from('users')
+        .update({ energy: (freshUser.energy || 0) - TRAIN_ENERGY_COST })
+        .eq('id', user.id)
+        .gte('energy', TRAIN_ENERGY_COST)
+        .select('id')
+        .maybeSingle();
+      if (updErr || !updated) {
+        return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+      }
       deducted = true;
     }
 
@@ -3934,8 +3947,13 @@ app.post("/api/work", authenticate, async (req: any, res) => {
     } catch (rpcErr: any) {
       // RPC not available - fallback to manual execution
       console.log("[work] execute_factory_work fallback:", rpcErr.message);
-      // Deduct energy from user
-      await supabase.from('users').update({ energy: user.energy - energyCost, money: (user.money || 0) + finalWage }).eq('id', user.id);
+      // Fetch fresh user state to avoid stale values
+      const { data: freshUsr } = await supabase.from('users').select('energy, money').eq('id', user.id).single();
+      if (!freshUsr || (freshUsr.energy || 0) < energyCost) {
+        return res.status(400).json({ error: "Energia insufficiente." });
+      }
+      // Deduct energy from user, add wage
+      await supabase.from('users').update({ energy: (freshUsr.energy || 0) - energyCost, money: (freshUsr.money || 0) + finalWage }).eq('id', user.id);
       // Deduct wage from factory budget
       await supabase.from('factories').update({ budget: (factory.budget || 0) - finalWage }).eq('id', factoryId);
       // Set cooldown
@@ -4887,19 +4905,28 @@ app.get("/api/lobbies/:regionId", authenticate, async (req: any, res) => {
       .eq('status', 'pending')
       .order('createdAt', { ascending: false });
 
-    // Expire old lobbies
+    // Expire old lobbies (use status check to prevent duplicate processing)
     const now = Date.now();
     const active = (lobbies || []).filter((l: any) => {
       if (l.expiresAt && new Date(l.expiresAt).getTime() < now) {
-        // Expire it and refund gold
-        supabase.from('revolution_lobbies').update({ status: 'expired' }).eq('id', l.id).then(() => {});
-        if (l.goldCostPerPlayer > 0) {
-          for (const uid of (l.participantIds || [])) {
-            supabase.from('users').select('gold').eq('id', uid).single().then(({ data: u }) => {
-              if (u) supabase.from('users').update({ gold: (u.gold || 0) + l.goldCostPerPlayer }).eq('id', uid).then(() => {});
-            });
-          }
-        }
+        // Expire it atomically (only if still pending to prevent race conditions)
+        supabase.from('revolution_lobbies')
+          .update({ status: 'expired' })
+          .eq('id', l.id)
+          .eq('status', 'pending')
+          .select('id')
+          .maybeSingle()
+          .then(({ data: expired }) => {
+            // Only refund if we successfully set it to expired (prevents duplicate refunds)
+            if (expired && l.goldCostPerPlayer > 0) {
+              for (const uid of (l.participantIds || [])) {
+                supabase.from('users').select('gold').eq('id', uid).single().then(({ data: u }) => {
+                  if (u) supabase.from('users').update({ gold: (u.gold || 0) + l.goldCostPerPlayer }).eq('id', uid).then(() => {});
+                });
+              }
+            }
+          })
+          .catch((err: any) => console.error("[lobbies] Expire error:", err));
         return false;
       }
       return true;

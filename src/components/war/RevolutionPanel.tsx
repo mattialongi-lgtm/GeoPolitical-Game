@@ -48,7 +48,7 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
         const data = await res.json();
         setLobbies(data.lobbies || []);
       }
-    } catch { }
+    } catch (err) { console.error("[lobbies] Fetch error:", err); }
     setLoadingLobbies(false);
   };
 

@@ -270,105 +270,44 @@ CREATE INDEX IF NOT EXISTS idx_war_history_eventType ON war_history("eventType")
 
 -- ════════════════════════════════════════════
 -- SEZIONE 11: ROW LEVEL SECURITY — public read + server manage
--- Pattern standard: DROP IF EXISTS prima di CREATE POLICY
+-- Pattern NON-DISTRUTTIVO: IF NOT EXISTS (pg_policies) prima di CREATE POLICY
 -- ════════════════════════════════════════════
 
--- ── wars (RLS già abilitato, aggiungiamo solo se mancano) ──
-ALTER TABLE wars ENABLE ROW LEVEL SECURITY;
+DO $$
+DECLARE
+  tbl TEXT;
+BEGIN
+  -- Abilita RLS su tutte le tabelle del sistema guerra
+  FOREACH tbl IN ARRAY ARRAY[
+    'wars', 'war_participants', 'war_deployments', 'war_auto_attacks',
+    'revolutions', 'coups', 'war_military_agreements', 'war_departments', 'war_history'
+  ]
+  LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', tbl);
 
-DROP POLICY IF EXISTS "Wars public read" ON wars;
-CREATE POLICY "Wars public read" ON wars FOR SELECT USING (true);
+    -- Policy: public read
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies
+      WHERE schemaname = 'public' AND tablename = tbl AND policyname = 'Public read ' || tbl
+    ) THEN
+      EXECUTE format(
+        'CREATE POLICY "Public read %s" ON %I FOR SELECT USING (true)',
+        tbl, tbl
+      );
+    END IF;
 
-DROP POLICY IF EXISTS "Wars server manage" ON wars;
-CREATE POLICY "Wars server manage" ON wars FOR ALL USING (true);
-
--- ── war_participants ──
-ALTER TABLE war_participants ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "War participants public read" ON war_participants;
-CREATE POLICY "War participants public read"
-  ON war_participants FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "War participants server manage" ON war_participants;
-CREATE POLICY "War participants server manage"
-  ON war_participants FOR ALL USING (true);
-
--- ── war_deployments ──
-ALTER TABLE war_deployments ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "War deployments public read" ON war_deployments;
-CREATE POLICY "War deployments public read"
-  ON war_deployments FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "War deployments server manage" ON war_deployments;
-CREATE POLICY "War deployments server manage"
-  ON war_deployments FOR ALL USING (true);
-
--- ── war_auto_attacks ──
-ALTER TABLE war_auto_attacks ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "War auto attacks public read" ON war_auto_attacks;
-CREATE POLICY "War auto attacks public read"
-  ON war_auto_attacks FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "War auto attacks server manage" ON war_auto_attacks;
-CREATE POLICY "War auto attacks server manage"
-  ON war_auto_attacks FOR ALL USING (true);
-
--- ── revolutions ──
-ALTER TABLE revolutions ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Revolutions public read" ON revolutions;
-CREATE POLICY "Revolutions public read"
-  ON revolutions FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Revolutions server manage" ON revolutions;
-CREATE POLICY "Revolutions server manage"
-  ON revolutions FOR ALL USING (true);
-
--- ── coups ──
-ALTER TABLE coups ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Coups public read" ON coups;
-CREATE POLICY "Coups public read"
-  ON coups FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "Coups server manage" ON coups;
-CREATE POLICY "Coups server manage"
-  ON coups FOR ALL USING (true);
-
--- ── war_military_agreements ──
-ALTER TABLE war_military_agreements ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "War military agreements public read" ON war_military_agreements;
-CREATE POLICY "War military agreements public read"
-  ON war_military_agreements FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "War military agreements server manage" ON war_military_agreements;
-CREATE POLICY "War military agreements server manage"
-  ON war_military_agreements FOR ALL USING (true);
-
--- ── war_departments ──
-ALTER TABLE war_departments ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "War departments public read" ON war_departments;
-CREATE POLICY "War departments public read"
-  ON war_departments FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "War departments server manage" ON war_departments;
-CREATE POLICY "War departments server manage"
-  ON war_departments FOR ALL USING (true);
-
--- ── war_history ──
-ALTER TABLE war_history ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "War history public read" ON war_history;
-CREATE POLICY "War history public read"
-  ON war_history FOR SELECT USING (true);
-
-DROP POLICY IF EXISTS "War history server manage" ON war_history;
-CREATE POLICY "War history server manage"
-  ON war_history FOR ALL USING (true);
+    -- Policy: server manage
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies
+      WHERE schemaname = 'public' AND tablename = tbl AND policyname = 'Server manage ' || tbl
+    ) THEN
+      EXECUTE format(
+        'CREATE POLICY "Server manage %s" ON %I FOR ALL USING (true)',
+        tbl, tbl
+      );
+    END IF;
+  END LOOP;
+END $$;
 
 
 -- ════════════════════════════════════════════

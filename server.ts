@@ -452,6 +452,27 @@ const authenticate = async (req: any, res: any, next: any) => {
       }
     }
 
+    // Fetch user inventory from user_inventory table and attach as inventory object
+    try {
+      const { data: invItems } = await supabase.from('user_inventory')
+        .select('itemId, quantity')
+        .eq('userId', user.id);
+      const inventoryObj: Record<string, number> = {};
+      let totalVolume = 0;
+      (invItems || []).forEach((item: any) => {
+        if (item.quantity > 0) {
+          inventoryObj[item.itemId] = item.quantity;
+          totalVolume += item.quantity;
+        }
+      });
+      req.user.inventory = inventoryObj;
+      req.user.inventoryVolume = totalVolume;
+    } catch (invErr) {
+      // Non-critical: continue without inventory
+      req.user.inventory = {};
+      req.user.inventoryVolume = 0;
+    }
+
     next();
   } catch (err) {
     console.error("Auth Middleware Critical Error:", err);
@@ -1364,6 +1385,17 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
     const xpGain = Math.round((GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2) * (1 + educationBonus));
     await addXP(user.id, xpGain);
 
+    // Work Experience Gain — increment per-resource work experience
+    let workExpGain = 0;
+    if (!isGoldMine && factoryType) {
+      workExpGain = 1 + Math.floor((perks['ISTRUZIONE'] || 0) * 0.5);
+      try {
+        await incrementPlayerWorkExperience(user.id, factoryType, workExpGain);
+      } catch (expErr) {
+        console.error("Work experience increment failed (non-critical):", expErr);
+      }
+    }
+
     res.json({ 
       success: true, 
       earnings: netEarningsMoney,
@@ -1371,6 +1403,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
       taxes: Math.floor(grossValue * (taxRate / 100)), 
       energyCost, 
       xpGain,
+      workExpGain,
       ownerCut,
       isGoldMine,
       payMode: factory.payMode,
@@ -2995,6 +3028,30 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
       await supabase.from('wars').update({ defenderScore: (war.defenderScore || 0) + totalDamage }).eq('id', warId);
     }
 
+    // Update war_participants for damage tracking
+    const { data: existingParticipant } = await supabase.from('war_participants')
+      .select('id, totalDamage, troopsDeployed')
+      .eq('warId', warId)
+      .eq('userId', user.id)
+      .maybeSingle();
+
+    if (existingParticipant) {
+      const deployed = existingParticipant.troopsDeployed || {};
+      deployed[weaponId] = (deployed[weaponId] || 0) + 1;
+      await supabase.from('war_participants').update({
+        totalDamage: (existingParticipant.totalDamage || 0) + totalDamage,
+        troopsDeployed: deployed,
+      }).eq('id', existingParticipant.id);
+    } else {
+      await supabase.from('war_participants').insert({
+        warId,
+        userId: user.id,
+        side,
+        totalDamage: totalDamage,
+        troopsDeployed: { [weaponId]: 1 },
+      });
+    }
+
     // Log the deployment for stats
     await supabase.from('action_logs').insert({
       userId: user.id,
@@ -4058,14 +4115,39 @@ app.get("/api/wars/:id/stats", authenticate, async (req: any, res) => {
   const { data: war } = await supabase.from('wars').select('*').eq('id', id).single();
   if (!war) return res.status(404).json({ error: "Guerra non trovata." });
 
-  // Get all damage logs for this war
-  // Fetch all WAR_DEPLOY logs and filter in JS (ilike doesn't work reliably on JSONB columns)
+  const attackerDamage: Record<string, any> = {};
+  const defenderDamage: Record<string, any> = {};
+
+  // Primary source: war_participants table (persistent, reliable)
+  const { data: participants } = await supabase.from('war_participants')
+    .select('userId, totalDamage, side, troopsDeployed')
+    .eq('warId', id);
+
+  if (participants && participants.length > 0) {
+    // Fetch usernames for participants
+    const userIds = participants.map((p: any) => p.userId);
+    const { data: usersData } = await supabase.from('users').select('id, username').in('id', userIds);
+    const usernameMap: Record<string, string> = {};
+    (usersData || []).forEach((u: any) => { usernameMap[u.id] = u.username; });
+
+    participants.forEach((p: any) => {
+      const targetMap = p.side === 'attacker' ? attackerDamage : defenderDamage;
+      const deployed = p.troopsDeployed || {};
+      const hits = Object.values(deployed).reduce((sum: number, qty: any) => sum + (Number(qty) || 0), 0);
+      targetMap[p.userId] = {
+        userId: p.userId,
+        username: usernameMap[p.userId] || 'Guerriero',
+        totalDamage: p.totalDamage || 0,
+        hits: hits || 1,
+        side: p.side
+      };
+    });
+  }
+
+  // Secondary source: action_logs (for old weapon-based deployments not in war_participants)
   const { data: logs } = await supabase.from('action_logs')
     .select('*')
     .eq('action', 'WAR_DEPLOY');
-
-  const attackerDamage: Record<string, any> = {};
-  const defenderDamage: Record<string, any> = {};
 
   (logs || []).forEach((log: any) => {
     try {
@@ -4080,11 +4162,15 @@ app.get("/api/wars/:id/stats", authenticate, async (req: any, res) => {
           userId: uid,
           username: details.username || 'Guerriero',
           totalDamage: 0,
-          hits: 0
+          hits: 0,
+          side: details.side
         };
       }
-      targetMap[uid].totalDamage += details.damage;
-      targetMap[uid].hits += 1;
+      // Only add damage from action_logs if not already covered by war_participants
+      if (!participants || !participants.find((p: any) => p.userId === uid)) {
+        targetMap[uid].totalDamage += details.damage || 0;
+        targetMap[uid].hits += 1;
+      }
     } catch (e) { /* skip malformed */ }
   });
 
@@ -6340,11 +6426,12 @@ app.get("/api/blocs", authenticate, async (req: any, res) => {
 });
 
 app.get("/api/blocs-map", authenticate, async (req, res) => {
-  const { data } = await supabase.from('bloc_memberships').select('stateId, blocId, blocs(name)').eq('status', 'active');
+  const { data } = await supabase.from('bloc_memberships').select('stateId, blocId, blocs(name, logo)').eq('status', 'active');
   const mapped = (data || []).map((m: any) => ({
     stateId: m.stateId,
     blocId: m.blocId,
-    blocName: m.blocs?.name
+    blocName: m.blocs?.name,
+    logo: m.blocs?.logo
   }));
   res.json(mapped);
 });

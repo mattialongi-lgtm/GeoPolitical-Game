@@ -239,7 +239,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
       </div>
 
       {/* Legend */}
-      <div className="absolute top-16 left-4 z-40 bg-slate-800/90 backdrop-blur-md p-3 rounded-2xl border border-slate-700 shadow-xl max-w-[150px]">
+      <div className="absolute top-16 left-4 z-40 bg-slate-800/90 backdrop-blur-md p-3 rounded-2xl border border-slate-700 shadow-xl max-w-[180px] max-h-[60vh] overflow-y-auto">
         <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Legenda</p>
         <div className="space-y-1.5">
           {mapMode === "political" && (
@@ -256,13 +256,27 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
           )}
           {mapMode === "blocs" && (
             <>
+              {(() => {
+                const uniqueBlocs = new Map<string, { blocId: string; blocName: string; logo?: string }>();
+                Object.values(blocMap).forEach((b) => {
+                  if (!uniqueBlocs.has(b.blocId)) uniqueBlocs.set(b.blocId, b);
+                });
+                const blocEntries = Array.from(uniqueBlocs.values());
+                if (blocEntries.length === 0) {
+                  return (
+                    <div className="text-[8px] text-slate-400 font-bold italic">Nessun blocco attivo</div>
+                  );
+                }
+                return blocEntries.map((bloc) => (
+                  <div key={bloc.blocId} className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: hashColor(bloc.blocId) }} />
+                    <span className="text-[8px] font-bold text-slate-200 truncate">{bloc.logo || ''} {bloc.blocName || 'Blocco'}</span>
+                  </div>
+                ));
+              })()}
               <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                <span className="text-[9px] font-bold text-slate-200">In un Blocco</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-slate-700" />
-                <span className="text-[9px] font-bold text-slate-200">Nessun Blocco</span>
+                <div className="w-2.5 h-2.5 rounded-full bg-slate-700 flex-shrink-0" />
+                <span className="text-[8px] font-bold text-slate-200">Nessun Blocco</span>
               </div>
             </>
           )}

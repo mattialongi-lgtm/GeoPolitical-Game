@@ -10689,7 +10689,8 @@ async function updateMissionProgress(
 
       // If a mission just completed, update 'complete_missions' counter
       const data = result.data;
-      if (data && typeof data === 'object' && (data as any).status === 'completed' && mKey !== 'complete_missions') {
+      const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+      if (parsed && typeof parsed === 'object' && parsed.status === 'completed' && mKey !== 'complete_missions') {
         await supabase.rpc('update_mission_progress', {
           p_user_id: userId,
           p_mission_key: 'complete_missions',

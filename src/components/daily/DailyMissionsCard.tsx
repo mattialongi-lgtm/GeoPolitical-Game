@@ -145,7 +145,7 @@ export default function DailyMissionsCard({
                     </button>
                   ) : mission.route ? (
                     <button
-                      onClick={() => navigate(mission.route!)}
+                      onClick={() => navigate(mission.route || '')}
                       className="p-1 rounded-lg hover:bg-gray-700/50 transition-colors"
                     >
                       <ChevronRight className="w-4 h-4 text-gray-500" />

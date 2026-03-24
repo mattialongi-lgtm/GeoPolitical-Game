@@ -5039,7 +5039,7 @@ app.get("/api/lobbies/:regionId", authenticate, async (req: any, res) => {
                 });
               }
             }
-          }).catch((err: any) => console.error("[lobbies] Expire error:", err));
+          }, (err: any) => console.error("[lobbies] Expire error:", err));
         return false;
       }
       return true;

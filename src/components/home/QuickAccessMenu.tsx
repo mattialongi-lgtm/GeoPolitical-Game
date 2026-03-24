@@ -14,14 +14,14 @@ interface QuickAction {
 }
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { icon: CalendarCheck, label: "Giornaliere", route: "/daily", color: "bg-cyan-600" },
-  { icon: Globe, label: "Mappa", route: "/map", color: "bg-indigo-600" },
-  { icon: ShoppingCart, label: "Mercato", route: "/market", color: "bg-emerald-600" },
-  { icon: Archive, label: "Magazzino", route: "/storage", color: "bg-amber-600" },
-  { icon: Landmark, label: "Parlamento", route: "/parliament", color: "bg-blue-600" },
-  { icon: Users, label: "Partito", route: "/party", color: "bg-purple-600" },
-  { icon: Shield, label: "Blocchi", route: "/blocs", color: "bg-rose-600" },
-  { icon: Hammer, label: "Produci", route: "/produce", color: "bg-orange-600" },
+  { icon: CalendarCheck, label: "Giornaliere", route: "/daily", color: "bg-gray-700" },
+  { icon: Globe, label: "Mappa", route: "/map", color: "bg-gray-700" },
+  { icon: ShoppingCart, label: "Mercato", route: "/market", color: "bg-gray-700" },
+  { icon: Archive, label: "Magazzino", route: "/storage", color: "bg-gray-700" },
+  { icon: Landmark, label: "Parlamento", route: "/parliament", color: "bg-gray-700" },
+  { icon: Users, label: "Partito", route: "/party", color: "bg-gray-700" },
+  { icon: Shield, label: "Blocchi", route: "/blocs", color: "bg-gray-700" },
+  { icon: Hammer, label: "Produci", route: "/produce", color: "bg-gray-700" },
 ];
 
 export default function QuickAccessMenu() {

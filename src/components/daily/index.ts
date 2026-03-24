@@ -4,6 +4,7 @@
  */
 export { default as DailyTasksPage } from './DailyTasksPage';
 export { default as DailyTasksCard } from './DailyTasksCard';
+export { default as DailyMissionsCard } from './DailyMissionsCard';
 export { default as FarmingAutomationCard } from './FarmingAutomationCard';
 export { default as MilitaryTrainingCard } from './MilitaryTrainingCard';
 export { default as AcademyCard } from './AcademyCard';

@@ -1309,6 +1309,61 @@ export interface BottleValueBreakdown {
   goldFarmEquivalent: number;
 }
 
+// ── Daily Missions System ──────────────────────────────────
+
+export type MissionCategory = 'work' | 'military' | 'politics' | 'construction' | 'engagement';
+export type MissionStatus = 'active' | 'completed' | 'claimed';
+
+export interface MissionReward {
+  money?: number;
+  gold?: number;
+  xp?: number;
+}
+
+export interface DailyMission {
+  id: string;
+  mission_key: string;
+  title: string;
+  description: string;
+  category: MissionCategory;
+  icon: string;
+  target: number;
+  progress: number;
+  status: MissionStatus;
+  reward: MissionReward;
+  /** Route to navigate for this mission's action */
+  route?: string;
+}
+
+export interface DailyMissionsState {
+  missions: DailyMission[];
+  /** UTC date string YYYY-MM-DD for reset tracking */
+  resetDate: string;
+  /** Whether the all-complete bonus has been claimed today */
+  bonusClaimed: boolean;
+  bonusReward: MissionReward;
+}
+
+/** Mission template used by backend for daily generation */
+export interface MissionTemplate {
+  mission_key: string;
+  title: string;
+  description: string;
+  category: MissionCategory;
+  icon: string;
+  /** Base target – may be scaled by player level */
+  baseTarget: number;
+  /** Target scaling factor per player level (0 = no scaling) */
+  levelScale: number;
+  reward: MissionReward;
+  /** Difficulty tier for balanced selection */
+  difficulty: 'easy' | 'medium' | 'hard';
+  /** If true, always included in daily set */
+  alwaysInclude?: boolean;
+  /** Route hint for UI navigation */
+  route?: string;
+}
+
 // ── Daily Gameplay System Configuration ──────────────────────
 export const DAILY_GAMEPLAY_CONFIG = {
   /** Auto-work default duration: 8 hours */
@@ -1333,4 +1388,8 @@ export const DAILY_GAMEPLAY_CONFIG = {
   TRAINING_BASE_XP: 50,
   /** XP multiplier per level for damage potential */
   DAMAGE_PER_LEVEL: 150,
+  /** Number of missions generated per day */
+  DAILY_MISSIONS_COUNT: 8,
+  /** Bonus reward for completing all daily missions */
+  DAILY_MISSIONS_BONUS: { money: 2000, gold: 5, xp: 500 } as MissionReward,
 };

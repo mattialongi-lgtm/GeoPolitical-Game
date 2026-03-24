@@ -13,6 +13,9 @@ import { validateTroopDeployment, getMaxDeployableTroops, getAvailableTroops } f
 import { validateWarCreation, getWarDuration, calculateDistancePenalty, shouldTransitionNavalPhase } from "./src/services/warService";
 import { getResolutionEffects, resolveWar as resolveWarLogic } from "./src/services/battleResolver";
 import { shouldAutoAttackFire, getWarsToResolve, getNavalWarsForPhaseTransition } from "./src/services/warScheduler";
+import { selectDailyMissions, MISSION_TEMPLATES, MISSION_ACTION_MAP } from "./src/services/dailyMissionsService";
+import { DAILY_GAMEPLAY_CONFIG } from "./src/types";
+import type { MissionReward } from "./src/types";
 
 console.log("Starting server.ts...");
 
@@ -1433,6 +1436,19 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
       payMode: factory.payMode,
       resourceOutput: playerResourceOutput > 0 ? { type: factoryType, player: playerResourceOutput, state: stateResourceOutput, ownerCut } : null
     });
+
+    // ── Daily Missions: update work-related progress (non-blocking) ──
+    try {
+      await updateMissionProgress(user.id, 'WORK', {
+        work_times: 1,
+        earn_money: netEarningsMoney,
+        earn_gold: netEarningsGold,
+        produce_resources: playerResourceOutput > 0 ? playerResourceOutput : 0,
+        start_production: 1,
+        spend_energy: energyCost,
+      });
+      await updateMissionProgress(user.id, 'EARN_XP', { earn_xp: xpGain });
+    } catch { /* non-critical */ }
   } catch (err: any) {
     console.error("Work execution failed:", err);
     res.status(500).json({ error: "Errore durante il lavoro: " + err.message });
@@ -1704,6 +1720,9 @@ app.post("/api/factories/upgrade", authenticate, async (req: any, res) => {
 
     if (upgradeSucceeded) {
       res.json({ success: true, newLevel: resultNewLevel, goldCost: resultGoldCost });
+
+      // ── Daily Missions: factory upgrade progress (non-blocking) ──
+      try { await updateMissionProgress(user.id, 'FACTORY_UPGRADE', { upgrade_factory: 1 }); } catch { /* non-critical */ }
     }
   } catch (err: any) {
     res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
@@ -3092,6 +3111,17 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
     });
 
     res.json({ success: true, damageDealt: totalDamage, side });
+
+    // ── Daily Missions: update military progress (non-blocking) ──
+    try {
+      await updateMissionProgress(user.id, 'WAR_DEPLOY', {
+        deal_damage: totalDamage,
+        fight_battles: 1,
+        deploy_troops: 1,
+        spend_energy: weapons[weaponId]?.energy || 0,
+      });
+      await updateMissionProgress(user.id, 'EARN_XP', { earn_xp: GAME_CONFIG.XP_PER_ATTACK || 0 });
+    } catch { /* non-critical */ }
   } catch (err) {
     res.status(500).json({ error: "Errore durante lo schieramento in battaglia." });
   }
@@ -4554,6 +4584,17 @@ app.post("/api/wars/deploy-troops", authenticate, async (req: any, res) => {
       troopType,
       quantity: qty,
     });
+
+    // ── Daily Missions: update troop deploy progress (non-blocking) ──
+    try {
+      await updateMissionProgress(user.id, 'WAR_DEPLOY', {
+        deal_damage: damageResult.finalDamage || 0,
+        fight_battles: 1,
+        deploy_troops: qty,
+        spend_energy: (TROOP_ENERGY_COST[troopType as TroopType] || 0) * qty,
+      });
+      await updateMissionProgress(user.id, 'EARN_XP', { earn_xp: GAME_CONFIG.XP_PER_ATTACK || 0 });
+    } catch { /* non-critical */ }
   } catch (err: any) {
     console.error("War deploy error:", err);
     res.status(500).json({ error: "Errore durante lo schieramento." });
@@ -4851,6 +4892,9 @@ app.post("/api/wars/revolution", authenticate, async (req: any, res) => {
         }).eq('id', existingLobby.id);
 
         res.json({ success: true, message: `Ti sei unito alla lobby! ${newParticipants.length}/${minPlayers} giocatori.`, started: false, participants: newParticipants.length, required: minPlayers, lobbyId: existingLobby.id });
+
+        // ── Daily Missions: revolution progress (non-blocking) ──
+        try { await updateMissionProgress(user.id, 'REVOLUTION_JOIN', { join_revolution: 1, check_revolution: 1, political_action: 1 }); } catch { /* non-critical */ }
       }
     } else {
       // Create new lobby
@@ -4873,6 +4917,9 @@ app.post("/api/wars/revolution", authenticate, async (req: any, res) => {
       if (lobbyError) throw lobbyError;
 
       res.json({ success: true, message: `Lobby rivoluzione creata! ${1}/${minPlayers} giocatori. In attesa di altri...`, started: false, participants: 1, required: minPlayers, lobbyId: lobby.id });
+
+      // ── Daily Missions: revolution progress (non-blocking) ──
+      try { await updateMissionProgress(user.id, 'REVOLUTION_JOIN', { join_revolution: 1, check_revolution: 1, political_action: 1 }); } catch { /* non-critical */ }
     }
   } catch (err: any) {
     console.error("Revolution error:", err);
@@ -4983,6 +5030,9 @@ app.post("/api/wars/coup", authenticate, async (req: any, res) => {
         }).eq('id', existingLobby.id);
 
         res.json({ success: true, message: `Ti sei unito alla lobby! ${newParticipants.length}/${minPlayers} giocatori.`, started: false, participants: newParticipants.length, required: minPlayers, lobbyId: existingLobby.id });
+
+        // ── Daily Missions: coup progress (non-blocking) ──
+        try { await updateMissionProgress(user.id, 'COUP_JOIN', { join_revolution: 1, check_revolution: 1, political_action: 1 }); } catch { /* non-critical */ }
       }
     } else {
       // Create new lobby
@@ -5002,6 +5052,9 @@ app.post("/api/wars/coup", authenticate, async (req: any, res) => {
       if (lobbyError) throw lobbyError;
 
       res.json({ success: true, message: `Lobby colpo di stato creata! ${1}/${minPlayers} giocatori. In attesa di altri...`, started: false, participants: 1, required: minPlayers, lobbyId: lobby.id });
+
+      // ── Daily Missions: coup progress (non-blocking) ──
+      try { await updateMissionProgress(user.id, 'COUP_JOIN', { join_revolution: 1, check_revolution: 1, political_action: 1 }); } catch { /* non-critical */ }
     }
   } catch (err: any) {
     console.error("Coup error:", err);
@@ -5256,6 +5309,11 @@ app.post("/api/perks/upgrade", authenticate, async (req: any, res) => {
   if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
   await supabase.from('users').update(updateData).eq('id', user.id);
+
+  // ── Daily Missions: perk upgrade progress (non-blocking) ──
+  try {
+    await updateMissionProgress(user.id, 'PERK_UPGRADE', { upgrade_perk: 1 });
+  } catch { /* non-critical */ }
 
   return res.json({ success: true, queued: true, willCompleteAt, timeSec });
 });
@@ -10536,6 +10594,275 @@ async function checkAndResolveWars() {
     console.error("Error in checkAndResolveWars:", error);
   }
 }
+
+// ══════════════════════════════════════════════════════════════
+// ═══  DAILY MISSIONS SYSTEM  ═════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+
+/**
+ * Helper: Ensure today's missions exist for a player.
+ * Generates them from the template pool if they don't exist yet.
+ * Returns the missions array.
+ */
+async function ensureDailyMissions(userId: string, playerLevel: number): Promise<any[]> {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD UTC
+
+  // Check if missions already generated for today
+  const { data: existing } = await supabase
+    .from('daily_missions')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('reset_date', today)
+    .order('created_at', { ascending: true });
+
+  if (existing && existing.length > 0) {
+    return existing;
+  }
+
+  // Generate new missions for today
+  const missions = selectDailyMissions(today, userId, playerLevel);
+
+  // Insert into database
+  const rows = missions.map(m => ({
+    user_id: userId,
+    mission_key: m.mission_key,
+    title: m.title,
+    description: m.description,
+    category: m.category,
+    icon: m.icon,
+    target: m.target,
+    progress: 0,
+    status: 'active',
+    reward: m.reward,
+    route: m.route || null,
+    reset_date: today,
+  }));
+
+  const { data: inserted, error } = await supabase
+    .from('daily_missions')
+    .insert(rows)
+    .select();
+
+  if (error) {
+    console.error('[DailyMissions] Error inserting missions:', error.message);
+    // Return generated missions as fallback (without DB ids)
+    return missions.map((m, i) => ({ ...rows[i], id: m.id }));
+  }
+
+  // Auto-complete daily_login mission
+  const loginMission = (inserted || []).find((m: any) => m.mission_key === 'daily_login');
+  if (loginMission && loginMission.status === 'active') {
+    await supabase
+      .from('daily_missions')
+      .update({ progress: 1, status: 'completed', updated_at: new Date().toISOString() })
+      .eq('id', loginMission.id);
+    loginMission.progress = 1;
+    loginMission.status = 'completed';
+  }
+
+  return inserted || missions.map((m, i) => ({ ...rows[i], id: m.id }));
+}
+
+/**
+ * Helper: Update mission progress for a player based on an action.
+ * Called from within game action endpoints (work, deploy, etc.).
+ */
+async function updateMissionProgress(
+  userId: string,
+  actionKey: string,
+  amounts: Record<string, number>
+): Promise<void> {
+  const today = new Date().toISOString().slice(0, 10);
+  const missionKeys = MISSION_ACTION_MAP[actionKey] || [];
+
+  for (const mKey of missionKeys) {
+    const increment = amounts[mKey] || 0;
+    if (increment <= 0) continue;
+
+    try {
+      const result = await supabase.rpc('update_mission_progress', {
+        p_user_id: userId,
+        p_mission_key: mKey,
+        p_reset_date: today,
+        p_increment: increment,
+      });
+
+      // If a mission just completed, update 'complete_missions' counter
+      const data = result.data;
+      const parsed = typeof data === 'string' ? JSON.parse(data) : data;
+      if (parsed && typeof parsed === 'object' && parsed.status === 'completed' && mKey !== 'complete_missions') {
+        await supabase.rpc('update_mission_progress', {
+          p_user_id: userId,
+          p_mission_key: 'complete_missions',
+          p_reset_date: today,
+          p_increment: 1,
+        });
+      }
+    } catch (err) {
+      // Non-critical: log but don't break the main action
+      console.error(`[DailyMissions] Error updating ${mKey} for ${userId}:`, err);
+    }
+  }
+}
+
+// GET /api/daily/missions – Fetch today's missions for the authenticated player
+app.get("/api/daily/missions", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const today = new Date().toISOString().slice(0, 10);
+
+    const missions = await ensureDailyMissions(user.id, user.level || 1);
+
+    // Check bonus claim status
+    const { data: bonusClaim } = await supabase
+      .from('daily_mission_bonus_claims')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('claim_date', today)
+      .maybeSingle();
+
+    return res.json({
+      missions,
+      resetDate: today,
+      bonusClaimed: !!bonusClaim,
+      bonusReward: DAILY_GAMEPLAY_CONFIG.DAILY_MISSIONS_BONUS,
+    });
+  } catch (err: any) {
+    console.error('[DailyMissions] GET error:', err);
+    return res.status(500).json({ error: 'Errore nel recupero missioni giornaliere' });
+  }
+});
+
+// POST /api/daily/missions/claim/:id – Claim reward for a completed mission
+app.post("/api/daily/missions/claim/:id", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const missionId = req.params.id;
+
+    const { data, error } = await supabase.rpc('claim_mission_reward', {
+      p_user_id: user.id,
+      p_mission_id: missionId,
+    });
+
+    if (error) {
+      console.error('[DailyMissions] Claim RPC error:', error.message);
+      return res.status(500).json({ error: 'Errore nel riscatto della missione' });
+    }
+
+    const result = typeof data === 'string' ? JSON.parse(data) : data;
+    if (result?.error) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // If RPC is not available, fallback to manual claim
+    if (!result || !result.success) {
+      // Manual fallback
+      const { data: mission } = await supabase
+        .from('daily_missions')
+        .select('*')
+        .eq('id', missionId)
+        .eq('user_id', user.id)
+        .eq('status', 'completed')
+        .single();
+
+      if (!mission) {
+        return res.status(400).json({ error: 'Missione non trovata o non completata' });
+      }
+
+      const reward = mission.reward as MissionReward;
+      const moneyReward = reward.money || 0;
+      const goldReward = reward.gold || 0;
+      const xpReward = reward.xp || 0;
+
+      // Mark as claimed
+      await supabase
+        .from('daily_missions')
+        .update({ status: 'claimed', updated_at: new Date().toISOString() })
+        .eq('id', missionId);
+
+      // Grant rewards
+      await supabase
+        .from('users')
+        .update({
+          money: (user.money || 0) + moneyReward,
+          gold: (user.gold || 0) + goldReward,
+          xp: (user.xp || 0) + xpReward,
+        })
+        .eq('id', user.id);
+
+      return res.json({
+        success: true,
+        mission_key: mission.mission_key,
+        reward: mission.reward,
+      });
+    }
+
+    return res.json(result);
+  } catch (err: any) {
+    console.error('[DailyMissions] Claim error:', err);
+    return res.status(500).json({ error: 'Errore nel riscatto della missione' });
+  }
+});
+
+// POST /api/daily/missions/claim-bonus – Claim the all-complete bonus
+app.post("/api/daily/missions/claim-bonus", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const today = new Date().toISOString().slice(0, 10);
+
+    // Check all missions are claimed
+    const { data: missions } = await supabase
+      .from('daily_missions')
+      .select('status')
+      .eq('user_id', user.id)
+      .eq('reset_date', today);
+
+    if (!missions || missions.length === 0) {
+      return res.status(400).json({ error: 'Nessuna missione trovata per oggi' });
+    }
+
+    const allClaimed = missions.every((m: any) => m.status === 'claimed');
+    if (!allClaimed) {
+      return res.status(400).json({ error: 'Devi prima riscattare tutte le missioni completate' });
+    }
+
+    // Check not already claimed
+    const { data: existing } = await supabase
+      .from('daily_mission_bonus_claims')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('claim_date', today)
+      .maybeSingle();
+
+    if (existing) {
+      return res.status(400).json({ error: 'Bonus già riscattato oggi' });
+    }
+
+    const bonus = DAILY_GAMEPLAY_CONFIG.DAILY_MISSIONS_BONUS;
+
+    // Insert claim record
+    await supabase.from('daily_mission_bonus_claims').insert({
+      user_id: user.id,
+      claim_date: today,
+      reward: bonus,
+    });
+
+    // Grant bonus rewards
+    await supabase
+      .from('users')
+      .update({
+        money: (user.money || 0) + (bonus.money || 0),
+        gold: (user.gold || 0) + (bonus.gold || 0),
+        xp: (user.xp || 0) + (bonus.xp || 0),
+      })
+      .eq('id', user.id);
+
+    return res.json({ success: true, reward: bonus });
+  } catch (err: any) {
+    console.error('[DailyMissions] Bonus claim error:', err);
+    return res.status(500).json({ error: 'Errore nel riscatto del bonus' });
+  }
+});
 
 // Vite middleware for development
 async function startServer() {

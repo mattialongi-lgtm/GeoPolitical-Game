@@ -4548,7 +4548,7 @@ const StorageView = ({ user }: { user: any }) => {
   const [stateInventory, setStateInventory] = useState<any[]>([]);
   const [loadingState, setLoadingState] = useState(false);
 
-  const isLeader = user?.residenceId && user?.originalNation && user?.originalNation === user?.residenceId; // Simplified check for demonstration, ideally pass regions and check `region.ownerUserId === user.id`
+  const isLeader = user?.residenceId && user?.originalNation && user?.residenceId.startsWith(user.originalNation);
 
   useEffect(() => {
     if (activeTab === "state") {
@@ -4625,10 +4625,11 @@ const StorageView = ({ user }: { user: any }) => {
           <p className="text-xs font-bold text-emerald-700">Questo magazzino non ha limiti di volume. I beni sono acquistati con fondi statali.</p>
           {loadingState ? <Loader2 className="animate-spin w-6 h-6 text-emerald-600 mx-auto" /> : (
             <div className="grid grid-cols-2 gap-4">
-              {stateInventory.map((item: any) => {
+            {Array.isArray(stateInventory) ? (
+              stateInventory.map((item: any) => {
                 const weapon = WEAPONS_CATALOG.find(w => w.id === item.itemId);
                 return (
-                  <div key={item.id} className="p-4 bg-white rounded-2xl border border-emerald-200 flex justify-between items-center shadow-sm">
+                  <div key={item.itemId} className="p-4 bg-white rounded-2xl border border-emerald-200 flex justify-between items-center shadow-sm">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{weapon?.emoji || "📦"}</span>
                       <span className="font-black text-emerald-900 capitalize">{weapon?.name || item.itemId}</span>
@@ -4636,10 +4637,15 @@ const StorageView = ({ user }: { user: any }) => {
                     <span className="font-bold text-emerald-600">x{item.quantity}</span>
                   </div>
                 )
-              })}
-              {stateInventory.length === 0 && (
-                <div className="col-span-2 text-center p-6 text-emerald-600/50 font-bold">Magazzino Statale vuoto</div>
-              )}
+              })
+            ) : (
+              <div className="col-span-2 text-center p-6 text-emerald-600 font-bold">
+                Caricamento inventario o errore...
+              </div>
+            )}
+            {Array.isArray(stateInventory) && stateInventory.length === 0 && (
+              <div className="col-span-2 text-center p-6 text-emerald-600/50 font-bold">Magazzino Statale vuoto</div>
+            )}
             </div>
           )}
         </div>

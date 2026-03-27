@@ -466,6 +466,10 @@ const authenticate = async (req: any, res: any, next: any) => {
         if (item.quantity > 0) {
           inventoryObj[item.itemId] = item.quantity;
           totalVolume += item.quantity;
+          // Standardize resource access - flatten common resources for frontend compatibility
+          if (['oil', 'minerals', 'uranium', 'diamonds', 'energyDrinks', 'liquidOxygen', 'helium3'].includes(item.itemId)) {
+             req.user[item.itemId] = item.quantity;
+          }
         }
       });
       req.user.inventory = inventoryObj;
@@ -1357,6 +1361,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
           p_type: 'INCOME',
           p_subtype: 'RESOURCE_TAX',
           p_money_delta: 0,
+          p_resources_delta: { [factoryType]: stateResourceOutput },
           p_metadata: { resource: factoryType, quantity: stateResourceOutput, factoryId }
         });
       }
@@ -5471,31 +5476,57 @@ app.post("/api/sanctions/revoke", authenticate, async (req: any, res) => {
 app.get("/api/market/state-inventory", authenticate, async (req: any, res) => {
   const user = req.user;
   try {
-    // Find region where user is leader/owner
+    // 1. Find if user is leader of a nation (STATE Level)
+    const { data: nation } = await supabase
+      .from('nations')
+      .select('id')
+      .eq('leaderUserId', user.id)
+      .maybeSingle();
+
+    // 2. Find if user owns any regions (REGION Level)
     const { data: region } = await supabase
       .from('regions')
       .select('id')
       .eq('ownerUserId', user.id)
       .maybeSingle();
 
-    if (!region) return res.json({ resources: {}, moneyEUR: 0 });
+    if (!nation && !region) return res.json([]);
 
-    const { data: budget } = await supabase
-      .from('budgets')
-      .select('moneyEUR, resources')
-      .eq('ownerType', 'REGION')
-      .eq('ownerId', region.id)
-      .maybeSingle();
+    let budget = null;
 
-    // Convert resources object to array format for frontend compatibility
-    const resources = budget?.resources || {};
+    // 1. Try to fetch National budget first (if user is leader)
+    if (nation) {
+      const { data } = await supabase
+        .from('budgets')
+        .select('moneyEUR, resources')
+        .eq('ownerType', 'STATE')
+        .eq('ownerId', nation.id)
+        .maybeSingle();
+      if (data) budget = data;
+    }
+
+    // 2. Fallback to fetch Region budget (if user is owner)
+    if (!budget && region) {
+      const { data } = await supabase
+        .from('budgets')
+        .select('moneyEUR, resources')
+        .eq('ownerType', 'REGION')
+        .eq('ownerId', region.id)
+        .maybeSingle();
+      if (data) budget = data;
+    }
+
+    if (!budget) return res.json([]);
+
+    const resources = typeof budget.resources === 'string' ? JSON.parse(budget.resources) : (budget.resources || {});
     const resourcesArray = Object.entries(resources)
       .filter(([_, qty]) => (qty as number) > 0)
       .map(([itemId, quantity]) => ({ itemId, quantity }));
 
     res.json(resourcesArray);
   } catch (err) {
-    res.status(500).json({ error: "Errore nel caricamento dell'inventario statale." });
+    console.error("[StateInventory] Fatal Error:", err);
+    res.status(500).json({ error: "Errore interno nel caricamento dell'inventario statale." });
   }
 });
 

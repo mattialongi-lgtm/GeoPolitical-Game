@@ -1,6 +1,12 @@
 export class FactoryUpgradeRepository {
   constructor(private readonly supabase: any) {}
 
+  private throwOnMutationError(error: any, context: string): void {
+    if (error) {
+      throw new Error(`[FactoryUpgradeRepository] ${context}: ${error.message}`);
+    }
+  }
+
   async getFactoryById(factoryId: string) {
     const { data } = await this.supabase
       .from('factories')
@@ -40,7 +46,7 @@ export class FactoryUpgradeRepository {
   }
 
   async tryUpdateUserGoldWithCAS(userId: string, expectedGold: number, nextGold: number): Promise<boolean> {
-    const { data } = await this.supabase
+    const { data, error } = await this.supabase
       .from('users')
       .update({ gold: nextGold })
       .eq('id', userId)
@@ -48,11 +54,12 @@ export class FactoryUpgradeRepository {
       .select('id')
       .maybeSingle();
 
+    this.throwOnMutationError(error, 'tryUpdateUserGoldWithCAS');
     return !!data;
   }
 
   async tryUpdateFactoryLevelWithCAS(factoryId: string, expectedLevel: number, nextLevel: number): Promise<boolean> {
-    const { data } = await this.supabase
+    const { data, error } = await this.supabase
       .from('factories')
       .update({ level: nextLevel })
       .eq('id', factoryId)
@@ -60,6 +67,7 @@ export class FactoryUpgradeRepository {
       .select('id')
       .maybeSingle();
 
+    this.throwOnMutationError(error, 'tryUpdateFactoryLevelWithCAS');
     return !!data;
   }
 }

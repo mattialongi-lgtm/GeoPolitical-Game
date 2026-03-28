@@ -6,14 +6,18 @@ function createMockRepository(opts?: {
   inventory?: Record<string, number>;
   deductError?: string | null;
   queueInsertFails?: boolean;
+  queueDeleteFails?: boolean;
   resourceDeductFailures?: Record<string, boolean[]>;
+  moneyCasOutcomes?: boolean[];
 }) {
   const state = {
     money: opts?.money ?? 10000,
     inventory: { oil: 100, minerals: 200, uranium: 20, diamonds: 10, ...(opts?.inventory || {}) },
     deductError: opts?.deductError ?? null,
     queueInsertFails: opts?.queueInsertFails ?? false,
+    queueDeleteFails: opts?.queueDeleteFails ?? false,
     resourceDeductFailures: opts?.resourceDeductFailures ?? {},
+    moneyCasOutcomes: [...(opts?.moneyCasOutcomes ?? [true])],
     queueInserted: false,
     queueDeleted: false,
   };
@@ -21,6 +25,8 @@ function createMockRepository(opts?: {
   return {
     async getUserMoney() { return state.money; },
     async tryUpdateUserMoneyCAS(_userId: string, expected: number, next: number) {
+      const outcome = state.moneyCasOutcomes.length ? state.moneyCasOutcomes.shift()! : true;
+      if (!outcome) return false;
       if (state.money !== expected) return false;
       state.money = next;
       return true;
@@ -53,6 +59,7 @@ function createMockRepository(opts?: {
       state.queueInserted = true;
     },
     async deleteQueueItem() {
+      if (state.queueDeleteFails) throw new Error('queue delete fail');
       state.queueDeleted = true;
     },
     async cleanupZeroInventory() { return; },
@@ -125,6 +132,28 @@ async function run() {
     assert.equal(repo.__state.money, beforeMoney);
     assert.equal(repo.__state.inventory.minerals, beforeMinerals);
     assert.equal(repo.__state.queueDeleted, true);
+  }
+
+  {
+    const repo = createMockRepository({
+      queueDeleteFails: true,
+      moneyCasOutcomes: [false, false, false, false, false],
+      resourceDeductFailures: { minerals: [true, true, true, true, true] },
+    });
+    const service = new ProductionService(repo as any);
+    const beforeMoney = repo.__state.money;
+    const result = await service.produce({
+      userId: 'u1',
+      weaponType: 'rifle',
+      qty: 1,
+      maxStorage: 10000,
+      generateId: () => 'p5',
+      nowMs: () => Date.now(),
+    });
+    assert.equal(result.type, 'system_error');
+    assert.equal(repo.__state.queueDeleted, false);
+    assert.equal(repo.__state.money, beforeMoney - 100);
+    assert.equal(repo.__state.inventory.minerals, 200);
   }
 
   console.log('production-hardening-smoke: OK');

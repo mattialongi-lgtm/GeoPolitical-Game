@@ -1,6 +1,12 @@
 export class PartyAssetsRepository {
   constructor(private readonly supabase: any) {}
 
+  private throwOnMutationError(error: any, context: string): void {
+    if (error) {
+      throw new Error(`[PartyAssetsRepository] ${context}: ${error.message}`);
+    }
+  }
+
   async getPartyMembership(userId: string) {
     const { data } = await this.supabase
       .from('party_members')
@@ -56,7 +62,7 @@ export class PartyAssetsRepository {
   }
 
   async tryUpdateMoneyCAS(userId: string, expectedMoney: number, nextMoney: number): Promise<boolean> {
-    const { data } = await this.supabase
+    const { data, error } = await this.supabase
       .from('users')
       .update({ money: nextMoney })
       .eq('id', userId)
@@ -64,11 +70,12 @@ export class PartyAssetsRepository {
       .select('id')
       .maybeSingle();
 
+    this.throwOnMutationError(error, 'tryUpdateMoneyCAS');
     return !!data;
   }
 
   async tryUpdateGoldCAS(userId: string, expectedGold: number, nextGold: number): Promise<boolean> {
-    const { data } = await this.supabase
+    const { data, error } = await this.supabase
       .from('users')
       .update({ gold: nextGold })
       .eq('id', userId)
@@ -76,6 +83,7 @@ export class PartyAssetsRepository {
       .select('id')
       .maybeSingle();
 
+    this.throwOnMutationError(error, 'tryUpdateGoldCAS');
     return !!data;
   }
 
@@ -92,7 +100,7 @@ export class PartyAssetsRepository {
   }
 
   async tryUpdateInventoryCAS(userId: string, itemId: string, expectedQuantity: number, nextQuantity: number): Promise<boolean> {
-    const { data } = await this.supabase
+    const { data, error } = await this.supabase
       .from('user_inventory')
       .update({ quantity: nextQuantity })
       .eq('userId', userId)
@@ -101,6 +109,7 @@ export class PartyAssetsRepository {
       .select('userId')
       .maybeSingle();
 
+    this.throwOnMutationError(error, 'tryUpdateInventoryCAS');
     return !!data;
   }
 
@@ -115,12 +124,13 @@ export class PartyAssetsRepository {
   }
 
   async insertPartyLog(partyId: string, details: string, id: string, timestampIso: string): Promise<void> {
-    await this.supabase.from('party_logs').insert({
+    const { error } = await this.supabase.from('party_logs').insert({
       id,
       partyId,
       action: 'contribution',
       details,
       timestamp: timestampIso,
     });
+    this.throwOnMutationError(error, 'insertPartyLog');
   }
 }

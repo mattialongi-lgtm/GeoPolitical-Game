@@ -1,6 +1,12 @@
 export class FactoryCreateRepository {
   constructor(private readonly supabase: any) {}
 
+  private throwOnMutationError(error: any, context: string): void {
+    if (error) {
+      throw new Error(`[FactoryCreateRepository] ${context}: ${error.message}`);
+    }
+  }
+
   async getUserMoney(userId: string): Promise<number> {
     const { data } = await this.supabase
       .from('users')
@@ -32,15 +38,17 @@ export class FactoryCreateRepository {
   }
 
   async insertFactory(payload: any) {
-    return this.supabase
+    const response = await this.supabase
       .from('factories')
       .insert(payload)
       .select()
       .single();
+    this.throwOnMutationError(response.error, 'insertFactory');
+    return response;
   }
 
   async tryUpdateUserMoneyWithCAS(userId: string, expectedMoney: number, nextMoney: number): Promise<boolean> {
-    const { data } = await this.supabase
+    const { data, error } = await this.supabase
       .from('users')
       .update({ money: nextMoney })
       .eq('id', userId)
@@ -48,6 +56,7 @@ export class FactoryCreateRepository {
       .select('id')
       .maybeSingle();
 
+    this.throwOnMutationError(error, 'tryUpdateUserMoneyWithCAS');
     return !!data;
   }
 }

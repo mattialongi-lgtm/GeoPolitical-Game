@@ -23,7 +23,7 @@ Per la migration di defense-in-depth su `applications` / `revolution_lobbies` / 
     - `applications` (solo owner domanda o governance regione)
     - `revolution_lobbies` (solo creator/partecipanti/scope regione)
 
-Esecuzione locale:
+Esecuzione locale (Unix/macOS):
 
 ```bash
 RUN_DB_RLS_VALIDATION_TESTS=true \
@@ -31,6 +31,17 @@ VITE_SUPABASE_URL=... \
 VITE_SUPABASE_ANON_KEY=... \
 SUPABASE_SERVICE_ROLE_KEY=... \
 DB_TEST_USER_PASSWORD='...' \
+npm run test:security-db-rls-validation
+```
+
+Esecuzione locale (Windows PowerShell):
+
+```powershell
+$env:RUN_DB_RLS_VALIDATION_TESTS="true"
+$env:VITE_SUPABASE_URL="..."
+$env:VITE_SUPABASE_ANON_KEY="..."
+$env:SUPABASE_SERVICE_ROLE_KEY="..."
+$env:DB_TEST_USER_PASSWORD="..."
 npm run test:security-db-rls-validation
 ```
 
@@ -58,7 +69,7 @@ Env aggiuntive:
 - `RUN_BACKEND_FLOW_VALIDATION=true`
 - `BACKEND_BASE_URL` (default: `http://127.0.0.1:3000`)
 
-Comando locale:
+Comando locale (Unix/macOS):
 
 ```bash
 RUN_DB_RLS_VALIDATION_TESTS=true \
@@ -68,6 +79,19 @@ VITE_SUPABASE_ANON_KEY=... \
 SUPABASE_SERVICE_ROLE_KEY=... \
 BACKEND_BASE_URL='https://staging-api.example.com' \
 DB_TEST_USER_PASSWORD='...' \
+npm run test:security-db-rls-validation:backend
+```
+
+Comando locale (Windows PowerShell):
+
+```powershell
+$env:RUN_DB_RLS_VALIDATION_TESTS="true"
+$env:RUN_BACKEND_FLOW_VALIDATION="true"
+$env:VITE_SUPABASE_URL="..."
+$env:VITE_SUPABASE_ANON_KEY="..."
+$env:SUPABASE_SERVICE_ROLE_KEY="..."
+$env:BACKEND_BASE_URL="https://staging-api.example.com"
+$env:DB_TEST_USER_PASSWORD="..."
 npm run test:security-db-rls-validation:backend
 ```
 
@@ -91,6 +115,13 @@ npm run test:security-db-rls-validation:backend:ci
 RUN_DB_INTEGRATION_TESTS=true \
 VITE_SUPABASE_URL=... \
 SUPABASE_SERVICE_ROLE_KEY=... \
+npm run test:security-db-integration
+```
+
+```powershell
+$env:RUN_DB_INTEGRATION_TESTS="true"
+$env:VITE_SUPABASE_URL="..."
+$env:SUPABASE_SERVICE_ROLE_KEY="..."
 npm run test:security-db-integration
 ```
 

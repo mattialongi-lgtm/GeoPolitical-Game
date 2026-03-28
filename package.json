@@ -12,6 +12,10 @@
     "test:security-hardening": "node scripts/security-hardening-regression-smoke.cjs",
     "test:security-db-integration": "node scripts/security-db-integration.mjs",
     "test:security-db-integration:ci": "REQUIRE_DB_INTEGRATION=true RUN_DB_INTEGRATION_TESTS=true node scripts/security-db-integration.mjs",
+    "test:security-db-rls-validation": "node scripts/security-db-rls-validation.mjs",
+    "test:security-db-rls-validation:ci": "REQUIRE_DB_RLS_VALIDATION=true RUN_DB_RLS_VALIDATION_TESTS=true node scripts/security-db-rls-validation.mjs",
+    "test:security-db-rls-validation:backend": "RUN_BACKEND_FLOW_VALIDATION=true node scripts/security-db-rls-validation.mjs",
+    "test:security-db-rls-validation:backend:ci": "REQUIRE_DB_RLS_VALIDATION=true RUN_DB_RLS_VALIDATION_TESTS=true REQUIRE_BACKEND_FLOW_VALIDATION=true RUN_BACKEND_FLOW_VALIDATION=true node scripts/security-db-rls-validation.mjs",
     "check:hardening": "tsc -p tsconfig.hardening.json && node scripts/write-hardening-package-json.cjs && node .hardening-dist/scripts/hardening-contract-smoke.js && node .hardening-dist/scripts/factory-deposit-hardening-smoke.js && node .hardening-dist/scripts/factory-upgrade-hardening-smoke.js && node .hardening-dist/scripts/factory-create-hardening-smoke.js && node .hardening-dist/scripts/party-assets-hardening-smoke.js && node .hardening-dist/scripts/production-hardening-smoke.js && node .hardening-dist/scripts/production-repository-hardening-smoke.js && node .hardening-dist/scripts/daily-reward-hardening-smoke.js && node .hardening-dist/scripts/war-deploy-hardening-smoke.js"
   },
   "dependencies": {

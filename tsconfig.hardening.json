@@ -19,6 +19,9 @@
     "scripts/factory-create-hardening-smoke.ts",
     "scripts/party-assets-hardening-smoke.ts",
     "scripts/production-hardening-smoke.ts",
+    "scripts/production-repository-hardening-smoke.ts",
+    "scripts/daily-reward-hardening-smoke.ts",
+    "scripts/war-deploy-hardening-smoke.ts",
     "backend/**/*.ts"
   ]
 }

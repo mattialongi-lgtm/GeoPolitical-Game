@@ -10,7 +10,13 @@ export class DailyRewardService {
     const { data, error } = await this.repository.claimMissionRewardRpc(userId, missionId);
 
     if (error) {
-      return systemError(error.message, { source: 'claimMissionRewardRpc' });
+      console.error('[DailyRewardService] claimMissionRewardRpc failed', {
+        userId,
+        missionId,
+        source: 'claimMissionRewardRpc',
+        error: error.message,
+      });
+      return systemError('Errore interno durante il riscatto missione.', { source: 'claimMissionRewardRpc' });
     }
 
     const result = typeof data === 'string' ? JSON.parse(data) : data;

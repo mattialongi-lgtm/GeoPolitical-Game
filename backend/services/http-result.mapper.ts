@@ -8,6 +8,13 @@ export function mapServiceResultToHttp<T>(result: ServiceResult<T>): { statusCod
     };
   }
 
+  if (result.type === 'system_error') {
+    return {
+      statusCode: result.statusCode,
+      body: { error: 'Si è verificato un errore interno. Riprova più tardi.' },
+    };
+  }
+
   return {
     statusCode: result.statusCode,
     body: { error: result.message },

@@ -113,66 +113,106 @@ export async function executeWarDeployUseCase(
     side,
   });
 
-  await warRepository.updateUserEnergyAndMoney(
-    user.id,
-    user.energy - troopValidation.energyCost,
-    user.money - troopValidation.moneyCost,
-  );
-
-  const scoreField = side === 'attacker' ? 'attackerScore' : 'defenderScore';
+  const scoreField: 'attackerScore' | 'defenderScore' = side === 'attacker' ? 'attackerScore' : 'defenderScore';
   const isNavalPhase1 = war.warType === 'naval' && war.navalPhase === 1;
-  const updateField = isNavalPhase1
+  const updateField: 'attackerScore' | 'defenderScore' | 'phase1AttackerScore' | 'phase1DefenderScore' = isNavalPhase1
     ? (side === 'attacker' ? 'phase1AttackerScore' : 'phase1DefenderScore')
     : scoreField;
 
-  await warRepository.updateWarScore(warId, {
-    [updateField]: (war[updateField] || 0) + damageResult.finalDamage,
-    updatedAt: new Date().toISOString(),
-  });
-
-  await warRepository.insertWarDeployment({
+  const actionDetails = {
     warId,
-    userId: user.id,
     side,
     troopType,
     quantity: qty,
-    baseDamage: damageResult.baseDamage,
-    finalDamage: damageResult.finalDamage,
-    bonuses: damageResult,
-  });
+    damage: damageResult.finalDamage,
+    username: user.username,
+    isPatriot,
+  };
 
-  const existingParticipant = await warRepository.getWarParticipantByWarAndUser(warId, user.id);
-  if (existingParticipant) {
-    const deployed = existingParticipant.troopsDeployed || {};
-    deployed[troopType] = (deployed[troopType] || 0) + qty;
-    await warRepository.updateWarParticipantById(existingParticipant.id, {
-      totalDamage: (existingParticipant.totalDamage || 0) + damageResult.finalDamage,
-      troopsDeployed: deployed,
-    });
-  } else {
-    await warRepository.insertWarParticipant({
+  // RPC-first source of truth for atomic deploy.
+  // XP / missions remain intentionally outside transaction as non-critical side effects.
+  try {
+    const { data, error } = await warRepository.runWarDeployRpc({
       warId,
       userId: user.id,
       side,
-      totalDamage: damageResult.finalDamage,
-      troopsDeployed: { [troopType]: qty },
+      troopType,
+      quantity: qty,
+      energyCost: troopValidation.energyCost,
+      moneyCost: troopValidation.moneyCost,
+      baseDamage: damageResult.baseDamage,
+      finalDamage: damageResult.finalDamage,
+      bonuses: damageResult,
+      updateField,
+      actionDetails,
     });
-  }
 
-  await warRepository.insertActionLog({
-    userId: user.id,
-    action: 'WAR_DEPLOY',
-    details: JSON.stringify({
+    if (!error && data) {
+      const result = typeof data === 'string' ? JSON.parse(data) : data;
+      if (result?.error) {
+        return { type: 'validation_error' as const, statusCode: 400, message: result.error };
+      }
+    } else if (error) {
+      throw error;
+    }
+  } catch (rpcErr: any) {
+    console.warn('[war-deploy] rpc_war_deploy failed, using legacy fallback', {
       warId,
+      userId: user.id,
       side,
       troopType,
       quantity: qty,
-      damage: damageResult.finalDamage,
-      username: user.username,
-      isPatriot,
-    }),
-    timestamp: Date.now(),
-  });
+      error: rpcErr?.message,
+    });
+
+    // Legacy fallback (temporary): sequential and non-atomic.
+    await warRepository.updateUserEnergyAndMoney(
+      user.id,
+      user.energy - troopValidation.energyCost,
+      user.money - troopValidation.moneyCost,
+    );
+
+    await warRepository.updateWarScore(warId, {
+      [updateField]: (war[updateField] || 0) + damageResult.finalDamage,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await warRepository.insertWarDeployment({
+      warId,
+      userId: user.id,
+      side,
+      troopType,
+      quantity: qty,
+      baseDamage: damageResult.baseDamage,
+      finalDamage: damageResult.finalDamage,
+      bonuses: damageResult,
+    });
+
+    const existingParticipant = await warRepository.getWarParticipantByWarAndUser(warId, user.id);
+    if (existingParticipant) {
+      const deployed = existingParticipant.troopsDeployed || {};
+      deployed[troopType] = (deployed[troopType] || 0) + qty;
+      await warRepository.updateWarParticipantById(existingParticipant.id, {
+        totalDamage: (existingParticipant.totalDamage || 0) + damageResult.finalDamage,
+        troopsDeployed: deployed,
+      });
+    } else {
+      await warRepository.insertWarParticipant({
+        warId,
+        userId: user.id,
+        side,
+        totalDamage: damageResult.finalDamage,
+        troopsDeployed: { [troopType]: qty },
+      });
+    }
+
+    await warRepository.insertActionLog({
+      userId: user.id,
+      action: 'WAR_DEPLOY',
+      details: JSON.stringify(actionDetails),
+      timestamp: Date.now(),
+    });
+  }
 
   await deps.addXP(user.id, deps.xpPerAttack);
 

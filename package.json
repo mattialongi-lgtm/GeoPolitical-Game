@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "check:hardening": "tsc -p tsconfig.hardening.json && node scripts/write-hardening-package-json.cjs && node .hardening-dist/scripts/hardening-contract-smoke.js && node .hardening-dist/scripts/factory-deposit-hardening-smoke.js && node .hardening-dist/scripts/factory-upgrade-hardening-smoke.js && node .hardening-dist/scripts/factory-create-hardening-smoke.js && node .hardening-dist/scripts/party-assets-hardening-smoke.js && node .hardening-dist/scripts/production-hardening-smoke.js"
+    "check:hardening": "tsc -p tsconfig.hardening.json && node scripts/write-hardening-package-json.cjs && node .hardening-dist/scripts/hardening-contract-smoke.js && node .hardening-dist/scripts/factory-deposit-hardening-smoke.js && node .hardening-dist/scripts/factory-upgrade-hardening-smoke.js && node .hardening-dist/scripts/factory-create-hardening-smoke.js && node .hardening-dist/scripts/party-assets-hardening-smoke.js && node .hardening-dist/scripts/production-hardening-smoke.js && node .hardening-dist/scripts/production-repository-hardening-smoke.js && node .hardening-dist/scripts/daily-reward-hardening-smoke.js && node .hardening-dist/scripts/war-deploy-hardening-smoke.js"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

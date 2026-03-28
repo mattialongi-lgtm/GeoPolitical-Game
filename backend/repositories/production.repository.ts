@@ -1,13 +1,19 @@
 export class ProductionRepository {
   constructor(private readonly supabase: any) {}
 
+  private throwOnMutationError(error: any, context: string): void {
+    if (error) {
+      throw new Error(`[ProductionRepository] ${context}: ${error.message}`);
+    }
+  }
+
   async getUserMoney(userId: string): Promise<number> {
     const { data } = await this.supabase.from('users').select('money').eq('id', userId).single();
     return Number(data?.money || 0);
   }
 
   async tryUpdateUserMoneyCAS(userId: string, expectedMoney: number, nextMoney: number): Promise<boolean> {
-    const { data } = await this.supabase
+    const { data, error } = await this.supabase
       .from('users')
       .update({ money: nextMoney })
       .eq('id', userId)
@@ -15,6 +21,7 @@ export class ProductionRepository {
       .select('id')
       .maybeSingle();
 
+    this.throwOnMutationError(error, 'tryUpdateUserMoneyCAS');
     return !!data;
   }
 
@@ -36,7 +43,7 @@ export class ProductionRepository {
   }
 
   async tryUpdateInventoryQuantityCAS(userId: string, itemId: string, expectedQuantity: number, nextQuantity: number): Promise<boolean> {
-    const { data } = await this.supabase
+    const { data, error } = await this.supabase
       .from('user_inventory')
       .update({ quantity: nextQuantity })
       .eq('userId', userId)
@@ -45,6 +52,7 @@ export class ProductionRepository {
       .select('userId')
       .maybeSingle();
 
+    this.throwOnMutationError(error, 'tryUpdateInventoryQuantityCAS');
     return !!data;
   }
 
@@ -92,10 +100,12 @@ export class ProductionRepository {
   }
 
   async deleteQueueItem(id: string, userId: string): Promise<void> {
-    await this.supabase.from('production_queue').delete().eq('id', id).eq('userId', userId);
+    const { error } = await this.supabase.from('production_queue').delete().eq('id', id).eq('userId', userId);
+    this.throwOnMutationError(error, 'deleteQueueItem');
   }
 
   async cleanupZeroInventory(userId: string): Promise<void> {
-    await this.supabase.from('user_inventory').delete().eq('userId', userId).lte('quantity', 0);
+    const { error } = await this.supabase.from('user_inventory').delete().eq('userId', userId).lte('quantity', 0);
+    this.throwOnMutationError(error, 'cleanupZeroInventory');
   }
 }

@@ -224,12 +224,11 @@ BEGIN
   END IF;
 
   -- 5. Upsert war_participants (damage tracking)
-  INSERT INTO war_participants ("warId", "oddsPlayerId", side, damage, deploys)
-  VALUES (p_war_id, p_user_id, p_side, p_damage, 1)
-  ON CONFLICT ("warId", "oddsPlayerId")
+  INSERT INTO war_participants ("warId", "userId", side, "totalDamage")
+  VALUES (p_war_id, p_user_id, p_side, p_damage)
+  ON CONFLICT ("warId", "userId")
   DO UPDATE SET
-    damage  = war_participants.damage + p_damage,
-    deploys = war_participants.deploys + 1;
+    "totalDamage" = war_participants."totalDamage" + p_damage;
 
   -- 6. Insert action log
   INSERT INTO action_logs ("userId", action, details, "createdAt")
@@ -264,7 +263,7 @@ $$;
 |---|---|---|
 | `users` | UPDATE (energy, money) | `FOR UPDATE` |
 | `wars` | UPDATE (attackerScore/defenderScore) | `FOR UPDATE` |
-| `war_participants` | UPSERT (damage, deploys) | Implicit via INSERT ON CONFLICT |
+| `war_participants` | UPSERT ("totalDamage") | Implicit via INSERT ON CONFLICT |
 | `action_logs` | INSERT | Nessun lock necessario |
 
 ### 5.3 Invarianti Garantite
@@ -312,7 +311,7 @@ supabase/migration_war_deploy_rpc.sql
 Contenuto:
 1. `CREATE OR REPLACE FUNCTION rpc_war_deploy(...)` come sopra
 2. Eventuali indici se necessari per performance:
-   - `CREATE INDEX IF NOT EXISTS idx_war_participants_war_player ON war_participants("warId", "oddsPlayerId");`
+   - `CREATE INDEX IF NOT EXISTS idx_war_participants_war_user ON war_participants("warId", "userId");`
 3. Nessuna modifica a tabelle esistenti — solo nuova RPC
 
 ### 5.6 Integrazione Backend (Schema di Massima)

@@ -128,8 +128,69 @@ const getUserPerks = async (userId: string, boosterInfo?: Record<string, any>) =
 
 // Helper to validate ISO2 country codes (prevents injection in .or() queries)
 const isValidIso2 = (code: string): boolean => /^[A-Z]{2,4}$/.test(code);
+const isValidUuid = (value: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 const isAllowedAvatarDataUrl = (value: string): boolean =>
   /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=\r\n]+$/i.test(value);
+
+const canManageRegion = async (regionId: string, userId: string): Promise<boolean> => {
+  const normalizedRegionId = String(regionId || '').trim().toUpperCase();
+  if (!isValidIso2(normalizedRegionId) || !userId) return false;
+
+  const { data: region, error } = await supabase
+    .from('regions')
+    .select('ownerUserId, leaderUserId')
+    .eq('id', normalizedRegionId)
+    .maybeSingle();
+
+  if (error || !region) return false;
+  return region.ownerUserId === userId || region.leaderUserId === userId;
+};
+
+const normalizeRegionLikeId = (value: any): string | null => {
+  const normalized = String(value || '').trim().toUpperCase();
+  return isValidIso2(normalized) ? normalized : null;
+};
+
+const canReadRegionScopedData = async (user: any, regionId: string): Promise<boolean> => {
+  if (!user?.id || !regionId) return false;
+  const canManage = await canManageRegion(regionId, user.id);
+  if (canManage) return true;
+  return user.residenceId === regionId || user.workPermitId === regionId;
+};
+
+const normalizeNewspaperRole = (value: any): 'owner' | 'editor' | 'writer' | null => {
+  const role = String(value || '').trim().toLowerCase();
+  if (role === 'owner' || role === 'editor' || role === 'writer') return role;
+  return null;
+};
+
+const canAssignNewspaperRole = (actorRole: string, targetRole: 'owner' | 'editor' | 'writer'): boolean => {
+  if (actorRole === 'editor') return targetRole === 'writer';
+  if (actorRole === 'owner') return targetRole === 'editor' || targetRole === 'writer';
+  return false;
+};
+
+const assertCanManageRegion = async (
+  req: any,
+  res: any,
+  rawRegionId: any,
+  forbiddenMessage: string
+): Promise<string | null> => {
+  const regionId = normalizeRegionLikeId(rawRegionId);
+  if (!regionId) {
+    res.status(400).json({ error: "Regione non valida." });
+    return null;
+  }
+
+  const allowed = await canManageRegion(regionId, req.user?.id);
+  if (!allowed) {
+    res.status(403).json({ error: forbiddenMessage });
+    return null;
+  }
+
+  return regionId;
+};
 
 // Helper to calculate XP and Level Up
 const addXP = async (userId: string, amount: number) => {
@@ -307,7 +368,7 @@ const authenticate = async (req: any, res: any, next: any) => {
   try {
     // Verify token with Supabase
     // We use the default client (anon/user) to verify the token
-    console.log(`[Auth] Verifying token (length: ${token?.length}): ${token?.substring(0, 10)}...${token?.substring(token.length - 10)}`);
+    console.log("[Auth] Verifying bearer token.");
     const { data: { user: authUser }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !authUser) {
@@ -2325,14 +2386,18 @@ app.get("/api/budget/:ownerType/:ownerId", authenticate, async (req: any, res) =
 app.post("/api/ministers/assign", authenticate, async (req: any, res) => {
   const leader = req.user;
   const { userId, role, iso2: rawIso2 } = req.body;
-  const iso2 = rawIso2?.toUpperCase().replace('NATION_', '');
+  const iso2 = normalizeRegionLikeId(String(rawIso2 || '').replace('NATION_', ''));
 
   if (!userId || !role || !iso2) return res.status(400).json({ error: "Dati mancanti." });
+  const managedIso2 = await assertCanManageRegion(req, res, iso2, "Solo il Leader può nominare i ministri.");
+  if (!managedIso2) return;
 
-  const { data: region, error: regionError } = await supabase.from('regions').select('ownerUserId, governmentForm').eq('id', iso2).single();
-  if (regionError || !region || region.ownerUserId !== leader.id) {
-    return res.status(403).json({ error: "Solo il Leader può nominare i ministri." });
-  }
+  const { data: region, error: regionError } = await supabase
+    .from('regions')
+    .select('governmentForm')
+    .eq('id', managedIso2)
+    .single();
+  if (regionError || !region) return res.status(404).json({ error: "Regione non trovata." });
 
   if (role === 'foreign' && (region.governmentForm === 'DICTATORSHIP' || region.governmentForm === 'ONE_PARTY_SYSTEM')) {
     return res.status(403).json({ error: "Questa carica non esiste in questa forma di governo." });
@@ -2350,12 +2415,12 @@ app.post("/api/ministers/assign", authenticate, async (req: any, res) => {
 
   try {
     // 1. Deactivate old minister
-    await supabase.from('ministers').update({ status: 'REVOKED' }).eq('stateId', iso2).eq('role', role);
+    await supabase.from('ministers').update({ status: 'REVOKED' }).eq('stateId', managedIso2).eq('role', role);
 
     // 2. Insert new minister
     await supabase.from('ministers').insert({
       id: generateSecureId(9),
-      stateId: iso2,
+      stateId: managedIso2,
       userId,
       role,
       title,
@@ -2367,7 +2432,7 @@ app.post("/api/ministers/assign", authenticate, async (req: any, res) => {
     const updateObj: any = {};
     if (role === 'economics') updateObj.economicAdviserId = userId;
     else updateObj.foreignMinisterId = userId;
-    await supabase.from('regions').update(updateObj).eq('id', iso2);
+    await supabase.from('regions').update(updateObj).eq('id', managedIso2);
 
     res.json({ success: true, title });
   } catch (err: any) {
@@ -2377,22 +2442,18 @@ app.post("/api/ministers/assign", authenticate, async (req: any, res) => {
 });
 
 app.post("/api/ministers/revoke", authenticate, async (req: any, res) => {
-  const leader = req.user;
   const { role, iso2: rawIso2 } = req.body;
-  const iso2 = rawIso2?.toUpperCase().replace('NATION_', '');
-
-  const { data: region, error: regionError } = await supabase.from('regions').select('ownerUserId').eq('id', iso2).single();
-  if (regionError || !region || region.ownerUserId !== leader.id) {
-    return res.status(403).json({ error: "Solo il Leader può revocare i ministri." });
-  }
+  const iso2 = normalizeRegionLikeId(String(rawIso2 || '').replace('NATION_', ''));
+  const managedIso2 = await assertCanManageRegion(req, res, iso2, "Solo il Leader può revocare i ministri.");
+  if (!managedIso2) return;
 
   try {
-    await supabase.from('ministers').update({ status: 'REVOKED' }).eq('stateId', iso2).eq('role', role);
+    await supabase.from('ministers').update({ status: 'REVOKED' }).eq('stateId', managedIso2).eq('role', role);
 
     const updateObj: any = {};
     if (role === 'economics') updateObj.economicAdviserId = null;
     else updateObj.foreignMinisterId = null;
-    await supabase.from('regions').update(updateObj).eq('id', iso2);
+    await supabase.from('regions').update(updateObj).eq('id', managedIso2);
 
     res.json({ success: true });
   } catch (err) {
@@ -2499,56 +2560,53 @@ app.post("/api/actions/apply", authenticate, async (req: any, res) => {
 
   if (!["residence", "work_permit"].includes(type)) return res.status(400).json({ error: "Tipo di richiesta non valido." });
   if (!isValidIso2(normalizedRegionId)) return res.status(400).json({ error: "Regione non valida." });
-  if (type === "residence" && user.residenceId === normalizedRegionId) return res.status(400).json({ error: "Siedi già in questa regione." });
-  if (type === "work_permit" && user.workPermitId === normalizedRegionId) return res.status(400).json({ error: "Hai già un permesso di lavoro qui." });
-
-  const { data: existing } = await supabase
-    .from('applications')
-    .select('id')
-    .eq('userId', user.id)
-    .eq('regionId', normalizedRegionId)
-    .eq('type', type)
-    .eq('status', 'pending')
-    .maybeSingle();
-
-  if (existing) return res.status(400).json({ error: "Hai già inviato una richiesta in attesa di approvazione." });
-
-  const { data: region } = await supabase
-    .from('regions')
-    .select('ownerUserId')
-    .eq('id', normalizedRegionId)
-    .single();
-
-  if (!region) return res.status(404).json({ error: "Regione non trovata." });
-
-  const id = generateSecureId(7);
-  const now = new Date().toISOString();
-
-  if (!region.ownerUserId) {
-    if (type === 'residence') {
-      await supabase.from('users').update({ residenceId: normalizedRegionId }).eq('id', user.id);
-    } else {
-      await supabase.from('users').update({ workPermitId: normalizedRegionId }).eq('id', user.id);
-    }
-    await supabase.from('applications').insert({
-      id, userId: user.id, username: user.username, regionId: normalizedRegionId, type, status: 'accepted', createdAt: now
-    });
-    return res.json({ success: true, autoAccepted: true });
-  }
-
-  await supabase.from('applications').insert({
-    id, userId: user.id, username: user.username, regionId: normalizedRegionId, type, status: 'pending', createdAt: now
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('create_application_atomic', {
+    p_user_id: user.id,
+    p_username: user.username,
+    p_region_id: normalizedRegionId,
+    p_type: type,
   });
 
-  res.json({ success: true, autoAccepted: false });
+  if (rpcError) {
+    console.error("[apply] RPC failure:", rpcError);
+    return res.status(500).json({ error: "Errore interno durante la creazione della richiesta." });
+  }
+
+  const codeToStatus: Record<string, number> = {
+    invalid_input: 400,
+    invalid_region: 400,
+    invalid_type: 400,
+    already_assigned: 400,
+    user_not_found: 404,
+    region_not_found: 404,
+    duplicate_pending: 409,
+  };
+
+  const result = rpcResult || {};
+  if (!result.success) {
+    return res.status(codeToStatus[result.code] || 400).json({ error: result.message || "Operazione non riuscita." });
+  }
+
+  res.json({
+    success: true,
+    autoAccepted: !!result.autoAccepted,
+    status: result.status,
+    applicationId: result.applicationId,
+  });
 });
 
 app.get("/api/applications/:regionId", authenticate, async (req: any, res) => {
   const { regionId } = req.params;
+  const normalizedRegionId = String(regionId || '').trim().toUpperCase();
+  if (!isValidIso2(normalizedRegionId)) return res.status(400).json({ error: "Regione non valida." });
+
+  const authorized = await canManageRegion(normalizedRegionId, req.user.id);
+  if (!authorized) return res.status(403).json({ error: "Non autorizzato a visualizzare le richieste di questa regione." });
+
   const { data: apps, error } = await supabase
     .from('applications')
     .select('*')
-    .eq('regionId', regionId)
+    .eq('regionId', normalizedRegionId)
     .eq('status', 'pending')
     .order('createdAt', { ascending: false });
 
@@ -2558,9 +2616,15 @@ app.get("/api/applications/:regionId", authenticate, async (req: any, res) => {
 
 app.get("/api/leader/orders/:regionId", authenticate, async (req: any, res) => {
   try {
+    const normalizedRegionId = String(req.params.regionId || '').trim().toUpperCase();
+    if (!isValidIso2(normalizedRegionId)) return res.status(400).json({ error: "Regione non valida." });
+
+    const authorized = await canManageRegion(normalizedRegionId, req.user.id);
+    if (!authorized) return res.status(403).json({ error: "Non autorizzato a visualizzare gli ordini di questa regione." });
+
     const { data: orders } = await supabase.from('leader_orders')
       .select('*')
-      .eq('regionId', req.params.regionId)
+      .eq('regionId', normalizedRegionId)
       .order('createdAt', { ascending: false })
       .limit(20);
     res.json(orders || []);
@@ -2572,51 +2636,55 @@ app.get("/api/leader/orders/:regionId", authenticate, async (req: any, res) => {
 app.post("/api/actions/resolve-application", authenticate, async (req: any, res) => {
   const user = req.user;
   const { applicationId, action } = req.body; // action = 'accept' | 'reject'
-
-  const { data: application, error: aError } = await supabase
-    .from('applications')
-    .select('*')
-    .eq('id', applicationId)
-    .single();
-
-  if (aError || !application) return res.status(404).json({ error: "Richiesta non trovata." });
-
-  const { data: regionInfo, error: rError } = await supabase
-    .from('regions')
-    .select('leaderUserId, governmentForm')
-    .eq('id', application.regionId)
-    .single();
-
-  if (rError || !regionInfo) return res.status(404).json({ error: "Regione non trovata." });
-
-  if (regionInfo.leaderUserId !== user.id) {
-    return res.status(403).json({ error: "Solo il Leader può approvare residenze o visti." });
+  if (typeof applicationId !== 'string' || !applicationId.trim()) {
+    return res.status(400).json({ error: "applicationId non valido." });
+  }
+  if (action !== 'accept' && action !== 'reject') {
+    return res.status(400).json({ error: "Azione non valida. Usa 'accept' o 'reject'." });
   }
 
-  if (action === 'accept') {
-    if (application.type === 'residence') {
-      await supabase.from('users').update({ residenceId: application.regionId }).eq('id', application.userId);
-    } else {
-      await supabase.from('users').update({ workPermitId: application.regionId }).eq('id', application.userId);
-    }
-    await supabase.from('applications').update({ status: 'accepted' }).eq('id', applicationId);
-  } else {
-    await supabase.from('applications').update({ status: 'rejected' }).eq('id', applicationId);
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('resolve_application_atomic', {
+    p_application_id: applicationId.trim(),
+    p_action: action,
+    p_actor_user_id: user.id,
+  });
+
+  if (rpcError) {
+    console.error("[resolve-application] RPC failure:", rpcError);
+    return res.status(500).json({ error: "Errore interno durante la risoluzione della richiesta." });
   }
 
-  res.json({ success: true, action });
+  const codeToStatus: Record<string, number> = {
+    invalid_input: 400,
+    invalid_action: 400,
+    not_found: 404,
+    region_not_found: 404,
+    forbidden: 403,
+    already_resolved: 409,
+    invalid_application_type: 409,
+    user_not_found: 409,
+    race_condition: 409,
+  };
+
+  const result = rpcResult || {};
+  if (!result.success) {
+    return res.status(codeToStatus[result.code] || 400).json({ error: result.message || "Operazione non riuscita." });
+  }
+
+  res.json({
+    success: true,
+    action,
+    status: result.status,
+    idempotent: !!result.idempotent,
+  });
 });
 
 app.post("/api/actions/toggle-borders", authenticate, async (req: any, res) => {
-  const user = req.user;
   const { regionId, state } = req.body;
-  const { data: region } = await supabase.from('regions').select('ownerUserId').eq('id', regionId).single();
+  const managedRegionId = await assertCanManageRegion(req, res, regionId, "Non sei il Governatore di questa regione.");
+  if (!managedRegionId) return;
 
-  if (!region || region.ownerUserId !== user.id) {
-    return res.status(403).json({ error: "Non sei il Governatore di questa regione." });
-  }
-
-  await supabase.from('regions').update({ workRestrictions: state ? 1 : 0 }).eq('id', regionId);
+  await supabase.from('regions').update({ workRestrictions: state ? 1 : 0 }).eq('id', managedRegionId);
   res.json({ success: true });
 });
 
@@ -3350,6 +3418,14 @@ app.get("/api/my-newspapers", authenticate, async (req: any, res) => {
 app.post("/api/newspapers/:id/members", authenticate, async (req: any, res) => {
   const { userId, role } = req.body;
   const newspaperId = req.params.id;
+  const targetRole = normalizeNewspaperRole(role || 'writer');
+
+  if (!userId || typeof userId !== 'string') {
+    return res.status(400).json({ error: "Utente non valido." });
+  }
+  if (!targetRole) {
+    return res.status(400).json({ error: "Ruolo non valido." });
+  }
 
   // Check if current user is owner or editor
   const { data: myMember } = await supabase
@@ -3364,21 +3440,31 @@ app.post("/api/newspapers/:id/members", authenticate, async (req: any, res) => {
     return res.status(403).json({ error: "Non hai i permessi per gestire i membri." });
   }
 
-  // Writer can't add anyone. Editor can only add writers.
-  if (myMember.role === 'editor' && role === 'editor') {
-    return res.status(403).json({ error: "Gli editor possono solo invitare scrittori." });
+  if (!canAssignNewspaperRole(myMember.role, targetRole)) {
+    return res.status(403).json({ error: "Non hai i permessi per assegnare questo ruolo." });
   }
 
   try {
+    const { data: targetUser } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!targetUser) return res.status(404).json({ error: "Utente target non trovato." });
+
     await supabase.from('newspaper_members').insert({
       newspaper_id: newspaperId,
       user_id: userId,
-      role: role || 'writer',
+      role: targetRole,
       status: 'active',
       joined_at: new Date().toISOString()
     });
     res.json({ success: true });
   } catch (err: any) {
+    if (err?.code === '23505') {
+      return res.status(409).json({ error: "L'utente è già membro di questo giornale." });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -4560,37 +4646,27 @@ app.post("/api/wars/coup", authenticate, async (req: any, res) => {
 // Get lobby status for a region
 app.get("/api/lobbies/:regionId", authenticate, async (req: any, res) => {
   try {
-    const { regionId } = req.params;
+    const normalizedRegionId = normalizeRegionLikeId(req.params.regionId);
+    if (!normalizedRegionId) {
+      return res.status(400).json({ error: "Regione non valida." });
+    }
+
+    const canRead = await canReadRegionScopedData(req.user, normalizedRegionId);
+    if (!canRead) {
+      return res.status(403).json({ error: "Non autorizzato a visualizzare le lobby di questa regione." });
+    }
+
     const { data: lobbies } = await supabase.from('revolution_lobbies')
       .select('*')
-      .eq('regionId', regionId)
+      .eq('regionId', normalizedRegionId)
       .eq('status', 'pending')
       .order('createdAt', { ascending: false });
 
-    // Expire old lobbies (use status check to prevent duplicate processing)
+    // GET must be side-effect free: only filter active/pending lobbies in-memory.
     const now = Date.now();
     const active = (lobbies || []).filter((l: any) => {
-      if (l.expiresAt && new Date(l.expiresAt).getTime() < now) {
-        // Expire it atomically (only if still pending to prevent race conditions)
-        supabase.from('revolution_lobbies')
-          .update({ status: 'expired' })
-          .eq('id', l.id)
-          .eq('status', 'pending')
-          .select('id')
-          .maybeSingle()
-          .then(({ data: expired }) => {
-            // Only refund if we successfully set it to expired (prevents duplicate refunds)
-            if (expired && l.goldCostPerPlayer > 0) {
-              for (const uid of (l.participantIds || [])) {
-                supabase.from('users').select('gold').eq('id', uid).single().then(({ data: u }) => {
-                  if (u) supabase.from('users').update({ gold: (u.gold || 0) + l.goldCostPerPlayer }).eq('id', uid).then(() => {});
-                });
-              }
-            }
-          }, (err: any) => console.error("[lobbies] Expire error:", err));
-        return false;
-      }
-      return true;
+      if (!l.expiresAt) return true;
+      return new Date(l.expiresAt).getTime() >= now;
     });
 
     // Get usernames for participants
@@ -4619,6 +4695,58 @@ app.get("/api/lobbies/:regionId", authenticate, async (req: any, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Expire a lobby and refund participants (atomic RPC, no side effects on GET)
+app.post("/api/lobbies/:id/expire", authenticate, async (req: any, res) => {
+  const lobbyId = String(req.params.id || '').trim();
+  if (!isValidUuid(lobbyId)) {
+    return res.status(400).json({ error: "Lobby ID non valido." });
+  }
+
+  const { data: lobby, error: lobbyError } = await supabase
+    .from('revolution_lobbies')
+    .select('regionId')
+    .eq('id', lobbyId)
+    .maybeSingle();
+
+  if (lobbyError) return res.status(500).json({ error: "Errore nel recupero lobby." });
+  if (!lobby) return res.status(404).json({ error: "Lobby non trovata." });
+
+  const managedRegionId = await assertCanManageRegion(req, res, lobby.regionId, "Non autorizzato a scadere questa lobby.");
+  if (!managedRegionId) return;
+
+  const { data: rpcResult, error: rpcError } = await supabase.rpc('expire_revolution_lobby_atomic', {
+    p_lobby_id: lobbyId,
+    p_actor_user_id: req.user.id,
+  });
+
+  if (rpcError) {
+    console.error("[lobbies.expire] RPC failure:", rpcError);
+    return res.status(500).json({ error: "Errore interno durante la scadenza della lobby." });
+  }
+
+  const codeToStatus: Record<string, number> = {
+    invalid_input: 400,
+    not_found: 404,
+    region_not_found: 404,
+    forbidden: 403,
+    invalid_state: 409,
+    not_expired: 409,
+    race_condition: 409,
+  };
+
+  const result = rpcResult || {};
+  if (!result.success) {
+    return res.status(codeToStatus[result.code] || 400).json({ error: result.message || "Operazione non riuscita." });
+  }
+
+  return res.json({
+    success: true,
+    status: result.status,
+    idempotent: !!result.idempotent,
+    refundedParticipants: Number(result.refundedParticipants || 0),
+  });
 });
 
 // === MILITARY AGREEMENTS ===
@@ -4685,7 +4813,14 @@ app.post("/api/military-agreements", authenticate, async (req: any, res) => {
 
 // List military agreements for a state
 app.get("/api/military-agreements/:stateId", authenticate, async (req: any, res) => {
-  const { stateId } = req.params;
+  const stateId = normalizeRegionLikeId(req.params.stateId);
+  if (!stateId) return res.status(400).json({ error: "Stato non valido." });
+
+  const canRead = await canReadRegionScopedData(req.user, stateId);
+  if (!canRead) {
+    return res.status(403).json({ error: "Non autorizzato a visualizzare gli accordi militari di questo Stato." });
+  }
+
   const { data: agreements } = await supabase.from('war_military_agreements')
     .select('*')
     .or(`"stateA".eq.${stateId},"stateB".eq.${stateId}`)
@@ -4697,7 +4832,14 @@ app.get("/api/military-agreements/:stateId", authenticate, async (req: any, res)
 // === WAR DEPARTMENTS ===
 
 app.get("/api/war-departments/:stateId", authenticate, async (req: any, res) => {
-  const { stateId } = req.params;
+  const stateId = normalizeRegionLikeId(req.params.stateId);
+  if (!stateId) return res.status(400).json({ error: "Stato non valido." });
+
+  const canRead = await canReadRegionScopedData(req.user, stateId);
+  if (!canRead) {
+    return res.status(403).json({ error: "Non autorizzato a visualizzare i dipartimenti di guerra di questo Stato." });
+  }
+
   const { data: departments } = await supabase.from('war_departments')
     .select('*')
     .eq('stateId', stateId);
@@ -4707,7 +4849,14 @@ app.get("/api/war-departments/:stateId", authenticate, async (req: any, res) => 
 
 // Get active revolutions for a region
 app.get("/api/revolutions/:regionId", authenticate, async (req: any, res) => {
-  const { regionId } = req.params;
+  const regionId = normalizeRegionLikeId(req.params.regionId);
+  if (!regionId) return res.status(400).json({ error: "Regione non valida." });
+
+  const canRead = await canReadRegionScopedData(req.user, regionId);
+  if (!canRead) {
+    return res.status(403).json({ error: "Non autorizzato a visualizzare le rivoluzioni di questa regione." });
+  }
+
   const { data: revolutions } = await supabase.from('revolutions')
     .select('*')
     .eq('regionId', regionId)
@@ -4719,7 +4868,14 @@ app.get("/api/revolutions/:regionId", authenticate, async (req: any, res) => {
 
 // Get active coups for a region
 app.get("/api/coups/:regionId", authenticate, async (req: any, res) => {
-  const { regionId } = req.params;
+  const regionId = normalizeRegionLikeId(req.params.regionId);
+  if (!regionId) return res.status(400).json({ error: "Regione non valida." });
+
+  const canRead = await canReadRegionScopedData(req.user, regionId);
+  if (!canRead) {
+    return res.status(403).json({ error: "Non autorizzato a visualizzare i colpi di stato di questa regione." });
+  }
+
   const { data: coups } = await supabase.from('coups')
     .select('*')
     .eq('regionId', regionId)

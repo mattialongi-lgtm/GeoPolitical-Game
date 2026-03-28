@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "test:security-hardening": "node scripts/security-hardening-regression-smoke.cjs",
+    "test:security-db-integration": "node scripts/security-db-integration.mjs",
+    "test:security-db-integration:ci": "REQUIRE_DB_INTEGRATION=true RUN_DB_INTEGRATION_TESTS=true node scripts/security-db-integration.mjs",
     "check:hardening": "tsc -p tsconfig.hardening.json && node scripts/write-hardening-package-json.cjs && node .hardening-dist/scripts/hardening-contract-smoke.js && node .hardening-dist/scripts/factory-deposit-hardening-smoke.js && node .hardening-dist/scripts/factory-upgrade-hardening-smoke.js && node .hardening-dist/scripts/factory-create-hardening-smoke.js && node .hardening-dist/scripts/party-assets-hardening-smoke.js && node .hardening-dist/scripts/production-hardening-smoke.js && node .hardening-dist/scripts/production-repository-hardening-smoke.js && node .hardening-dist/scripts/daily-reward-hardening-smoke.js && node .hardening-dist/scripts/war-deploy-hardening-smoke.js"
   },
   "dependencies": {

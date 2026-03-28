@@ -8,6 +8,75 @@ Questa mini-suite verifica **comportamento runtime** (DB state/transazioni/idemp
 
 Script: `scripts/security-db-integration.mjs`.
 
+## Validazione RLS / grants post-hardening
+
+Per la migration di defense-in-depth su `applications` / `revolution_lobbies` / RPC grants,
+è disponibile anche:
+
+- Script: `scripts/security-db-rls-validation.mjs`
+- Obiettivi:
+  - verificare che il ruolo `authenticated` **non** possa eseguire direttamente:
+    - `create_application_atomic`
+    - `resolve_application_atomic`
+    - `expire_revolution_lobby_atomic`
+  - verificare lettura scoped su:
+    - `applications` (solo owner domanda o governance regione)
+    - `revolution_lobbies` (solo creator/partecipanti/scope regione)
+
+Esecuzione locale:
+
+```bash
+RUN_DB_RLS_VALIDATION_TESTS=true \
+VITE_SUPABASE_URL=... \
+VITE_SUPABASE_ANON_KEY=... \
+SUPABASE_SERVICE_ROLE_KEY=... \
+DB_TEST_USER_PASSWORD='...' \
+npm run test:security-db-rls-validation
+```
+
+Esecuzione CI strict:
+
+```bash
+npm run test:security-db-rls-validation:ci
+```
+
+Nota: lo script crea utenti `auth.users` temporanei via service-role (`auth.admin.createUser`),
+verifica accessi con sessioni `authenticated`, poi esegue cleanup best-effort.
+
+## Validazione flussi backend ufficiali (opzionale ma consigliata in staging)
+
+Lo stesso script può verificare anche gli endpoint API:
+
+- `POST /api/actions/apply`
+- `POST /api/actions/resolve-application`
+- `GET /api/applications/:regionId`
+- `GET /api/lobbies/:regionId`
+- `POST /api/lobbies/:id/expire`
+
+Env aggiuntive:
+
+- `RUN_BACKEND_FLOW_VALIDATION=true`
+- `BACKEND_BASE_URL` (default: `http://127.0.0.1:3000`)
+
+Comando locale:
+
+```bash
+RUN_DB_RLS_VALIDATION_TESTS=true \
+RUN_BACKEND_FLOW_VALIDATION=true \
+VITE_SUPABASE_URL=... \
+VITE_SUPABASE_ANON_KEY=... \
+SUPABASE_SERVICE_ROLE_KEY=... \
+BACKEND_BASE_URL='https://staging-api.example.com' \
+DB_TEST_USER_PASSWORD='...' \
+npm run test:security-db-rls-validation:backend
+```
+
+Comando CI strict (RLS + backend flows):
+
+```bash
+npm run test:security-db-rls-validation:backend:ci
+```
+
 ## Prerequisiti
 
 - DB di test dedicato (mai produzione).

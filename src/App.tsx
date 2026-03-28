@@ -69,6 +69,9 @@ import type { ResourceType, DeepCostPreview } from "./types";
 import type { WorldStats } from "./components/home/mockData";
 import { DEFAULT_WORLD_STATS } from "./components/home/mockData";
 import { supabase } from "./lib/supabase";
+import { clearBackendAuthCookie, setBackendAuthCookie } from "./api/authClient";
+import { useAuthBootstrap } from "./hooks/useAuthBootstrap";
+import { useAppBootstrapData } from "./hooks/useAppBootstrapData";
 import { useNavigate, useLocation, Routes, Route, Link, useParams, Navigate } from "react-router-dom";
 import { MoreVertical, Settings, Box, Archive, Filter, ShoppingCart, RefreshCcw } from "lucide-react";
 import { BlocsList } from "./components/BlocsList";
@@ -314,16 +317,6 @@ const DarkCard = ({ children, className = "" }: { children: React.ReactNode, cla
 const TerritorialBrandLogo = ({ className = "", alt = "Territorial" }: { className?: string; alt?: string }) => (
   <img src={territorialBrand} alt={alt} className={className} />
 );
-
-const setBackendAuthCookie = (token: string) => {
-  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `sb-access-token=${token}; path=/; max-age=${604800}; SameSite=Lax${secure}`;
-};
-
-const clearBackendAuthCookie = () => {
-  const secure = window.location.protocol === 'https:' ? '; Secure' : '';
-  document.cookie = `sb-access-token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT; SameSite=Lax${secure}`;
-};
 
 const Auth = ({ onLogin }: { onLogin: () => void }) => {
   const [isLogin, setIsLogin] = useState(true);
@@ -4877,97 +4870,23 @@ export default function App() {
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
   }, [isDarkMode]);
 
-  const fetchData = async () => {
-    try {
-      const [userRes, regionsRes, nationsRes, articlesRes, warsRes, worldStatsRes] = await Promise.all([
-        fetch("/api/me"),
-        fetch("/api/regions"),
-        fetch("/api/nations"),
-        fetch("/api/articles"),
-        fetch("/api/wars"),
-        fetch("/api/world-stats")
-      ]);
-      if (userRes.ok) {
-        const userData = await userRes.json();
-        setUser(userData);
-      } else {
-        setUser(null);
-      }
-      let regionsData: any[] = [];
-      if (regionsRes.ok) {
-        regionsData = await regionsRes.json();
-        setRegions(regionsData);
-      }
-      if (nationsRes.ok) {
-        setNations(await nationsRes.json());
-      }
-      if (articlesRes.ok) setArticles(await articlesRes.json());
-      if (warsRes.ok) setWars(await warsRes.json());
+  const { fetchData } = useAppBootstrapData({
+    setUser,
+    setRegions,
+    setNations,
+    setArticles,
+    setWars,
+    setWorldStats,
+    setLoading,
+  });
 
-      let ws = worldStats;
-      if (worldStatsRes.ok) ws = await worldStatsRes.json();
-      if (regionsData.length > 0) {
-        const independentCount = regionsData.filter((r: any) => !r.nation_id).length;
-        const uniqueStates = new Set(regionsData.map((r: any) => r.nation_id).filter(Boolean)).size;
-        ws = {
-          ...ws,
-          totalRegions: regionsData.length,
-          independentRegions: independentCount,
-          totalStates: uniqueStates,
-        };
-      }
-      setWorldStats(ws);
-    } catch (err) {
-      console.error(err);
-    } finally {
+  useAuthBootstrap({
+    onSessionReady: fetchData,
+    onSignedOut: () => {
+      setUser(null);
       setLoading(false);
     }
-  };
-
-  const pollIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-
-  useEffect(() => {
-    // Check for existing session before initial data fetch to avoid race conditions
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setBackendAuthCookie(session.access_token);
-      }
-      fetchData();
-    });
-
-    pollIntervalRef.current = setInterval(fetchData, 10000); // Polling every 10s
-
-    // Pause polling when tab is hidden, resume when visible
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
-      } else {
-        fetchData(); // Refresh immediately on return
-        pollIntervalRef.current = setInterval(fetchData, 10000);
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
-        // Set cookie for backend authentication
-        setBackendAuthCookie(session.access_token);
-        fetchData();
-      } else {
-        // Clear cookie on logout
-        clearBackendAuthCookie();
-        setUser(null);
-        setLoading(false);
-      }
-    });
-
-    return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      subscription.unsubscribe();
-    };
-  }, []);
+  });
 
   useEffect(() => {
     if (!user) return;

@@ -12,10 +12,10 @@
  *
  * Missions are fetched from /api/daily/missions and update in real time.
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React from 'react';
 import { motion } from 'motion/react';
-import type { User, Region, DailyMission, MissionReward, DailyMissionsState } from '../../types';
-import { DAILY_GAMEPLAY_CONFIG } from '../../types';
+import type { User, Region } from '../../types';
+import { useDailyMissions } from '../../hooks/daily/useDailyMissions';
 
 import DailyMissionsCard from './DailyMissionsCard';
 import RewardSummaryCard from './RewardSummaryCard';
@@ -51,119 +51,16 @@ export default function DailyTasksPage({ user, regions }: DailyTasksPageProps) {
   const playerRegion = regions.find(r => r.id === user.regionId);
   const residenceRegion = regions.find(r => r.id === user.residenceId);
 
-  // ── Missions state ──
-  const [missions, setMissions] = useState<DailyMission[]>([]);
-  const [bonusClaimed, setBonusClaimed] = useState(false);
-  const [bonusReward, setBonusReward] = useState<MissionReward>(DAILY_GAMEPLAY_CONFIG.DAILY_MISSIONS_BONUS);
-  const [missionsLoading, setMissionsLoading] = useState(true);
-  const [missionsError, setMissionsError] = useState<string | null>(null);
-
-  // Fetch missions from API
-  const fetchMissions = useCallback(async () => {
-    try {
-      setMissionsError(null);
-      const token = document.cookie
-        .split('; ')
-        .find(c => c.startsWith('sb-access-token='))?.split('=')[1]
-        || document.cookie
-        .split('; ')
-        .find(c => c.startsWith('token='))?.split('=')[1];
-
-      const res = await fetch('/api/daily/missions', {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-        },
-      });
-
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}`);
-      }
-
-      const data: DailyMissionsState = await res.json();
-      setMissions(data.missions.map(m => ({
-        id: m.id,
-        mission_key: m.mission_key,
-        title: m.title,
-        description: m.description,
-        category: m.category,
-        icon: m.icon,
-        target: m.target,
-        progress: m.progress,
-        status: m.status,
-        reward: m.reward,
-        route: m.route,
-      })));
-      setBonusClaimed(data.bonusClaimed);
-      setBonusReward(data.bonusReward);
-    } catch (err: any) {
-      console.error('[DailyMissions] Fetch error:', err);
-      setMissionsError('Errore nel caricamento delle missioni');
-    } finally {
-      setMissionsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchMissions();
-    // Refresh every 60 seconds to catch progress updates
-    const interval = setInterval(fetchMissions, 60000);
-    return () => clearInterval(interval);
-  }, [fetchMissions]);
-
-  // Claim a mission reward
-  const handleClaimMission = async (missionId: string) => {
-    try {
-      const token = document.cookie
-        .split('; ')
-        .find(c => c.startsWith('sb-access-token='))?.split('=')[1]
-        || document.cookie
-        .split('; ')
-        .find(c => c.startsWith('token='))?.split('=')[1];
-
-      const res = await fetch(`/api/daily/missions/claim/${missionId}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (res.ok) {
-        // Update local state
-        setMissions(prev => prev.map(m =>
-          m.id === missionId ? { ...m, status: 'claimed' as const } : m
-        ));
-      }
-    } catch (err) {
-      console.error('[DailyMissions] Claim error:', err);
-    }
-  };
-
-  // Claim the all-complete bonus
-  const handleClaimBonus = async () => {
-    try {
-      const token = document.cookie
-        .split('; ')
-        .find(c => c.startsWith('sb-access-token='))?.split('=')[1]
-        || document.cookie
-        .split('; ')
-        .find(c => c.startsWith('token='))?.split('=')[1];
-
-      const res = await fetch('/api/daily/missions/claim-bonus', {
-        method: 'POST',
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : '',
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (res.ok) {
-        setBonusClaimed(true);
-      }
-    } catch (err) {
-      console.error('[DailyMissions] Bonus claim error:', err);
-    }
-  };
+  const {
+    missions,
+    bonusClaimed,
+    bonusReward,
+    missionsLoading,
+    missionsError,
+    refreshMissions,
+    handleClaimMission,
+    handleClaimBonus,
+  } = useDailyMissions();
 
   // Derive farming bonus from region health
   const regionHealth = playerRegion?.health || 5;
@@ -215,7 +112,7 @@ export default function DailyTasksPage({ user, regions }: DailyTasksPageProps) {
         <div className="bg-gray-900/80 border border-red-500/30 rounded-2xl p-4 text-center">
           <p className="text-xs text-red-400">{missionsError}</p>
           <button
-            onClick={fetchMissions}
+            onClick={() => { void refreshMissions(); }}
             className="mt-2 text-[10px] text-amber-400 underline hover:text-amber-300"
           >
             Riprova

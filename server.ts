@@ -15,7 +15,22 @@ import { getResolutionEffects, resolveWar as resolveWarLogic } from "./src/servi
 import { shouldAutoAttackFire, getWarsToResolve, getNavalWarsForPhaseTransition } from "./src/services/warScheduler";
 import { selectDailyMissions, MISSION_TEMPLATES, MISSION_ACTION_MAP } from "./src/services/dailyMissionsService";
 import { DAILY_GAMEPLAY_CONFIG } from "./src/types";
-import type { MissionReward } from "./src/types";
+import { registerWarRoutes } from "./backend/routes/war.routes";
+import { createWarDomainDeps } from "./backend/services/war-domain.helpers";
+import { DailyRewardRepository } from "./backend/repositories/daily-reward.repository";
+import { DailyRewardService } from "./backend/services/daily-reward.service";
+import { FactoryEconomyRepository } from "./backend/repositories/factory-economy.repository";
+import { FactoryEconomyService } from "./backend/services/factory-economy.service";
+import { FactoryUpgradeRepository } from "./backend/repositories/factory-upgrade.repository";
+import { FactoryUpgradeService } from "./backend/services/factory-upgrade.service";
+import { FactoryCreateRepository } from "./backend/repositories/factory-create.repository";
+import { FactoryCreateService } from "./backend/services/factory-create.service";
+import { PartyAssetsRepository } from "./backend/repositories/party-assets.repository";
+import { PartyAssetsService } from "./backend/services/party-assets.service";
+import { ProductionRepository } from "./backend/repositories/production.repository";
+import { ProductionService } from "./backend/services/production.service";
+import { isDailyBonusClaimSuccess, isDailyMissionClaimSuccess } from "./backend/observability/contract-guards";
+import { mapServiceResultToHttp } from "./backend/services/http-result.mapper";
 
 console.log("Starting server.ts...");
 
@@ -82,6 +97,11 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
+const factoryEconomyService = new FactoryEconomyService(new FactoryEconomyRepository(supabase));
+const factoryUpgradeService = new FactoryUpgradeService(new FactoryUpgradeRepository(supabase));
+const factoryCreateService = new FactoryCreateService(new FactoryCreateRepository(supabase));
+const partyAssetsService = new PartyAssetsService(new PartyAssetsRepository(supabase));
+const productionService = new ProductionService(new ProductionRepository(supabase));
 
 app.use(express.json());
 app.use(cookieParser());
@@ -1505,51 +1525,12 @@ app.get("/api/factories", authenticate, async (req: any, res) => {
 // Create a new player-owned factory
 app.post("/api/factories/create", authenticate, async (req: any, res) => {
   const user = req.user;
-  const { name, type, regionId } = req.body;
-
-  if (!name || !type || !regionId) return res.status(400).json({ error: "Dati mancanti." });
-
-  const validTypes = Object.keys(FACTORY_CONFIG.TYPES);
-  if (!validTypes.includes(type)) return res.status(400).json({ error: "Tipo di fabbrica non valido." });
-
-  const cost = FACTORY_CONFIG.CREATE_COST[type] || 5000;
-
-  if (user.money < cost) return res.status(400).json({ error: `Fondi insufficienti. Servono €${cost.toLocaleString()}.` });
 
   try {
-    // Atomic currency deduction to prevent race conditions
-    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: cost,
-      p_gold_cost: 0,
-      p_energy_cost: 0,
-    });
-    if (deductError) throw deductError;
-    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-    if (deductData?.error) return res.status(400).json({ error: deductData.error });
+    const result = await factoryCreateService.createFactory(user.id, req.body || {});
 
-    const { data: factory, error } = await supabase.from('factories').insert({
-      name,
-      type,
-      regionId: regionId.toUpperCase(),
-      ownerUserId: user.id,
-      wage: 50,
-      budget: 0,
-      level: 1,
-      cooldownSec: 600,
-      currentStorage: 0,
-      isActive: true,
-      totalWorkerCount: 0,
-      totalProduction: 0,
-      totalOwnerProfit: 0,
-      totalTaxesPaid: 0,
-      listedForSale: false,
-      salePrice: 0,
-      createdAt: new Date().toISOString()
-    }).select().single();
-
-    if (error) throw error;
-    res.json(factory);
+    const http = mapServiceResultToHttp(result);
+    return res.status(http.statusCode).json(http.body);
   } catch (err: any) {
     res.status(500).json({ error: "Errore nella creazione: " + err.message });
   }
@@ -1565,25 +1546,17 @@ app.post("/api/factories/deposit", authenticate, async (req: any, res) => {
     return res.status(400).json({ error: "Parametri non validi." });
   }
 
-  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
-  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
-  if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
   if (user.money < numAmount) return res.status(400).json({ error: "Fondi insufficienti." });
 
   try {
-    // Atomic currency deduction
-    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: numAmount,
-      p_gold_cost: 0,
-      p_energy_cost: 0,
-    });
-    if (deductError) throw deductError;
-    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-    if (deductData?.error) return res.status(400).json({ error: deductData.error });
+    const result = await factoryEconomyService.depositFactoryBudget(user.id, factoryId, numAmount);
 
-    await supabase.from('factories').update({ budget: (factory.budget || 0) + numAmount }).eq('id', factoryId);
-    res.json({ success: true, newBudget: (factory.budget || 0) + numAmount });
+    if (result.type === 'success') {
+      return res.json({ success: true, newBudget: result.payload.newBudget });
+    }
+
+    const http = mapServiceResultToHttp(result);
+    return res.status(http.statusCode).json(http.body);
   } catch (err: any) {
     res.status(500).json({ error: "Errore nel deposito: " + err.message });
   }
@@ -1648,87 +1621,19 @@ app.post("/api/factories/upgrade", authenticate, async (req: any, res) => {
   const user = req.user;
   const { factoryId, targetLevel } = req.body;
 
-  if (!factoryId) return res.status(400).json({ error: "Parametri non validi." });
-
   try {
-    // Fetch factory
-    const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).maybeSingle();
-    if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
-    if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario di questa fabbrica." });
+    const result = await factoryUpgradeService.upgradeFactory(user.id, factoryId, targetLevel);
 
-    const currentLevel = factory.level || 1;
-    const resolvedTarget = targetLevel ? parseInt(targetLevel) : currentLevel + 1;
-
-    if (resolvedTarget <= currentLevel) return res.status(400).json({ error: "Il livello target deve essere maggiore di quello attuale." });
-    if (resolvedTarget > 800) return res.status(400).json({ error: "Livello massimo è 800." });
-
-    // Try RPC first, fallback to manual calculation
-    let upgradeSucceeded = false;
-    let resultNewLevel = resolvedTarget;
-    let resultGoldCost = 0;
-
-    try {
-      const { data, error } = await supabase.rpc('upgrade_factory', {
-        p_factory_id: factoryId,
-        p_target_level: resolvedTarget,
-        p_user_id: user.id,
-      });
-      if (!error && data) {
-        const result = typeof data === 'string' ? JSON.parse(data) : data;
-        if (result.error) return res.status(400).json({ error: result.error });
-        return res.json({ success: true, newLevel: result.levelAfter, goldCost: result.goldCost });
-      }
-      if (error) throw error;
-    } catch (rpcErr: any) {
-      // RPC not available - use manual fallback
-      console.log("[factory-upgrade] RPC fallback:", rpcErr.message);
-
-      // Calculate cost manually
-      const { data: currentRow } = await supabase.from('factory_upgrade_costs')
-        .select('aggregate_cost').eq('level_to', currentLevel).maybeSingle();
-      const { data: targetRow } = await supabase.from('factory_upgrade_costs')
-        .select('aggregate_cost').eq('level_to', resolvedTarget).maybeSingle();
-
-      let goldCost: number;
-      if (targetRow) {
-        const currentAgg = currentRow?.aggregate_cost || 0;
-        goldCost = targetRow.aggregate_cost - currentAgg;
-      } else {
-        // Table not populated - use formula: cost = sum of 5*level for each level
-        let cost = 0;
-        for (let l = currentLevel + 1; l <= resolvedTarget; l++) {
-          cost += l === 1 ? 500 : 5 * l;
-        }
-        goldCost = cost;
-      }
-
-      if (goldCost <= 0) return res.status(400).json({ error: "Costo calcolato non valido." });
-
-      // Check user gold
-      const { data: freshUser } = await supabase.from('users').select('gold').eq('id', user.id).single();
-      if (!freshUser || (freshUser.gold || 0) < goldCost) {
-        return res.status(400).json({ error: `Gold insufficiente. Servono ${goldCost} Gold, hai ${Math.floor(freshUser?.gold || 0)}.` });
-      }
-
-      // Deduct gold and upgrade - with rollback if level update fails
-      await supabase.from('users').update({ gold: (freshUser.gold || 0) - goldCost }).eq('id', user.id);
-      const { error: levelErr } = await supabase.from('factories').update({ level: resolvedTarget }).eq('id', factoryId);
-      if (levelErr) {
-        // Rollback gold deduction
-        await supabase.from('users').update({ gold: (freshUser.gold || 0) }).eq('id', user.id);
-        return res.status(500).json({ error: "Errore nell'aggiornamento livello fabbrica." });
-      }
-
-      resultGoldCost = goldCost;
-      upgradeSucceeded = true;
-    }
-
-    if (upgradeSucceeded) {
-      res.json({ success: true, newLevel: resultNewLevel, goldCost: resultGoldCost });
+    const http = mapServiceResultToHttp(result);
+    if (result.type === 'success') {
+      res.status(http.statusCode).json(http.body);
 
       // ── Daily Missions: factory upgrade progress (non-blocking) ──
       try { await updateMissionProgress(user.id, 'FACTORY_UPGRADE', { upgrade_factory: 1 }); } catch { /* non-critical */ }
+      return;
     }
+
+    return res.status(http.statusCode).json(http.body);
   } catch (err: any) {
     res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
   }
@@ -4162,449 +4067,34 @@ app.post("/api/factories/:id/withdraw", authenticate, async (req: any, res) => {
   }
 });
 
-// Wars API
-app.get("/api/wars", authenticate, async (req: any, res) => {
-  const { data: active } = await supabase.from('wars').select('*').eq('status', 'active').order('startedAt', { ascending: false });
-  const { data: ended } = await supabase.from('wars').select('*').eq('status', 'ended').order('endsAt', { ascending: false }).limit(20);
-  res.json({ active: active || [], ended: ended || [] });
-});
-
-app.get("/api/wars/:id/stats", authenticate, async (req: any, res) => {
-  const { id } = req.params;
-  const { data: war } = await supabase.from('wars').select('*').eq('id', id).single();
-  if (!war) return res.status(404).json({ error: "Guerra non trovata." });
-
-  const attackerDamage: Record<string, any> = {};
-  const defenderDamage: Record<string, any> = {};
-
-  // Primary source: war_participants table (persistent, reliable)
-  const { data: participants } = await supabase.from('war_participants')
-    .select('userId, totalDamage, side, troopsDeployed')
-    .eq('warId', id);
-
-  if (participants && participants.length > 0) {
-    // Fetch usernames for participants
-    const userIds = participants.map((p: any) => p.userId);
-    const { data: usersData } = await supabase.from('users').select('id, username, level, avatarData').in('id', userIds);
-    const userMap: Record<string, any> = {};
-    (usersData || []).forEach((u: any) => { userMap[u.id] = u; });
-
-    participants.forEach((p: any) => {
-      const targetMap = p.side === 'attacker' ? attackerDamage : defenderDamage;
-      const deployed = p.troopsDeployed || {};
-      const hits = Object.values(deployed).reduce((sum: number, qty: any) => sum + (Number(qty) || 0), 0);
-      const u = userMap[p.userId];
-      targetMap[p.userId] = {
-        userId: p.userId,
-        username: u?.username || 'Guerriero',
-        level: u?.level || 1,
-        avatarData: u?.avatarData || null,
-        totalDamage: p.totalDamage || 0,
-        hits: hits || 1,
-        side: p.side
-      };
-    });
-  }
-
-  // Secondary source: action_logs (for old weapon-based deployments not in war_participants)
-  const participantUserIds = new Set((participants || []).map((p: any) => p.userId));
-  const { data: logs } = await supabase.from('action_logs')
-    .select('*')
-    .eq('action', 'WAR_DEPLOY');
-
-  (logs || []).forEach((log: any) => {
-    try {
-      const details = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
-      if (details.warId !== id) return;
-
-      const targetMap = details.side === 'attacker' ? attackerDamage : defenderDamage;
-      const uid = log.userId;
-
-      if (!targetMap[uid]) {
-        targetMap[uid] = {
-          userId: uid,
-          username: details.username || 'Guerriero',
-          totalDamage: 0,
-          hits: 0,
-          side: details.side
-        };
-      }
-      // Only add damage from action_logs if not already covered by war_participants
-      if (!participantUserIds.has(uid)) {
-        targetMap[uid].totalDamage += details.damage || 0;
-        targetMap[uid].hits += 1;
-      }
-    } catch (e) { /* skip malformed */ }
-  });
-
-  res.json({
-    war,
-    stats: {
-      attacker: Object.values(attackerDamage).sort((a: any, b: any) => b.totalDamage - a.totalDamage),
-      defender: Object.values(defenderDamage).sort((a: any, b: any) => b.totalDamage - a.totalDamage)
-    }
-  });
+// Wars API (extracted routes: list + stats)
+registerWarRoutes({
+  app,
+  authenticate,
+  supabase,
+  warDomain: createWarDomainDeps({
+    supabase,
+    validateWarCreation,
+    getRegionBuildings,
+    calculateInitialAttackDamage,
+    calculateInitialDefensePoints,
+    calculateDistancePenalty,
+    getWarDuration,
+    generateWarId: () => generateSecureId(9),
+    validateTroopDeployment,
+    getMaxDeployableTroops,
+    calculateRegionalIndices,
+    calculateDamage,
+    addXP,
+    updateMissionProgress,
+    troopEnergyCostByType: TROOP_ENERGY_COST,
+    xpPerAttack: GAME_CONFIG.XP_PER_ATTACK,
+  }),
 });
 
 // ══════════════════════════════════════════════════════════════════
 // WAR SYSTEM — Complete Routes
 // ══════════════════════════════════════════════════════════════════
-
-// Create a new war (declare war between regions)
-app.post("/api/wars/create", authenticate, async (req: any, res) => {
-  try {
-    const user = req.user;
-    const { attackerRegionId, defenderRegionId, warType } = req.body as {
-      attackerRegionId: string;
-      defenderRegionId: string;
-      warType: WarType;
-    };
-
-    if (!attackerRegionId || !defenderRegionId || !warType) {
-      return res.status(400).json({ error: "Dati mancanti: attackerRegionId, defenderRegionId, warType." });
-    }
-
-    // Fetch attacker and defender regions
-    const [{ data: attackerRegion }, { data: defenderRegion }] = await Promise.all([
-      supabase.from('regions').select('*').eq('id', attackerRegionId).single(),
-      supabase.from('regions').select('*').eq('id', defenderRegionId).single(),
-    ]);
-
-    if (!attackerRegion) return res.status(404).json({ error: "Regione attaccante non trovata." });
-    if (!defenderRegion) return res.status(404).json({ error: "Regione difensore non trovata." });
-
-    // Check user is leader/owner of attacker region
-    if (attackerRegion.ownerUserId !== user.id && attackerRegion.leaderUserId !== user.id) {
-      return res.status(403).json({ error: "Devi essere il leader della regione attaccante." });
-    }
-
-    // Check if defender is already under active attack
-    const { data: existingWar } = await supabase.from('wars')
-      .select('id')
-      .eq('status', 'active')
-      .or(`"attackerRegionId".eq.${defenderRegionId},"defenderRegionId".eq.${defenderRegionId}`)
-      .limit(1)
-      .maybeSingle();
-
-    const defenderUnderAttack = !!existingWar;
-
-    // Check for active revolutions or coups on defender
-    const [{ data: activeRevolution }, { data: activeCoup }] = await Promise.all([
-      supabase.from('revolutions').select('id').eq('regionId', defenderRegionId).eq('status', 'active').limit(1).maybeSingle(),
-      supabase.from('coups').select('id').eq('regionId', defenderRegionId).eq('status', 'active').limit(1).maybeSingle(),
-    ]);
-
-    // Bloc check
-    const [{ data: attackerBloc }, { data: defenderBloc }] = await Promise.all([
-      supabase.from('bloc_memberships').select('blocId').eq('stateId', attackerRegion.nation_id).eq('status', 'active').maybeSingle(),
-      supabase.from('bloc_memberships').select('blocId').eq('stateId', defenderRegion.nation_id).eq('status', 'active').maybeSingle(),
-    ]);
-
-    // Validate war creation
-    const validation = validateWarCreation({
-      attackerRegionId,
-      defenderRegionId,
-      warType: warType as WarType,
-      attackerNationId: attackerRegion.nation_id,
-      defenderNationId: defenderRegion.nation_id,
-      attackerBlocId: attackerBloc?.blocId || null,
-      defenderBlocId: defenderBloc?.blocId || null,
-      defenderUnderAttack,
-      defenderInForcedPeace: false,
-      defenderHasRevolution: !!activeRevolution,
-      defenderHasCoup: !!activeCoup,
-      areAdjacent: true, // Simplified: adjacency check would require geo data
-      attackerHasSeaAccess: true,
-      defenderHasSeaAccess: true,
-      distanceKm: 500,
-      attackerHasSpaceport: true,
-    });
-
-    if (!validation.valid) {
-      return res.status(400).json({ error: validation.error });
-    }
-
-    // Calculate initial damages from buildings
-    const [attackerBuildings, defenderBuildings] = await Promise.all([
-      getRegionBuildings(attackerRegionId),
-      getRegionBuildings(defenderRegionId),
-    ]);
-
-    const initialAttack = calculateInitialAttackDamage(attackerBuildings['military_academy'] || 0);
-    const initialDefense = calculateInitialDefensePoints(defenderBuildings);
-
-    // Calculate distance penalty
-    const distancePenalty = calculateDistancePenalty(500, 20000); // Simplified distance
-
-    // Create war
-    const warId = generateSecureId(9);
-    const duration = getWarDuration(warType as WarType);
-    const now = new Date();
-    const endsAt = new Date(now.getTime() + duration);
-
-    const warData: any = {
-      id: warId,
-      attackerCountryIso2: attackerRegion.nation_id || attackerRegionId,
-      defenderCountryIso2: defenderRegion.nation_id || defenderRegionId,
-      attackerUserId: user.id,
-      defenderUserId: defenderRegion.leaderUserId || defenderRegion.ownerUserId || null,
-      status: 'active',
-      startedAt: now.toISOString(),
-      endsAt: endsAt.toISOString(),
-      attackerScore: initialAttack,
-      defenderScore: initialDefense,
-      warType: warType,
-      attackerRegionId,
-      defenderRegionId,
-      navalPhase: warType === 'naval' ? 1 : 0,
-      initialAttackDamage: initialAttack,
-      initialDefenseDamage: initialDefense,
-      distancePenalty,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-    };
-
-    const { error: insertError } = await supabase.from('wars').insert(warData);
-    if (insertError) {
-      return res.status(500).json({ error: "Errore nella creazione della guerra: " + insertError.message });
-    }
-
-    // Add war creator as first participant
-    await supabase.from('war_participants').insert({
-      warId: warId,
-      userId: user.id,
-      side: 'attacker',
-      totalDamage: 0,
-      troopsDeployed: {},
-    });
-
-    // Log war history event
-    await supabase.from('war_history').insert({
-      warId: warId,
-      eventType: 'war_started',
-      eventData: {
-        warType,
-        attackerRegionId,
-        defenderRegionId,
-        attackerNation: attackerRegion.nation_id,
-        defenderNation: defenderRegion.nation_id,
-        initiatorUserId: user.id,
-      },
-    });
-
-    res.json({ success: true, warId, war: warData });
-  } catch (err: any) {
-    console.error("War creation error:", err);
-    res.status(500).json({ error: "Errore nella dichiarazione di guerra." });
-  }
-});
-
-// Deploy troops to an active war (enhanced version)
-app.post("/api/wars/deploy-troops", authenticate, async (req: any, res) => {
-  try {
-    const user = req.user;
-    const { warId, side, troopType, quantity } = req.body as {
-      warId: string;
-      side: WarSide;
-      troopType: TroopType;
-      quantity: number;
-    };
-
-    if (!warId || !side || !troopType) {
-      return res.status(400).json({ error: "Dati mancanti." });
-    }
-
-    const qty = Math.max(1, Math.floor(quantity || 1));
-
-    // Fetch war
-    const { data: war } = await supabase.from('wars').select('*').eq('id', warId).single();
-    if (!war) return res.status(404).json({ error: "Guerra inesistente." });
-    if (war.status !== 'active') return res.status(400).json({ error: "Questa guerra è già terminata." });
-
-    // Validate troop deployment
-    const troopValidation = validateTroopDeployment(
-      troopType as TroopType,
-      qty,
-      (war.warType || 'land') as WarType,
-      war.navalPhase || 0,
-      user.energy,
-      user.money
-    );
-
-    if (!troopValidation.valid) {
-      return res.status(400).json({ error: troopValidation.error });
-    }
-
-    // Check max deployable troops
-    const perks = await getUserPerks(user.id);
-    const resistance = perks['RESISTENZA'] || 0;
-    const maxTroops = getMaxDeployableTroops(
-      troopType as TroopType,
-      user.level || 1,
-      resistance,
-      !!user.isPremium
-    );
-
-    if (qty > maxTroops) {
-      return res.status(400).json({ error: `Massimo ${maxTroops} truppe di tipo ${troopType} dispiegabili.` });
-    }
-
-    // Build damage context
-    const warRegionId = side === 'attacker' ? war.attackerRegionId : war.defenderRegionId;
-    let militaryIndex = 1;
-    let missileSystems = 0;
-    let navalPorts = 0;
-    let airports = 0;
-    let academies = 0;
-
-    if (warRegionId) {
-      try {
-        const buildings = await getRegionBuildings(warRegionId);
-        const indices = calculateRegionalIndices(buildings);
-        militaryIndex = indices.militaryIndex;
-        missileSystems = buildings['missile_system'] || 0;
-        navalPorts = buildings['naval_port'] || 0;
-        airports = buildings['airport'] || 0;
-        academies = buildings['military_academy'] || 0;
-      } catch (_e) { /* use defaults */ }
-    }
-
-    // Department bonus
-    let departmentBonus = 0;
-    const nationId = side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2;
-    if (nationId) {
-      const deptType = ['battleship'].includes(troopType) ? 'naval'
-        : ['lunar_tank', 'space_station'].includes(troopType) ? 'space'
-        : 'land';
-      const { data: dept } = await supabase.from('war_departments')
-        .select('bonusPercent')
-        .eq('stateId', nationId)
-        .eq('departmentType', deptType)
-        .maybeSingle();
-      if (dept) departmentBonus = (dept.bonusPercent || 0) / 100;
-    }
-
-    // Patriot check
-    let isPatriot = false;
-    if (user.regionId) {
-      const { data: userRegion } = await supabase.from('regions').select('nation_id').eq('id', user.regionId).maybeSingle();
-      if (userRegion?.nation_id === nationId) isPatriot = true;
-    }
-
-    // Calculate damage
-    const damageResult = calculateDamage({
-      troopType: troopType as TroopType,
-      quantity: qty,
-      militaryIndex,
-      missileSystems,
-      navalPorts,
-      airports,
-      academies,
-      forza: perks['FORZA'] || 0,
-      nationBonus: 1,
-      education: perks['ISTRUZIONE'] || 0,
-      resistance,
-      playerLevel: user.level || 1,
-      distancePenalty: war.distancePenalty || 0,
-      departmentBonus,
-      isPatriot,
-      side: side as WarSide,
-    });
-
-    // Deduct resources
-    await supabase.from('users').update({
-      energy: user.energy - troopValidation.energyCost,
-      money: user.money - troopValidation.moneyCost,
-    }).eq('id', user.id);
-
-    // Update war scores
-    const scoreField = side === 'attacker' ? 'attackerScore' : 'defenderScore';
-    // For naval phase 1, update phase1 scores
-    const isNavalPhase1 = war.warType === 'naval' && war.navalPhase === 1;
-    const updateField = isNavalPhase1
-      ? (side === 'attacker' ? 'phase1AttackerScore' : 'phase1DefenderScore')
-      : scoreField;
-
-    await supabase.from('wars').update({
-      [updateField]: (war[updateField] || 0) + damageResult.finalDamage,
-      updatedAt: new Date().toISOString(),
-    }).eq('id', warId);
-
-    // Record deployment
-    await supabase.from('war_deployments').insert({
-      warId,
-      userId: user.id,
-      side,
-      troopType,
-      quantity: qty,
-      baseDamage: damageResult.baseDamage,
-      finalDamage: damageResult.finalDamage,
-      bonuses: damageResult,
-    });
-
-    // Upsert participant
-    const { data: existingParticipant } = await supabase.from('war_participants')
-      .select('id, totalDamage, troopsDeployed')
-      .eq('warId', warId)
-      .eq('userId', user.id)
-      .maybeSingle();
-
-    if (existingParticipant) {
-      const deployed = existingParticipant.troopsDeployed || {};
-      deployed[troopType] = (deployed[troopType] || 0) + qty;
-      await supabase.from('war_participants').update({
-        totalDamage: (existingParticipant.totalDamage || 0) + damageResult.finalDamage,
-        troopsDeployed: deployed,
-      }).eq('id', existingParticipant.id);
-    } else {
-      await supabase.from('war_participants').insert({
-        warId,
-        userId: user.id,
-        side,
-        totalDamage: damageResult.finalDamage,
-        troopsDeployed: { [troopType]: qty },
-      });
-    }
-
-    // Log action
-    await supabase.from('action_logs').insert({
-      userId: user.id,
-      action: 'WAR_DEPLOY',
-      details: JSON.stringify({
-        warId, side, troopType, quantity: qty,
-        damage: damageResult.finalDamage,
-        username: user.username, isPatriot,
-      }),
-      timestamp: Date.now(),
-    });
-
-    // XP reward
-    await addXP(user.id, GAME_CONFIG.XP_PER_ATTACK);
-
-    res.json({
-      success: true,
-      damageDealt: damageResult.finalDamage,
-      breakdown: damageResult,
-      side,
-      troopType,
-      quantity: qty,
-    });
-
-    // ── Daily Missions: update troop deploy progress (non-blocking) ──
-    try {
-      await updateMissionProgress(user.id, 'WAR_DEPLOY', {
-        deal_damage: damageResult.finalDamage || 0,
-        fight_battles: 1,
-        deploy_troops: qty,
-        spend_energy: (TROOP_ENERGY_COST[troopType as TroopType] || 0) * qty,
-      });
-      await updateMissionProgress(user.id, 'EARN_XP', { earn_xp: GAME_CONFIG.XP_PER_ATTACK || 0 });
-    } catch { /* non-critical */ }
-  } catch (err: any) {
-    console.error("War deploy error:", err);
-    res.status(500).json({ error: "Errore durante lo schieramento." });
-  }
-});
 
 // Join an existing war as participant
 app.post("/api/wars/:warId/join", authenticate, async (req: any, res) => {
@@ -5645,121 +5135,28 @@ app.post("/api/market/buy", authenticate, async (req: any, res) => {
 // ==============================================================
 // WEAPON PRODUCTION API (SQLite)
 // ==============================================================
-const WEAPONS_DEF: Record<string, { timeMin: number, costCash: number, power: number, reqOil?: number, reqMinerals?: number, reqUranium?: number, reqDiamonds?: number }> = {
-  rifle: { timeMin: 1, costCash: 100, power: 2, reqMinerals: 2 },
-  drone: { timeMin: 8, costCash: 800, power: 20, reqMinerals: 10, reqOil: 5 },
-  artillery: { timeMin: 5, costCash: 500, power: 12, reqMinerals: 15, reqOil: 2 },
-  tank: { timeMin: 15, costCash: 1500, power: 40, reqMinerals: 30, reqOil: 15, reqUranium: 1 },
-  missile: { timeMin: 30, costCash: 5000, power: 150, reqMinerals: 50, reqOil: 40, reqUranium: 10, reqDiamonds: 2 },
-};
-
 app.post("/api/produce", authenticate, async (req: any, res) => {
   const user = req.user;
-  const { weaponType, qty } = req.body;
-
-  const weapon = WEAPONS_DEF[weaponType];
-  if (!weapon) return res.status(400).json({ error: "Tipo di arma non valido" });
-
-  const amount = Math.max(1, parseInt(qty) || 1);
-  const totalCost = weapon.costCash * amount;
-
-  // Refetch user money/inventory to be sure
-  const { data: userData } = await supabase.from('users').select('money').eq('id', user.id).single();
-  if (userData && userData.money < totalCost) {
-    return res.status(400).json({ error: `Fondi insufficienti. Costo totale: $${totalCost.toLocaleString()}` });
-  }
-
-  const { data: inv } = await supabase.from('user_inventory').select('*').eq('userId', user.id);
-  const inventoryMap = new Map((inv || []).map(i => [i.itemId, i.quantity]));
-
-  // Check required resources
-  const reqOil = (weapon.reqOil || 0) * amount;
-  const reqMinerals = (weapon.reqMinerals || 0) * amount;
-  const reqUranium = (weapon.reqUranium || 0) * amount;
-  const reqDiamonds = (weapon.reqDiamonds || 0) * amount;
-
-  if (
-    (inventoryMap.get('oil') || 0) < reqOil ||
-    (inventoryMap.get('minerals') || 0) < reqMinerals ||
-    (inventoryMap.get('uranium') || 0) < reqUranium ||
-    (inventoryMap.get('diamonds') || 0) < reqDiamonds
-  ) {
-    return res.status(400).json({ error: "Non hai abbastanza risorse nel Magazzino Privato per produrre queste armi." });
-  }
-
-  // Calculate required vs freed space
-  const currentVol = (inv || []).reduce((sum: number, item: any) => sum + item.quantity, 0);
-  const spaceFreed = reqOil + reqMinerals + reqUranium + reqDiamonds;
-  const spaceConsumed = amount;
 
   const perks = await getUserPerks(user.id);
   const resistanceLv = perks['RESISTENZA'] || 0;
   const maxStorage = Math.floor(GAME_CONFIG.STORAGE_BASE_CAPACITY * (1 + (resistanceLv * 0.01)));
 
-  if (currentVol - spaceFreed + spaceConsumed > maxStorage) {
-    return res.status(400).json({ error: `Spazio nel Magazzino Privato insufficiente.` });
-  }
-
   try {
-    const now = Date.now();
-    let startOffset = 0;
-
-    const { data: lastQueueItem } = await supabase
-      .from('production_queue')
-      .select('willCompleteAt')
-      .eq('userId', user.id)
-      .in('status', ['queued', 'producing'])
-      .order('willCompleteAt', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (lastQueueItem) {
-      const lastComplete = new Date(lastQueueItem.willCompleteAt).getTime();
-      if (lastComplete > now) startOffset = lastComplete - now;
-    }
-
-    const startedAt = now + startOffset;
-    const willCompleteAt = startedAt + weapon.timeMin * 60 * 1000 * amount;
-    const prodId = generateSecureId(9);
-
-    // Atomic currency deduction first (before inserting to queue)
-    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: totalCost,
-      p_gold_cost: 0,
-      p_energy_cost: 0,
-    });
-    if (deductError) throw deductError;
-    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-    if (deductData?.error) return res.status(400).json({ error: deductData.error });
-
-    await supabase.from('production_queue').insert({
-      id: prodId,
+    const result = await productionService.produce({
       userId: user.id,
-      weaponType,
-      qty: amount,
-      status: 'queued',
-      startedAt: new Date(startedAt).toISOString(),
-      willCompleteAt: new Date(willCompleteAt).toISOString(),
-      createdAt: new Date(now).toISOString()
+      weaponType: req.body?.weaponType,
+      qty: req.body?.qty,
+      maxStorage,
+      generateId: () => generateSecureId(9),
+      nowMs: () => Date.now(),
     });
 
-    // Deduct resources
-    const resourceUpdates = [];
-    if (reqOil > 0) resourceUpdates.push(supabase.from('user_inventory').update({ quantity: (inventoryMap.get('oil') || 0) - reqOil }).eq('userId', user.id).eq('itemId', 'oil'));
-    if (reqMinerals > 0) resourceUpdates.push(supabase.from('user_inventory').update({ quantity: (inventoryMap.get('minerals') || 0) - reqMinerals }).eq('userId', user.id).eq('itemId', 'minerals'));
-    if (reqUranium > 0) resourceUpdates.push(supabase.from('user_inventory').update({ quantity: (inventoryMap.get('uranium') || 0) - reqUranium }).eq('userId', user.id).eq('itemId', 'uranium'));
-    if (reqDiamonds > 0) resourceUpdates.push(supabase.from('user_inventory').update({ quantity: (inventoryMap.get('diamonds') || 0) - reqDiamonds }).eq('userId', user.id).eq('itemId', 'diamonds'));
-
-    await Promise.all(resourceUpdates);
-
-    // Cleanup zero quantity items
-    await supabase.from('user_inventory').delete().eq('userId', user.id).lte('quantity', 0);
-
-    res.json({ success: true, totalCost });
+    const http = mapServiceResultToHttp(result);
+    return res.status(http.statusCode).json(http.body);
   } catch (err: any) {
-    console.error("Produce error:", err);
-    res.status(500).json({ error: "Errore nella produzione: " + err.message });
+    console.error('Produce error:', err);
+    return res.status(500).json({ error: 'Errore nella produzione: ' + err.message });
   }
 });
 
@@ -6271,58 +5668,21 @@ app.post("/api/parties/pay-wages", authenticate, async (req: any, res) => {
 
 app.post("/api/parties/contribute", authenticate, async (req: any, res) => {
   const user = req.user;
-  const { targetUserId, itemType, amount } = req.body;
-  const numAmount = parseInt(amount) || 0;
-
-  if (numAmount <= 0) return res.status(400).json({ error: "Quantità non valida." });
-  if (user.id === targetUserId) return res.status(400).json({ error: "Non puoi inviare a te stesso." });
-
-  const { data: myMembership } = await supabase.from('party_members').select('partyId, joinedAt').eq('userId', user.id).single();
-  if (!myMembership) return res.status(403).json({ error: "Non fai parte di alcun partito." });
-
-  if (Date.now() - new Date(myMembership.joinedAt).getTime() < 7 * 24 * 60 * 60 * 1000) {
-    return res.status(403).json({ error: "Devi essere nel partito da almeno 7 giorni." });
-  }
-
-  const { data: targetMembership } = await supabase.from('party_members').select('partyId').eq('userId', targetUserId).eq('partyId', myMembership.partyId).single();
-  if (!targetMembership) return res.status(404).json({ error: "Il destinatario non fa parte del tuo partito." });
 
   try {
-    if (itemType === 'cash') {
-      if (user.money < numAmount) throw new Error("Cash insufficiente.");
-      await supabase.from('users').update({ money: user.money - numAmount }).eq('id', user.id);
-      const { data: tu } = await supabase.from('users').select('money').eq('id', targetUserId).single();
-      await supabase.from('users').update({ money: (tu?.money || 0) + numAmount }).eq('id', targetUserId);
-    } else if (itemType === 'gold') {
-      if (user.gold < numAmount) throw new Error("Gold insufficiente.");
-      await supabase.from('users').update({ gold: user.gold - numAmount }).eq('id', user.id);
-      const { data: tu } = await supabase.from('users').select('gold').eq('id', targetUserId).single();
-      await supabase.from('users').update({ gold: (tu?.gold || 0) + numAmount }).eq('id', targetUserId);
-    } else {
-      const { data: userInv } = await supabase.from('user_inventory').select('quantity').eq('userId', user.id).eq('itemId', itemType).single();
-      if (!userInv || userInv.quantity < numAmount) throw new Error("Oggetto insufficiente.");
-
-      await supabase.from('user_inventory').update({ quantity: (userInv.quantity || 0) - numAmount }).eq('userId', user.id).eq('itemId', itemType);
-
-      const { data: targetInv } = await supabase.from('user_inventory').select('quantity').eq('userId', targetUserId).eq('itemId', itemType).single();
-      if (targetInv) {
-        await supabase.from('user_inventory').update({ quantity: (targetInv.quantity || 0) + numAmount }).eq('userId', targetUserId).eq('itemId', itemType);
-      } else {
-        await supabase.from('user_inventory').insert({ userId: targetUserId, itemId: itemType, quantity: numAmount });
-      }
-    }
-
-    await supabase.from('party_logs').insert({
-      id: generateSecureId(9),
-      partyId: myMembership.partyId,
-      action: 'contribution',
-      details: `${user.username} ha inviato ${numAmount} ${itemType} a ID:${targetUserId}`,
-      timestamp: new Date().toISOString()
+    const result = await partyAssetsService.transferPartyAsset({
+      senderUser: { id: user.id, username: user.username },
+      targetUserId: req.body?.targetUserId,
+      itemType: req.body?.itemType,
+      amount: req.body?.amount,
+      logIdFactory: () => generateSecureId(9),
+      nowIsoFactory: () => new Date().toISOString(),
     });
 
-    res.json({ success: true });
+    const http = mapServiceResultToHttp(result);
+    return res.status(http.statusCode).json(http.body);
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    return res.status(400).json({ error: err.message });
   }
 });
 
@@ -10736,6 +10096,8 @@ async function updateMissionProgress(
   }
 }
 
+const dailyRewardService = new DailyRewardService(new DailyRewardRepository(supabase));
+
 // GET /api/daily/missions – Fetch today's missions for the authenticated player
 app.get("/api/daily/missions", authenticate, async (req: any, res) => {
   try {
@@ -10770,65 +10132,27 @@ app.post("/api/daily/missions/claim/:id", authenticate, async (req: any, res) =>
     const user = req.user;
     const missionId = req.params.id;
 
-    const { data, error } = await supabase.rpc('claim_mission_reward', {
-      p_user_id: user.id,
-      p_mission_id: missionId,
-    });
+    const claimResult = await dailyRewardService.claimMissionReward(user.id, missionId);
 
-    if (error) {
-      console.error('[DailyMissions] Claim RPC error:', error.message);
-      return res.status(500).json({ error: 'Errore nel riscatto della missione' });
-    }
-
-    const result = typeof data === 'string' ? JSON.parse(data) : data;
-    if (result?.error) {
-      return res.status(400).json({ error: result.error });
-    }
-
-    // If RPC is not available, fallback to manual claim
-    if (!result || !result.success) {
-      // Manual fallback
-      const { data: mission } = await supabase
-        .from('daily_missions')
-        .select('*')
-        .eq('id', missionId)
-        .eq('user_id', user.id)
-        .eq('status', 'completed')
-        .single();
-
-      if (!mission) {
-        return res.status(400).json({ error: 'Missione non trovata o non completata' });
+    if (claimResult.type !== 'success') {
+      if (claimResult.type === 'validation_error') {
+        console.warn('[DailyMissions][claim][validation_error]', { userId: user.id, missionId, message: claimResult.message });
+      } else {
+        console.error('[DailyMissions][claim][system_error]', { userId: user.id, missionId, message: claimResult.message });
       }
+      const http = mapServiceResultToHttp(claimResult);
+      return res.status(http.statusCode).json(http.body);
+    }
 
-      const reward = mission.reward as MissionReward;
-      const moneyReward = reward.money || 0;
-      const goldReward = reward.gold || 0;
-      const xpReward = reward.xp || 0;
-
-      // Mark as claimed
-      await supabase
-        .from('daily_missions')
-        .update({ status: 'claimed', updated_at: new Date().toISOString() })
-        .eq('id', missionId);
-
-      // Grant rewards
-      await supabase
-        .from('users')
-        .update({
-          money: (user.money || 0) + moneyReward,
-          gold: (user.gold || 0) + goldReward,
-          xp: (user.xp || 0) + xpReward,
-        })
-        .eq('id', user.id);
-
-      return res.json({
-        success: true,
-        mission_key: mission.mission_key,
-        reward: mission.reward,
+    if (!isDailyMissionClaimSuccess(claimResult.payload)) {
+      console.error('[ContractViolation] POST /api/daily/missions/claim/:id unexpected payload shape', {
+        userId: user.id,
+        missionId,
       });
     }
 
-    return res.json(result);
+    const http = mapServiceResultToHttp(claimResult);
+    return res.status(http.statusCode).json(http.body);
   } catch (err: any) {
     console.error('[DailyMissions] Claim error:', err);
     return res.status(500).json({ error: 'Errore nel riscatto della missione' });
@@ -10839,56 +10163,26 @@ app.post("/api/daily/missions/claim/:id", authenticate, async (req: any, res) =>
 app.post("/api/daily/missions/claim-bonus", authenticate, async (req: any, res) => {
   try {
     const user = req.user;
-    const today = new Date().toISOString().slice(0, 10);
+    const bonusResult = await dailyRewardService.claimDailyBonus(user.id);
 
-    // Check all missions are claimed
-    const { data: missions } = await supabase
-      .from('daily_missions')
-      .select('status')
-      .eq('user_id', user.id)
-      .eq('reset_date', today);
-
-    if (!missions || missions.length === 0) {
-      return res.status(400).json({ error: 'Nessuna missione trovata per oggi' });
+    if (bonusResult.type !== 'success') {
+      if (bonusResult.type === 'validation_error') {
+        console.warn('[DailyMissions][claim-bonus][validation_error]', { userId: user.id, message: bonusResult.message });
+      } else {
+        console.error('[DailyMissions][claim-bonus][system_error]', { userId: user.id, message: bonusResult.message });
+      }
+      const http = mapServiceResultToHttp(bonusResult);
+      return res.status(http.statusCode).json(http.body);
     }
 
-    const allClaimed = missions.every((m: any) => m.status === 'claimed');
-    if (!allClaimed) {
-      return res.status(400).json({ error: 'Devi prima riscattare tutte le missioni completate' });
+    if (!isDailyBonusClaimSuccess(bonusResult.payload)) {
+      console.error('[ContractViolation] POST /api/daily/missions/claim-bonus unexpected payload shape', {
+        userId: user.id,
+      });
     }
 
-    // Check not already claimed
-    const { data: existing } = await supabase
-      .from('daily_mission_bonus_claims')
-      .select('id')
-      .eq('user_id', user.id)
-      .eq('claim_date', today)
-      .maybeSingle();
-
-    if (existing) {
-      return res.status(400).json({ error: 'Bonus già riscattato oggi' });
-    }
-
-    const bonus = DAILY_GAMEPLAY_CONFIG.DAILY_MISSIONS_BONUS;
-
-    // Insert claim record
-    await supabase.from('daily_mission_bonus_claims').insert({
-      user_id: user.id,
-      claim_date: today,
-      reward: bonus,
-    });
-
-    // Grant bonus rewards
-    await supabase
-      .from('users')
-      .update({
-        money: (user.money || 0) + (bonus.money || 0),
-        gold: (user.gold || 0) + (bonus.gold || 0),
-        xp: (user.xp || 0) + (bonus.xp || 0),
-      })
-      .eq('id', user.id);
-
-    return res.json({ success: true, reward: bonus });
+    const http = mapServiceResultToHttp(bonusResult);
+    return res.status(http.statusCode).json(http.body);
   } catch (err: any) {
     console.error('[DailyMissions] Bonus claim error:', err);
     return res.status(500).json({ error: 'Errore nel riscatto del bonus' });

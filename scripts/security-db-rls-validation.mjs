@@ -37,8 +37,9 @@ try {
 const admin = createClient(supabaseUrl, serviceRoleKey);
 
 const suffix = randomUUID().slice(0, 8).toLowerCase();
-const regionId = `R${suffix.slice(0, 3).toUpperCase()}`;
-const otherRegionId = `S${suffix.slice(0, 3).toUpperCase()}`;
+const alphaSuffix = suffix.replace(/[^a-z]/g, '').padEnd(3, 'x').slice(0, 3).toUpperCase();
+const regionId = `R${alphaSuffix}`;
+const otherRegionId = `S${alphaSuffix}`;
 
 const users = {
   manager: { id: null, email: `mgr_${suffix}@local.test` },

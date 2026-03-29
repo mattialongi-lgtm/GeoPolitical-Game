@@ -481,6 +481,23 @@ async function validateBackendOfficialFlows() {
   assert.equal(cooldownAfterWork.data.userId, users.manager.id, 'cooldown row must be keyed by worker userId');
   assert.equal(cooldownAfterWork.data.factoryId, workFactoryId, 'cooldown row must be keyed by target factoryId');
 
+  const workCooldownRes = await apiRequest('/api/work', managerToken, 'POST', { factoryId: workFactoryId });
+  assert.equal(
+    workCooldownRes.res.status,
+    400,
+    `Second POST /api/work expected 400 due to cooldown, got ${workCooldownRes.res.status} (${JSON.stringify(workCooldownRes.payload)})`
+  );
+  assert.notEqual(
+    Boolean(workCooldownRes.payload?.success),
+    true,
+    'Second POST /api/work must not return success=true while cooldown is active'
+  );
+  assert.match(
+    JSON.stringify(workCooldownRes.payload ?? {}),
+    /cooldown/i,
+    'Second POST /api/work must expose a cooldown-related error payload'
+  );
+
   await admin.from('user_factory_cooldowns').delete().eq('userId', users.manager.id).eq('factoryId', workFactoryId);
   await admin.from('factories').delete().eq('id', workFactoryId);
   seededFactoryIds.pop();

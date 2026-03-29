@@ -4063,10 +4063,6 @@ app.post("/api/work", authenticate, async (req: any, res) => {
       await supabase.from('users').update({ energy: (freshUsr.energy || 0) - energyCost, money: (freshUsr.money || 0) + finalWage }).eq('id', user.id);
       // Deduct wage from factory budget
       await supabase.from('factories').update({ budget: (factory.budget || 0) - finalWage }).eq('id', factoryId);
-      // Set cooldown
-      await supabase.from('user_factory_cooldowns').upsert({
-        userId: user.id, factoryId, lastUsed: new Date().toISOString()
-      });
       // Add output to owner's inventory
       const { data: ownerInvItem } = await supabase.from('user_inventory')
         .select('quantity').eq('userId', owner.id).eq('itemId', factory.type).maybeSingle();
@@ -4077,6 +4073,14 @@ app.post("/api/work", authenticate, async (req: any, res) => {
         await supabase.from('user_inventory').insert({ userId: owner.id, itemId: factory.type, quantity: finalOutput });
       }
     }
+
+    await supabase.from('user_factory_cooldowns').upsert({
+      userId: user.id,
+      factoryId,
+      lastUsed: new Date().toISOString()
+    }, {
+      onConflict: 'userId,factoryId'
+    });
 
     // XP Gain
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;

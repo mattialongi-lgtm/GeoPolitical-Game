@@ -50,6 +50,9 @@ const users = {
 
 let applicationId = null;
 let lobbyId = null;
+let budgetId = null;
+let budgetTxId = null;
+const seededFactoryIds = [];
 
 async function mustNoError(step, error) {
   if (error) throw new Error(`${step} failed: ${error.message || JSON.stringify(error)}`);
@@ -123,6 +126,7 @@ async function setup() {
         id: users.manager.id,
         username: `mgr_${suffix}`,
         email: users.manager.email,
+        regionId,
         residenceId: regionId,
         workPermitId: regionId,
         ...commonUserFields,
@@ -137,6 +141,7 @@ async function setup() {
         id: users.resident.id,
         username: `res_${suffix}`,
         email: users.resident.email,
+        regionId,
         residenceId: regionId,
         ...commonUserFields,
       },
@@ -144,6 +149,7 @@ async function setup() {
         id: users.outsider.id,
         username: `out_${suffix}`,
         email: users.outsider.email,
+        regionId: otherRegionId,
         residenceId: otherRegionId,
         workPermitId: otherRegionId,
         ...commonUserFields,
@@ -280,19 +286,23 @@ async function validateBackendOfficialFlows() {
   const managerClient = await signIn(users.manager.email);
   const applicantClient = await signIn(users.applicant.email);
   const residentClient = await signIn(users.resident.email);
+  const outsiderClient = await signIn(users.outsider.email);
 
-  const [{ data: mgrSession }, { data: appSession }, { data: residentSession }] = await Promise.all([
+  const [{ data: mgrSession }, { data: appSession }, { data: residentSession }, { data: outsiderSession }] = await Promise.all([
     managerClient.auth.getSession(),
     applicantClient.auth.getSession(),
     residentClient.auth.getSession(),
+    outsiderClient.auth.getSession(),
   ]);
 
   const managerToken = mgrSession.session?.access_token;
   const applicantToken = appSession.session?.access_token;
   const residentToken = residentSession.session?.access_token;
+  const outsiderToken = outsiderSession.session?.access_token;
   assert.ok(managerToken, 'manager session token missing');
   assert.ok(applicantToken, 'applicant session token missing');
   assert.ok(residentToken, 'resident session token missing');
+  assert.ok(outsiderToken, 'outsider session token missing');
 
   // 1) apply
   const applyRes = await apiRequest('/api/actions/apply', applicantToken, 'POST', {
@@ -342,6 +352,144 @@ async function validateBackendOfficialFlows() {
   assert.equal(expireRes.res.status, 200, `expire endpoint expected 200, got ${expireRes.res.status} (${JSON.stringify(expireRes.payload)})`);
   assert.equal(Boolean(expireRes.payload?.success), true, 'expire endpoint must return success=true');
 
+  // 6) budget history (owner authorized) + unauthorized access denied
+  const budgetInsert = await admin.from('budgets').insert({
+    ownerType: 'REGION',
+    ownerId: regionId,
+    moneyEUR: 10_000,
+    resources: {},
+    updatedAt: Date.now(),
+  }).select('id').single();
+  await mustNoError('insert region budget', budgetInsert.error);
+  budgetId = budgetInsert.data.id;
+
+  budgetTxId = randomUUID().replace(/-/g, '').slice(0, 12);
+  const txInsert = await admin.from('budget_transactions').insert({
+    id: budgetTxId,
+    budgetId,
+    type: 'INCOME',
+    subtype: 'TEST_SEED',
+    moneyDelta: 250,
+    resourcesDelta: {},
+    createdAt: Date.now(),
+    createdByUserId: users.manager.id,
+    metadata: { source: 'security-db-rls-validation' },
+  });
+  await mustNoError('insert budget transaction', txInsert.error);
+
+  const ownerBudgetRes = await apiRequest(`/api/budget/REGION/${regionId}`, managerToken, 'GET');
+  assert.equal(ownerBudgetRes.res.status, 200, `owner GET /api/budget expected 200, got ${ownerBudgetRes.res.status} (${JSON.stringify(ownerBudgetRes.payload)})`);
+  assert.equal(ownerBudgetRes.payload?.budget?.id, budgetId, 'owner GET /api/budget must return seeded budget');
+  assert.ok(Array.isArray(ownerBudgetRes.payload?.transactions), 'owner budget payload must include transactions array');
+  assert.ok(ownerBudgetRes.payload.transactions.some((t) => t.id === budgetTxId), 'owner budget payload must include seeded transaction');
+
+  const outsiderBudgetRes = await apiRequest(`/api/budget/REGION/${regionId}`, outsiderToken, 'GET');
+  assert.equal(outsiderBudgetRes.res.status, 403, `outsider GET /api/budget expected 403, got ${outsiderBudgetRes.res.status} (${JSON.stringify(outsiderBudgetRes.payload)})`);
+
+  // 7) factories payload cooldown projection is scoped to requesting user
+  const factoryAId = randomUUID();
+  const factoryBId = randomUUID();
+  const factoriesInsert = await admin.from('factories').insert([
+    {
+      id: factoryAId,
+      name: `Factory A ${suffix}`,
+      type: 'oil',
+      regionId,
+      ownerUserId: users.manager.id,
+      cooldownSec: 600,
+    },
+    {
+      id: factoryBId,
+      name: `Factory B ${suffix}`,
+      type: 'minerals',
+      regionId,
+      ownerUserId: users.outsider.id,
+      cooldownSec: 600,
+    },
+  ]);
+  await mustNoError('insert factories for cooldown projection test', factoriesInsert.error);
+  seededFactoryIds.push(factoryAId, factoryBId);
+
+  const cooldownSeed = await admin.from('user_factory_cooldowns').upsert([
+    { userId: users.manager.id, factoryId: factoryAId, lastUsed: new Date().toISOString() },
+    { userId: users.outsider.id, factoryId: factoryBId, lastUsed: new Date().toISOString() },
+  ], { onConflict: 'userId,factoryId' });
+  await mustNoError('seed user_factory_cooldowns for projection test', cooldownSeed.error);
+
+  const managerFactoriesRes = await apiRequest(`/api/factories?regionId=${regionId}`, managerToken, 'GET');
+  assert.equal(managerFactoriesRes.res.status, 200, `manager GET /api/factories expected 200, got ${managerFactoriesRes.res.status} (${JSON.stringify(managerFactoriesRes.payload)})`);
+  assert.ok(Array.isArray(managerFactoriesRes.payload), 'manager factories payload must be an array');
+
+  const managerFactoryA = managerFactoriesRes.payload.find((f) => f.id === factoryAId);
+  const managerFactoryB = managerFactoriesRes.payload.find((f) => f.id === factoryBId);
+  assert.ok(managerFactoryA, 'manager factories payload must contain factory A');
+  assert.ok(managerFactoryB, 'manager factories payload must contain factory B');
+  assert.ok(Number(managerFactoryA.remainingCooldown) > 0, 'manager must see cooldown on own seeded row');
+  assert.equal(Number(managerFactoryB.remainingCooldown), 0, 'manager must not inherit outsider cooldown row');
+
+  const outsiderFactoriesRes = await apiRequest(`/api/factories?regionId=${regionId}`, outsiderToken, 'GET');
+  assert.equal(outsiderFactoriesRes.res.status, 200, `outsider GET /api/factories expected 200, got ${outsiderFactoriesRes.res.status} (${JSON.stringify(outsiderFactoriesRes.payload)})`);
+  assert.ok(Array.isArray(outsiderFactoriesRes.payload), 'outsider factories payload must be an array');
+
+  const outsiderFactoryA = outsiderFactoriesRes.payload.find((f) => f.id === factoryAId);
+  const outsiderFactoryB = outsiderFactoriesRes.payload.find((f) => f.id === factoryBId);
+  assert.ok(outsiderFactoryA, 'outsider factories payload must contain factory A');
+  assert.ok(outsiderFactoryB, 'outsider factories payload must contain factory B');
+  assert.equal(Number(outsiderFactoryA.remainingCooldown), 0, 'outsider must not inherit manager cooldown row');
+  assert.ok(Number(outsiderFactoryB.remainingCooldown) > 0, 'outsider must see cooldown on own seeded row');
+
+  await admin.from('user_factory_cooldowns').delete().in('factoryId', [factoryAId, factoryBId]);
+  await admin.from('factories').delete().in('id', [factoryAId, factoryBId]);
+  seededFactoryIds.length = 0;
+
+  // 8) work flow write-path: /api/work must create/update user_factory_cooldowns keyed by (userId, factoryId)
+  const workFactoryId = randomUUID();
+  const workFactoryInsert = await admin.from('factories').insert({
+    id: workFactoryId,
+    name: `Work Factory ${suffix}`,
+    type: 'oil',
+    regionId,
+    ownerUserId: users.manager.id,
+    payMode: 'salary',
+    budget: 10_000,
+    wage: 50,
+    level: 1,
+    cooldownSec: 600,
+  });
+  await mustNoError('insert factory for /api/work cooldown write test', workFactoryInsert.error);
+  seededFactoryIds.push(workFactoryId);
+
+  const managerPrep = await admin.from('users').update({
+    regionId,
+    residenceId: regionId,
+    energy: 100,
+    money: 1_000,
+  }).eq('id', users.manager.id);
+  await mustNoError('prepare manager state for /api/work', managerPrep.error);
+
+  const workRes = await apiRequest('/api/work', managerToken, 'POST', { factoryId: workFactoryId });
+  assert.equal(workRes.res.status, 200, `POST /api/work expected 200, got ${workRes.res.status} (${JSON.stringify(workRes.payload)})`);
+  assert.equal(Boolean(workRes.payload?.success), true, 'POST /api/work must return success=true');
+
+  const cooldownAfterWork = await admin.from('user_factory_cooldowns')
+    .select('userId,factoryId,lastUsed')
+    .eq('userId', users.manager.id)
+    .eq('factoryId', workFactoryId)
+    .maybeSingle();
+  await mustNoError('read cooldown written by /api/work', cooldownAfterWork.error);
+  assert.ok(cooldownAfterWork.data, 'POST /api/work must create/update cooldown row');
+  assert.equal(cooldownAfterWork.data.userId, users.manager.id, 'cooldown row must be keyed by worker userId');
+  assert.equal(cooldownAfterWork.data.factoryId, workFactoryId, 'cooldown row must be keyed by target factoryId');
+
+  await admin.from('user_factory_cooldowns').delete().eq('userId', users.manager.id).eq('factoryId', workFactoryId);
+  await admin.from('factories').delete().eq('id', workFactoryId);
+  seededFactoryIds.pop();
+
+  await admin.from('budget_transactions').delete().eq('id', budgetTxId);
+  budgetTxId = null;
+  await admin.from('budgets').delete().eq('id', budgetId);
+  budgetId = null;
+
   await admin.from('revolution_lobbies').delete().eq('id', endpointLobbyId);
   await admin.from('applications').delete().eq('id', backendApplicationId);
 
@@ -349,10 +497,18 @@ async function validateBackendOfficialFlows() {
     managerClient.auth.signOut(),
     applicantClient.auth.signOut(),
     residentClient.auth.signOut(),
+    outsiderClient.auth.signOut(),
   ]);
 }
 
 async function cleanup() {
+  if (seededFactoryIds.length > 0) {
+    await admin.from('user_factory_cooldowns').delete().in('factoryId', seededFactoryIds);
+    await admin.from('factories').delete().in('id', seededFactoryIds);
+    seededFactoryIds.length = 0;
+  }
+  if (budgetTxId) await admin.from('budget_transactions').delete().eq('id', budgetTxId);
+  if (budgetId) await admin.from('budgets').delete().eq('id', budgetId);
   if (lobbyId) await admin.from('revolution_lobbies').delete().eq('id', lobbyId);
   if (applicationId) await admin.from('applications').delete().eq('id', applicationId);
 

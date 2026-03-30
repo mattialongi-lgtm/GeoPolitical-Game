@@ -6,7 +6,8 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Loader2, BarChart3, TrendingUp, Pickaxe, Info, ChevronDown, ChevronUp, Users } from "lucide-react";
-import { RESOURCE_LABELS, RESOURCE_ICONS_MAP, EXTRACTION_CONFIG } from "../types";
+import { RESOURCE_LABELS, EXTRACTION_CONFIG } from "../types";
+import { ResourceIcon } from "./ResourceIcon";
 import type { ResourceType } from "../types";
 
 interface ExtractionDashboardProps {
@@ -64,8 +65,8 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
       {/* Header */}
       <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-emerald-100">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-3xl flex items-center justify-center text-3xl bg-emerald-50 shadow-inner">
-            ⛏️
+          <div className="w-14 h-14 rounded-3xl flex items-center justify-center bg-emerald-50 shadow-inner border border-emerald-100">
+            <ResourceIcon id="minerals" size={32} />
           </div>
           <div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">Dashboard Risorse</h1>
@@ -84,7 +85,6 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
       <div className="space-y-3">
         {(dashboard.resources || []).map((r: any) => {
           const rt = r.resourceType as ResourceType;
-          const icon = RESOURCE_ICONS_MAP[rt] || '📦';
           const label = RESOURCE_LABELS[rt] || r.resourceType;
           const usagePercent = r.dailyAvailable > 0 ? Math.round((r.dailyExtracted / r.dailyAvailable) * 100) : 0;
           const analytics = dashboard.analytics24h?.[r.resourceType] || {};
@@ -94,7 +94,9 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
             <div key={r.resourceType} className="bg-white p-5 rounded-[2rem] shadow-sm border border-slate-100 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <span className="text-2xl">{icon}</span>
+                  <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center border border-slate-100/50">
+                    <ResourceIcon id={rt} size={24} />
+                  </div>
                   <div>
                     <h3 className="text-sm font-black text-slate-900">{label}</h3>
                     <p className="text-[10px] font-bold text-slate-400">
@@ -164,8 +166,11 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
           </h3>
           <div className="space-y-1">
             {(dashboard.departmentBonuses || []).map((b: any) => (
-              <div key={b.resourceType} className="flex justify-between bg-slate-50 px-3 py-2 rounded-xl text-[10px] font-bold">
-                <span className="text-slate-600">{RESOURCE_ICONS_MAP[b.resourceType as ResourceType] || '📦'} {RESOURCE_LABELS[b.resourceType as ResourceType] || b.resourceType}</span>
+              <div key={b.resourceType} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl text-[10px] font-bold">
+                <div className="flex items-center gap-2">
+                  <ResourceIcon id={b.resourceType} size={14} />
+                  <span className="text-slate-600">{RESOURCE_LABELS[b.resourceType as ResourceType] || b.resourceType}</span>
+                </div>
                 <span className="text-emerald-600">+{b.bonusLevel}%</span>
               </div>
             ))}
@@ -184,8 +189,10 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
               const rt = exp.resourceType as ResourceType;
               return (
                 <div key={exp.resourceType} className="bg-indigo-50 p-3 rounded-xl border border-indigo-100">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{RESOURCE_ICONS_MAP[rt] || '📦'}</span>
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                      <ResourceIcon id={rt} size={18} />
+                    </div>
                     <div>
                       <p className="text-[10px] font-black text-indigo-700">{RESOURCE_LABELS[rt] || exp.resourceType}</p>
                       <p className="text-xs font-black text-indigo-900">EXP: {exp.experience}</p>

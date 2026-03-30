@@ -85,6 +85,7 @@ CREATE OR REPLACE FUNCTION upgrade_factory(
 RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_factory RECORD;

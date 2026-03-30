@@ -709,7 +709,7 @@ BEGIN
   WHERE id = v_budget_id;
 
   -- 5. Log Transaction
-  v_tx_id := encode(gen_random_bytes(6), 'hex');
+  v_tx_id := substr(md5(random()::text || clock_timestamp()::text), 1, 12);
   INSERT INTO budget_transactions (
     id, "budgetId", type, subtype, "moneyDelta", "resourcesDelta", "createdAt", "createdByUserId", metadata
   ) VALUES (
@@ -849,22 +849,24 @@ CREATE OR REPLACE FUNCTION create_market_offer(
   p_region_id TEXT,
   p_tax_rate INT,
   p_origin_state_id TEXT
-) RETURNS VOID AS $$
+) RETURNS VOID
+SET search_path = public
+AS $$
 DECLARE
   v_offer_id TEXT;
 BEGIN
   -- 1. Deduct Inventory
   UPDATE user_inventory
   SET quantity = quantity - p_quantity
-  WHERE "userId" = p_user_id AND "itemId" = p_item_id;
+  WHERE "userId" = p_user_id::uuid AND "itemId" = p_item_id;
 
   DELETE FROM user_inventory WHERE "userId" = p_user_id AND quantity <= 0;
 
   -- 2. Create Offer
-  v_offer_id := encode(gen_random_bytes(6), 'hex');
+  v_offer_id := substr(md5(random()::text || clock_timestamp()::text), 1, 12);
   INSERT INTO market_offers (id, "sellerId", "sellerName", "itemId", quantity, price, "regionId", "taxRate", "originStateId", "createdAt")
   SELECT v_offer_id, id, username, p_item_id, p_quantity, p_price, p_region_id, p_tax_rate, p_origin_state_id, NOW()
-  FROM users WHERE id = p_user_id;
+  FROM users WHERE id = p_user_id::uuid;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -875,7 +877,9 @@ CREATE OR REPLACE FUNCTION purchase_market_offer(
   p_quantity INT,
   p_is_state_buy BOOLEAN,
   p_buyer_state_id TEXT
-) RETURNS VOID AS $$
+) RETURNS VOID
+SET search_path = public
+AS $$
 DECLARE
   v_offer RECORD;
   v_total_price BIGINT;
@@ -894,7 +898,7 @@ BEGIN
 
   -- 2. Deduct Funds
   IF p_is_state_buy THEN
-    IF NOT EXISTS (SELECT 1 FROM regions WHERE id = p_buyer_state_id AND "ownerUserId" = p_buyer_id) THEN
+    IF NOT EXISTS (SELECT 1 FROM regions WHERE id = p_buyer_state_id AND "ownerUserId" = p_buyer_id::uuid) THEN
       RAISE EXCEPTION 'Non autorizzato a usare i fondi dello Stato';
     END IF;
 
@@ -908,10 +912,10 @@ BEGIN
       p_buyer_id, jsonb_build_object('offerId', p_offer_id)
     );
   ELSE
-    UPDATE users SET money = money - v_total_price WHERE id = p_buyer_id;
+    UPDATE users SET money = money - v_total_price WHERE id = p_buyer_id::uuid;
 
     INSERT INTO user_inventory ("userId", "itemId", quantity)
-    VALUES (p_buyer_id, v_offer."itemId", p_quantity)
+    VALUES (p_buyer_id::uuid, v_offer."itemId", p_quantity)
     ON CONFLICT ("userId", "itemId") DO UPDATE SET quantity = user_inventory.quantity + EXCLUDED.quantity;
   END IF;
 
@@ -933,7 +937,7 @@ BEGIN
   END IF;
 
   -- 5. Log Transaction
-  v_txn_id := encode(gen_random_bytes(6), 'hex');
+  v_txn_id := substr(md5(random()::text || clock_timestamp()::text), 1, 12);
   INSERT INTO market_transactions_log (id, "buyerId", "isStateBuy", "sellerId", "itemId", quantity, price, "taxPaid", timestamp)
   VALUES (v_txn_id, p_buyer_id, CASE WHEN p_is_state_buy THEN 1 ELSE 0 END, v_offer."sellerId", v_offer."itemId", p_quantity, v_offer.price, v_tax_amount, EXTRACT(EPOCH FROM NOW()) * 1000);
 END;

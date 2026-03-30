@@ -7,6 +7,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Search, Filter, Loader2, TrendingUp, ShoppingCart, Warehouse } from "lucide-react";
 import { FACTORY_CONFIG, factoryYieldMultiplier, factoryStorageLimit } from "../types";
+import { ResourceIcon } from "./ResourceIcon";
 
 interface FactoryMarketProps {
   user: any;
@@ -116,7 +117,7 @@ export default function FactoryMarket({ user, fetchData }: FactoryMarketProps) {
           >
             <option value="all">Tutti i tipi</option>
             {Object.entries(FACTORY_CONFIG.TYPES).map(([key, def]) => (
-              <option key={key} value={key}>{def.icon} {def.label}</option>
+              <option key={key} value={key}>{def.label}</option>
             ))}
           </select>
           <select
@@ -158,8 +159,8 @@ export default function FactoryMarket({ user, fetchData }: FactoryMarketProps) {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl bg-slate-50 shadow-inner">
-                      {typeDef.icon || '🏭'}
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-slate-50 shadow-inner border border-slate-100/50">
+                      <ResourceIcon id={factory.type || 'minerals'} size={32} />
                     </div>
                     <div>
                       <h4 className="font-black text-slate-900 text-base leading-tight">{factory.name || 'Fabbrica'}</h4>
@@ -190,8 +191,9 @@ export default function FactoryMarket({ user, fetchData }: FactoryMarketProps) {
                   <span className="text-[9px] font-black uppercase px-2 py-1 rounded-lg bg-purple-50 text-purple-600">
                     Rarità: {'⭐'.repeat(Math.min(typeDef.rarity || 1, 5))}
                   </span>
-                  <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg ${isGoldMine ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
-                    {isGoldMine ? '🪙 Oro (€+Gold)' : `🪨 ${typeDef.label}`}
+                  <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg flex items-center gap-1.5 ${isGoldMine ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                    <ResourceIcon id={isGoldMine ? 'gold_ore' : (factory.type || 'minerals')} size={12} />
+                    {isGoldMine ? 'Oro (€+Gold)' : typeDef.label}
                   </span>
                 </div>
 

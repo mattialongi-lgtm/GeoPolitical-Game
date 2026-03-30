@@ -104,6 +104,32 @@ const partyAssetsService = new PartyAssetsService(new PartyAssetsRepository(supa
 const productionService = new ProductionService(new ProductionRepository(supabase));
 
 app.use(express.json());
+
+// --- Government & Salary Configuration ---
+const GOVERNMENT_SALARY_CONFIG: Record<string, { headOfState: number; minister: number }> = {
+  'PARLIAMENTARY_REPUBLIC': { headOfState: 40, minister: 25 },
+  'PRESIDENTIAL_REPUBLIC': { headOfState: 40, minister: 25 },
+  'DOMINANT_PARTY': { headOfState: 30, minister: 20 },
+  'DICTATORSHIP': { headOfState: 50, minister: 15 },
+  'ONE_PARTY_SYSTEM': { headOfState: 35, minister: 20 },
+  'EXECUTIVE_MONARCHY': { headOfState: 60, minister: 10 },
+  // Localized fallbacks matching common database strings
+  'REPUBBLICA': { headOfState: 40, minister: 25 },
+  'REPUBBLICA PARLAMENTARE': { headOfState: 40, minister: 25 },
+};
+
+/**
+ * Calculates current salaries based on government form and region count.
+ */
+function calculateStateSalaries(governmentForm: string | null, regionCount: number) {
+  const normalized = (governmentForm || '').toUpperCase();
+  const config = GOVERNMENT_SALARY_CONFIG[normalized] || GOVERNMENT_SALARY_CONFIG['PARLIAMENTARY_REPUBLIC'];
+  
+  return {
+    headOfStateGold: config.headOfState * regionCount,
+    ministerGold: config.minister * regionCount,
+  };
+}
 app.use(cookieParser());
 
 // Helper to get user perks, including active boosters
@@ -582,8 +608,16 @@ app.get("/api/world-stats", authenticate, async (_req, res) => {
     const onlineThreshold = Date.now() - 5 * 60 * 1000; // 5 minutes
 
     const [usersRes, onlineRes, regionsRes, nationsRes, blocsRes, partiesRes, factoriesRes] = await Promise.all([
-      supabase.from('users').select('id', { count: 'exact', head: true }),
-      supabase.from('users').select('id', { count: 'exact', head: true }).gte('lastLogin', onlineThreshold),
+      supabase.from('users').select('id', { count: 'exact', head: true })
+        .not('username', 'ilike', 'app_%')
+        .not('username', 'ilike', 'mgr_%')
+        .not('username', 'ilike', 'out_%')
+        .not('username', 'ilike', 'res_%'),
+      supabase.from('users').select('id', { count: 'exact', head: true }).gte('lastLogin', onlineThreshold)
+        .not('username', 'ilike', 'app_%')
+        .not('username', 'ilike', 'mgr_%')
+        .not('username', 'ilike', 'out_%')
+        .not('username', 'ilike', 'res_%'),
       supabase.from('regions').select('id', { count: 'exact', head: true }),
       supabase.from('nations').select('id', { count: 'exact', head: true }),
       supabase.from('blocs').select('id', { count: 'exact', head: true }),
@@ -622,11 +656,19 @@ app.get("/api/dashboard-stats", authenticate, async (req: any, res) => {
     const [regionParties, regionFactories, regionOnline, stateRegions, stateParties, stateFactories, stateOnline] = await Promise.all([
       supabase.from('parties').select('id', { count: 'exact', head: true }).eq('regionId', isoId),
       supabase.from('factories').select('id', { count: 'exact', head: true }).eq('regionId', isoId),
-      supabase.from('users').select('id', { count: 'exact', head: true }).eq('regionId', isoId).gte('lastLogin', onlineThreshold),
+      supabase.from('users').select('id', { count: 'exact', head: true }).eq('regionId', isoId).gte('lastLogin', onlineThreshold)
+        .not('username', 'ilike', 'app_%')
+        .not('username', 'ilike', 'mgr_%')
+        .not('username', 'ilike', 'out_%')
+        .not('username', 'ilike', 'res_%'),
       supabase.from('regions').select('id', { count: 'exact', head: true }).eq('nation_id', nationId),
       supabase.from('parties').select('id', { count: 'exact', head: true }).ilike('regionId', `${nationId}%`),
       supabase.from('factories').select('id', { count: 'exact', head: true }).ilike('regionId', `${nationId}%`),
-      supabase.from('users').select('id', { count: 'exact', head: true }).ilike('regionId', `${nationId}%`).gte('lastLogin', onlineThreshold),
+      supabase.from('users').select('id', { count: 'exact', head: true }).ilike('regionId', `${nationId}%`).gte('lastLogin', onlineThreshold)
+        .not('username', 'ilike', 'app_%')
+        .not('username', 'ilike', 'mgr_%')
+        .not('username', 'ilike', 'out_%')
+        .not('username', 'ilike', 'res_%'),
     ]);
 
     res.json({
@@ -709,6 +751,10 @@ app.get("/api/players", authenticate, async (req: any, res) => {
     let query = supabase
       .from('users')
       .select('id, username, regionId, originalNation, level, lastLogin, avatarData', { count: 'exact' })
+      .not('username', 'ilike', 'app_%')
+      .not('username', 'ilike', 'mgr_%')
+      .not('username', 'ilike', 'out_%')
+      .not('username', 'ilike', 'res_%')
       .order('level', { ascending: false })
       .limit(200);
 
@@ -785,16 +831,20 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     const foreignMinister = ministers?.find(m => m.role === 'foreign' || m.role === 'FOREIGN');
 
     // 3. Fetch Regions count and IDs
-    const { data: regions } = await supabase
+    const { data: regions, error: regionsError } = await supabase
       .from('regions')
-      .select('id, name, population, mainResource, developmentLevel, governor:users!governorPlayerId(username)')
+      .select('id, name, population, developmentIndex, governor:users!governorPlayerId(username)')
       .eq('nation_id', nationId);
+
+    if (regionsError) {
+      console.error(`[StatePage] Error fetching regions for ${nationId}:`, regionsError.message);
+    }
 
     const regionIds = (regions || []).map(r => r.id);
     console.log(`[StatePage] Nation ${nationId} has ${regions?.length || 0} regions:`, regionIds);
 
     // 5. Counts: Citizens, Residents, Parties, Factories
-    const [citizenCount, residentCount, partyCount, factoryCount] = await Promise.all([
+    const [citizenCount, residentCount, partyCount, factoryCount, userRegionBreakdown] = await Promise.all([
       // Citizens: users whose originalNation matches
       supabase.from('users').select('id', { count: 'exact', head: true }).eq('originalNation', nationId),
       // Residents: users currently in these regions
@@ -809,9 +859,21 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
       regionIds.length > 0
         ? supabase.from('factories').select('id', { count: 'exact', head: true }).in('regionId', regionIds)
         : { count: 0 },
+      // Player Breakdown: breakdown of users by region
+      regionIds.length > 0
+        ? supabase.from('users').select('regionId').in('regionId', regionIds)
+        : { data: [] },
     ]);
 
-    const totalPopulation = (regions || []).reduce((acc, r) => acc + (r.population || 0), 0);
+    // Build the count map for individual regions
+    const resCountPerRegion: Record<string, number> = {};
+    if (userRegionBreakdown && (userRegionBreakdown as any).data) {
+      (userRegionBreakdown as any).data.forEach((u: any) => {
+        if (u.regionId) resCountPerRegion[u.regionId] = (resCountPerRegion[u.regionId] || 0) + 1;
+      });
+    }
+
+    const totalPopulation = (residentCount as any).count || 0;
 
     // 5. Military Agreements
     const { data: militaryAgreements } = await supabase
@@ -850,19 +912,19 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
         name: nation.leader.username,
         role: 'Capo di Stato e Comandante',
         avatar: nation.leader.avatarData,
-        salary: nation.leader_salary
+        salaryGold: calculateStateSalaries(nation.government_form, regions?.length || 0).headOfStateGold
       } : undefined,
       economyMinister: economyMinister ? {
         name: economyMinister.user?.username || 'Incaricato',
         role: "Ministro dell'Economia",
         avatar: economyMinister.user?.avatarData,
-        salary: nation.minister_salary
+        salaryGold: calculateStateSalaries(nation.government_form, regions?.length || 0).ministerGold
       } : undefined,
       foreignMinister: foreignMinister ? {
         name: foreignMinister.user?.username || 'Incaricato',
         role: 'Ministro degli Esteri',
         avatar: foreignMinister.user?.avatarData,
-        salary: nation.minister_salary
+        salaryGold: calculateStateSalaries(nation.government_form, regions?.length || 0).ministerGold
       } : undefined,
       geopoliticalBloc: nation.geopolitical_bloc || undefined,
       stats: {
@@ -900,9 +962,9 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
       regions: (regions || []).map(r => ({
         id: r.id,
         name: r.name,
-        population: r.population || 0,
-        mainResource: r.mainResource,
-        developmentLevel: r.developmentLevel,
+        population: resCountPerRegion[r.id] || 0,
+        mainResource: (r as any).mainResource || (r as any).primary_resource || 'Risorse Varie',
+        developmentLevel: r.developmentIndex || 0,
         governor: (r as any).governor ? (Array.isArray((r as any).governor) ? (r as any).governor[0]?.username : (r as any).governor?.username) : undefined
       })),
       militaryAgreements: (militaryAgreements || []).map(a => ({
@@ -5258,7 +5320,10 @@ app.post("/api/market/offer", authenticate, async (req: any, res) => {
       p_origin_state_id: user.originalNation || user.regionId
     });
 
-    if (rpcError) throw rpcError;
+    if (rpcError) {
+      console.error("Market offer RPC error:", rpcError);
+      return res.status(500).json({ error: `Errore database: ${rpcError.message}` });
+    }
 
     res.json({ success: true });
   } catch (err: any) {
@@ -9132,6 +9197,86 @@ app.get("/api/extraction/leaderboard", authenticate, async (req: any, res) => {
   }
 });
 
+// ── State Salaries Payout Logic ──────────────────────
+async function payoutStateSalaries() {
+  try {
+    console.log("[Salaries] Starting daily state salaries payout...");
+    
+    // 1. Fetch all nations
+    const { data: nations, error: nationsError } = await supabase
+      .from('nations')
+      .select('id, government_form, leaderUserId, gold_reserve');
+    
+    if (nationsError || !nations) {
+      console.error("[Salaries] Error fetching nations:", nationsError);
+      return;
+    }
+
+    // 2. Count regions per nation
+    const { data: regionalCounts } = await supabase
+      .from('regions')
+      .select('nation_id')
+      .not('nation_id', 'is', null);
+    
+    const regionCountMap: Record<string, number> = {};
+    regionalCounts?.forEach(r => {
+      if (r.nation_id) regionCountMap[r.nation_id] = (regionCountMap[r.nation_id] || 0) + 1;
+    });
+
+    for (const nation of nations) {
+      const count = regionCountMap[nation.id] || 0;
+      if (count === 0) continue;
+
+      const salaries = calculateStateSalaries(nation.government_form, count);
+      let currentReserve = nation.gold_reserve || 0;
+
+      // Pay Head of State
+      if (nation.leaderUserId && salaries.headOfStateGold > 0) {
+        if (currentReserve >= salaries.headOfStateGold) {
+           // Direct update to user gold balance
+           const { data: user } = await supabase.from('users').select('gold').eq('id', nation.leaderUserId).single();
+           if (user) {
+             await supabase.from('users').update({ gold: (user.gold || 0) + salaries.headOfStateGold }).eq('id', nation.leaderUserId);
+             currentReserve -= salaries.headOfStateGold;
+             console.log(`[Salaries] Paid ${salaries.headOfStateGold} gold to HOS of ${nation.id}`);
+           }
+        } else {
+           console.warn(`[Salaries] Nation ${nation.id} insufficient gold for HOS salary`);
+        }
+      }
+
+      // Pay Ministers
+      const { data: ministers } = await supabase
+        .from('ministers')
+        .select(`
+          userId,
+          user:users(id, gold)
+        `)
+        .eq('stateId', nation.id)
+        .eq('status', 'ACTIVE');
+
+      if (ministers && ministers.length > 0 && salaries.ministerGold > 0) {
+        for (const m of ministers) {
+          if (currentReserve >= salaries.ministerGold && (m as any).user) {
+            const userGold = (m as any).user.gold || 0;
+            await supabase.from('users').update({ gold: userGold + salaries.ministerGold }).eq('id', m.userId);
+            currentReserve -= salaries.ministerGold;
+            console.log(`[Salaries] Paid ${salaries.ministerGold} gold to Minister ${m.userId} of ${nation.id}`);
+          }
+        }
+      }
+
+      // Update remaining nation reserve
+      if (currentReserve !== nation.gold_reserve) {
+        await supabase.from('nations').update({ gold_reserve: currentReserve }).eq('id', nation.id);
+      }
+    }
+    console.log("[Salaries] Daily payout complete.");
+  } catch (err) {
+    console.error("[Salaries] Error in payoutStateSalaries:", err);
+  }
+}
+
 // ── Daily Reset Cron (resource extraction) ──────────────────────
 async function dailyResourceReset() {
   try {
@@ -9165,6 +9310,9 @@ async function dailyResourceReset() {
     }).neq('id', ''); // matches all rows with non-empty id (i.e., all regions)
     if (resetErr) console.error("[ResourceReset] Error resetting regional extraction:", resetErr);
     else console.log("[ResourceReset] Regional extraction counters reset.");
+
+    // Pay salaries at daily reset
+    await payoutStateSalaries();
 
   } catch (err) {
     console.error("[ResourceReset] Error in daily reset:", err);

@@ -1,62 +1,80 @@
 -- ==========================================================
--- Migration: Fix war declaration, law execution, and missing RPCs
--- Run this on the Supabase SQL Editor to fix:
---   1. War declaration failure (missing lastEventAt column)
---   2. Parliament laws failure (missing parliamentSize/parliamentDuration)
---   3. Missing RPC functions (market, propaganda, investments, elections)
---   4. Missing RLS on wars table
+-- Migration: Fix ID Generation (Remove pgcrypto dependency)
+-- Resolves the 'function gen_random_bytes(integer) does not exist' error.
+-- Also includes security hardening for search_path.
 -- ==========================================================
 
--- 1. Add missing column to wars table (fixes war declaration)
-ALTER TABLE wars ADD COLUMN IF NOT EXISTS "lastEventAt" TIMESTAMPTZ;
-
--- 2. Add missing columns to regions table (fixes parliament laws)
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS "parliamentSize" INT DEFAULT 20;
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS "parliamentDuration" INT DEFAULT 5;
-
--- 3. Enable RLS on wars table
-ALTER TABLE wars ENABLE ROW LEVEL SECURITY;
-
--- 4. Add RLS policies for wars table (skip if already exist)
-DO $$
+-- 1. Fix add_budget_transaction
+CREATE OR REPLACE FUNCTION add_budget_transaction(
+  p_owner_type TEXT,
+  p_owner_id TEXT,
+  p_type TEXT,
+  p_subtype TEXT,
+  p_money_delta BIGINT,
+  p_resources_delta JSONB DEFAULT '{}'::jsonb,
+  p_created_by TEXT DEFAULT NULL,
+  p_metadata JSONB DEFAULT '{}'::jsonb
+) RETURNS TEXT
+SET search_path = public
+AS $$
+DECLARE
+  v_budget_id UUID;
+  v_current_money BIGINT;
+  v_current_resources JSONB;
+  v_new_resources JSONB;
+  v_res_key TEXT;
+  v_res_val INT;
+  v_tx_id TEXT;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wars' AND policyname = 'Wars public read') THEN
-    EXECUTE 'CREATE POLICY "Wars public read" ON wars FOR SELECT USING (true)';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wars' AND policyname = 'Wars server manage') THEN
-    EXECUTE 'CREATE POLICY "Wars server manage" ON wars FOR ALL USING (true)';
-  END IF;
-END $$;
+  -- 1. Get Budget
+  SELECT id, "moneyEUR", resources INTO v_budget_id, v_current_money, v_current_resources
+  FROM budgets
+  WHERE "ownerType" = p_owner_type AND "ownerId" = p_owner_id;
 
--- 5. Missing RPC: update_region_stability (used by propaganda action)
-CREATE OR REPLACE FUNCTION update_region_stability(
-  p_region_id TEXT,
-  p_delta INT
-) RETURNS VOID AS $$
-BEGIN
-  UPDATE regions
-  SET stability = LEAST(100, GREATEST(0, stability + p_delta))
-  WHERE id = p_region_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Budget non trovato per % %', p_owner_type, p_owner_id;
+  END IF;
+
+  -- 2. Check Money
+  IF v_current_money + p_money_delta < 0 THEN
+    RAISE EXCEPTION 'Fondi insufficienti';
+  END IF;
+
+  -- 3. Update Resources
+  v_new_resources = v_current_resources;
+  FOR v_res_key, v_res_val IN SELECT * FROM jsonb_each_text(p_resources_delta)
+  LOOP
+    v_new_resources = jsonb_set(
+      v_new_resources, 
+      ARRAY[v_res_key], 
+      to_jsonb(COALESCE((v_new_resources->>v_res_key)::int, 0) + v_res_val::int)
+    );
+    IF (v_new_resources->>v_res_key)::int < 0 THEN
+      RAISE EXCEPTION 'Risorse insufficienti: %', v_res_key;
+    END IF;
+  END LOOP;
+
+  -- 4. Apply Updates
+  UPDATE budgets 
+  SET "moneyEUR" = "moneyEUR" + p_money_delta, 
+      resources = v_new_resources, 
+      "updatedAt" = EXTRACT(EPOCH FROM NOW()) * 1000
+  WHERE id = v_budget_id;
+
+  -- 5. Log Transaction (REPLACED gen_random_bytes here)
+  v_tx_id := substr(md5(random()::text || clock_timestamp()::text), 1, 12);
+  INSERT INTO budget_transactions (
+    id, "budgetId", type, subtype, "moneyDelta", "resourcesDelta", "createdAt", "createdByUserId", metadata
+  ) VALUES (
+    v_tx_id, v_budget_id, p_type, p_subtype, p_money_delta, p_resources_delta, 
+    EXTRACT(EPOCH FROM NOW()) * 1000, p_created_by, p_metadata
+  );
+
+  RETURN v_tx_id;
 END;
 $$ LANGUAGE plpgsql;
 
--- 6. Missing RPC: process_invest_action (used by invest action)
-CREATE OR REPLACE FUNCTION process_invest_action(
-  p_region_id TEXT,
-  p_stability_delta INT,
-  p_pop_delta INT,
-  p_economy_delta INT
-) RETURNS VOID AS $$
-BEGIN
-  UPDATE regions
-  SET stability = LEAST(100, stability + p_stability_delta),
-      population = population + p_pop_delta,
-      "economyLevel" = LEAST(100, COALESCE("economyLevel", 0) + p_economy_delta)
-  WHERE id = p_region_id;
-END;
-$$ LANGUAGE plpgsql;
-
--- 7. Missing RPC: create_market_offer (used by market sell endpoint)
+-- 2. Fix create_market_offer
 CREATE OR REPLACE FUNCTION create_market_offer(
   p_user_id TEXT,
   p_item_id TEXT,
@@ -78,7 +96,7 @@ BEGIN
 
   DELETE FROM user_inventory WHERE "userId" = p_user_id::uuid AND quantity <= 0;
 
-  -- 2. Create Offer
+  -- 2. Create Offer (REPLACED gen_random_bytes here)
   v_offer_id := substr(md5(random()::text || clock_timestamp()::text), 1, 12);
   INSERT INTO market_offers (id, "sellerId", "sellerName", "itemId", quantity, price, "regionId", "taxRate", "originStateId", "createdAt")
   SELECT v_offer_id, id, username, p_item_id, p_quantity, p_price, p_region_id, p_tax_rate, p_origin_state_id, NOW()
@@ -86,7 +104,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 8. Missing RPC: purchase_market_offer (used by market buy endpoint)
+-- 3. Fix purchase_market_offer
 CREATE OR REPLACE FUNCTION purchase_market_offer(
   p_buyer_id TEXT,
   p_offer_id TEXT,
@@ -152,21 +170,9 @@ BEGIN
     UPDATE market_offers SET quantity = quantity - p_quantity WHERE id = p_offer_id;
   END IF;
 
-  -- 5. Log Transaction
+  -- 5. Log Transaction (REPLACED gen_random_bytes here)
   v_txn_id := substr(md5(random()::text || clock_timestamp()::text), 1, 12);
   INSERT INTO market_transactions_log (id, "buyerId", "isStateBuy", "sellerId", "itemId", quantity, price, "taxPaid", timestamp)
   VALUES (v_txn_id, p_buyer_id, CASE WHEN p_is_state_buy THEN 1 ELSE 0 END, v_offer."sellerId", v_offer."itemId", p_quantity, v_offer.price, v_tax_amount, EXTRACT(EPOCH FROM NOW()) * 1000);
-END;
-$$ LANGUAGE plpgsql;
-
--- 9. Missing RPC: increment_candidate_votes (used by leader election voting)
-CREATE OR REPLACE FUNCTION increment_candidate_votes(
-  p_region_id TEXT,
-  p_candidate_id TEXT
-) RETURNS VOID AS $$
-BEGIN
-  UPDATE leader_candidates
-  SET votes = votes + 1
-  WHERE "regionId" = p_region_id AND "userId" = p_candidate_id;
 END;
 $$ LANGUAGE plpgsql;

@@ -127,7 +127,7 @@ BEGIN
   WHERE id = v_budget_id;
 
   -- 5. Log Transaction
-  v_tx_id := encode(gen_random_bytes(6), 'hex');
+  v_tx_id := substr(md5(random()::text || clock_timestamp()::text), 1, 12);
   INSERT INTO budget_transactions (
     id, "budgetId", type, subtype, "moneyDelta", "resourcesDelta", "createdAt", "createdByUserId", metadata
   ) VALUES (

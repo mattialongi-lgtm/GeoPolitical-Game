@@ -1,62 +1,10 @@
 -- ==========================================================
--- Migration: Fix war declaration, law execution, and missing RPCs
--- Run this on the Supabase SQL Editor to fix:
---   1. War declaration failure (missing lastEventAt column)
---   2. Parliament laws failure (missing parliamentSize/parliamentDuration)
---   3. Missing RPC functions (market, propaganda, investments, elections)
---   4. Missing RLS on wars table
+-- Migration: Fix market offer creation and purchase
+-- Resolves the 'operator does not exist: uuid = text' error
+-- by adding explicit ::uuid casts to p_user_id and p_buyer_id parameters.
 -- ==========================================================
 
--- 1. Add missing column to wars table (fixes war declaration)
-ALTER TABLE wars ADD COLUMN IF NOT EXISTS "lastEventAt" TIMESTAMPTZ;
-
--- 2. Add missing columns to regions table (fixes parliament laws)
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS "parliamentSize" INT DEFAULT 20;
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS "parliamentDuration" INT DEFAULT 5;
-
--- 3. Enable RLS on wars table
-ALTER TABLE wars ENABLE ROW LEVEL SECURITY;
-
--- 4. Add RLS policies for wars table (skip if already exist)
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wars' AND policyname = 'Wars public read') THEN
-    EXECUTE 'CREATE POLICY "Wars public read" ON wars FOR SELECT USING (true)';
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'wars' AND policyname = 'Wars server manage') THEN
-    EXECUTE 'CREATE POLICY "Wars server manage" ON wars FOR ALL USING (true)';
-  END IF;
-END $$;
-
--- 5. Missing RPC: update_region_stability (used by propaganda action)
-CREATE OR REPLACE FUNCTION update_region_stability(
-  p_region_id TEXT,
-  p_delta INT
-) RETURNS VOID AS $$
-BEGIN
-  UPDATE regions
-  SET stability = LEAST(100, GREATEST(0, stability + p_delta))
-  WHERE id = p_region_id;
-END;
-$$ LANGUAGE plpgsql;
-
--- 6. Missing RPC: process_invest_action (used by invest action)
-CREATE OR REPLACE FUNCTION process_invest_action(
-  p_region_id TEXT,
-  p_stability_delta INT,
-  p_pop_delta INT,
-  p_economy_delta INT
-) RETURNS VOID AS $$
-BEGIN
-  UPDATE regions
-  SET stability = LEAST(100, stability + p_stability_delta),
-      population = population + p_pop_delta,
-      "economyLevel" = LEAST(100, COALESCE("economyLevel", 0) + p_economy_delta)
-  WHERE id = p_region_id;
-END;
-$$ LANGUAGE plpgsql;
-
--- 7. Missing RPC: create_market_offer (used by market sell endpoint)
+-- 1. Fix create_market_offer
 CREATE OR REPLACE FUNCTION create_market_offer(
   p_user_id TEXT,
   p_item_id TEXT,
@@ -86,7 +34,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- 8. Missing RPC: purchase_market_offer (used by market buy endpoint)
+-- 2. Fix purchase_market_offer
 CREATE OR REPLACE FUNCTION purchase_market_offer(
   p_buyer_id TEXT,
   p_offer_id TEXT,
@@ -156,17 +104,5 @@ BEGIN
   v_txn_id := substr(md5(random()::text || clock_timestamp()::text), 1, 12);
   INSERT INTO market_transactions_log (id, "buyerId", "isStateBuy", "sellerId", "itemId", quantity, price, "taxPaid", timestamp)
   VALUES (v_txn_id, p_buyer_id, CASE WHEN p_is_state_buy THEN 1 ELSE 0 END, v_offer."sellerId", v_offer."itemId", p_quantity, v_offer.price, v_tax_amount, EXTRACT(EPOCH FROM NOW()) * 1000);
-END;
-$$ LANGUAGE plpgsql;
-
--- 9. Missing RPC: increment_candidate_votes (used by leader election voting)
-CREATE OR REPLACE FUNCTION increment_candidate_votes(
-  p_region_id TEXT,
-  p_candidate_id TEXT
-) RETURNS VOID AS $$
-BEGIN
-  UPDATE leader_candidates
-  SET votes = votes + 1
-  WHERE "regionId" = p_region_id AND "userId" = p_candidate_id;
 END;
 $$ LANGUAGE plpgsql;

@@ -9,7 +9,7 @@ interface PoliticalFigure {
   name: string;
   role: string;
   avatar?: string;
-  salary?: number;
+  salaryGold?: number;
 }
 
 interface PoliticalInfoCardProps {
@@ -49,9 +49,9 @@ const PoliticalRow = ({
         <p className="text-xs text-gray-500 italic">{fallbackLabel}</p>
       )}
     </div>
-    {figure?.salary !== undefined && (
-      <span className="text-xs font-bold text-emerald-400 tabular-nums whitespace-nowrap">
-        {figure.salary.toLocaleString('it-IT')} €/g
+    {figure?.salaryGold !== undefined && (
+      <span className="text-xs font-bold text-amber-400 tabular-nums whitespace-nowrap">
+        🪙 {figure.salaryGold.toLocaleString('it-IT')} /g
       </span>
     )}
   </div>

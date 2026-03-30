@@ -96,6 +96,7 @@ import { StatePage } from "./components/state";
 import { WarCreatePanel, RevolutionPanel, WarDamageBar, WarHistoryList } from "./components/war";
 import { ArticleBlockRenderer } from "./components/ArticleBlockRenderer";
 import { ArticleEditor } from "./components/ArticleEditor";
+import { ResourceIcon } from "./components/ResourceIcon";
 import type { WarType, TroopType, WarSide } from "./types";
 import territorialBrand from "./assets/branding/territorial-brand.svg";
 
@@ -4598,12 +4599,14 @@ const StorageView = ({ user }: { user: any }) => {
               return inventoryEntries.map(([itemId, qty]) => {
                 const weapon = WEAPONS_CATALOG.find(w => w.id === itemId);
                 return (
-                  <div key={itemId} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{weapon?.emoji || "📦"}</span>
-                      <span className="font-black text-slate-800 capitalize">{weapon?.name || itemId}</span>
+                  <div key={itemId} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center transition-all hover:bg-white hover:shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm border border-slate-100/50">
+                        <ResourceIcon id={itemId} size={24} />
+                      </div>
+                      <span className="font-black text-slate-800 capitalize">{RESOURCE_LABELS[itemId] || weapon?.name || itemId}</span>
                     </div>
-                    <span className="font-bold text-indigo-600">x{qty as number}</span>
+                    <span className="font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg text-sm">x{qty as number}</span>
                   </div>
                 );
               });
@@ -4622,12 +4625,14 @@ const StorageView = ({ user }: { user: any }) => {
               stateInventory.map((item: any) => {
                 const weapon = WEAPONS_CATALOG.find(w => w.id === item.itemId);
                 return (
-                  <div key={item.itemId} className="p-4 bg-white rounded-2xl border border-emerald-200 flex justify-between items-center shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{weapon?.emoji || "📦"}</span>
-                      <span className="font-black text-emerald-900 capitalize">{weapon?.name || item.itemId}</span>
+                  <div key={item.itemId} className="p-4 bg-white rounded-2xl border border-emerald-200 flex justify-between items-center shadow-sm transition-all hover:border-emerald-400">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center border border-emerald-100">
+                        <ResourceIcon id={item.itemId} size={24} />
+                      </div>
+                      <span className="font-black text-emerald-900 capitalize">{RESOURCE_LABELS[item.itemId] || weapon?.name || item.itemId}</span>
                     </div>
-                    <span className="font-bold text-emerald-600">x{item.quantity}</span>
+                    <span className="font-black text-emerald-600 bg-emerald-100/50 px-3 py-1 rounded-lg text-sm">x{item.quantity}</span>
                   </div>
                 )
               })
@@ -4739,8 +4744,8 @@ const MarketView = () => {
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[120px]">
             <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Oggetto</label>
-            <select value={selectedItem} onChange={e => setSelectedItem(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold focus:ring-2 focus:ring-indigo-500">
-              {ITEMS_CATALOG.map(w => <option key={w.id} value={w.id}>{w.emoji} {w.name}</option>)}
+            <select value={selectedItem} onChange={e => setSelectedItem(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none">
+              {ITEMS_CATALOG.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
           <div className="w-24">
@@ -4760,9 +4765,9 @@ const MarketView = () => {
       {/* Lista Offerte */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <select value={filterType} onChange={e => setFilterType(e.target.value)} className="bg-white border border-slate-100 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm outline-none">
+          <select value={filterType} onChange={e => setFilterType(e.target.value)} className="bg-white border border-slate-100 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-indigo-500">
             <option value="all">Filtra per Oggetto (Tutti)</option>
-            {ITEMS_CATALOG.map(w => <option key={w.id} value={w.id}>{w.emoji} {w.name}</option>)}
+            {ITEMS_CATALOG.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
 
           <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
@@ -4786,13 +4791,13 @@ const MarketView = () => {
 
               return (
                 <div key={offer.id} className={`bg-white p-5 rounded-3xl shadow-sm border ${isAbusive ? 'border-rose-200 bg-rose-50/30' : 'border-slate-100'} flex flex-wrap gap-4 items-center justify-between`}>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-slate-50 flex flex-col items-center justify-center rounded-xl font-bold text-lg shadow-inner">
-                      {item?.emoji || "📦"}
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-slate-50 flex flex-col items-center justify-center rounded-2xl shadow-inner border border-slate-100/50">
+                      <ResourceIcon id={offer.itemId} size={28} />
                     </div>
                     <div>
-                      <p className="text-sm font-black text-slate-800 capitalize leading-none tracking-tight">{item?.name || offer.itemId}</p>
-                      <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">Venditore: <span className="text-indigo-500 font-black">{offer.sellerName}</span></p>
+                      <p className="text-sm font-black text-slate-800 capitalize leading-none tracking-tight">{RESOURCE_LABELS[offer.itemId] || item?.name || offer.itemId}</p>
+                      <p className="text-[10px] font-bold text-slate-400 mt-1.5 uppercase tracking-wider">Venditore: <span className="text-indigo-500 font-black">{offer.sellerName}</span></p>
                     </div>
                   </div>
 
@@ -5391,18 +5396,30 @@ const ProduceView = ({ user }: { user: any }) => {
 
             return (
               <div key={w.id} className="flex flex-col sm:flex-row items-center justify-between gap-4 p-5 bg-slate-50 rounded-3xl border border-slate-100">
-                <div className="flex items-center gap-4">
-                  <span className="text-4xl">{w.emoji}</span>
+                <div className="flex items-center gap-5">
+                  <div className="w-16 h-16 bg-white rounded-2xl flex items-center justify-center shadow-md border border-slate-100 flex-shrink-0">
+                    <ResourceIcon id={w.id} size={40} />
+                  </div>
                   <div>
-                    <p className="font-black text-slate-900 text-lg leading-tight">{w.name}</p>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">💵 ${w.costCash.toLocaleString()}/u</span>
-                      {w.reqOil > 0 && <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">🛢️ {w.reqOil}</span>}
-                      {w.reqMinerals > 0 && <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">🪨 {w.reqMinerals}</span>}
-                      {w.reqUranium > 0 && <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">☢️ {w.reqUranium}</span>}
-                      {w.reqDiamonds > 0 && <span className="text-[10px] font-bold text-slate-500 bg-white px-2 py-1 rounded-lg border border-slate-200 shadow-sm">💎 {w.reqDiamonds}</span>}
-                      <span className="text-[10px] font-bold text-slate-400 bg-white px-2 py-1 rounded-lg border border-slate-100 italic">⏱ {w.timeMin}m</span>
-                      <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-100">+{w.power} pw</span>
+                    <p className="font-black text-slate-900 text-lg leading-tight tracking-tight uppercase">{w.name}</p>
+                    <div className="flex flex-wrap gap-2 mt-2.5">
+                      <div className="flex items-center gap-1 text-[10px] font-black text-slate-500 bg-white px-2 py-1.5 rounded-xl border border-slate-200/60 shadow-sm uppercase tracking-wider">
+                        <ResourceIcon id="money" size={12} /> ${w.costCash.toLocaleString()}
+                      </div>
+                      {w.reqOil > 0 && <div className="flex items-center gap-1 text-[10px] font-black text-slate-600 bg-white px-2 py-1.5 rounded-xl border border-slate-200/60 shadow-sm uppercase tracking-wider">
+                        <ResourceIcon id="oil" size={12} /> {w.reqOil}
+                      </div>}
+                      {w.reqMinerals > 0 && <div className="flex items-center gap-1 text-[10px] font-black text-slate-600 bg-white px-2 py-1.5 rounded-xl border border-slate-200/60 shadow-sm uppercase tracking-wider">
+                        <ResourceIcon id="minerals" size={12} /> {w.reqMinerals}
+                      </div>}
+                      {w.reqUranium > 0 && <div className="flex items-center gap-1 text-[10px] font-black text-slate-600 bg-white px-2 py-1.5 rounded-xl border border-slate-200/60 shadow-sm uppercase tracking-wider">
+                        <ResourceIcon id="uranium" size={12} /> {w.reqUranium}
+                      </div>}
+                      {w.reqDiamonds > 0 && <div className="flex items-center gap-1 text-[10px] font-black text-slate-600 bg-white px-2 py-1.5 rounded-xl border border-slate-200/60 shadow-sm uppercase tracking-wider">
+                        <ResourceIcon id="diamonds" size={12} /> {w.reqDiamonds}
+                      </div>}
+                      <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1.5 rounded-xl border border-slate-100 italic">⏱ {w.timeMin}m</span>
+                      <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1.5 rounded-xl border border-emerald-100 uppercase tracking-widest">+{w.power} pw</span>
                     </div>
                   </div>
                 </div>
@@ -6523,11 +6540,12 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
                 <button
                   key={rt}
                   onClick={() => setSelectedResource(rt)}
-                  className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
                     selectedResource === rt ? 'bg-purple-100 text-purple-700 border-2 border-purple-300' : 'bg-slate-50 text-slate-500 border border-slate-200'
                   }`}
                 >
-                  {RESOURCE_ICONS_MAP[rt]} {RESOURCE_LABELS[rt]}
+                  <ResourceIcon id={rt} size={14} />
+                  <span>{RESOURCE_LABELS[rt] || rt}</span>
                 </button>
               ))}
             </div>

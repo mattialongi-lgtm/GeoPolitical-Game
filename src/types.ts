@@ -945,11 +945,11 @@ export interface MigrationAgreement {
 
 // ── Regional Resources System ──────────────────────────────
 
-export type ResourceType = 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore' | 'liquid_oxygen' | 'helium3' | 'rivalium';
+export type ResourceType = 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore' | 'liquid_oxygen' | 'helium3' | 'rivalium' | 'energy' | 'food' | 'steel' | 'gas';
 
-export const RESOURCE_TYPES: ResourceType[] = ['oil', 'minerals', 'uranium', 'diamonds', 'gold_ore', 'liquid_oxygen', 'helium3', 'rivalium'];
+export const RESOURCE_TYPES: ResourceType[] = ['oil', 'minerals', 'uranium', 'diamonds', 'gold_ore', 'liquid_oxygen', 'helium3', 'rivalium', 'energy', 'food', 'steel', 'gas'];
 
-export const RESOURCE_LABELS: Record<ResourceType, string> = {
+export const RESOURCE_LABELS: Record<string, string> = {
   oil: 'Petrolio',
   minerals: 'Minerali',
   uranium: 'Uranio',
@@ -958,17 +958,25 @@ export const RESOURCE_LABELS: Record<ResourceType, string> = {
   liquid_oxygen: 'Ossigeno Liquido',
   helium3: 'Elio-3',
   rivalium: 'Rivalium',
+  energy: 'Energia',
+  food: 'Cibo',
+  steel: 'Acciaio',
+  gas: 'Gas Naturale',
 };
 
-export const RESOURCE_ICONS_MAP: Record<ResourceType, string> = {
+export const RESOURCE_ICONS_MAP: Record<string, string> = {
   oil: '🛢️',
   minerals: '🪨',
   uranium: '☢️',
   diamonds: '💎',
-  gold_ore: '🥇',
+  gold_ore: '🪙',
   liquid_oxygen: '🧊',
   helium3: '⚗️',
   rivalium: '🔮',
+  energy: '⚡',
+  food: '🍞',
+  steel: '⛓️',
+  gas: '🔥',
 };
 
 export interface RegionResource {

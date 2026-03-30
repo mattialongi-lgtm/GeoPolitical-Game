@@ -36,9 +36,11 @@ export default function PlayersList() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [players, setPlayers] = useState<Player[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
 
   const onlineOnly = searchParams.get("filter") === "online";
+  const initialSearch = searchParams.get("search") || "";
+  
+  const [search, setSearch] = useState(initialSearch);
 
   const load = async () => {
     setLoading(true);

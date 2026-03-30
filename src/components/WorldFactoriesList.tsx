@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Factory, MapPin, Search, TrendingUp, UserCircle } from "lucide-react";
 import { FACTORY_CONFIG } from "../types";
 
@@ -17,9 +17,12 @@ interface FactoryItem {
 
 export default function WorldFactoriesList() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialSearch = searchParams.get("search") || "";
+  
   const [factories, setFactories] = useState<FactoryItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [typeFilter, setTypeFilter] = useState<string>("all");
 
   const load = async () => {
@@ -99,13 +102,13 @@ export default function WorldFactoriesList() {
       ) : (
         <div className="grid gap-3">
           {filtered.map((f) => {
-            const typeDef = FACTORY_CONFIG.TYPES[f.type] || {};
+            const typeDef = (FACTORY_CONFIG.TYPES as any)[f.type] || { icon: "🏭", label: "Fabbrica" };
             return (
               <div key={f.id} className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 space-y-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-2xl bg-gray-800 flex items-center justify-center text-2xl">
-                      {typeDef.icon || "🏭"}
+                      {typeDef.icon}
                     </div>
                     <div>
                       <p className="text-sm font-black text-white leading-tight">{f.name || "Fabbrica"}</p>

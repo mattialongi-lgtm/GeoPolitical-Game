@@ -107,27 +107,32 @@ app.use(express.json());
 
 // --- Government & Salary Configuration ---
 const GOVERNMENT_SALARY_CONFIG: Record<string, { headOfState: number; minister: number }> = {
+  // Base daily gold per region
   'PARLIAMENTARY_REPUBLIC': { headOfState: 40, minister: 25 },
   'PRESIDENTIAL_REPUBLIC': { headOfState: 40, minister: 25 },
   'DOMINANT_PARTY': { headOfState: 30, minister: 20 },
-  'DICTATORSHIP': { headOfState: 50, minister: 15 },
+  'DICTATORSHIP': { headOfState: 60, minister: 15 },
   'ONE_PARTY_SYSTEM': { headOfState: 35, minister: 20 },
-  'EXECUTIVE_MONARCHY': { headOfState: 60, minister: 10 },
-  // Localized fallbacks matching common database strings
+  'EXECUTIVE_MONARCHY': { headOfState: 80, minister: 10 },
+  // Localized fallbacks
   'REPUBBLICA': { headOfState: 40, minister: 25 },
   'REPUBBLICA PARLAMENTARE': { headOfState: 40, minister: 25 },
 };
 
 /**
  * Calculates current salaries based on government form and region count.
+ * For Republics: 40 gold/day per region for Head of State, 25 for Ministers.
  */
 function calculateStateSalaries(governmentForm: string | null, regionCount: number) {
   const normalized = (governmentForm || '').toUpperCase();
   const config = GOVERNMENT_SALARY_CONFIG[normalized] || GOVERNMENT_SALARY_CONFIG['PARLIAMENTARY_REPUBLIC'];
   
+  // Salary scales with the number of regions (minimum 1 to avoid 0 for independent regions)
+  const actualCount = Math.max(1, regionCount);
+  
   return {
-    headOfStateGold: config.headOfState * regionCount,
-    ministerGold: config.minister * regionCount,
+    headOfStateGold: config.headOfState * actualCount,
+    ministerGold: config.minister * actualCount,
   };
 }
 app.use(cookieParser());
@@ -798,6 +803,54 @@ app.get("/api/players/:id", authenticate, async (req: any, res) => {
   }
 });
 
+// ── Dipartimenti di Stato ──────────────────────────────────
+// Lista centralizzata dei dipartimenti validi (risorse + militari)
+// Il controllo avviene SOLO server-side — il client non è mai trusted
+const DEPT_RESOURCE: readonly string[] = Object.freeze([
+  'oil','minerals','uranium','diamonds','gold_ore','liquid_oxygen','helium3','energy','food','steel','gas'
+]);
+const DEPT_MILITARY: readonly string[] = Object.freeze([
+  'tank','aircraft','missile','bomber','battleship','lunar_tank','space_station'
+]);
+const ALL_VALID_DEPARTMENTS = new Set<string>([...DEPT_RESOURCE, ...DEPT_MILITARY]);
+const DEPARTMENT_DAILY_POINTS = 10;
+const DEPARTMENT_EDUCATION_REQUIREMENT = 100; // livello perk ISTRUZIONE richiesto
+
+// Labels e icone per la UI dei dipartimenti
+const DEPT_META: Record<string, { label: string; icon: string; category: 'resource' | 'military' }> = {
+  oil:           { label: 'Petrolio',          icon: '🛢️', category: 'resource' },
+  minerals:      { label: 'Minerali',          icon: '🪨', category: 'resource' },
+  uranium:       { label: 'Uranio',            icon: '☢️', category: 'resource' },
+  diamonds:      { label: 'Diamanti',          icon: '💎', category: 'resource' },
+  gold_ore:      { label: 'Oro',               icon: '🪙', category: 'resource' },
+  liquid_oxygen: { label: 'Ossigeno Liquido',  icon: '🧊', category: 'resource' },
+  helium3:       { label: 'Elio-3',            icon: '⚗️', category: 'resource' },
+  energy:        { label: 'Energia',           icon: '⚡', category: 'resource' },
+  food:          { label: 'Cibo',              icon: '🍞', category: 'resource' },
+  steel:         { label: 'Acciaio',           icon: '⛓️', category: 'resource' },
+  gas:           { label: 'Gas Naturale',      icon: '🔥', category: 'resource' },
+  tank:          { label: 'Carri Armati',      icon: '🛡️', category: 'military' },
+  aircraft:      { label: 'Aerei',             icon: '✈️', category: 'military' },
+  missile:       { label: 'Missili',           icon: '🚀', category: 'military' },
+  bomber:        { label: 'Bombardieri',       icon: '💣', category: 'military' },
+  battleship:    { label: 'Corazzate Navali',  icon: '⚓', category: 'military' },
+  lunar_tank:    { label: 'Tank Lunari',       icon: '🌑', category: 'military' },
+  space_station: { label: 'Stazione Spaziale', icon: '🛸', category: 'military' },
+};
+
+/**
+ * Calcola il bonus percentuale basato sul rank globale.
+ * Struttura preparata per la fase 2 — NON ancora applicata al gameplay.
+ * rank 1 → +10%, 2 → +8%, 3 → +6%, 4-5 → +4%, resto → 0%
+ */
+function getDeptBonusMultiplier(rank: number): number {
+  if (rank === 1) return 0.10;
+  if (rank === 2) return 0.08;
+  if (rank === 3) return 0.06;
+  if (rank <= 5)  return 0.04;
+  return 0;
+}
+
 // New endpoint for the State page
 app.get("/api/state/:id", authenticate, async (req, res) => {
   try {
@@ -830,11 +883,11 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     const economyMinister = ministers?.find(m => m.role === 'economics' || m.role === 'ECONOMICS');
     const foreignMinister = ministers?.find(m => m.role === 'foreign' || m.role === 'FOREIGN');
 
-    // 3. Fetch Regions count and IDs
+    // 3. Fetch Regions (Robust query to catch legacy/mismatched links)
     const { data: regions, error: regionsError } = await supabase
       .from('regions')
-      .select('id, name, population, developmentIndex, governor:users!governorPlayerId(username)')
-      .eq('nation_id', nationId);
+      .select('id, name, population, "developmentIndex", governor:users!governorPlayerId(username)')
+      .or(`nation_id.eq.${nationId},id.ilike.${nationId}-%`);
 
     if (regionsError) {
       console.error(`[StatePage] Error fetching regions for ${nationId}:`, regionsError.message);
@@ -898,6 +951,15 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     
     const { data: sanctions } = await (sanctionsQuery as any);
 
+    // 6. Fetch National Budget/Inventory from 'budgets' table
+    const { data: budgetData } = await supabase
+      .from('budgets')
+      .select('*')
+      .eq('ownerId', nationId)
+      .order('ownerType', { ascending: false }); // STATE before REGION if both exist
+
+    const nationBudget = budgetData?.find(b => b.ownerType === 'STATE') || budgetData?.[0];
+
     // Format output to match StatePage expectations
     const responseBody = {
       id: nation.id,
@@ -938,8 +1000,7 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
         dailyIncome: nation.treasury_daily_income || 0,
         dailyExpenses: nation.treasury_daily_expenses || 0,
         netBalance: (nation.treasury_daily_income || 0) - (nation.treasury_daily_expenses || 0),
-        goldReserve: nation.gold_reserve || 0,
-        specialFunds: nation.special_funds || 0,
+        resources: nationBudget?.resources || {}
       },
       details: {
         workPermits: nation.work_permits || 0,
@@ -955,10 +1016,7 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
         foundationDate: nation.foundation_date ? new Date(nation.foundation_date).toLocaleString('it-IT') : '-',
         ongoingWars: 0, // TODO: Link to wars table
       },
-      bestDepartment: nation.best_department_name ? {
-        name: nation.best_department_name,
-        value: nation.best_department_value
-      } : undefined,
+      bestDepartment: undefined as any, // populated below after dept query
       regions: (regions || []).map(r => ({
         id: r.id,
         name: r.name,
@@ -984,10 +1042,346 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
       })),
     };
 
+    // Fetch real best department from DB (non-blocking: empty table → undefined)
+    try {
+      const { data: deptScores } = await supabase
+        .from('state_department_scores')
+        .select('department, score')
+        .eq('nation_id', nationId)
+        .order('score', { ascending: false })
+        .limit(1);
+
+      if (deptScores && deptScores.length > 0) {
+        const top = deptScores[0];
+        responseBody.bestDepartment = {
+          name: top.department,
+          value: top.score,
+        };
+      }
+    } catch {
+      // non-critical — leave bestDepartment as undefined
+    }
+
     res.json(responseBody);
   } catch (err: any) {
     console.error("Error fetching state data:", err);
-    res.status(500).json({ error: "Errore nel caricamento dei dati dello stato: " + err.message });
+    res.status(500).json({ error: "Errore nel caricamento dei dati dello stato" });
+  }
+});
+
+app.post("/api/state/:id/donate", authenticate, async (req, res) => {
+  const nationId = req.params.id;
+  const { type, amount } = req.body;
+  const userId = (req as any).user.id;
+
+  if (!amount || amount <= 0) {
+    return res.status(400).json({ error: "Importo non valido" });
+  }
+
+  try {
+    // 1. Get user and verify balance
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (userError || !user) throw new Error("Utente non trovato");
+
+    // 2. Resource check and decrement
+    if (type === 'money') {
+      if (user.money < amount) return res.status(400).json({ error: "Saldo denaro insufficiente" });
+      await supabase.from('users').update({ money: user.money - amount }).eq('id', userId);
+    } else if (type === 'gold') {
+      if (user.gold < amount) return res.status(400).json({ error: "Saldo gold insufficiente" });
+      await supabase.from('users').update({ gold: user.gold - amount }).eq('id', userId);
+    } else {
+      // Material resource
+      const { data: inv, error: invError } = await supabase
+        .from('user_inventory')
+        .select('*')
+        .eq('userId', userId)
+        .eq('itemId', type)
+        .single();
+
+      if (invError || !inv || inv.quantity < amount) {
+        return res.status(400).json({ error: `Saldo ${type} insufficiente` });
+      }
+      await supabase.from('user_inventory').update({ quantity: inv.quantity - amount }).eq('userId', userId).eq('itemId', type);
+    }
+
+    // 3. Update State Budget
+    const { data: budget, error: budgetError } = await supabase
+      .from('budgets')
+      .select('*')
+      .eq('ownerType', 'STATE')
+      .eq('ownerId', nationId)
+      .single();
+
+    if (budgetError || !budget) throw new Error("Budget statale non trovato");
+
+    if (type === 'money') {
+      await supabase.from('budgets').update({
+        moneyEUR: BigInt(budget.moneyEUR || 0) + BigInt(amount),
+        updatedAt: Date.now()
+      }).eq('id', budget.id);
+    } else {
+      const currentResources = budget.resources || {};
+      const key = (type === 'gold') ? 'gold_ore' : type;
+      currentResources[key] = (currentResources[key] || 0) + amount;
+      
+      await supabase.from('budgets').update({
+        resources: currentResources,
+        updatedAt: Date.now()
+      }).eq('id', budget.id);
+    }
+
+    // 4. Log transaction
+    await supabase.from('budget_transactions').insert({
+      id: `don_${Date.now()}_${userId}`,
+      budgetId: budget.id,
+      type: 'INCOME',
+      subtype: 'DONATION',
+      moneyDelta: type === 'money' ? amount : 0,
+      resourcesDelta: type !== 'money' ? { [(type === 'gold' ? 'gold_ore' : type)]: amount } : {},
+      createdAt: Date.now(),
+      createdByUserId: userId,
+      metadata: { donor: user.username, resourceType: type }
+    });
+
+    res.json({ success: true, message: "Donazione effettuata con successo!" });
+  } catch (err: any) {
+    console.error("Donation error:", err);
+    res.status(500).json({ error: "Errore durante la donazione: " + err.message });
+  }
+});
+
+// ── GET /api/state/:id/departments ──────────────────────────
+// Legge i punteggi del dipartimento per la nazione e calcola il ranking globale.
+// Non richiede autenticazione per la visualizzazione pubblica;
+// `canContributeToday` richiede il token (opzionale: se non presente → null).
+app.get("/api/state/:id/departments", authenticate, async (req, res) => {
+  try {
+    const nationId = (req.params.id || '').toUpperCase().split('-')[0];
+    if (!nationId || !/^[A-Z]{2,4}$/.test(nationId)) {
+      return res.status(400).json({ error: 'ID nazione non valido.' });
+    }
+
+    const userId = (req as any).user?.id || null;
+    const today = new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD' UTC
+
+    // 1. Recupera punteggi di questa nazione
+    const { data: nationScores, error: nsErr } = await supabase
+      .from('state_department_scores')
+      .select('department, score')
+      .eq('nation_id', nationId);
+
+    if (nsErr) throw nsErr;
+
+    // 2. Per ogni dipartimento presente, calcola il ranking globale
+    //    (quante nazioni hanno score > score di questa nazione)
+    const departments: any[] = [];
+    for (const dept of (nationScores || [])) {
+      const { count: higherCount } = await supabase
+        .from('state_department_scores')
+        .select('nation_id', { count: 'exact', head: true })
+        .eq('department', dept.department)
+        .gt('score', dept.score);
+
+      const rank = (higherCount || 0) + 1;
+      const meta = DEPT_META[dept.department] || { label: dept.department, icon: '📊', category: 'resource' };
+      departments.push({
+        id: dept.department,
+        label: meta.label,
+        icon: meta.icon,
+        category: meta.category,
+        score: dept.score,
+        rank,
+        bonusMultiplier: getDeptBonusMultiplier(rank), // preparato, non ancora attivo
+      });
+    }
+
+    // Ordina per score decrescente
+    departments.sort((a, b) => b.score - a.score);
+
+    // 3. Verifica se l'utente ha già lavorato oggi
+    let canContributeToday = false;
+    let todayContribution: any = null;
+
+    if (userId) {
+      const { data: existing } = await supabase
+        .from('player_department_contributions')
+        .select('contributions, created_at')
+        .eq('player_id', userId)
+        .eq('day_key', today)
+        .maybeSingle();
+
+      canContributeToday = !existing;
+      todayContribution = existing?.contributions || null;
+
+      // Controlla anche l'idoneità (ISTRUZIONE >= 100)
+      if (canContributeToday) {
+        const { data: perksRows } = await supabase
+          .from('perks')
+          .select('perkId, level')
+          .eq('userId', userId)
+          .eq('perkId', 'ISTRUZIONE');
+        const istLevel = perksRows?.[0]?.level || 0;
+        if (istLevel < DEPARTMENT_EDUCATION_REQUIREMENT) {
+          canContributeToday = false; // non idoneo — insufficiente Istruzione
+        }
+      }
+    }
+
+    res.json({
+      nationId,
+      departments,
+      canContributeToday,
+      todayContribution,
+      allDepartments: [...DEPT_RESOURCE, ...DEPT_MILITARY].map(d => ({
+        id: d,
+        ...DEPT_META[d],
+      })),
+    });
+  } catch (err: any) {
+    console.error('[Departments GET] Error:', err.message);
+    res.status(500).json({ error: 'Errore nel caricamento dei dipartimenti.' });
+  }
+});
+
+// ── POST /api/state/:id/departments/contribute ───────────────
+// Il player distribuisce i 10 punti giornalieri tra i dipartimenti.
+// Tutte le validazioni critiche sono enforced lato server.
+app.post("/api/state/:id/departments/contribute", authenticate, async (req, res) => {
+  const userId = (req as any).user?.id;
+  if (!userId) return res.status(401).json({ error: 'Non autenticato.' });
+
+  const nationId = (req.params.id || '').toUpperCase().split('-')[0];
+  if (!nationId || !/^[A-Z]{2,4}$/.test(nationId)) {
+    return res.status(400).json({ error: 'ID nazione non valido.' });
+  }
+
+  // 1. Leggi e valida il payload contributions
+  const contributions: Record<string, number> = req.body?.contributions || {};
+  if (!contributions || typeof contributions !== 'object' || Array.isArray(contributions)) {
+    return res.status(400).json({ error: 'Payload contributions non valido.' });
+  }
+
+  // Controlla che tutti i campi siano dipartimenti validi e valori interi positivi
+  let total = 0;
+  for (const [dept, pts] of Object.entries(contributions)) {
+    if (!ALL_VALID_DEPARTMENTS.has(dept)) {
+      return res.status(400).json({ error: `Dipartimento "${dept}" non valido.` });
+    }
+    if (!Number.isInteger(pts) || pts <= 0) {
+      return res.status(400).json({ error: `Valore non valido per il dipartimento "${dept}": deve essere un intero positivo.` });
+    }
+    total += pts;
+  }
+
+  // La somma DEVE essere esattamente 10
+  if (total !== DEPARTMENT_DAILY_POINTS) {
+    return res.status(400).json({ error: `La somma dei punti deve essere esattamente ${DEPARTMENT_DAILY_POINTS}. Ricevuto: ${total}.` });
+  }
+
+  // Almeno un dipartimento
+  if (Object.keys(contributions).length === 0) {
+    return res.status(400).json({ error: 'Devi assegnare almeno un punto a un dipartimento.' });
+  }
+
+  try {
+    // 2. Recupera i dati del player autenticato
+    const { data: player, error: playerErr } = await supabase
+      .from('users')
+      .select('residenceId, originalNation')
+      .eq('id', userId)
+      .single();
+
+    if (playerErr || !player) {
+      return res.status(404).json({ error: 'Profilo utente non trovato.' });
+    }
+
+    // 3. Verifica residenza: il player deve risiedere nella nazione target
+    //    residenceId è una regione (es. 'IT-RM'), originalNation è la nazione (es. 'IT')
+    const playerNation = (player.originalNation || '').toUpperCase().split('-')[0];
+    if (playerNation !== nationId) {
+      return res.status(403).json({ error: 'Puoi contribuire ai dipartimenti solo nello Stato in cui sei cittadino.' });
+    }
+
+    // 4. Verifica perk ISTRUZIONE >= 100
+    const { data: perksRows } = await supabase
+      .from('perks')
+      .select('level')
+      .eq('userId', userId)
+      .eq('perkId', 'ISTRUZIONE')
+      .maybeSingle();
+
+    const istLevel = perksRows?.level || 0;
+    if (istLevel < DEPARTMENT_EDUCATION_REQUIREMENT) {
+      return res.status(403).json({
+        error: `Requisito non soddisfatto: hai bisogno di Istruzione livello ${DEPARTMENT_EDUCATION_REQUIREMENT}. Il tuo livello attuale è ${istLevel}.`,
+      });
+    }
+
+    // 5. Anti-duplice giornaliero: il UNIQUE constraint sul DB è il gate principale.
+    //    Controlliamo anche PRIMA per dare un errore chiaro senza sprecare la write.
+    const today = new Date().toISOString().slice(0, 10);
+    const { data: existing } = await supabase
+      .from('player_department_contributions')
+      .select('id')
+      .eq('player_id', userId)
+      .eq('day_key', today)
+      .maybeSingle();
+
+    if (existing) {
+      return res.status(409).json({ error: 'Hai già contribuito ai dipartimenti oggi. Riprova domani.' });
+    }
+
+    // 6. Inserisci il contributo giornaliero (il UNIQUE constraint blocca race conditions)
+    const { error: insertErr } = await supabase
+      .from('player_department_contributions')
+      .insert({
+        player_id: userId,
+        nation_id: nationId,
+        contributions: contributions as any,
+        day_key: today,
+      });
+
+    if (insertErr) {
+      // Codice 23505 = violazione unique — doppio submit concorrente
+      if (insertErr.code === '23505') {
+        return res.status(409).json({ error: 'Hai già contribuito ai dipartimenti oggi.' });
+      }
+      throw insertErr;
+    }
+
+    // 7. Aggiorna i punteggi aggregati per ogni dipartimento
+    //    Usiamo upsert incrementale per ogni dipartimento
+    for (const [dept, pts] of Object.entries(contributions)) {
+      // Fetch current score
+      const { data: current } = await supabase
+        .from('state_department_scores')
+        .select('score')
+        .eq('nation_id', nationId)
+        .eq('department', dept)
+        .maybeSingle();
+
+      const newScore = (current?.score || 0) + pts;
+
+      await supabase
+        .from('state_department_scores')
+        .upsert({
+          nation_id: nationId,
+          department: dept,
+          score: newScore,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'nation_id,department' });
+    }
+
+    res.json({ success: true, message: 'Contributo registrato con successo!' });
+  } catch (err: any) {
+    console.error('[Departments POST] Error:', err.message);
+    res.status(500).json({ error: 'Errore durante il salvataggio del contributo.' });
   }
 });
 

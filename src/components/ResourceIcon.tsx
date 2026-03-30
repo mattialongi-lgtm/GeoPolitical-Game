@@ -3,7 +3,7 @@ import { RESOURCE_ICONS_MAP } from '../types';
 
 type ResourceId = 
   | 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore' 
-  | 'liquid_oxygen' | 'helium3' | 'rivalium' | 'energy'
+  | 'liquid_oxygen' | 'helium3' | 'energy'
   | 'food' | 'steel' | 'gas'
   | 'money' | 'gold_currency'
   | string;

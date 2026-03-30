@@ -547,9 +547,9 @@ export const WAR_TYPE_ALLOWED_TROOPS: Record<WarType, TroopType[]> = {
 };
 
 // ── Factory System Configuration ──────────────────────────
-export type FactoryType = 'gold' | 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'liquid_oxygen' | 'helium3' | 'rivalium';
+export type FactoryType = 'gold' | 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'liquid_oxygen' | 'helium3';
 
-export const FACTORY_TYPES: FactoryType[] = ['gold', 'oil', 'minerals', 'uranium', 'diamonds', 'liquid_oxygen', 'helium3', 'rivalium'];
+export const FACTORY_TYPES: FactoryType[] = ['gold', 'oil', 'minerals', 'uranium', 'diamonds', 'liquid_oxygen', 'helium3'];
 
 /** Factory category: 'gold' produces money+gold, 'resource' produces a single resource */
 export type FactoryCategory = 'gold' | 'resource';
@@ -557,14 +557,13 @@ export type FactoryCategory = 'gold' | 'resource';
 export const FACTORY_CONFIG = {
   // ── Factory type definitions ──
   TYPES: {
-    gold:           { label: "Miniera d'Oro",            icon: '🪙', category: 'gold'     as FactoryCategory, resource: 'gold_ore',       rarity: 1, basePayout: 100 },
+    gold:           { label: "Oro",                      icon: '🪙', category: 'gold'     as FactoryCategory, resource: 'gold_ore',       rarity: 1, basePayout: 100 },
     oil:            { label: 'Giacimento di Petrolio',   icon: '🛢️', category: 'resource' as FactoryCategory, resource: 'oil',            rarity: 2, basePayout: 0 },
     minerals:       { label: 'Cava di Minerali',         icon: '🪨', category: 'resource' as FactoryCategory, resource: 'minerals',       rarity: 2, basePayout: 0 },
     uranium:        { label: 'Cava di Uranio',            icon: '☢️', category: 'resource' as FactoryCategory, resource: 'uranium',        rarity: 4, basePayout: 0 },
     diamonds:       { label: 'Miniera di Diamanti',      icon: '💎', category: 'resource' as FactoryCategory, resource: 'diamonds',       rarity: 5, basePayout: 0 },
     liquid_oxygen:  { label: 'Impianto Ossigeno Liquido', icon: '🧊', category: 'resource' as FactoryCategory, resource: 'liquid_oxygen',  rarity: 6, basePayout: 0 },
     helium3:        { label: 'Laboratorio Elio-3',       icon: '⚗️', category: 'resource' as FactoryCategory, resource: 'helium3',        rarity: 7, basePayout: 0 },
-    rivalium:       { label: 'Miniera di Rivalium',      icon: '🔮', category: 'resource' as FactoryCategory, resource: 'rivalium',       rarity: 9, basePayout: 0 },
   } as Record<string, { label: string; icon: string; category: FactoryCategory; resource: string; rarity: number; basePayout: number }>,
 
   // ── Creation costs (money) ──
@@ -576,7 +575,6 @@ export const FACTORY_CONFIG = {
     diamonds: 25000,
     liquid_oxygen: 30000,
     helium3: 50000,
-    rivalium: 100000,
   } as Record<string, number>,
 
   // ── Storage constants per level (units per level) ──
@@ -588,7 +586,6 @@ export const FACTORY_CONFIG = {
     diamonds: 50_000,
     liquid_oxygen: 8_000_000,
     helium3: 50_000,
-    rivalium: 10_000,
   } as Record<string, number>,
 
   // ── Maximum factory level ──
@@ -619,7 +616,6 @@ export const FACTORY_CONFIG = {
     diamonds: 200,
     liquid_oxygen: 15,
     helium3: 250,
-    rivalium: 1000,
   } as Record<string, number>,
 
   // ── Valuation formula weights ──
@@ -945,9 +941,9 @@ export interface MigrationAgreement {
 
 // ── Regional Resources System ──────────────────────────────
 
-export type ResourceType = 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore' | 'liquid_oxygen' | 'helium3' | 'rivalium' | 'energy' | 'food' | 'steel' | 'gas';
+export type ResourceType = 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore' | 'liquid_oxygen' | 'helium3' | 'energy' | 'food' | 'steel' | 'gas';
 
-export const RESOURCE_TYPES: ResourceType[] = ['oil', 'minerals', 'uranium', 'diamonds', 'gold_ore', 'liquid_oxygen', 'helium3', 'rivalium', 'energy', 'food', 'steel', 'gas'];
+export const RESOURCE_TYPES: ResourceType[] = ['oil', 'minerals', 'uranium', 'diamonds', 'gold_ore', 'liquid_oxygen', 'helium3', 'energy', 'food', 'steel', 'gas'];
 
 export const RESOURCE_LABELS: Record<string, string> = {
   oil: 'Petrolio',
@@ -957,7 +953,6 @@ export const RESOURCE_LABELS: Record<string, string> = {
   gold_ore: 'Oro',
   liquid_oxygen: 'Ossigeno Liquido',
   helium3: 'Elio-3',
-  rivalium: 'Rivalium',
   energy: 'Energia',
   food: 'Cibo',
   steel: 'Acciaio',
@@ -972,7 +967,6 @@ export const RESOURCE_ICONS_MAP: Record<string, string> = {
   gold_ore: '🪙',
   liquid_oxygen: '🧊',
   helium3: '⚗️',
-  rivalium: '🔮',
   energy: '⚡',
   food: '🍞',
   steel: '⛓️',
@@ -1065,12 +1059,11 @@ export const EXTRACTION_CONFIG = {
     minerals: 0.65,
     uranium: 0.75,
     diamonds: 0.75,
-    // Energy-based resources (liquid_oxygen, helium3) and rivalium use 0 here
+    // Energy-based resources (liquid_oxygen, helium3) use 0 here
     // because their coefficient is calculated via ENERGY_RESOURCE_MULTIPLIER/EXPONENT
     // based on power plant count, not region cap.
     liquid_oxygen: 0,
     helium3: 0,
-    rivalium: 0,
   } as Record<string, number>,
 
   // ── Energy-based resource coefficient: pow(numPowerPlants * MULT, EXP) ──
@@ -1093,7 +1086,6 @@ export const EXTRACTION_CONFIG = {
     diamonds: 0.001,       // /1000
     liquid_oxygen: 0.2,    // /5
     helium3: 0.001,        // /1000
-    rivalium: 1,
   } as Record<string, number>,
 
   // ── Gold special: money generated per unit of gold produced ──
@@ -1110,7 +1102,6 @@ export const EXTRACTION_CONFIG = {
     diamonds:       { linearCoeff: 250,    baseOffset: 25000 },
     liquid_oxygen:  { linearCoeff: 200000, baseOffset: 20000000 },
     helium3:        { linearCoeff: 250,    baseOffset: 25000 },
-    rivalium:       { linearCoeff: 200000, baseOffset: 20000000 },
   } as Record<string, { linearCoeff: number; baseOffset: number }>,
 
   // ── Work experience gain per extraction action ──

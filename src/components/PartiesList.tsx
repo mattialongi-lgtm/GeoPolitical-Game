@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Users, Search, Shield } from "lucide-react";
 
 type Party = {
@@ -14,9 +14,12 @@ type Party = {
 
 export default function PartiesList() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialSearch = searchParams.get("search") || "";
+  
   const [parties, setParties] = useState<Party[]>([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
 
   const load = async () => {
     setLoading(true);

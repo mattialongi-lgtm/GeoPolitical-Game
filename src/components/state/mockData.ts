@@ -4,6 +4,17 @@
  * All data structures are designed to match future Supabase schema.
  */
 
+/** Informazioni su un singolo dipartimento di Stato */
+export interface DepartmentInfo {
+  id: string;            // es. 'oil', 'tank'
+  label: string;         // es. 'Petrolio', 'Carri Armati'
+  icon: string;          // emoji
+  category: 'resource' | 'military';
+  score: number;         // punti totali accumulati
+  rank: number;          // posizione globale (1 = primo)
+  bonusMultiplier: number; // bonus preparato (0.08 = +8%)
+}
+
 /** State identity and basic info */
 export interface StateData {
   id: string;
@@ -18,19 +29,19 @@ export interface StateData {
     name: string;
     role: string;
     avatar?: string;
-    salary?: number;
+    salaryGold?: number;
   };
   economyMinister?: {
     name: string;
     role: string;
     avatar?: string;
-    salary?: number;
+    salaryGold?: number;
   };
   foreignMinister?: {
     name: string;
     role: string;
     avatar?: string;
-    salary?: number;
+    salaryGold?: number;
   };
   geopoliticalBloc?: string;
   stats: {
@@ -44,8 +55,7 @@ export interface StateData {
     dailyIncome: number;
     dailyExpenses: number;
     netBalance: number;
-    goldReserve: number;
-    specialFunds: number;
+    resources?: Record<string, number>;
   };
   details: {
     workPermits: number;
@@ -107,17 +117,17 @@ export const MOCK_STATE_DATA: StateData = {
   headOfState: {
     name: 'Marco Bianchi',
     role: 'Capo di Stato e Comandante',
-    salary: 125000,
+    salaryGold: 125000,
   },
   economyMinister: {
     name: 'Giulia Rossi',
     role: "Ministro dell'Economia",
-    salary: 85000,
+    salaryGold: 85000,
   },
   foreignMinister: {
     name: 'Alessandro Verdi',
     role: 'Ministro degli Esteri',
-    salary: 85000,
+    salaryGold: 85000,
   },
   geopoliticalBloc: 'Unione Europea',
   stats: {
@@ -131,8 +141,12 @@ export const MOCK_STATE_DATA: StateData = {
     dailyIncome: 2350000,
     dailyExpenses: 1890000,
     netBalance: 460000,
-    goldReserve: 520,
-    specialFunds: 3200000,
+    resources: {
+      oil: 150000,
+      minerals: 450000,
+      uranium: 1200,
+      gold_ore: 500,
+    },
   },
   details: {
     workPermits: 79,
@@ -187,8 +201,7 @@ export const EMPTY_STATE_DATA: StateData = {
     dailyIncome: 0,
     dailyExpenses: 0,
     netBalance: 0,
-    goldReserve: 0,
-    specialFunds: 0,
+    resources: {},
   },
   details: {
     workPermits: 0,

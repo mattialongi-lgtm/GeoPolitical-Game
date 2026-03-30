@@ -2458,7 +2458,6 @@ const RESOURCE_ICONS: Record<string, string> = {
   diamonds: "💎",
   liquid_oxygen: "🧊",
   helium3: "⚗️",
-  rivalium: "🔮",
 };
 
 const RESOURCE_NAMES: Record<string, string> = {
@@ -2469,7 +2468,6 @@ const RESOURCE_NAMES: Record<string, string> = {
   diamonds: "Diamanti",
   liquid_oxygen: "Ossigeno Liquido",
   helium3: "Elio-3",
-  rivalium: "Rivalium",
 };
 
 const FACTORY_CREATE_COST = FACTORY_CONFIG.CREATE_COST;

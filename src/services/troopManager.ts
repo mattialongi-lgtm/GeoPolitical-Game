@@ -15,8 +15,7 @@ export function validateTroopDeployment(
   quantity: number,
   warType: WarType,
   navalPhase: number,
-  userEnergy: number,
-  userMoney: number
+  userEnergy: number
 ): TroopValidation {
   // Check war type allows this troop
   const allowedTroops = WAR_TYPE_ALLOWED_TROOPS[warType] || [];
@@ -35,14 +34,10 @@ export function validateTroopDeployment(
   }
 
   const energyCost = (TROOP_ENERGY_COST[troopType] || 10) * quantity;
-  const moneyCost = (TROOP_MONEY_COST[troopType] || 100) * quantity;
+  const moneyCost = (TROOP_MONEY_COST[troopType] || 0) * quantity;
 
   if (userEnergy < energyCost) {
     return { valid: false, error: `Energia insufficiente (richiesti ${energyCost}⚡).`, energyCost, moneyCost };
-  }
-
-  if (userMoney < moneyCost) {
-    return { valid: false, error: `Fondi insufficienti (richiesti $${moneyCost}).`, energyCost, moneyCost };
   }
 
   return { valid: true, energyCost, moneyCost };

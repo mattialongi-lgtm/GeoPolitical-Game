@@ -3543,17 +3543,16 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
   }
 
   const weapons: any = {
-    infantry: { energy: 10, cash: 50, damage: 100 },
-    tank: { energy: 30, cash: 500, damage: 1000 },
-    airstrike: { energy: 50, cash: 2000, damage: 5000 },
-    battleship: { energy: 40, cash: 10000, damage: 2000 }
+    infantry: { energy: 10, cash: 0, damage: 100 },
+    tank: { energy: 30, cash: 0, damage: 1000 },
+    airstrike: { energy: 50, cash: 0, damage: 5000 },
+    battleship: { energy: 40, cash: 0, damage: 2000 }
   };
 
   const weapon = weapons[weaponId];
   if (!weapon) return res.status(400).json({ error: "Armamento sconosciuto." });
 
   if (user.energy < weapon.energy) return res.status(400).json({ error: `Energia insufficiente (richiesti ${weapon.energy}).` });
-  if (user.money < weapon.cash) return res.status(400).json({ error: `Fondi insufficienti (richiesti $${weapon.cash}).` });
 
   // Damage Calculation
   let totalDamage = weapon.damage;
@@ -3586,8 +3585,7 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
   try {
     // Deduct resources
     await supabase.from('users').update({
-      energy: user.energy - weapon.energy,
-      money: user.money - weapon.cash
+      energy: user.energy - weapon.energy
     }).eq('id', user.id);
 
     // Update scores

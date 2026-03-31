@@ -2004,21 +2004,21 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                                   <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-indigo-600">+100 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-10⚡ -$50</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{10}⚡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('attacker', 'tank')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                   <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-indigo-600">+1000 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-30⚡ -$500</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{30}⚡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('attacker', 'airstrike')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                   <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-indigo-600">+5000 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-50⚡ -$2000</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{50}⚡</span>
                                   </div>
                                 </button>
                               </>
@@ -2028,7 +2028,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                                 <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
                                 <div className="flex flex-col items-end">
                                   <span className="text-xs font-black text-indigo-600">+2000 Danni</span>
-                                  <span className="text-[10px] font-bold text-slate-400">-40⚡ -$10000</span>
+                                  <span className="text-[10px] font-bold text-slate-400">-{40}⚡</span>
                                 </div>
                               </button>
                             )}
@@ -2043,21 +2043,21 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                                   <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-rose-600">+100 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-10⚡ -$50</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{10}⚡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('defender', 'tank')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                   <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-rose-600">+1000 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-30⚡ -$500</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{30}⚡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('defender', 'airstrike')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                   <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-rose-600">+5000 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-50⚡ -$2000</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{50}⚡</span>
                                   </div>
                                 </button>
                               </>
@@ -2067,7 +2067,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                                 <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
                                 <div className="flex flex-col items-end">
                                   <span className="text-xs font-black text-rose-600">+2000 Danni</span>
-                                  <span className="text-[10px] font-bold text-slate-400">-40⚡ -$10000</span>
+                                  <span className="text-[10px] font-bold text-slate-400">-{40}⚡</span>
                                 </div>
                               </button>
                             )}
@@ -2079,7 +2079,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="font-black text-amber-800 text-sm uppercase">⚡ Modalità Automatica</p>
-                              <p className="text-[10px] font-bold text-amber-600">Attacca ogni 10 min (consuma energia e cash)</p>
+                              <p className="text-[10px] font-bold text-amber-600">Attacca ogni 10 min (consuma energia)</p>
                             </div>
                             {autoAttack?.warId === war.id && (
                               <button onClick={() => setAutoAttack(null)} className="px-4 py-2 bg-red-500 text-white rounded-xl font-black text-xs uppercase hover:bg-red-600">

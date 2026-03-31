@@ -523,11 +523,11 @@ export const TROOP_ENERGY_COST: Record<TroopType, number> = {
 };
 
 export const TROOP_MONEY_COST: Record<TroopType, number> = {
-  tank: 200,
-  aircraft: 1500,
-  missile: 5000,
-  bomber: 4000,
-  battleship: 10000,
+  tank: 0,
+  aircraft: 0,
+  missile: 0,
+  bomber: 0,
+  battleship: 0,
 };
 
 export const WAR_TYPE_ALLOWED_TROOPS: Record<WarType, TroopType[]> = {

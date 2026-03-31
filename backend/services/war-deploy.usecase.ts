@@ -33,7 +33,6 @@ export async function executeWarDeployUseCase(
     (war.warType || 'land') as WarType,
     war.navalPhase || 0,
     user.energy,
-    user.money,
   );
 
   if (!troopValidation.valid) {
@@ -169,7 +168,7 @@ export async function executeWarDeployUseCase(
     await warRepository.updateUserEnergyAndMoney(
       user.id,
       user.energy - troopValidation.energyCost,
-      user.money - troopValidation.moneyCost,
+      user.money, // Keep money unchanged
     );
 
     await warRepository.updateWarScore(warId, {

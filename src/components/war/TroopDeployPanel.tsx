@@ -16,7 +16,6 @@ interface TroopDeployPanelProps {
   side: WarSide;
   availableTroops: TroopType[];
   userEnergy: number;
-  userMoney: number;
   onDeploy: (troopType: TroopType, quantity: number) => Promise<void>;
   deploying: boolean;
   sideColor: 'indigo' | 'rose';
@@ -27,7 +26,6 @@ export const TroopDeployPanel: React.FC<TroopDeployPanelProps> = ({
   side,
   availableTroops,
   userEnergy,
-  userMoney,
   onDeploy,
   deploying,
   sideColor,
@@ -59,9 +57,8 @@ export const TroopDeployPanel: React.FC<TroopDeployPanelProps> = ({
             const label = TROOP_LABELS[troop] || { emoji: '⚔️', name: troop };
             const baseDmg = TROOP_BASE_DAMAGE[troop];
             const energyCost = TROOP_ENERGY_COST[troop];
-            const moneyCost = TROOP_MONEY_COST[troop];
             const qty = quantities[troop] || 1;
-            const canAfford = userEnergy >= energyCost * qty && userMoney >= moneyCost * qty;
+            const canAfford = userEnergy >= energyCost * qty;
 
             return (
               <div key={troop} className={`bg-white border ${btnBorder} p-3 rounded-2xl shadow-sm space-y-2`}>
@@ -71,7 +68,7 @@ export const TroopDeployPanel: React.FC<TroopDeployPanelProps> = ({
                   </span>
                   <div className="flex flex-col items-end">
                     <span className={`text-xs font-black ${accentColor}`}>+{(baseDmg * qty).toLocaleString()} Danni</span>
-                    <span className="text-[10px] font-bold text-slate-400">-{energyCost * qty}⚡ -${(moneyCost * qty).toLocaleString()}</span>
+                    <span className="text-[10px] font-bold text-slate-400">-{energyCost * qty}⚡</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">

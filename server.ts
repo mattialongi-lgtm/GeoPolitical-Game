@@ -1850,16 +1850,10 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
     return res.status(400).json({ error: "Factory on cooldown" });
   }
 
-  // 4. Energy and Perks Logic
-  const perks = user.perks || {};
-  const resistenza = perks['RESISTENZA'] || 0;
-  const energyReduction = Math.min(0.5, resistenza / 100);
-  // Regional Health Index reduces energy cost (capped at 10%)
-  const healthLevel = (regionRel?.healthIndex || 0) as number;
-  const healthRegionReduction = Math.min(0.10, healthLevel * AUTONOMY_CONFIG.INDEX_EFFECTS.health.energyCostReductionPerLevel);
-  const energyCost = Math.ceil((factory.energyCost ?? 10) * (1 - energyReduction - healthRegionReduction));
+  // 4. Energy Logic: Every action consumes the full bar (300)
+  const energyCost = 300;
 
-  if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
+  if (user.energy < energyCost) return res.status(400).json({ error: "Energia insufficiente (richiesti 300)." });
 
   const forzaBoost = (perks['FORZA'] || 0) * 0.03;
   const taxRate = regionRel?.marketTaxRate !== undefined ? regionRel.marketTaxRate : FACTORY_CONFIG.DEFAULT_INDUSTRY_TAX_RATE;
@@ -3552,7 +3546,8 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
   const weapon = weapons[weaponId];
   if (!weapon) return res.status(400).json({ error: "Armamento sconosciuto." });
 
-  if (user.energy < weapon.energy) return res.status(400).json({ error: `Energia insufficiente (richiesti ${weapon.energy}).` });
+  const energyCost = 300;
+  if (user.energy < energyCost) return res.status(400).json({ error: `Energia insufficiente (richiesti 300 per ogni azione).` });
 
   // Damage Calculation
   let totalDamage = weapon.damage;
@@ -3585,7 +3580,7 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
   try {
     // Deduct resources
     await supabase.from('users').update({
-      energy: user.energy - weapon.energy
+      energy: user.energy - energyCost
     }).eq('id', user.id);
 
     // Update scores

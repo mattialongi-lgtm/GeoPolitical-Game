@@ -22,7 +22,7 @@ const GOLD_PACKAGES = [
 ];
 
 const PREMIUM_BENEFITS = [
-  { icon: <Zap className="w-4 h-4" />, text: "+50% energia massima" },
+  { icon: <Zap className="w-4 h-4" />, text: "Recupero energia più veloce" },
   { icon: <TrendingUp className="w-4 h-4" />, text: "+50% XP da ogni azione" },
   { icon: <Shield className="w-4 h-4" />, text: "+50% cap danni in guerra" },
   { icon: <Clock className="w-4 h-4" />, text: "Cooldown lavoro ridotto del 25%" },

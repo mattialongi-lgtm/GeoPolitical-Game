@@ -233,7 +233,7 @@ const BottomNav = () => {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/95 backdrop-blur-md border-t border-gray-700/50 px-4 py-2.5 flex justify-around items-center z-50 pb-safe">
+    <nav className="fixed bottom-0 left-0 right-0 bg-gray-900/80 backdrop-blur-xl border-t border-white/5 px-4 py-3 flex justify-around items-center z-50 pb-safe shadow-[0_-8px_32px_rgba(0,0,0,0.4)]">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = location.pathname === tab.id ||
@@ -245,11 +245,18 @@ const BottomNav = () => {
           <button
             key={tab.id}
             onClick={() => navigate(tab.id)}
-            className={`flex flex-col items-center gap-0.5 min-w-[48px] py-1 rounded-xl transition-all ${isActive ? "text-indigo-400" : "text-gray-500 hover:text-gray-300"}`}
+            className={`flex flex-col items-center gap-1 min-w-[64px] py-1 rounded-2xl transition-all duration-300 relative ${isActive ? "text-indigo-400" : "text-gray-500 hover:text-gray-300"}`}
           >
-            <Icon className={`w-5 h-5 ${isActive ? "drop-shadow-[0_0_6px_rgba(129,140,248,0.5)]" : ""}`} />
-            <span className="text-[9px] font-black uppercase tracking-wider">{tab.label}</span>
-            {isActive && <div className="w-1 h-1 rounded-full bg-indigo-400 mt-0.5" />}
+            <div className={`p-2 rounded-xl transition-all duration-300 ${isActive ? "bg-indigo-500/20 shadow-[0_0_15px_rgba(129,140,248,0.3)]" : "group-hover:bg-gray-800/50"}`}>
+              <Icon className={`w-5 h-5 transition-transform duration-300 ${isActive ? "scale-110 drop-shadow-[0_0_8px_rgba(129,140,248,0.6)]" : ""}`} />
+            </div>
+            <span className={`text-[9px] font-black uppercase tracking-widest transition-all ${isActive ? "opacity-100 translate-y-0" : "opacity-70 group-hover:opacity-100"}`}>{tab.label}</span>
+            {isActive && (
+              <motion.div 
+                layoutId="nav-active"
+                className="absolute -top-3 w-1.5 h-1.5 rounded-full bg-indigo-400 shadow-[0_0_10px_rgba(129,140,248,0.8)]"
+              />
+            )}
           </button>
         );
       })}
@@ -1631,14 +1638,30 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
 
 
 
-const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: any, fetchData: () => void, actionLoading: boolean }) => {
+const WarsView = ({
+  wars,
+  user,
+  fetchData,
+  actionLoading,
+  autoAttack,
+  setAutoAttack,
+  autoWorkFactoryId,
+  setAutoWorkFactoryId
+}: {
+  wars: any,
+  user: any,
+  fetchData: () => void,
+  actionLoading: boolean,
+  autoAttack: { warId: string, side: string, weaponId: string } | null,
+  setAutoAttack: (val: { warId: string, side: string, weaponId: string } | null) => void,
+  autoWorkFactoryId: string | null,
+  setAutoWorkFactoryId: (val: string | null) => void
+}) => {
   const { warId } = useParams();
   const navigate = useNavigate();
   const [training, setTraining] = useState(false);
   const [militaryExp, setMilitaryExp] = useState(user?.militaryExp || 0);
 
-  // Auto-attack state: { warId, side, weaponId } or null
-  const [autoAttack, setAutoAttack] = useState<{ warId: string, side: string, weaponId: string } | null>(null);
   const autoAttackRef = React.useRef(autoAttack);
   autoAttackRef.current = autoAttack;
 
@@ -1647,13 +1670,22 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
   const autoTrainRef = React.useRef(autoTrain);
   autoTrainRef.current = autoTrain;
 
-  // Auto-attack interval
+  // Auto-attack interval handles by App component now for consistency or kept here?
+  // Let's keep it here but it needs the ref updating.
   useEffect(() => {
     if (!autoAttack) return;
     let stopped = false;
     const doAutoAttack = async () => {
       if (!autoAttackRef.current || stopped) return;
+
       try {
+        // Auto-refill logic: Use drink if energy < 300
+        const userRes = await fetch("/api/user");
+        const userData = await userRes.json();
+        if (userData && userData.energy < 300 && userData.energyDrinks > 0) {
+          await fetch("/api/actions/use-drink", { method: "POST" });
+        }
+
         const res = await fetch("/api/wars/deploy", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1662,7 +1694,6 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         const data = await res.json();
         if (data.error) {
           const errLower = (data.error || '').toLowerCase();
-          // Stop on energy/resource errors, not on cooldown
           if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('insufficiente') || errLower.includes('not found')) {
             setAutoAttack(null);
           }
@@ -1685,6 +1716,13 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
     const doAutoTrain = async () => {
       if (!autoTrainRef.current || stopped) return;
       try {
+        // Auto-refill logic: Use drink if energy < 300
+        const userRes = await fetch("/api/user");
+        const userData = await userRes.json();
+        if (userData && userData.energy < 300 && userData.energyDrinks > 0) {
+          await fetch("/api/actions/use-drink", { method: "POST" });
+        }
+
         const res = await fetch("/api/actions/train", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1709,7 +1747,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
   }, [autoTrain]);
 
   const handleTrain = async () => {
-    if (user.energy < 10) { alert("Energia insufficiente!"); return; }
+    if (user.energy < 300) { alert("Energia insufficiente (servono 300⚡)!"); return; }
     setTraining(true);
     try {
       const res = await fetch("/api/actions/train", {
@@ -1826,11 +1864,11 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
         <div className="flex gap-2">
           <button
             onClick={handleTrain}
-            disabled={training || user.energy < 10}
+            disabled={training || user.energy < 300}
             className="flex-1 py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-amber-100 hover:bg-amber-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {training ? <Loader2 className="w-4 h-4 animate-spin" /> : <Dumbbell className="w-4 h-4" />}
-            Allenati (-10⚡, +5 Exp)
+            Allenati (-300⚡, +5 Exp)
           </button>
           {autoTrain ? (
             <button
@@ -2004,21 +2042,21 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                                   <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-indigo-600">+100 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{10}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('attacker', 'tank')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                   <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-indigo-600">+1000 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{30}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('attacker', 'airstrike')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                   <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-indigo-600">+5000 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{50}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
                               </>
@@ -2028,7 +2066,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                                 <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
                                 <div className="flex flex-col items-end">
                                   <span className="text-xs font-black text-indigo-600">+2000 Danni</span>
-                                  <span className="text-[10px] font-bold text-slate-400">-{40}⚡</span>
+                                  <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                 </div>
                               </button>
                             )}
@@ -2043,21 +2081,21 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                                   <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-rose-600">+100 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{10}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('defender', 'tank')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                   <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-rose-600">+1000 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{30}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('defender', 'airstrike')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                   <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-rose-600">+5000 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{50}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
                               </>
@@ -2067,7 +2105,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                                 <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
                                 <div className="flex flex-col items-end">
                                   <span className="text-xs font-black text-rose-600">+2000 Danni</span>
-                                  <span className="text-[10px] font-bold text-slate-400">-{40}⚡</span>
+                                  <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                 </div>
                               </button>
                             )}
@@ -2079,7 +2117,7 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="font-black text-amber-800 text-sm uppercase">⚡ Modalità Automatica</p>
-                              <p className="text-[10px] font-bold text-amber-600">Attacca ogni 10 min (consuma energia)</p>
+                              <p className="text-[10px] font-bold text-amber-600">Attacca ogni 10 min (ricarica 300 via drink)</p>
                             </div>
                             {autoAttack?.warId === war.id && (
                               <button onClick={() => setAutoAttack(null)} className="px-4 py-2 bg-red-500 text-white rounded-xl font-black text-xs uppercase hover:bg-red-600">
@@ -2100,12 +2138,24 @@ const WarsView = ({ wars, user, fetchData, actionLoading }: { wars: any, user: a
                                 <div key={side} className="space-y-1">
                                   <p className="text-[9px] font-black text-center uppercase text-amber-700">{side === 'attacker' ? 'Attaccante' : 'Difensore'}</p>
                                   {!(war.warType === 'naval' && war.navalPhase === 1) && (['infantry', 'tank', 'airstrike'] as const).map(wep => (
-                                    <button key={wep} onClick={() => setAutoAttack({ warId: war.id, side, weaponId: wep })} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
+                                    <button key={wep} onClick={() => {
+                                      if (autoWorkFactoryId) {
+                                        if (!window.confirm("Attivando l'auto-attacco, l'auto-lavoro verrà disattivato. Procedere?")) return;
+                                        setAutoWorkFactoryId(null);
+                                      }
+                                      setAutoAttack({ warId: war.id, side, weaponId: wep });
+                                    }} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
                                       {wep === 'infantry' ? '🪖 Fanteria' : wep === 'tank' ? '🛡️ Corazzata' : '✈️ Aereo'}
                                     </button>
                                   ))}
                                   {war.warType === 'naval' && (
-                                    <button onClick={() => setAutoAttack({ warId: war.id, side, weaponId: 'battleship' })} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
+                                    <button onClick={() => {
+                                      if (autoWorkFactoryId) {
+                                        if (!window.confirm("Attivando l'auto-attacco, l'auto-lavoro verrà disattivato. Procedere?")) return;
+                                        setAutoWorkFactoryId(null);
+                                      }
+                                      setAutoAttack({ warId: war.id, side, weaponId: 'battleship' });
+                                    }} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
                                       🚢 Corazzata Navale
                                     </button>
                                   )}
@@ -2472,7 +2522,21 @@ const RESOURCE_NAMES: Record<string, string> = {
 
 const FACTORY_CREATE_COST = FACTORY_CONFIG.CREATE_COST;
 
-const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFactoryId }: { user: any; fetchData: () => void; autoWorkFactoryId?: string | null; setAutoWorkFactoryId?: (id: string | null) => void }) => {
+const PlayerFactoriesView = ({
+  user,
+  fetchData,
+  autoWorkFactoryId,
+  setAutoWorkFactoryId,
+  autoAttack,
+  setAutoAttack
+}: {
+  user: any;
+  fetchData: () => void;
+  autoWorkFactoryId?: string | null;
+  setAutoWorkFactoryId?: (id: string | null) => void;
+  autoAttack?: { warId: string; side: string; weaponId: string } | null;
+  setAutoAttack?: (val: { warId: string; side: string; weaponId: string } | null) => void;
+}) => {
   const { iso2 } = useParams();
   const navigate = useNavigate();
   const [factories, setFactories] = useState<any[]>([]);
@@ -2755,7 +2819,7 @@ const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFa
                     disabled={actionLoading || needsBudget}
                     className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:shadow-none"
                   >
-                    {isResourceMode ? `🪨 Scava ${RESOURCE_NAMES[f.type]} (-10⚡)` : '💼 Lavora Qui (-10⚡)'}
+                    {isResourceMode ? `🪨 Scava ${RESOURCE_NAMES[f.type]} (-300⚡)` : '💼 Lavora Qui (-300⚡)'}
                   </button>
                   <button
                     onClick={() => navigate(`/factory/${f.id}`)}
@@ -2774,7 +2838,13 @@ const PlayerFactoriesView = ({ user, fetchData, autoWorkFactoryId, setAutoWorkFa
                       </button>
                     ) : (
                       <button
-                        onClick={() => setAutoWorkFactoryId(f.id)}
+                        onClick={() => {
+                          if (autoAttack) {
+                            if (!window.confirm("Attivando l'auto-lavoro, l'auto-attacco verrà disattivato. Procedere?")) return;
+                            setAutoAttack(null);
+                          }
+                          setAutoWorkFactoryId(f.id);
+                        }}
                         disabled={!!autoWorkFactoryId}
                         className="py-3 px-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-amber-600 transition-all disabled:opacity-50"
                         title="Attiva lavoro automatico ogni 10 minuti"
@@ -4855,6 +4925,9 @@ export default function App() {
 
   // Auto-work state
   const [autoWorkFactoryId, setAutoWorkFactoryId] = useState<string | null>(null);
+  const [autoAttack, setAutoAttack] = useState<{ warId: string, side: string, weaponId: string } | null>(null);
+  const autoAttackRef = React.useRef(autoAttack);
+  autoAttackRef.current = autoAttack;
   const autoWorkFactoryIdRef = React.useRef(autoWorkFactoryId);
   autoWorkFactoryIdRef.current = autoWorkFactoryId;
 
@@ -4894,8 +4967,8 @@ export default function App() {
   useEffect(() => {
     if (!user) return;
     const updateTimer = () => {
-      // Assuming MAX energy is 100 for now. Can be retrieved from user.maxEnergy
-      const maxE = user.maxEnergy || 100;
+      // Max energy is now 300
+      const maxE = 300;
       if (user.energy >= maxE) {
         setEnergyTimer("MAX");
         return;
@@ -4921,6 +4994,13 @@ export default function App() {
     const doAutoWork = async () => {
       if (!autoWorkFactoryIdRef.current || stopped) return;
       try {
+        // Auto-refill logic: Use drink if energy < 300
+        const userRes = await fetch("/api/user");
+        const userData = await userRes.json();
+        if (userData && userData.energy < 300 && userData.energyDrinks > 0) {
+          await fetch("/api/actions/use-drink", { method: "POST" });
+        }
+
         const res = await fetch("/api/work", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -4928,16 +5008,14 @@ export default function App() {
         });
         const data = await res.json();
         if (data.error) {
-          // Only stop on critical errors (energy, inactive, not found), not cooldown
           const errLower = (data.error || '').toLowerCase();
           if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('non trovata') || errLower.includes('not found') || errLower.includes('non attiva')) {
             setAutoWorkFactoryId(null);
           }
-          // Cooldown errors are expected - just wait for next interval
         }
         fetchData();
       } catch {
-        // Network error - don't stop, retry next interval
+        // Network error - retry next interval
       }
     };
     doAutoWork();
@@ -5056,40 +5134,64 @@ export default function App() {
     <div className={`min-h-screen bg-gray-950 text-gray-100 font-sans pb-24`}>
       {/* Header - Hidden on Dashboards */}
       {!isDashboardRoute && (
-        <header className="bg-gray-900/95 backdrop-blur-md border-b border-gray-800/50 sticky top-0 z-40 px-4 py-2.5 flex justify-between items-center gap-2">
+        <header className="bg-gray-950/80 backdrop-blur-xl border-b border-white/5 sticky top-0 z-40 px-4 py-3 flex justify-between items-center gap-3 shadow-[0_4px_24px_rgba(0,0,0,0.5)]">
           <div className="flex items-center gap-2 shrink-0">
-            <TerritorialBrandLogo className="h-10 w-auto max-w-[14rem] object-contain drop-shadow-[0_8px_18px_rgba(0,0,0,0.45)]" />
+            <TerritorialBrandLogo className="h-9 w-auto max-w-[12rem] object-contain drop-shadow-[0_4px_12px_rgba(0,0,0,0.6)]" />
           </div>
-          <div className="flex items-center gap-1.5 overflow-x-auto flex-1 justify-end">
-            <div className="bg-emerald-900/30 px-2.5 py-1.5 rounded-xl border border-emerald-700/30 flex items-center gap-1 shrink-0">
-              <span className="text-[10px] font-black text-emerald-400">${(user.money || 0).toLocaleString()}</span>
+          <div className="flex items-center gap-2 overflow-x-auto flex-1 justify-end scrollbar-hide">
+            {/* Money */}
+            <div className="bg-emerald-500/10 px-3 py-2 rounded-2xl border border-emerald-500/20 flex items-center gap-1.5 shrink-0 transition-all hover:bg-emerald-500/20">
+              <span className="text-[11px] font-black text-emerald-400/90 tracking-tighter">
+                ${(user.money || 0).toLocaleString()}
+              </span>
             </div>
-            <div className="bg-amber-900/30 px-2.5 py-1.5 rounded-xl border border-amber-700/30 flex items-center gap-1 shrink-0">
-              <span className="text-[10px] font-black text-amber-400">🪙{user.gold || 0}</span>
+            
+            {/* Gold */}
+            <div className="bg-amber-500/10 px-3 py-2 rounded-2xl border border-amber-500/20 flex items-center gap-1.5 shrink-0 transition-all hover:bg-amber-500/20">
+              <span className="text-[11px] font-black text-amber-400/90 tracking-tighter">
+                🪙{user.gold || 0}
+              </span>
             </div>
-            <div className="bg-gray-800/60 px-2.5 py-1.5 rounded-xl border border-gray-700/40 flex items-center gap-1 shrink-0">
-              <Zap className="w-3 h-3 text-indigo-400" />
-              <span className="text-[10px] font-black text-gray-300">{user.energy}</span>
-              <span className="text-[8px] font-bold text-gray-500 ml-1">{energyTimer}</span>
+
+            {/* Energy */}
+            <div className="bg-indigo-500/10 px-3 py-2 rounded-2xl border border-indigo-500/20 flex items-center gap-2 shrink-0 transition-all hover:bg-indigo-500/20 group">
+              <div className="relative">
+                <Zap className="w-3.5 h-3.5 text-indigo-400 fill-indigo-400/20 group-hover:scale-110 transition-transform" />
+                <div className="absolute inset-0 bg-indigo-400 blur-sm opacity-0 group-hover:opacity-40 transition-opacity" />
+              </div>
+              <div className="flex flex-col items-start leading-none gap-0.5">
+                <span className="text-[11px] font-black text-gray-100 tracking-tighter">
+                  {user.energy}<span className="text-gray-500 font-bold">/300</span>
+                </span>
+                {energyTimer !== "MAX" && (
+                  <span className="text-[7px] font-black text-indigo-400/80 uppercase tracking-widest">{energyTimer}</span>
+                )}
+              </div>
             </div>
+
+            {/* Energy Drinks */}
             <button
               onClick={handleUseDrink}
               disabled={actionLoading}
               title="Usa Drink Energetico"
-              className="bg-sky-900/30 px-2.5 py-1.5 rounded-xl border border-sky-700/30 flex items-center gap-1 shrink-0 hover:bg-sky-800/40 transition-colors disabled:opacity-50"
+              className="bg-sky-500/10 p-2 rounded-2xl border border-sky-500/20 flex items-center justify-center shrink-0 hover:bg-sky-500/20 transition-all active:scale-95 disabled:opacity-50 group relative"
             >
-              <span className="text-xs leading-none mt-0.5">🥤</span>
-              <span className="text-[10px] font-black text-sky-400">{user.energyDrinks || 0}</span>
+              <span className="text-lg leading-none filter drop-shadow-sm group-hover:rotate-12 transition-transform">🥤</span>
+              <div className="absolute -top-1 -right-1 bg-sky-500 text-[8px] font-black text-white px-1.5 py-0.5 rounded-full shadow-lg border border-sky-400/50">
+                {user.energyDrinks || 0}
+              </div>
             </button>
+
+            {/* Profile Avatar */}
             <button
               onClick={() => navigate("/profile")}
-              className="w-8 h-8 rounded-xl overflow-hidden bg-indigo-900/30 flex items-center justify-center shrink-0 border border-indigo-700/30"
+              className="w-10 h-10 rounded-2xl overflow-hidden bg-white/5 flex items-center justify-center shrink-0 border border-white/10 hover:border-indigo-500/50 transition-all active:scale-95 shadow-lg group"
               title="Profilo"
             >
               {user.avatarData ? (
-                <img src={user.avatarData} alt="avatar" className="w-full h-full object-cover" />
+                <img src={user.avatarData} alt="avatar" className="w-full h-full object-cover group-hover:scale-110 transition-transform" />
               ) : (
-                <UserIcon className="w-4 h-4 text-indigo-400" />
+                <UserIcon className="w-5 h-5 text-gray-400 group-hover:text-indigo-400 transition-colors" />
               )}
             </button>
             <div className="relative">
@@ -5185,7 +5287,7 @@ export default function App() {
                   <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Mercato del Lavoro</h2>
                   <div className="bg-white px-4 py-2 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-2">
                     <Zap className="w-4 h-4 text-amber-500" />
-                    <span className="font-black text-slate-700">{user.energy}/{user.maxEnergy}</span>
+                    <span className="font-black text-slate-700">{user.energy}/300</span>
                   </div>
                 </div>
 
@@ -5287,12 +5389,19 @@ export default function App() {
                   )}
                 </div>
 
-                <PlayerFactoriesView user={user} fetchData={fetchData} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />
+                <PlayerFactoriesView
+                  user={user}
+                  fetchData={fetchData}
+                  autoWorkFactoryId={autoWorkFactoryId}
+                  setAutoWorkFactoryId={setAutoWorkFactoryId}
+                  autoAttack={autoAttack}
+                  setAutoAttack={setAutoAttack}
+                />
               </motion.div>
             ) : <Navigate to="/" />
           } />
-          <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
-          <Route path="/wars/:warId" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} />} />
+          <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} autoAttack={autoAttack} setAutoAttack={setAutoAttack} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
+          <Route path="/wars/:warId" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} autoAttack={autoAttack} setAutoAttack={setAutoAttack} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
           <Route path="/war/:warId/summary" element={<WarStatsView user={user} />} />
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} regions={regions} nations={nations} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />

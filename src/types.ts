@@ -464,15 +464,15 @@ export interface InventoryItem {
 }
 
 export const GAME_CONFIG = {
-  ENERGY_MAX: 100,
+  ENERGY_MAX: 300,
   ENERGY_REGEN_RATE: 10, // per hour
-  WORK_ENERGY_COST: 10,
+  WORK_ENERGY_COST: 300,
   WORK_COOLDOWN: 60 * 1000,
   PROPAGANDA_ENERGY_COST: 15,
   PROPAGANDA_COOLDOWN: 120 * 1000,
   INVEST_MONEY_COST: 1000,
   INVEST_ENERGY_COST: 20,
-  ATTACK_ENERGY_COST: 50,
+  ATTACK_ENERGY_COST: 300,
   ATTACK_COOLDOWN: 300 * 1000,
   XP_PER_WORK: 10,
   XP_PER_PROPAGANDA: 15,
@@ -515,11 +515,11 @@ export const TROOP_BASE_DAMAGE: Record<TroopType, number> = {
 };
 
 export const TROOP_ENERGY_COST: Record<TroopType, number> = {
-  tank: 5,
-  aircraft: 15,
-  missile: 30,
-  bomber: 25,
-  battleship: 40,
+  tank: 300,
+  aircraft: 300,
+  missile: 300,
+  bomber: 300,
+  battleship: 300,
 };
 
 export const TROOP_MONEY_COST: Record<TroopType, number> = {

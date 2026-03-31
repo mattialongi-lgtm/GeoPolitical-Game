@@ -1,4 +1,7 @@
 import "dotenv/config";
+// Global fix for BigInt serialization in JSON responses
+(BigInt.prototype as any).toJSON = function() { return this.toString(); };
+
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
@@ -886,7 +889,7 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     // 3. Fetch Regions (Robust query to catch legacy/mismatched links)
     const { data: regions, error: regionsError } = await supabase
       .from('regions')
-      .select('id, name, population, "developmentIndex", governor:users!governorPlayerId(username)')
+      .select('id, name, population, "developmentIndex", governor:users!governorPlayerId(username), "isAutonomous", "energyGeneration", "energyConsumption", "residencePolicy", "workRestrictions", "entryTax", "nextLeaderElectionAt"')
       .or(`nation_id.eq.${nationId},id.ilike.${nationId}-%`);
 
     if (regionsError) {
@@ -896,8 +899,14 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     const regionIds = (regions || []).map(r => r.id);
     console.log(`[StatePage] Nation ${nationId} has ${regions?.length || 0} regions:`, regionIds);
 
-    // 5. Counts: Citizens, Residents, Parties, Factories
-    const [citizenCount, residentCount, partyCount, factoryCount, userRegionBreakdown] = await Promise.all([
+    // 4. Aggregates from regions
+    const totalEnergyGen = (regions || []).reduce((sum, r) => sum + (Number(r.energyGeneration) || 0), 0);
+    const totalEnergyCons = (regions || []).reduce((sum, r) => sum + (Number(r.energyConsumption) || 0), 0);
+    const autonomousCount = (regions || []).filter(r => (r as any).isAutonomous).length;
+    const capitalRegion = (regions || []).find(r => (r as any).isCapital) || regions?.[0];
+
+    // 5. Counts: Citizens, Residents, Parties, Factories, Wars
+    const [citizenCount, residentCount, partyCount, factoryCount, activeWarCount, userRegionBreakdown] = await Promise.all([
       // Citizens: users whose originalNation matches
       supabase.from('users').select('id', { count: 'exact', head: true }).eq('originalNation', nationId),
       // Residents: users currently in these regions
@@ -912,6 +921,10 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
       regionIds.length > 0
         ? supabase.from('factories').select('id', { count: 'exact', head: true }).in('regionId', regionIds)
         : { count: 0 },
+      // Active Wars: involving this nation or its regions
+      supabase.from('wars').select('id', { count: 'exact', head: true })
+        .or(`attackerCountryIso2.eq.${nationId},defenderCountryIso2.eq.${nationId}`)
+        .eq('status', 'active'),
       // Player Breakdown: breakdown of users by region
       regionIds.length > 0
         ? supabase.from('users').select('regionId').in('regionId', regionIds)
@@ -960,6 +973,24 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
 
     const nationBudget = budgetData?.find(b => b.ownerType === 'STATE') || budgetData?.[0];
 
+    // Helper for translating state terms
+    const translateTerm = (term: string | undefined | null): string => {
+      if (!term) return '-';
+      const map: any = {
+        'open': 'Aperti',
+        'closed': 'Chiusi',
+        'Aperta': 'Aperta',
+        'Chiusa': 'Chiusa',
+        'Non necessaria': 'Non necessaria',
+        'PARLIAMENTARY_REPUBLIC': 'Repubblica Parlamentare',
+        'PRESIDENTIAL_REPUBLIC': 'Repubblica Presidenziale',
+        'DICTATORSHIP': 'Dittatura',
+        'ONE_PARTY_SYSTEM': 'Sistema a Partito Unico',
+        'EXECUTIVE_MONARCHY': 'Monarchia Esecutiva',
+      };
+      return map[term] || term;
+    };
+
     // Format output to match StatePage expectations
     const responseBody = {
       id: nation.id,
@@ -969,7 +1000,7 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
       representativeImage: nation.representative_image || undefined,
       regionCount: regions?.length || 0,
       population: totalPopulation,
-      governmentForm: nation.government_form || 'Repubblica Parlamentare',
+      governmentForm: translateTerm(nation.government_form),
       headOfState: nation.leader ? {
         name: nation.leader.username,
         role: 'Capo di Stato e Comandante',
@@ -1005,16 +1036,18 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
       details: {
         workPermits: nation.work_permits || 0,
         mandateStart: nation.mandate_start ? new Date(nation.mandate_start).toLocaleString('it-IT') : '-',
-        nextElections: nation.next_elections ? new Date(nation.next_elections).toLocaleString('it-IT') : '-',
-        autonomies: nation.autonomies || 0,
-        entryTax: nation.entry_tax || 0,
-        borders: nation.borders_status || 'open',
-        residenceToWork: nation.residence_to_work || 'Non necessaria',
-        residence: nation.residence_policy || 'Aperta',
-        energyProduction: nation.energy_production || 0,
-        energyConsumption: nation.energy_consumption || 0,
-        foundationDate: nation.foundation_date ? new Date(nation.foundation_date).toLocaleString('it-IT') : '-',
-        ongoingWars: 0, // TODO: Link to wars table
+        nextElections: (nation.next_elections || capitalRegion?.nextLeaderElectionAt) 
+          ? new Date(nation.next_elections || capitalRegion.nextLeaderElectionAt).toLocaleString('it-IT') 
+          : '-',
+        autonomies: autonomousCount || nation.autonomies || 0,
+        entryTax: nation.entry_tax || capitalRegion?.entryTax || 0,
+        borders: translateTerm(nation.borders_status || capitalRegion?.residencePolicy || 'open'),
+        residenceToWork: translateTerm(nation.residence_to_work || (capitalRegion?.workRestrictions ? 'Necessaria' : 'Non necessaria')),
+        residence: translateTerm(nation.residence_policy || capitalRegion?.residencePolicy || 'Aperta'),
+        energyProduction: totalEnergyGen || nation.energy_production || 0,
+        energyConsumption: totalEnergyCons || nation.energy_consumption || 0,
+        foundationDate: nation.foundation_date ? new Date(nation.foundation_date).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '-',
+        ongoingWars: activeWarCount.count || 0,
       },
       bestDepartment: undefined as any, // populated below after dept query
       regions: (regions || []).map(r => ({
@@ -1088,73 +1121,132 @@ app.post("/api/state/:id/donate", authenticate, async (req, res) => {
 
     if (userError || !user) throw new Error("Utente non trovato");
 
-    // 2. Resource check and decrement
-    if (type === 'money') {
-      if (user.money < amount) return res.status(400).json({ error: "Saldo denaro insufficiente" });
-      await supabase.from('users').update({ money: user.money - amount }).eq('id', userId);
-    } else if (type === 'gold') {
-      if (user.gold < amount) return res.status(400).json({ error: "Saldo gold insufficiente" });
-      await supabase.from('users').update({ gold: user.gold - amount }).eq('id', userId);
-    } else {
-      // Material resource
-      const { data: inv, error: invError } = await supabase
-        .from('user_inventory')
-        .select('*')
-        .eq('userId', userId)
-        .eq('itemId', type)
-        .single();
+    // 2. Resource mapping & Check
+    const resourceMap: Record<string, string> = {
+      'petrolio': 'oil',
+      'minerali': 'minerals',
+      'uranio': 'uranium',
+      'diamanti': 'diamonds',
+      'soldi': 'money'
+    };
+    const realType = resourceMap[type] || type;
 
-      if (invError || !inv || inv.quantity < amount) {
-        return res.status(400).json({ error: `Saldo ${type} insufficiente` });
+    if (realType === 'money') {
+      if (BigInt(user.money || 0) < BigInt(amount)) return res.status(400).json({ error: "Saldo denaro insufficiente" });
+    } else if (realType === 'gold') {
+      if (BigInt(user.gold || 0) < BigInt(amount)) return res.status(400).json({ error: "Saldo gold insufficiente" });
+    } else {
+      const { data: inv } = await supabase.from('user_inventory').select('*').eq('userId', userId).eq('itemId', realType).single();
+      if (!inv || BigInt(inv.quantity || 0) < BigInt(amount)) {
+        return res.status(400).json({ error: `Saldo ${realType} insufficiente` });
       }
-      await supabase.from('user_inventory').update({ quantity: inv.quantity - amount }).eq('userId', userId).eq('itemId', type);
     }
 
-    // 3. Update State Budget
-    const { data: budget, error: budgetError } = await supabase
+    // 3. Map to budget key (oro -> gold_ore)
+    const budgetResourceKey = realType === 'gold' ? 'gold_ore' : realType;
+
+    // 4. Update State Budget (handles auto-creation if missing)
+    let { data: budgets, error: budgetError } = await supabase
       .from('budgets')
       .select('*')
       .eq('ownerType', 'STATE')
       .eq('ownerId', nationId)
-      .single();
+      .maybeSingle();
 
-    if (budgetError || !budget) throw new Error("Budget statale non trovato");
+    if (budgetError) throw budgetError;
 
-    if (type === 'money') {
-      await supabase.from('budgets').update({
-        moneyEUR: BigInt(budget.moneyEUR || 0) + BigInt(amount),
-        updatedAt: Date.now()
-      }).eq('id', budget.id);
-    } else {
-      const currentResources = budget.resources || {};
-      const key = (type === 'gold') ? 'gold_ore' : type;
-      currentResources[key] = (currentResources[key] || 0) + amount;
+    if (!budgets) {
+      // Auto-create missing budget
+      const { data: newBudget, error: createError } = await supabase
+        .from('budgets')
+        .insert({
+          ownerType: 'STATE',
+          ownerId: nationId,
+          moneyEUR: 0,
+          resources: {},
+          updatedAt: Date.now()
+        })
+        .select()
+        .single();
       
-      await supabase.from('budgets').update({
-        resources: currentResources,
-        updatedAt: Date.now()
-      }).eq('id', budget.id);
+      if (createError) {
+        if (createError.code === '23505') {
+          const { data: retryBudget } = await supabase
+            .from('budgets')
+            .select('*')
+            .eq('ownerType', 'STATE')
+            .eq('ownerId', nationId)
+            .single();
+          budgets = retryBudget;
+        } else {
+          console.error("Budget creation error:", createError);
+          throw new Error("Errore nell'inizializzazione del budget statale");
+        }
+      } else {
+        budgets = newBudget;
+      }
     }
 
-    // 4. Log transaction
+    if (!budgets) throw new Error("Errore critico: Budget non recuperabile");
+
+    // 5. Define transaction ID early
+    const txId = `don_${Date.now()}_${userId}`;
+
+    // 6. Update User (Deduct funds/resources)
+    if (realType === 'money') {
+      await supabase.from('users').update({ money: BigInt(user.money || 0) - BigInt(amount) }).eq('id', userId);
+    } else if (realType === 'gold') {
+      await supabase.from('users').update({ gold: BigInt(user.gold || 0) - BigInt(amount) }).eq('id', userId);
+    } else {
+      const { data: currentInv } = await supabase.from('user_inventory').select('quantity').eq('userId', userId).eq('itemId', realType).single();
+      await supabase.from('user_inventory').update({ quantity: BigInt(currentInv?.quantity || 0) - BigInt(amount) }).eq('userId', userId).eq('itemId', realType);
+    }
+
+    // 7. Update Budget
+    const updateData: any = { updatedAt: Date.now() };
+    if (realType === 'money') {
+      updateData.moneyEUR = BigInt(budgets.moneyEUR || 0) + BigInt(amount);
+    } else {
+      const currentRes = budgets.resources || {};
+      currentRes[budgetResourceKey] = (Number(currentRes[budgetResourceKey]) || 0) + Number(amount);
+      updateData.resources = currentRes;
+    }
+
+    const { error: budgetUpdateError } = await supabase.from('budgets').update(updateData).eq('id', budgets.id);
+    if (budgetUpdateError) throw budgetUpdateError;
+
+    // 8. Log transaction
     await supabase.from('budget_transactions').insert({
-      id: `don_${Date.now()}_${userId}`,
-      budgetId: budget.id,
+      id: txId,
+      budgetId: budgets.id,
       type: 'INCOME',
       subtype: 'DONATION',
-      moneyDelta: type === 'money' ? amount : 0,
-      resourcesDelta: type !== 'money' ? { [(type === 'gold' ? 'gold_ore' : type)]: amount } : {},
+      moneyDelta: realType === 'money' ? amount : 0,
+      resourcesDelta: realType !== 'money' ? { [budgetResourceKey]: amount } : {},
       createdAt: Date.now(),
       createdByUserId: userId,
-      metadata: { donor: user.username, resourceType: type }
+      metadata: { donor: user.username, resourceType: realType }
     });
 
-    res.json({ success: true, message: "Donazione effettuata con successo!" });
+    // 9. Sync Nations treasury_balance
+    if (realType === 'money') {
+      const { data: nation } = await supabase.from('nations').select('treasury_balance').eq('id', nationId).single();
+      if (nation) {
+        await supabase.from('nations').update({ 
+          treasury_balance: BigInt(nation.treasury_balance || 0) + BigInt(amount) 
+        }).eq('id', nationId);
+      }
+    }
+
+    res.json({ success: true, message: "Donazione effettuata con successo!", transactionId: txId });
   } catch (err: any) {
     console.error("Donation error:", err);
-    res.status(500).json({ error: "Errore durante la donazione: " + err.message });
+    res.status(500).json({ error: "Errore durante la donazione: " + (err.message || "Errore interno") });
   }
 });
+
+
+
 
 // ── GET /api/state/:id/departments ──────────────────────────
 // Legge i punteggi del dipartimento per la nazione e calcola il ranking globale.

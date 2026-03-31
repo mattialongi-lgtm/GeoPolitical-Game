@@ -6,8 +6,6 @@ const WAR_TYPE_CONFIG: Record<WarType, { emoji: string; label: string; desc: str
   training: { emoji: '🎯', label: 'Addestramento', desc: 'Sempre disponibile, per esperienza', icon: Swords },
   land: { emoji: '⚔️', label: 'Guerra Terrestre', desc: 'Solo regioni confinanti, 24h', icon: Globe },
   naval: { emoji: '🚢', label: 'Guerra Navale', desc: 'Accesso al mare, 2 fasi', icon: Anchor },
-  space: { emoji: '🚀', label: 'Guerra Spaziale', desc: 'Terra → Luna, spazioporti', icon: Rocket },
-  lunar: { emoji: '🌙', label: 'Guerra Lunare', desc: 'Regioni lunari confinanti', icon: Moon },
   revolution: { emoji: '🔥', label: 'Rivoluzione', desc: '3 giocatori, costo gold', icon: Swords },
   coup: { emoji: '⚡', label: 'Colpo di Stato', desc: 'Solo se sviluppo = 1', icon: Swords },
 };
@@ -37,7 +35,7 @@ export const WarCreatePanel: React.FC<WarCreatePanelProps> = ({
     setShowForm(false);
   };
 
-  const allowedTypes: WarType[] = ['land', 'naval', 'space', 'lunar'];
+  const allowedTypes: WarType[] = ['land', 'naval'];
 
   return (
     <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">

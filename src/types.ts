@@ -122,7 +122,6 @@ export type BuildingType =
   | 'missile_system'
   | 'airport'
   | 'naval_port'
-  | 'space_port'
   | 'real_estate_fund'
   | 'power_plant';
 
@@ -168,8 +167,7 @@ export interface MilitaryStats {
   missileSystems: number;
   airports: number;
   navalPorts: number;
-  spacePorts: number;
-  powerPlants: number;
+  power_plant: number;
 }
 
 export interface AutonomyProposal {
@@ -286,12 +284,12 @@ export interface War {
 
 // === WAR SYSTEM TYPES ===
 
-export type WarType = 'training' | 'land' | 'naval' | 'space' | 'lunar' | 'revolution' | 'coup';
-export type TroopType = 'tank' | 'aircraft' | 'missile' | 'bomber' | 'battleship' | 'lunar_tank' | 'space_station';
+export type WarType = 'training' | 'land' | 'naval' | 'revolution' | 'coup';
+export type TroopType = 'tank' | 'aircraft' | 'missile' | 'bomber' | 'battleship';
 export type WarSide = 'attacker' | 'defender';
 export type AutoAttackType = 'hourly' | 'maximum';
 export type AgreementType = 'bilateral' | 'unilateral';
-export type DepartmentType = 'land' | 'naval' | 'space';
+export type DepartmentType = 'land' | 'naval';
 
 export interface WarFull extends War {
   warType: WarType;
@@ -512,8 +510,6 @@ export const TROOP_BASE_DAMAGE: Record<TroopType, number> = {
   missile: 900,
   bomber: 800,
   battleship: 2000,
-  lunar_tank: 2000,
-  space_station: 5000,
 };
 
 export const TROOP_ENERGY_COST: Record<TroopType, number> = {
@@ -522,8 +518,6 @@ export const TROOP_ENERGY_COST: Record<TroopType, number> = {
   missile: 30,
   bomber: 25,
   battleship: 40,
-  lunar_tank: 35,
-  space_station: 50,
 };
 
 export const TROOP_MONEY_COST: Record<TroopType, number> = {
@@ -532,16 +526,12 @@ export const TROOP_MONEY_COST: Record<TroopType, number> = {
   missile: 5000,
   bomber: 4000,
   battleship: 10000,
-  lunar_tank: 8000,
-  space_station: 25000,
 };
 
 export const WAR_TYPE_ALLOWED_TROOPS: Record<WarType, TroopType[]> = {
   training: ['tank', 'aircraft', 'missile', 'bomber'],
   land: ['tank', 'aircraft', 'missile', 'bomber'],
   naval: ['battleship', 'tank', 'aircraft', 'missile', 'bomber'],
-  space: ['space_station'],
-  lunar: ['lunar_tank'],
   revolution: ['tank', 'aircraft', 'missile', 'bomber'],
   coup: ['tank', 'aircraft', 'missile', 'bomber'],
 };
@@ -703,7 +693,6 @@ export const AUTONOMY_CONFIG = {
     missile_system: 2,
     airport: 2,
     naval_port: 2,
-    space_port: 2,
     real_estate_fund: 0,
     power_plant: 0,
   } as Record<string, number>,
@@ -719,7 +708,6 @@ export const AUTONOMY_CONFIG = {
     missile_system: 100000,
     airport: 75000,
     naval_port: 75000,
-    space_port: 150000,
     real_estate_fund: 40000,
     power_plant: 60000,
   } as Record<string, number>,
@@ -748,7 +736,6 @@ export const AUTONOMY_CONFIG = {
       missile_system: 0.8,
       airport: 0.6,
       naval_port: 0.6,
-      space_port: 0.4,
     },
     education: { school: 1.0 },
     development: { real_estate_fund: 1.0 },

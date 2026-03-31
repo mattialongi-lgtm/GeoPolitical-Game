@@ -9,8 +9,6 @@ const TROOP_LABELS: Record<string, { emoji: string; name: string }> = {
   missile: { emoji: '🚀', name: 'Missili' },
   bomber: { emoji: '💣', name: 'Bombardieri' },
   battleship: { emoji: '🚢', name: 'Corazzate' },
-  lunar_tank: { emoji: '🌙', name: 'Carri Lunari' },
-  space_station: { emoji: '🛸', name: 'Stazioni Spaziali' },
 };
 
 interface TroopDeployPanelProps {

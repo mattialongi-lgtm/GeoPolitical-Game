@@ -3,7 +3,7 @@ import { RESOURCE_ICONS_MAP } from '../types';
 
 type ResourceId = 
   | 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore' 
-  | 'liquid_oxygen' | 'helium3' | 'energy'
+  | 'energy'
   | 'food' | 'steel' | 'gas'
   | 'money' | 'gold_currency'
   | string;
@@ -17,16 +17,11 @@ interface ResourceIconProps {
 
 // Fallback emoji mapping for items not in RESOURCE_ICONS_MAP (e.g. weapons)
 const ITEM_EMOJIS: Record<string, string> = {
-  rifle: "🔫",
-  drone: "🚁",
-  artillery: "💣",
   tank: "🛡️",
   missile: "🚀",
   aircraft: "✈️",
   bomber: "🛩️",
   battleship: "🚢",
-  lunar_tank: "🚜",
-  space_station: "🛰️",
   money: "💵",
   gold_currency: "🪙",
 };

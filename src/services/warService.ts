@@ -84,18 +84,6 @@ export function validateWarCreation(params: {
       }
       break;
 
-    case 'space':
-      if (!params.attackerHasSpaceport) {
-        return { valid: false, error: 'La regione attaccante deve avere spazioporti.' };
-      }
-      break;
-
-    case 'lunar':
-      if (!params.areAdjacent) {
-        return { valid: false, error: 'Le regioni lunari devono essere confinanti.' };
-      }
-      break;
-
     default:
       break;
   }

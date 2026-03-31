@@ -8,8 +8,6 @@ const TROOP_LABELS: Record<string, string> = {
   missile: '🚀 Missili',
   bomber: '💣 Bombardieri',
   battleship: '🚢 Corazzate',
-  lunar_tank: '🌙 Carri Lunari',
-  space_station: '🛸 Stazioni',
 };
 
 interface AutoAttackPanelProps {

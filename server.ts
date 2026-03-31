@@ -10560,8 +10560,15 @@ async function checkAndResolveWars() {
               });
           }
 
-          // Territory transfer
-          if (effects.territoryTransfer && winner === 'attacker' && war.defenderRegionId && war.attackerRegionId) {
+          // Territory transfer logic
+          let canTransferTerritory = effects.territoryTransfer && winner === 'attacker';
+          
+          // CRITICAL: For naval wars, territory is ONLY transferred if they reach and win Phase 2
+          if (war.warType === 'naval' && war.navalPhase !== 2) {
+            canTransferTerritory = false;
+          }
+
+          if (canTransferTerritory && war.defenderRegionId && war.attackerRegionId) {
             const { data: attackerRegion } = await supabase.from('regions')
               .select('ownerUserId, leaderUserId, nation_id, stateColor, governmentForm, leaderTitle, dictatorship')
               .eq('id', war.attackerRegionId)
@@ -10692,13 +10699,13 @@ async function checkAndResolveWars() {
           const attackerWinsPhase1 = (war.phase1AttackerScore || 0) > (war.phase1DefenderScore || 0);
 
           if (attackerWinsPhase1) {
-            // Phase 2: land war with bonus
-            const bonusDamage = (war.phase1AttackerScore || 0) - (war.phase1DefenderScore || 0);
-            const newEndsAt = new Date(now + GAME_CONFIG.WAR_DURATION_MS).toISOString();
+            // Phase 2: land war with bonus (score carry-over)
+            const scoreDifference = (war.phase1AttackerScore || 0) - (war.phase1DefenderScore || 0);
+            const newEndsAt = new Date(now + GAME_CONFIG.WAR_NAVAL_PHASE_DURATION_MS).toISOString();
 
             await supabase.from('wars').update({
               navalPhase: 2,
-              attackerScore: bonusDamage,
+              attackerScore: scoreDifference, // Start phase 2 with the advantage
               defenderScore: 0,
               endsAt: newEndsAt,
               updatedAt: new Date().toISOString(),
@@ -10710,11 +10717,11 @@ async function checkAndResolveWars() {
               eventData: {
                 from: 1, to: 2,
                 phase1Winner: 'attacker',
-                bonusDamage,
+                scoreDifference,
               },
             });
 
-            console.log(`[WAR] Naval war ${war.id} → Phase 2 (attacker won phase 1, bonus: ${bonusDamage})`);
+            console.log(`[WAR] Naval war ${war.id} → Phase 2 (attacker won phase 1, difference: ${scoreDifference})`);
           } else {
             // Attacker lost phase 1 — war ends
             await supabase.from('wars').update({

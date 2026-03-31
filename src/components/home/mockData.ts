@@ -68,6 +68,12 @@ export interface ActiveWar {
   defenderDamage: number;
   endsAt: number;
   regionName: string;
+  attackerDisplayName?: string;
+  attackerDisplayIcon?: string | null;
+  attackerDisplayIconType?: 'state' | 'region';
+  defenderDisplayName?: string;
+  defenderDisplayIcon?: string | null;
+  defenderDisplayIconType?: 'state' | 'region';
 }
 
 export interface PartyInfo {

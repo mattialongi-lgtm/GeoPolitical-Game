@@ -85,6 +85,14 @@ export class WarRepository {
     return data || [];
   }
 
+  async getAllNationsBasic() {
+    const { data } = await this.supabase
+      .from('nations')
+      .select('id, name, logo');
+
+    return data || [];
+  }
+
   async getActiveWarTouchingRegion(regionId: string) {
     const { data } = await this.supabase
       .from('wars')

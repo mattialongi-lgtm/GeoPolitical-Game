@@ -4,3 +4,4 @@ export { RevolutionPanel } from './RevolutionPanel';
 export { WarCreatePanel } from './WarCreatePanel';
 export { AutoAttackPanel } from './AutoAttackPanel';
 export { WarHistoryList } from './WarHistoryList';
+export { WarFactionBadge } from './WarFactionBadge';

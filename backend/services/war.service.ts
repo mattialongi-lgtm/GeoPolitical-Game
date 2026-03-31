@@ -5,6 +5,87 @@ import { executeWarValidationUseCase, type ValidateWarTypesInput } from './war-v
 import { executeWarDeployUseCase, type DeployTroopsInput } from './war-deploy.usecase';
 import { executeGetValidWarTargetsUseCase, type GetValidWarTargetsInput } from './war-targets.usecase';
 
+type WarDisplaySide = {
+  displayName: string;
+  displayIcon: string | null;
+  displayIconType: 'state' | 'region';
+  displayNationId: string | null;
+  displayRegionId: string | null;
+};
+
+const normalizeFlagCode = (value?: string | null): string | null => {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+  const normalized = raw.includes('-') ? raw.split('-')[0] : raw;
+  if (!/^[A-Za-z]{2,4}$/.test(normalized)) return null;
+  const lower = normalized.toLowerCase();
+  if (!lower || lower === 'st' || lower === 'world') return null;
+  return lower;
+};
+
+const buildFlagUrl = (value?: string | null): string | null => {
+  const code = normalizeFlagCode(value);
+  return code ? `https://flagcdn.com/${code}.svg` : null;
+};
+
+const resolveDisplayIcon = (logo: any, fallbackCode?: string | null): string | null => {
+  if (typeof logo === 'string' && logo.trim().length > 0) {
+    const trimmed = logo.trim();
+    if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('data:image/')) return trimmed;
+    if (trimmed.length <= 4) return trimmed;
+  }
+
+  return buildFlagUrl(fallbackCode);
+};
+
+const buildSideDisplay = (
+  war: any,
+  side: 'attacker' | 'defender',
+  regionMap: Record<string, any>,
+  nationMap: Record<string, any>,
+): WarDisplaySide => {
+  const regionId = side === 'attacker' ? war.attackerRegionId : war.defenderRegionId;
+  const fallbackId = side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2;
+  const region = regionId ? regionMap[regionId] : null;
+  const nationId = region?.nation_id || (fallbackId && nationMap[fallbackId] ? fallbackId : null);
+  const nation = nationId ? nationMap[nationId] : null;
+  const displayName = nation?.name || region?.name || fallbackId || 'Sconosciuto';
+  const displayIconType = nationId ? 'state' : 'region';
+  const displayIcon = resolveDisplayIcon(nation?.logo, nationId || region?.id || fallbackId);
+
+  return {
+    displayName,
+    displayIcon,
+    displayIconType,
+    displayNationId: nationId || null,
+    displayRegionId: region?.id || regionId || null,
+  };
+};
+
+const enrichWar = (
+  war: any,
+  regionMap: Record<string, any>,
+  nationMap: Record<string, any>,
+) => {
+  const attacker = buildSideDisplay(war, 'attacker', regionMap, nationMap);
+  const defender = buildSideDisplay(war, 'defender', regionMap, nationMap);
+
+  return {
+    ...war,
+    attackerDisplayName: attacker.displayName,
+    attackerDisplayIcon: attacker.displayIcon,
+    attackerDisplayIconType: attacker.displayIconType,
+    attackerDisplayNationId: attacker.displayNationId,
+    attackerDisplayRegionId: attacker.displayRegionId,
+    defenderDisplayName: defender.displayName,
+    defenderDisplayIcon: defender.displayIcon,
+    defenderDisplayIconType: defender.displayIconType,
+    defenderDisplayNationId: defender.displayNationId,
+    defenderDisplayRegionId: defender.displayRegionId,
+  };
+};
+
 const createDefaultDeps = (): WarDomainDeps => ({
   validateWarCreation: () => ({ valid: true }),
   getRegionBuildings: async () => ({}),
@@ -31,12 +112,22 @@ export class WarService {
   ) {}
 
   async listWars() {
-    const [active, ended] = await Promise.all([
+    const [active, ended, regions, nations] = await Promise.all([
       this.warRepository.getActiveWars(),
       this.warRepository.getEndedWars(20),
+      this.warRepository.getAllRegionsDetailed(),
+      this.warRepository.getAllNationsBasic(),
     ]);
 
-    return { active, ended };
+    const regionMap: Record<string, any> = {};
+    (regions || []).forEach((r: any) => { regionMap[r.id] = r; });
+    const nationMap: Record<string, any> = {};
+    (nations || []).forEach((n: any) => { nationMap[n.id] = n; });
+
+    return {
+      active: (active || []).map((war: any) => enrichWar(war, regionMap, nationMap)),
+      ended: (ended || []).map((war: any) => enrichWar(war, regionMap, nationMap)),
+    };
   }
 
   async getWarStats(warId: string) {
@@ -105,8 +196,18 @@ export class WarService {
       }
     });
 
+    const [regions, nations] = await Promise.all([
+      this.warRepository.getAllRegionsDetailed(),
+      this.warRepository.getAllNationsBasic(),
+    ]);
+
+    const regionMap: Record<string, any> = {};
+    (regions || []).forEach((r: any) => { regionMap[r.id] = r; });
+    const nationMap: Record<string, any> = {};
+    (nations || []).forEach((n: any) => { nationMap[n.id] = n; });
+
     return {
-      war,
+      war: enrichWar(war, regionMap, nationMap),
       stats: {
         attacker: Object.values(attackerDamage).sort((a: any, b: any) => b.totalDamage - a.totalDamage),
         defender: Object.values(defenderDamage).sort((a: any, b: any) => b.totalDamage - a.totalDamage),

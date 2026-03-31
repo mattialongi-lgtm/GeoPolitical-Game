@@ -108,6 +108,45 @@ const productionService = new ProductionService(new ProductionRepository(supabas
 
 app.use(express.json());
 
+function isTransientSupabaseNetworkError(error: any) {
+  const message = String(error?.message || '').toLowerCase();
+  const details = String(error?.details || '').toLowerCase();
+  return (
+    message.includes('fetch failed') ||
+    message.includes('network') ||
+    details.includes('fetch failed') ||
+    details.includes('enotfound') ||
+    details.includes('eai_again') ||
+    details.includes('etimedout') ||
+    details.includes('ecconnreset')
+  );
+}
+
+async function retrySupabaseOperation<T>(
+  label: string,
+  operation: () => Promise<T>,
+  options?: { attempts?: number; delayMs?: number }
+): Promise<T> {
+  const attempts = options?.attempts ?? 3;
+  const delayMs = options?.delayMs ?? 1500;
+  let lastError: any;
+
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await operation();
+    } catch (error: any) {
+      lastError = error;
+      if (!isTransientSupabaseNetworkError(error) || attempt === attempts) {
+        break;
+      }
+      console.warn(`[SupabaseRetry] ${label} failed (attempt ${attempt}/${attempts}), retrying in ${delayMs}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError;
+}
+
 // --- Government & Salary Configuration ---
 const GOVERNMENT_SALARY_CONFIG: Record<string, { headOfState: number; minister: number }> = {
   // Base daily gold per region
@@ -1855,6 +1894,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
 
   if (user.energy < energyCost) return res.status(400).json({ error: "Energia insufficiente (richiesti 300)." });
 
+  const perks = await getUserPerks(user.id);
   const forzaBoost = (perks['FORZA'] || 0) * 0.03;
   const taxRate = regionRel?.marketTaxRate !== undefined ? regionRel.marketTaxRate : FACTORY_CONFIG.DEFAULT_INDUSTRY_TAX_RATE;
 
@@ -3524,125 +3564,12 @@ app.post("/api/wars/deploy", authenticate, async (req: any, res) => {
   const user = req.user;
   const { warId, side, weaponId } = req.body;
 
-  if (!warId || !side || !weaponId) return res.status(400).json({ error: "Dati mancanti." });
-  if (side !== 'attacker' && side !== 'defender') return res.status(400).json({ error: "Schieramento non valido." });
-
-  const { data: war } = await supabase.from('wars').select('*').eq('id', warId).single();
-  if (!war) return res.status(404).json({ error: "Guerra inesistente." });
-  if (war.status !== 'active') return res.status(400).json({ error: "Questa guerra è già terminata." });
-
-  // Naval Phase 1 restriction: only battleship allowed in first 24h
-  if (war.warType === 'naval' && war.navalPhase === 1 && weaponId !== 'battleship') {
-    return res.status(400).json({ error: "Solo corazzate navali permesse nella Fase 1 (prime 24h) della battaglia navale." });
-  }
-
-  const weapons: any = {
-    infantry: { energy: 10, cash: 0, damage: 100 },
-    tank: { energy: 30, cash: 0, damage: 1000 },
-    airstrike: { energy: 50, cash: 0, damage: 5000 },
-    battleship: { energy: 40, cash: 0, damage: 2000 }
-  };
-
-  const weapon = weapons[weaponId];
-  if (!weapon) return res.status(400).json({ error: "Armamento sconosciuto." });
-
-  const energyCost = 300;
-  if (user.energy < energyCost) return res.status(400).json({ error: `Energia insufficiente (richiesti 300 per ogni azione).` });
-
-  // Damage Calculation
-  let totalDamage = weapon.damage;
-  const isPatriot = (side === 'attacker' && war.attackerCountryIso2 === user.originalNation) ||
-    (side === 'defender' && war.defenderCountryIso2 === user.originalNation);
-
-  if (isPatriot) totalDamage = Math.floor(totalDamage * 1.10);
-
-  const perks = await getUserPerks(user.id);
-  const forzaBonus = (perks['FORZA'] || 0) * 0.05;
-  const resistBonus = (perks['RESISTENZA'] || 0) * 0.03;
-  totalDamage = Math.floor(totalDamage * (1 + forzaBonus + resistBonus));
-
-  // Apply Regional Military Index bonus to the attacker's region
-  const warRegionId = side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2;
-  if (warRegionId) {
-    try {
-      const warBuildings = await getRegionBuildings(warRegionId);
-      const warIndices   = calculateRegionalIndices(warBuildings);
-      const warEffects   = calculateIndexEffects(warIndices);
-      const regionalBonus = side === 'attacker' ? warEffects.warAttackBonus : warEffects.warDefenseBonus;
-      if (regionalBonus > 0) {
-        totalDamage = Math.floor(totalDamage * (1 + regionalBonus));
-      }
-    } catch (_e) {
-      // Non-critical: skip regional bonus if lookup fails
-    }
-  }
-
   try {
-    // Deduct resources
-    await supabase.from('users').update({
-      energy: user.energy - energyCost
-    }).eq('id', user.id);
-
-    // Update scores
-    if (side === 'attacker') {
-      await supabase.from('wars').update({ attackerScore: (war.attackerScore || 0) + totalDamage }).eq('id', warId);
-    } else {
-      await supabase.from('wars').update({ defenderScore: (war.defenderScore || 0) + totalDamage }).eq('id', warId);
-    }
-
-    // Update war_participants for damage tracking
-    const { data: existingParticipant } = await supabase.from('war_participants')
-      .select('id, totalDamage, troopsDeployed')
-      .eq('warId', warId)
-      .eq('userId', user.id)
-      .maybeSingle();
-
-    if (existingParticipant) {
-      const deployed = existingParticipant.troopsDeployed || {};
-      deployed[weaponId] = (deployed[weaponId] || 0) + 1;
-      await supabase.from('war_participants').update({
-        totalDamage: (existingParticipant.totalDamage || 0) + totalDamage,
-        troopsDeployed: deployed,
-      }).eq('id', existingParticipant.id);
-    } else {
-      await supabase.from('war_participants').insert({
-        warId,
-        userId: user.id,
-        side,
-        totalDamage: totalDamage,
-        troopsDeployed: { [weaponId]: 1 },
-      });
-    }
-
-    // Log the deployment for stats
-    await supabase.from('action_logs').insert({
-      userId: user.id,
-      action: 'WAR_DEPLOY',
-      details: JSON.stringify({
-        warId,
-        side,
-        weaponId,
-        damage: totalDamage,
-        username: user.username,
-        isPatriot
-      }),
-      timestamp: Date.now()
-    });
-
-    res.json({ success: true, damageDealt: totalDamage, side });
-
-    // ── Daily Missions: update military progress (non-blocking) ──
-    try {
-      await updateMissionProgress(user.id, 'WAR_DEPLOY', {
-        deal_damage: totalDamage,
-        fight_battles: 1,
-        deploy_troops: 1,
-        spend_energy: weapons[weaponId]?.energy || 0,
-      });
-      await updateMissionProgress(user.id, 'EARN_XP', { earn_xp: GAME_CONFIG.XP_PER_ATTACK || 0 });
-    } catch { /* non-critical */ }
-  } catch (err) {
-    res.status(500).json({ error: "Errore durante lo schieramento in battaglia." });
+    const result = await performWarDeployAction({ userId: user.id, warId, side, weaponId });
+    return res.json(result);
+  } catch (error: any) {
+    if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return res.status(500).json({ error: error?.message || "Errore durante lo schieramento." });
   }
 });
 
@@ -4111,17 +4038,88 @@ app.post("/api/articles/:id/vote", authenticate, async (req: any, res) => {
   res.json({ vote: vote || null, score });
 });
 
-// Military Training
-app.post("/api/actions/train", authenticate, async (req: any, res) => {
-  const user = req.user;
+const createAutomationError = (statusCode: number, message: string) => {
+  const err: any = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+};
+
+const AUTOMATION_STANDARD_INTERVAL_MS = 10 * 60 * 1000;
+const AUTOMATION_HOURLY_INTERVAL_MS = 60 * 60 * 1000;
+const AUTOMATION_EXPIRE_MS = 24 * 60 * 60 * 1000;
+
+const WAR_WEAPON_CONFIG: Record<string, { energy: number; cash: number; damage: number }> = {
+  infantry: { energy: 10, cash: 0, damage: 100 },
+  tank: { energy: 30, cash: 0, damage: 1000 },
+  airstrike: { energy: 50, cash: 0, damage: 5000 },
+  aircraft: { energy: 50, cash: 0, damage: TROOP_BASE_DAMAGE.aircraft },
+  missile: { energy: 50, cash: 0, damage: TROOP_BASE_DAMAGE.missile },
+  bomber: { energy: 50, cash: 0, damage: TROOP_BASE_DAMAGE.bomber },
+  battleship: { energy: 40, cash: 0, damage: 2000 },
+};
+
+const isAutomationExpired = (activatedAt?: string | null, expiresAt?: string | null, now = Date.now()) => {
+  if (expiresAt) return new Date(expiresAt).getTime() <= now;
+  if (!activatedAt) return false;
+  return (now - new Date(activatedAt).getTime()) >= AUTOMATION_EXPIRE_MS;
+};
+
+const shouldRecurringAutomationFire = (
+  mode: 'standard' | 'hourly' | 'maximum',
+  lastFiredAt: string | null,
+  activatedAt: string,
+  now = Date.now()
+) => {
+  const interval = mode === 'hourly' ? AUTOMATION_HOURLY_INTERVAL_MS : AUTOMATION_STANDARD_INTERVAL_MS;
+  if (isAutomationExpired(activatedAt, null, now)) return false;
+  if (!lastFiredAt) return true;
+  return (now - new Date(lastFiredAt).getTime()) >= interval;
+};
+
+const normalizeWarAutoType = (value: any): 'hourly' | 'maximum' => {
+  return value === 'hourly' ? 'hourly' : 'maximum';
+};
+
+async function tryUseEnergyDrinkForUser(userId: string): Promise<boolean> {
+  const now = Date.now();
+  const { data: freshUser, error: readError } = await supabase
+    .from('users')
+    .select('energyDrinks, lastEnergyDrink')
+    .eq('id', userId)
+    .single();
+
+  if (readError || !freshUser) return false;
+  if ((freshUser.energyDrinks || 0) <= 0) return false;
+  if ((now - (freshUser.lastEnergyDrink || 0)) < GAME_CONFIG.ENERGY_DRINK_COOLDOWN) return false;
+
+  let updateQuery = supabase
+    .from('users')
+    .update({
+      energyDrinks: freshUser.energyDrinks - 1,
+      energy: GAME_CONFIG.ENERGY_MAX,
+      lastEnergyDrink: now
+    })
+    .eq('id', userId)
+    .eq('energyDrinks', freshUser.energyDrinks);
+
+  if (freshUser.lastEnergyDrink == null) {
+    updateQuery = updateQuery.is('lastEnergyDrink', null);
+  } else {
+    updateQuery = updateQuery.eq('lastEnergyDrink', freshUser.lastEnergyDrink);
+  }
+
+  const { data: updatedUsers, error: updateError } = await updateQuery.select('id');
+  return !updateError && !!updatedUsers && updatedUsers.length > 0;
+}
+
+async function performTrainingAction(userId: string, options?: { freeHourly?: boolean }) {
+  const freeHourly = options?.freeHourly === true;
   const TRAIN_ENERGY_COST = 10;
 
-  try {
-    // Try RPC first, fallback to manual deduction
-    let deducted = false;
+  if (!freeHourly) {
     try {
       const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-        p_user_id: user.id,
+        p_user_id: userId,
         p_money_cost: 0,
         p_gold_cost: 0,
         p_energy_cost: TRAIN_ENERGY_COST,
@@ -4129,53 +4127,333 @@ app.post("/api/actions/train", authenticate, async (req: any, res) => {
       if (deductError) {
         const msg = (deductError.message || '').toLowerCase();
         if (msg.includes('energia') || msg.includes('energy') || msg.includes('insufficient')) {
-          return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+          throw createAutomationError(400, "Energia insufficiente (serve 10)");
         }
         throw deductError;
       }
       const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
       if (deductData?.error) {
-        return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+        throw createAutomationError(400, "Energia insufficiente (serve 10)");
       }
-      deducted = true;
     } catch (rpcErr: any) {
-      // RPC not available - fallback to manual deduction
-      console.log("[train] safe_deduct_currency fallback:", rpcErr.message);
-      const { data: freshUser } = await supabase.from('users').select('energy').eq('id', user.id).single();
+      const { data: freshUser } = await supabase.from('users').select('energy').eq('id', userId).single();
       if (!freshUser || (freshUser.energy || 0) < TRAIN_ENERGY_COST) {
-        return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+        throw createAutomationError(400, "Energia insufficiente (serve 10)");
       }
       const { data: updated, error: updErr } = await supabase.from('users')
         .update({ energy: (freshUser.energy || 0) - TRAIN_ENERGY_COST })
-        .eq('id', user.id)
+        .eq('id', userId)
         .gte('energy', TRAIN_ENERGY_COST)
         .select('id')
         .maybeSingle();
       if (updErr || !updated) {
-        return res.status(400).json({ error: "Energia insufficiente (serve 10⚡)" });
+        throw createAutomationError(400, "Energia insufficiente (serve 10)");
       }
-      deducted = true;
+    }
+  }
+
+  const { data: currentUser, error: currentError } = await supabase
+    .from('users')
+    .select('energy, militaryExp')
+    .eq('id', userId)
+    .single();
+  if (currentError || !currentUser) throw (currentError || createAutomationError(404, 'Utente non trovato.'));
+
+  const militaryExp = (currentUser.militaryExp || 0) + 5;
+  const { error: expError } = await supabase.from('users').update({
+    militaryExp,
+    lastEnergyUpdate: Date.now(),
+  }).eq('id', userId);
+  if (expError) throw expError;
+
+  await addXP(userId, 5);
+  return { success: true, militaryExp, energy: currentUser.energy };
+}
+
+async function performWorkAction(userId: string, factoryId: string, options?: { allowAutoDrink?: boolean }) {
+  let { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
+  if (!user) throw createAutomationError(404, "Utente non trovato.");
+
+  const userRegion = user.regionId || 'IT';
+  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
+  if (!factory) throw createAutomationError(404, "Fabbrica non trovata.");
+  if (factory.regionId !== userRegion) throw createAutomationError(400, "Devi viaggiare in questa regione per lavorare qui.");
+
+  const { data: currentRegion } = await supabase.from('regions').select('*').eq('id', factory.regionId).single();
+  const restrictionsActive = currentRegion?.workRestrictions === 1;
+  const isResident = user.residenceId === factory.regionId;
+  const { data: hasWorkPermit } = await supabase.from('work_permits')
+    .select('id')
+    .eq('userId', user.id)
+    .eq('regionId', factory.regionId)
+    .maybeSingle();
+
+  if (restrictionsActive && !isResident && !hasWorkPermit && user.id !== factory.ownerUserId) {
+    throw createAutomationError(403, "Questa regione richiede un Permesso di Lavoro.");
+  }
+
+  const { data: lastWork } = await supabase.from('user_factory_cooldowns')
+    .select('lastUsed')
+    .eq('userId', user.id)
+    .eq('factoryId', factoryId)
+    .maybeSingle();
+
+  if (lastWork && Date.now() - new Date(lastWork.lastUsed).getTime() < 600 * 1000) {
+    throw createAutomationError(400, "Fabbrica in cooldown (10 min).");
+  }
+
+  const perks = await getUserPerks(user.id);
+  const energyEfficiency = (perks['RESISTENZA'] || 0) * 0.005;
+  const energyCost = Math.ceil(10 * (1 - energyEfficiency));
+
+  if (user.energy < energyCost && options?.allowAutoDrink) {
+    const drank = await tryUseEnergyDrinkForUser(user.id);
+    if (drank) {
+      const { data: refreshedUser } = await supabase.from('users').select('*').eq('id', user.id).single();
+      if (refreshedUser) user = refreshedUser;
+    }
+  }
+  if (user.energy < energyCost) throw createAutomationError(400, "Energia insufficiente.");
+
+  const payMode = factory.payMode || 'salary';
+  const { data: owner } = await supabase.from('users').select('id').eq('id', factory.ownerUserId).single();
+  if (!owner) throw createAutomationError(404, "Proprietario inesistente.");
+
+  const { data: ownerInv } = await supabase.from('user_inventory').select('quantity').eq('userId', owner.id);
+  const ownerVol = (ownerInv || []).reduce((sum: number, item: any) => sum + item.quantity, 0);
+
+  const ownerPerks = await getUserPerks(owner.id);
+  const maxStorage = Math.floor(GAME_CONFIG.STORAGE_BASE_CAPACITY * (1 + ((ownerPerks['RESISTENZA'] || 0) * 0.01)));
+
+  let outputBase = factory.level * 2;
+  let bonusMult = 1.0;
+  if (factory.type === 'oil') bonusMult = currentRegion?.oilBonus || 1.0;
+  else if (factory.type === 'minerals') bonusMult = currentRegion?.mineralsBonus || 1.0;
+  else if (factory.type === 'uranium') bonusMult = currentRegion?.uraniumBonus || 1.0;
+  else if (factory.type === 'diamonds') bonusMult = currentRegion?.diamondsBonus || 1.0;
+
+  const finalOutput = Math.max(1, Math.floor(outputBase * bonusMult));
+
+  if (payMode === 'resource') {
+    const RESOURCE_MODE_OWNER_SHARE_PCT = 0.3;
+    const taxRate = currentRegion?.marketTaxRate !== undefined ? currentRegion.marketTaxRate : 10;
+    const stateShare = Math.floor(finalOutput * (taxRate / 100));
+    const ownerShare = Math.floor((finalOutput - stateShare) * RESOURCE_MODE_OWNER_SHARE_PCT);
+    const playerShare = Math.max(1, finalOutput - stateShare - ownerShare);
+
+    await supabase.from('users').update({ energy: user.energy - energyCost }).eq('id', user.id);
+    await supabase.from('user_factory_cooldowns').upsert({ userId: user.id, factoryId, lastUsed: new Date().toISOString() });
+
+    const { data: playerInv } = await supabase.from('user_inventory')
+      .select('quantity').eq('userId', user.id).eq('itemId', factory.type).maybeSingle();
+    if (playerInv) {
+      await supabase.from('user_inventory').update({ quantity: playerInv.quantity + playerShare })
+        .eq('userId', user.id).eq('itemId', factory.type);
+    } else {
+      await supabase.from('user_inventory').insert({ userId: user.id, itemId: factory.type, quantity: playerShare });
     }
 
-    const { data: currentUser, error: currentError } = await supabase
-      .from('users')
-      .select('energy, militaryExp')
-      .eq('id', user.id)
-      .single();
-    if (currentError) throw currentError;
+    try {
+      await supabase.rpc('increment_factory_storage', { p_factory_id: factoryId, p_amount: ownerShare });
+    } catch {
+      const { data: fac } = await supabase.from('factories').select('currentStorage').eq('id', factoryId).single();
+      await supabase.from('factories').update({ currentStorage: (fac?.currentStorage || 0) + ownerShare }).eq('id', factoryId);
+    }
 
-    const militaryExp = (currentUser.militaryExp || 0) + 5;
-    const { error: expError } = await supabase.from('users').update({
-      militaryExp,
-      lastEnergyUpdate: Date.now(),
-    }).eq('id', user.id);
-    if (expError) throw expError;
+    if (stateShare > 0) {
+      try {
+        await supabase.rpc('add_budget_transaction', {
+          p_owner_type: 'REGION',
+          p_owner_id: factory.regionId,
+          p_type: 'INCOME',
+          p_subtype: 'RESOURCE_TAX',
+          p_money_delta: 0,
+          p_metadata: { resource: factory.type, quantity: stateShare, factoryId }
+        });
+      } catch (e) { console.error("[resource-work] Budget transaction error:", e); }
+    }
 
-    // Grant XP
-    await addXP(user.id, 5);
+    const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
+    await addXP(user.id, xpGain);
+    try {
+      await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN);
+    } catch { /* non-critical */ }
 
-    res.json({ success: true, militaryExp, energy: currentUser.energy });
+    return { success: true, earnings: 0, output: playerShare, ownerShare, stateShare, xpGain, payMode: 'resource' };
+  }
+
+  let govBonus = 1;
+  if (currentRegion && currentRegion.governmentForm === 'PRESIDENTIAL_REPUBLIC') {
+    if (user.id === currentRegion.ownerUserId || user.id === currentRegion.economicAdviserId || user.id === currentRegion.foreignMinisterId) {
+      govBonus = 2;
+    }
+  }
+
+  const finalWage = Math.floor(factory.wage * govBonus);
+  if (factory.budget < finalWage) throw createAutomationError(400, "L'azienda non ha abbastanza fondi per pagarti il salario.");
+  if (ownerVol + finalOutput > maxStorage) throw createAutomationError(400, "Il magazzino dell'azienda è pieno.");
+
+  try {
+    await supabase.rpc('execute_factory_work', {
+      p_user_id: user.id,
+      p_factory_id: factoryId,
+      p_wage: finalWage,
+      p_output_item: factory.type,
+      p_output_qty: finalOutput,
+      p_energy_cost: energyCost,
+      p_owner_id: owner.id
+    });
+  } catch {
+    const { data: freshUsr } = await supabase.from('users').select('energy, money').eq('id', user.id).single();
+    if (!freshUsr || (freshUsr.energy || 0) < energyCost) throw createAutomationError(400, "Energia insufficiente.");
+    await supabase.from('users').update({ energy: (freshUsr.energy || 0) - energyCost, money: (freshUsr.money || 0) + finalWage }).eq('id', user.id);
+    await supabase.from('factories').update({ budget: (factory.budget || 0) - finalWage }).eq('id', factoryId);
+    const { data: ownerInvItem } = await supabase.from('user_inventory')
+      .select('quantity').eq('userId', owner.id).eq('itemId', factory.type).maybeSingle();
+    if (ownerInvItem) {
+      await supabase.from('user_inventory').update({ quantity: ownerInvItem.quantity + finalOutput })
+        .eq('userId', owner.id).eq('itemId', factory.type);
+    } else {
+      await supabase.from('user_inventory').insert({ userId: owner.id, itemId: factory.type, quantity: finalOutput });
+    }
+  }
+
+  await supabase.from('user_factory_cooldowns').upsert({
+    userId: user.id,
+    factoryId,
+    lastUsed: new Date().toISOString()
+  }, { onConflict: 'userId,factoryId' });
+
+  const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
+  await addXP(user.id, xpGain);
+  try {
+    await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN);
+  } catch { /* non-critical */ }
+
+  return { success: true, earnings: finalWage, output: finalOutput, xpGain };
+}
+
+async function performWarDeployAction(params: {
+  userId: string;
+  warId: string;
+  side: 'attacker' | 'defender';
+  weaponId: string;
+  ignoreEnergyCost?: boolean;
+  allowAutoDrink?: boolean;
+}) {
+  let { data: user } = await supabase.from('users').select('*').eq('id', params.userId).single();
+  if (!user) throw createAutomationError(404, "Utente non trovato.");
+
+  const { data: war } = await supabase.from('wars').select('*').eq('id', params.warId).single();
+  if (!war) throw createAutomationError(404, "Guerra inesistente.");
+  if (war.status !== 'active') throw createAutomationError(400, "Questa guerra è già terminata.");
+  if (war.warType === 'naval' && war.navalPhase === 1 && params.weaponId !== 'battleship') {
+    throw createAutomationError(400, "Solo corazzate navali permesse nella Fase 1.");
+  }
+
+  const weapon = WAR_WEAPON_CONFIG[params.weaponId];
+  if (!weapon) throw createAutomationError(400, "Armamento sconosciuto.");
+
+  const energyCost = 300;
+  if (!params.ignoreEnergyCost && user.energy < energyCost && params.allowAutoDrink) {
+    const drank = await tryUseEnergyDrinkForUser(user.id);
+    if (drank) {
+      const { data: refreshedUser } = await supabase.from('users').select('*').eq('id', user.id).single();
+      if (refreshedUser) user = refreshedUser;
+    }
+  }
+  if (!params.ignoreEnergyCost && user.energy < energyCost) throw createAutomationError(400, "Energia insufficiente.");
+
+  let totalDamage = weapon.damage;
+  const isPatriot = (params.side === 'attacker' && war.attackerCountryIso2 === user.originalNation) ||
+    (params.side === 'defender' && war.defenderCountryIso2 === user.originalNation);
+  if (isPatriot) totalDamage = Math.floor(totalDamage * 1.10);
+
+  const perks = await getUserPerks(user.id);
+  const forzaBonus = (perks['FORZA'] || 0) * 0.05;
+  const resistBonus = (perks['RESISTENZA'] || 0) * 0.03;
+  totalDamage = Math.floor(totalDamage * (1 + forzaBonus + resistBonus));
+
+  const warRegionId = params.side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2;
+  if (warRegionId) {
+    try {
+      const warBuildings = await getRegionBuildings(warRegionId);
+      const warIndices = calculateRegionalIndices(warBuildings);
+      const warEffects = calculateIndexEffects(warIndices);
+      const regionalBonus = params.side === 'attacker' ? warEffects.warAttackBonus : warEffects.warDefenseBonus;
+      if (regionalBonus > 0) totalDamage = Math.floor(totalDamage * (1 + regionalBonus));
+    } catch { /* non-critical */ }
+  }
+
+  if (!params.ignoreEnergyCost) {
+    await supabase.from('users').update({ energy: user.energy - energyCost }).eq('id', user.id);
+  }
+
+  const scoreField = params.side === 'attacker' ? 'attackerScore' : 'defenderScore';
+  await supabase.from('wars').update({
+    [scoreField]: (war[scoreField] || 0) + totalDamage,
+    updatedAt: new Date().toISOString(),
+  }).eq('id', params.warId);
+
+  const { data: existingParticipant } = await supabase.from('war_participants')
+    .select('id, totalDamage, troopsDeployed')
+    .eq('warId', params.warId)
+    .eq('userId', user.id)
+    .maybeSingle();
+
+  if (existingParticipant) {
+    const deployed = existingParticipant.troopsDeployed || {};
+    deployed[params.weaponId] = (deployed[params.weaponId] || 0) + 1;
+    await supabase.from('war_participants').update({
+      totalDamage: (existingParticipant.totalDamage || 0) + totalDamage,
+      troopsDeployed: deployed,
+    }).eq('id', existingParticipant.id);
+  } else {
+    await supabase.from('war_participants').insert({
+      warId: params.warId,
+      userId: user.id,
+      side: params.side,
+      totalDamage,
+      troopsDeployed: { [params.weaponId]: 1 },
+    });
+  }
+
+  await supabase.from('action_logs').insert({
+    userId: user.id,
+    action: 'WAR_DEPLOY',
+    details: JSON.stringify({
+      warId: params.warId,
+      side: params.side,
+      weaponId: params.weaponId,
+      damage: totalDamage,
+      username: user.username,
+      isPatriot
+    }),
+    timestamp: Date.now()
+  });
+
+  try {
+    await updateMissionProgress(user.id, 'WAR_DEPLOY', {
+      deal_damage: totalDamage,
+      fight_battles: 1,
+      deploy_troops: 1,
+      spend_energy: params.ignoreEnergyCost ? 0 : (weapon.energy || 0),
+    });
+    await updateMissionProgress(user.id, 'EARN_XP', { earn_xp: GAME_CONFIG.XP_PER_ATTACK || 0 });
+  } catch { /* non-critical */ }
+
+  return { success: true, damageDealt: totalDamage, side: params.side };
+}
+
+// Military Training
+app.post("/api/actions/train", authenticate, async (req: any, res) => {
+  const user = req.user;
+
+  try {
+    const result = await performTrainingAction(user.id);
+    return res.json(result);
   } catch (error: any) {
+    if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
@@ -4422,221 +4700,15 @@ app.put("/api/profile/username", authenticate, async (req: any, res) => {
 
 app.post("/api/work", authenticate, async (req: any, res) => {
   const user = req.user;
-  const userRegion = user.regionId || 'IT';
   const { factoryId } = req.body;
 
-  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
-  if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
-
-  // Require player to be in the same region physically
-  if (factory.regionId !== userRegion) return res.status(400).json({ error: "Devi viaggiare in questa regione per lavorare qui." });
-
-  // Controllo immigrazione
-  const { data: currentRegion } = await supabase.from('regions').select('*').eq('id', factory.regionId).single();
-  const restrictionsActive = currentRegion?.workRestrictions === 1;
-  const isResident = user.residenceId === factory.regionId;
-  const { data: hasWorkPermit } = await supabase.from('work_permits')
-    .select('id')
-    .eq('userId', user.id)
-    .eq('regionId', factory.regionId)
-    .maybeSingle();
-
-  if (restrictionsActive && !isResident && !hasWorkPermit && user.id !== factory.ownerUserId) {
-    return res.status(403).json({ error: "Questa regione richiede un Permesso di Lavoro." });
-  }
-
-  // Cooldown
-  const { data: lastWork } = await supabase.from('user_factory_cooldowns')
-    .select('lastUsed')
-    .eq('userId', user.id)
-    .eq('factoryId', factoryId)
-    .maybeSingle();
-
-  // Base cooldown: 10 minutes (600s)
-  if (lastWork && Date.now() - new Date(lastWork.lastUsed).getTime() < 600 * 1000) {
-    return res.status(400).json({ error: "Fabbrica in cooldown (10 min)." });
-  }
-
-  // Energy
-  const perks = await getUserPerks(user.id);
-  const energyEfficiency = (perks['RESISTENZA'] || 0) * 0.005;
-  const energyCost = Math.ceil(10 * (1 - energyEfficiency)); // Base 10 energy
-  if (user.energy < energyCost) return res.status(400).json({ error: "Energia insufficiente." });
-
-  const payMode = factory.payMode || 'salary';
-
-  // Check Owner Storage Space
-  const { data: owner } = await supabase.from('users').select('id').eq('id', factory.ownerUserId).single();
-  if (!owner) return res.status(404).json({ error: "Proprietario inesistente." });
-
-  const { data: ownerInv } = await supabase.from('user_inventory').select('quantity').eq('userId', owner.id);
-  const ownerVol = (ownerInv || []).reduce((sum: number, item: any) => sum + item.quantity, 0);
-
-  const ownerPerks = await getUserPerks(owner.id);
-  const ownerResistenza = ownerPerks['RESISTENZA'] || 0;
-
-  const maxStorage = Math.floor(GAME_CONFIG.STORAGE_BASE_CAPACITY * (1 + (ownerResistenza * 0.01)));
-
-  // Calculate Output Amount
-  let outputBase = factory.level * 2;
-  let bonusMult = 1.0;
-  if (factory.type === 'oil') bonusMult = currentRegion?.oilBonus || 1.0;
-  else if (factory.type === 'minerals') bonusMult = currentRegion?.mineralsBonus || 1.0;
-  else if (factory.type === 'uranium') bonusMult = currentRegion?.uraniumBonus || 1.0;
-  else if (factory.type === 'diamonds') bonusMult = currentRegion?.diamondsBonus || 1.0;
-
-  const finalOutput = Math.max(1, Math.floor(outputBase * bonusMult));
-
-  if (payMode === 'resource') {
-    // Resource-based work: player mines resources, split between player/owner/state
-    const RESOURCE_MODE_OWNER_SHARE_PCT = 0.3; // 30% of net output goes to factory owner
-    const taxRate = currentRegion?.marketTaxRate !== undefined ? currentRegion.marketTaxRate : 10;
-    const stateShare = Math.floor(finalOutput * (taxRate / 100));
-    const ownerShare = Math.floor((finalOutput - stateShare) * RESOURCE_MODE_OWNER_SHARE_PCT);
-    // Guarantee player always gets at least 1 resource — prevents "Output troppo basso" error for low-level factories
-    const playerShare = Math.max(1, finalOutput - stateShare - ownerShare);
-
-    // EXECUTE RESOURCE WORK
-    try {
-      // Deduct energy and set cooldown
-      await supabase.from('users').update({ energy: user.energy - energyCost }).eq('id', user.id);
-      await supabase.from('user_factory_cooldowns').upsert({
-        userId: user.id, factoryId, lastUsed: new Date().toISOString()
-      });
-
-      // Give player their share of resources
-      const { data: playerInv } = await supabase.from('user_inventory')
-        .select('quantity').eq('userId', user.id).eq('itemId', factory.type).maybeSingle();
-      if (playerInv) {
-        await supabase.from('user_inventory').update({ quantity: playerInv.quantity + playerShare })
-          .eq('userId', user.id).eq('itemId', factory.type);
-      } else {
-        await supabase.from('user_inventory').insert({ userId: user.id, itemId: factory.type, quantity: playerShare });
-      }
-
-      // Give owner their share of resources - now goes to factory storage
-      try {
-        await supabase.rpc('increment_factory_storage', {
-          p_factory_id: factoryId,
-          p_amount: ownerShare
-        });
-      } catch (_e) {
-        // RPC not available - fallback to manual update
-        try {
-          const { data: fac } = await supabase.from('factories').select('currentStorage').eq('id', factoryId).single();
-          await supabase.from('factories').update({ currentStorage: (fac?.currentStorage || 0) + ownerShare }).eq('id', factoryId);
-        } catch { /* non-critical */ }
-      }
-
-      // State gets its share via budget transaction
-      if (stateShare > 0) {
-        try {
-          await supabase.rpc('add_budget_transaction', {
-            p_owner_type: 'REGION',
-            p_owner_id: factory.regionId,
-            p_type: 'INCOME',
-            p_subtype: 'RESOURCE_TAX',
-            p_money_delta: 0,
-            p_metadata: { resource: factory.type, quantity: stateShare, factoryId }
-          });
-        } catch (e) { console.error("[resource-work] Budget transaction error:", e); }
-      }
-
-      // XP Gain
-      const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
-      await addXP(user.id, xpGain);
-
-      // Work experience gain
-      try {
-        await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN);
-      } catch (_e) { /* non-critical */ }
-
-      res.json({ success: true, earnings: 0, output: playerShare, ownerShare, stateShare, xpGain, payMode: 'resource' });
-    } catch (err: any) {
-      res.status(500).json({ error: "Errore durante il lavoro: " + err.message });
-    }
-  } else {
-    // Salary-based work (original logic)
-    // Check budget
-    if (factory.budget < factory.wage) {
-      return res.status(400).json({ error: "L'azienda non ha abbastanza fondi per pagarti il salario." });
-    }
-
-  // PRESIDENTIAL_REPUBLIC: Double wage bonus for Leader and economic/foreign ministers
-  let govBonus = 1;
-  if (currentRegion && currentRegion.governmentForm === 'PRESIDENTIAL_REPUBLIC') {
-    if (user.id === currentRegion.ownerUserId || user.id === currentRegion.economicAdviserId || user.id === currentRegion.foreignMinisterId) {
-      govBonus = 2;
-    }
-  }
-
-  const finalWage = Math.floor(factory.wage * govBonus);
-
-  if (factory.budget < finalWage) {
-    return res.status(400).json({ error: "L'azienda non ha abbastanza fondi per pagarti il salario." });
-  }
-
-  if (ownerVol + finalOutput > maxStorage) {
-    return res.status(400).json({ error: "Il magazzino dell'azienda è pieno." });
-  }
-
-  // EXECUTE WORK
   try {
-    try {
-      await supabase.rpc('execute_factory_work', {
-        p_user_id: user.id,
-        p_factory_id: factoryId,
-        p_wage: finalWage,
-        p_output_item: factory.type,
-        p_output_qty: finalOutput,
-        p_energy_cost: energyCost,
-        p_owner_id: owner.id
-      });
-    } catch (rpcErr: any) {
-      // RPC not available - fallback to manual execution
-      console.log("[work] execute_factory_work fallback:", rpcErr.message);
-      // Fetch fresh user state to avoid stale values
-      const { data: freshUsr } = await supabase.from('users').select('energy, money').eq('id', user.id).single();
-      if (!freshUsr || (freshUsr.energy || 0) < energyCost) {
-        return res.status(400).json({ error: "Energia insufficiente." });
-      }
-      // Deduct energy from user, add wage
-      await supabase.from('users').update({ energy: (freshUsr.energy || 0) - energyCost, money: (freshUsr.money || 0) + finalWage }).eq('id', user.id);
-      // Deduct wage from factory budget
-      await supabase.from('factories').update({ budget: (factory.budget || 0) - finalWage }).eq('id', factoryId);
-      // Add output to owner's inventory
-      const { data: ownerInvItem } = await supabase.from('user_inventory')
-        .select('quantity').eq('userId', owner.id).eq('itemId', factory.type).maybeSingle();
-      if (ownerInvItem) {
-        await supabase.from('user_inventory').update({ quantity: ownerInvItem.quantity + finalOutput })
-          .eq('userId', owner.id).eq('itemId', factory.type);
-      } else {
-        await supabase.from('user_inventory').insert({ userId: owner.id, itemId: factory.type, quantity: finalOutput });
-      }
-    }
-
-    await supabase.from('user_factory_cooldowns').upsert({
-      userId: user.id,
-      factoryId,
-      lastUsed: new Date().toISOString()
-    }, {
-      onConflict: 'userId,factoryId'
-    });
-
-    // XP Gain
-    const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
-    await addXP(user.id, xpGain);
-
-    // Work experience gain
-    try {
-      await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN);
-    } catch (_e) { /* non-critical */ }
-
-    res.json({ success: true, earnings: finalWage, output: finalOutput, xpGain });
-  } catch (err: any) {
-    res.status(500).json({ error: "Errore durante il lavoro: " + err.message });
+    const result = await performWorkAction(user.id, factoryId);
+    return res.json(result);
+  } catch (error: any) {
+    if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return res.status(500).json({ error: error?.message || "Errore durante il lavoro." });
   }
-  } // end salary mode
 });
 
 // Withdrawal API: Move resources from factory storage to personal inventory
@@ -4853,12 +4925,119 @@ app.get("/api/wars/:warId/available-troops", authenticate, async (req: any, res)
 
 // === AUTO-ATTACK ===
 
+app.get("/api/automation/work", authenticate, async (req: any, res) => {
+  const { data: autoWork } = await supabase
+    .from('work_auto_actions')
+    .select('*')
+    .eq('userId', req.user.id)
+    .eq('isActive', true)
+    .maybeSingle();
+
+  if (autoWork && isAutomationExpired(autoWork.activatedAt, autoWork.expiresAt)) {
+    await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', autoWork.id);
+    return res.json({ autoWork: null });
+  }
+
+  res.json({ autoWork: autoWork || null });
+});
+
+app.post("/api/automation/work", authenticate, async (req: any, res) => {
+  try {
+    const { factoryId, enabled } = req.body || {};
+    if (enabled === false) {
+      await supabase.from('work_auto_actions').update({ isActive: false }).eq('userId', req.user.id);
+      return res.json({ success: true, message: "Auto-lavoro disattivato." });
+    }
+
+    if (!factoryId) return res.status(400).json({ error: "Factory mancante per auto-lavoro." });
+
+    const expiresAt = new Date(Date.now() + AUTOMATION_EXPIRE_MS).toISOString();
+    await supabase.from('work_auto_actions').upsert({
+      userId: req.user.id,
+      factoryId,
+      mode: 'standard',
+      isActive: true,
+      activatedAt: new Date().toISOString(),
+      lastFiredAt: null,
+      expiresAt,
+    }, { onConflict: 'userId' });
+
+    res.json({ success: true, expiresAt });
+  } catch (err: any) {
+    res.status(500).json({ error: "Errore nell'impostazione dell'auto-lavoro." });
+  }
+});
+
+app.get("/api/automation/training", authenticate, async (req: any, res) => {
+  const { data: autoTraining } = await supabase
+    .from('training_auto_actions')
+    .select('*')
+    .eq('userId', req.user.id)
+    .eq('isActive', true)
+    .maybeSingle();
+
+  if (autoTraining && isAutomationExpired(autoTraining.activatedAt, autoTraining.expiresAt)) {
+    await supabase.from('training_auto_actions').update({ isActive: false }).eq('id', autoTraining.id);
+    return res.json({ autoTraining: null });
+  }
+
+  res.json({ autoTraining: autoTraining || null });
+});
+
+app.get("/api/automation/war-attacks", authenticate, async (req: any, res) => {
+  const { data: autoAttacks } = await supabase
+    .from('war_auto_attacks')
+    .select('*')
+    .eq('userId', req.user.id)
+    .eq('isActive', true)
+    .order('activatedAt', { ascending: false });
+
+  const activeRows = [];
+  for (const attack of autoAttacks || []) {
+    if (isAutomationExpired(attack.activatedAt, attack.expiresAt)) {
+      await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', attack.id);
+      continue;
+    }
+    activeRows.push(attack);
+  }
+
+  res.json({ autoAttacks: activeRows });
+});
+
+app.post("/api/automation/training", authenticate, async (req: any, res) => {
+  try {
+    const { mode, enabled } = req.body || {};
+    if (enabled === false) {
+      await supabase.from('training_auto_actions').update({ isActive: false }).eq('userId', req.user.id);
+      return res.json({ success: true, message: "Danno orario disattivato." });
+    }
+
+    if (mode !== 'hourly') {
+      return res.status(400).json({ error: "La modalità addestramento automatica supporta solo il danno orario." });
+    }
+
+    const expiresAt = new Date(Date.now() + AUTOMATION_EXPIRE_MS).toISOString();
+    await supabase.from('training_auto_actions').upsert({
+      userId: req.user.id,
+      mode,
+      isActive: true,
+      activatedAt: new Date().toISOString(),
+      lastFiredAt: null,
+      expiresAt,
+    }, { onConflict: 'userId' });
+
+    res.json({ success: true, expiresAt, mode });
+  } catch {
+    res.status(500).json({ error: "Errore nell'impostazione del danno orario." });
+  }
+});
+
 // Set auto-attack for a war
 app.post("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => {
   try {
     const user = req.user;
     const { warId } = req.params;
-    const { side, troopType, autoType, enabled } = req.body;
+    const { side, troopType, weaponId, autoType, enabled } = req.body;
 
     const { data: war } = await supabase.from('wars').select('status').eq('id', warId).single();
     if (!war || war.status !== 'active') return res.status(400).json({ error: "Guerra non attiva." });
@@ -4872,25 +5051,29 @@ app.post("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => 
       return res.json({ success: true, message: "Auto-attacco disattivato." });
     }
 
-    if (!side || !troopType || !autoType) {
+    const resolvedWeaponId = weaponId || troopType;
+    const resolvedAutoType = normalizeWarAutoType(autoType);
+
+    if (!side || !resolvedWeaponId || !resolvedAutoType) {
       return res.status(400).json({ error: "Dati mancanti per auto-attacco." });
     }
 
-    const expiresAt = new Date(Date.now() + GAME_CONFIG.WAR_AUTO_EXPIRE_MS).toISOString();
+    const expiresAt = new Date(Date.now() + AUTOMATION_EXPIRE_MS).toISOString();
 
     // Upsert auto-attack
     await supabase.from('war_auto_attacks').upsert({
       warId,
       userId: user.id,
       side,
-      troopType,
-      autoType: autoType || 'hourly',
+      troopType: resolvedWeaponId,
+      autoType: resolvedAutoType,
       isActive: true,
       activatedAt: new Date().toISOString(),
+      lastFiredAt: null,
       expiresAt,
     }, { onConflict: 'warId,userId' });
 
-    res.json({ success: true, message: `Auto-attacco ${autoType} attivato.`, expiresAt });
+    res.json({ success: true, message: `Auto-attacco ${resolvedAutoType} attivato.`, expiresAt, weaponId: resolvedWeaponId, autoType: resolvedAutoType });
   } catch (err: any) {
     res.status(500).json({ error: "Errore nell'impostazione dell'auto-attacco." });
   }
@@ -4906,6 +5089,11 @@ app.get("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => {
     .eq('userId', user.id)
     .eq('isActive', true)
     .maybeSingle();
+
+  if (autoAttack && isAutomationExpired(autoAttack.activatedAt, autoAttack.expiresAt)) {
+    await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', autoAttack.id);
+    return res.json({ autoAttack: null });
+  }
 
   res.json({ autoAttack: autoAttack || null });
 });
@@ -9697,9 +9885,12 @@ async function payoutStateSalaries() {
     console.log("[Salaries] Starting daily state salaries payout...");
     
     // 1. Fetch all nations
-    const { data: nations, error: nationsError } = await supabase
-      .from('nations')
-      .select('id, government_form, leaderUserId, gold_reserve');
+    const { data: nations, error: nationsError } = await retrySupabaseOperation(
+      "fetch nations for salary payout",
+      () => supabase
+        .from('nations')
+        .select('id, government_form, leaderUserId, gold_reserve')
+    );
     
     if (nationsError || !nations) {
       console.error("[Salaries] Error fetching nations:", nationsError);
@@ -9707,10 +9898,13 @@ async function payoutStateSalaries() {
     }
 
     // 2. Count regions per nation
-    const { data: regionalCounts } = await supabase
-      .from('regions')
-      .select('nation_id')
-      .not('nation_id', 'is', null);
+    const { data: regionalCounts } = await retrySupabaseOperation(
+      "fetch regional counts for salary payout",
+      () => supabase
+        .from('regions')
+        .select('nation_id')
+        .not('nation_id', 'is', null)
+    );
     
     const regionCountMap: Record<string, number> = {};
     regionalCounts?.forEach(r => {
@@ -9728,9 +9922,15 @@ async function payoutStateSalaries() {
       if (nation.leaderUserId && salaries.headOfStateGold > 0) {
         if (currentReserve >= salaries.headOfStateGold) {
            // Direct update to user gold balance
-           const { data: user } = await supabase.from('users').select('gold').eq('id', nation.leaderUserId).single();
+           const { data: user } = await retrySupabaseOperation(
+             `fetch head of state balance for ${nation.id}`,
+             () => supabase.from('users').select('gold').eq('id', nation.leaderUserId).single()
+           );
            if (user) {
-             await supabase.from('users').update({ gold: (user.gold || 0) + salaries.headOfStateGold }).eq('id', nation.leaderUserId);
+             await retrySupabaseOperation(
+               `pay head of state salary for ${nation.id}`,
+               () => supabase.from('users').update({ gold: (user.gold || 0) + salaries.headOfStateGold }).eq('id', nation.leaderUserId)
+             );
              currentReserve -= salaries.headOfStateGold;
              console.log(`[Salaries] Paid ${salaries.headOfStateGold} gold to HOS of ${nation.id}`);
            }
@@ -9740,20 +9940,26 @@ async function payoutStateSalaries() {
       }
 
       // Pay Ministers
-      const { data: ministers } = await supabase
-        .from('ministers')
-        .select(`
-          userId,
-          user:users(id, gold)
-        `)
-        .eq('stateId', nation.id)
-        .eq('status', 'ACTIVE');
+      const { data: ministers } = await retrySupabaseOperation(
+        `fetch ministers for ${nation.id}`,
+        () => supabase
+          .from('ministers')
+          .select(`
+            userId,
+            user:users(id, gold)
+          `)
+          .eq('stateId', nation.id)
+          .eq('status', 'ACTIVE')
+      );
 
       if (ministers && ministers.length > 0 && salaries.ministerGold > 0) {
         for (const m of ministers) {
           if (currentReserve >= salaries.ministerGold && (m as any).user) {
             const userGold = (m as any).user.gold || 0;
-            await supabase.from('users').update({ gold: userGold + salaries.ministerGold }).eq('id', m.userId);
+            await retrySupabaseOperation(
+              `pay minister salary for ${nation.id}:${m.userId}`,
+              () => supabase.from('users').update({ gold: userGold + salaries.ministerGold }).eq('id', m.userId)
+            );
             currentReserve -= salaries.ministerGold;
             console.log(`[Salaries] Paid ${salaries.ministerGold} gold to Minister ${m.userId} of ${nation.id}`);
           }
@@ -9762,12 +9968,21 @@ async function payoutStateSalaries() {
 
       // Update remaining nation reserve
       if (currentReserve !== nation.gold_reserve) {
-        await supabase.from('nations').update({ gold_reserve: currentReserve }).eq('id', nation.id);
+        await retrySupabaseOperation(
+          `update remaining gold reserve for ${nation.id}`,
+          () => supabase.from('nations').update({ gold_reserve: currentReserve }).eq('id', nation.id)
+        );
       }
     }
     console.log("[Salaries] Daily payout complete.");
   } catch (err) {
-    console.error("[Salaries] Error in payoutStateSalaries:", err);
+    console.error("[Salaries] Error in payoutStateSalaries:", {
+      message: err instanceof Error ? err.message : String(err),
+      details: (err as any)?.details || null,
+      hint: (err as any)?.hint || null,
+      code: (err as any)?.code || null,
+      transientNetwork: isTransientSupabaseNetworkError(err),
+    });
   }
 }
 
@@ -9776,32 +9991,41 @@ async function dailyResourceReset() {
   try {
     console.log("[ResourceReset] Running daily resource extraction reset...");
     // Reset daily_extracted to 0 for all region_resources
-    const { error } = await supabase
-      .from('region_resources')
-      .update({ dailyExtracted: 0, updatedAt: new Date().toISOString() })
-      .gte('dailyExtracted', 0); // matches all rows
+    const { error } = await retrySupabaseOperation(
+      "reset daily extracted resources",
+      () => supabase
+        .from('region_resources')
+        .update({ dailyExtracted: 0, updatedAt: new Date().toISOString() })
+        .gte('dailyExtracted', 0)
+    ); // matches all rows
 
     if (error) console.error("[ResourceReset] Error resetting daily extracted:", error);
     else console.log("[ResourceReset] Daily extracted reset complete.");
 
     // Expire old deep explorations
     const nowStr = new Date().toISOString();
-    await supabase
-      .from('deep_explorations')
-      .update({ isActive: false })
-      .eq('isActive', true)
-      .lt('endsAt', nowStr);
+    await retrySupabaseOperation(
+      "expire deep explorations during daily reset",
+      () => supabase
+        .from('deep_explorations')
+        .update({ isActive: false })
+        .eq('isActive', true)
+        .lt('endsAt', nowStr)
+    );
 
     // Reset regional autonomy daily extraction counters for all regions
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    const { error: resetErr } = await supabase.from('regions').update({
-      dailyExtractedGold: 0,
-      dailyExtractedOil: 0,
-      dailyExtractedMinerals: 0,
-      dailyExtractedUranium: 0,
-      dailyExtractedDiamonds: 0,
-      nextExtractionResetAt: tomorrow,
-    }).neq('id', ''); // matches all rows with non-empty id (i.e., all regions)
+    const { error: resetErr } = await retrySupabaseOperation(
+      "reset regional extraction counters",
+      () => supabase.from('regions').update({
+        dailyExtractedGold: 0,
+        dailyExtractedOil: 0,
+        dailyExtractedMinerals: 0,
+        dailyExtractedUranium: 0,
+        dailyExtractedDiamonds: 0,
+        nextExtractionResetAt: tomorrow,
+      }).neq('id', '')
+    ); // matches all rows with non-empty id (i.e., all regions)
     if (resetErr) console.error("[ResourceReset] Error resetting regional extraction:", resetErr);
     else console.log("[ResourceReset] Regional extraction counters reset.");
 
@@ -9809,7 +10033,13 @@ async function dailyResourceReset() {
     await payoutStateSalaries();
 
   } catch (err) {
-    console.error("[ResourceReset] Error in daily reset:", err);
+    console.error("[ResourceReset] Error in daily reset:", {
+      message: err instanceof Error ? err.message : String(err),
+      details: (err as any)?.details || null,
+      hint: (err as any)?.hint || null,
+      code: (err as any)?.code || null,
+      transientNetwork: isTransientSupabaseNetworkError(err),
+    });
   }
 }
 
@@ -10736,7 +10966,56 @@ async function checkAndResolveWars() {
       }
     }
 
-    // 3. Process auto-attacks
+    // 3. Process auto-work
+    const { data: activeAutoWork } = await supabase
+      .from('work_auto_actions')
+      .select('*')
+      .eq('isActive', true);
+
+    if (activeAutoWork && activeAutoWork.length > 0) {
+      for (const aw of activeAutoWork) {
+        if (isAutomationExpired(aw.activatedAt, aw.expiresAt)) {
+          await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
+          continue;
+        }
+        if (!shouldRecurringAutomationFire('standard', aw.lastFiredAt, aw.activatedAt)) continue;
+
+        try {
+          await performWorkAction(aw.userId, aw.factoryId, { allowAutoDrink: true });
+          await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
+        } catch (err: any) {
+          const message = (err?.message || '').toLowerCase();
+          if (err?.statusCode === 404 || message.includes('fabbrica non trovata') || message.includes('devi viaggiare')) {
+            await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
+          }
+        }
+      }
+    }
+
+    // 4. Process hourly training damage
+    const { data: activeAutoTraining } = await supabase
+      .from('training_auto_actions')
+      .select('*')
+      .eq('isActive', true);
+
+    if (activeAutoTraining && activeAutoTraining.length > 0) {
+      for (const at of activeAutoTraining) {
+        if (isAutomationExpired(at.activatedAt, at.expiresAt)) {
+          await supabase.from('training_auto_actions').update({ isActive: false }).eq('id', at.id);
+          continue;
+        }
+        if (!shouldRecurringAutomationFire('hourly', at.lastFiredAt, at.activatedAt)) continue;
+
+        try {
+          await performTrainingAction(at.userId, { freeHourly: true });
+          await supabase.from('training_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', at.id);
+        } catch {
+          // Keep active until expiration.
+        }
+      }
+    }
+
+    // 5. Process auto-attacks
     const { data: activeAutoAttacks } = await supabase
       .from('war_auto_attacks')
       .select('*')
@@ -10744,7 +11023,11 @@ async function checkAndResolveWars() {
 
     if (activeAutoAttacks && activeAutoAttacks.length > 0) {
       for (const aa of activeAutoAttacks) {
-        if (shouldAutoAttackFire(aa.autoType, aa.lastFiredAt, aa.activatedAt)) {
+        if (isAutomationExpired(aa.activatedAt, aa.expiresAt)) {
+          await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+          continue;
+        }
+        if (shouldRecurringAutomationFire(aa.autoType, aa.lastFiredAt, aa.activatedAt)) {
           // Check war is still active
           const { data: war } = await supabase.from('wars').select('status').eq('id', aa.warId).single();
           if (!war || war.status !== 'active') {
@@ -10752,40 +11035,23 @@ async function checkAndResolveWars() {
             continue;
           }
 
-          // Fire auto-attack via internal deploy logic
           try {
-            const { data: autoUser } = await supabase.from('users').select('*').eq('id', aa.userId).single();
-            if (!autoUser) continue;
-
-            const baseDmg = TROOP_BASE_DAMAGE[aa.troopType as TroopType] || 10;
-            const energyCost = TROOP_ENERGY_COST[aa.troopType as TroopType] || 10;
-
-            if (aa.autoType === 'hourly') {
-              // Hourly: free (no energy cost)
-            } else {
-              // Maximum: costs energy — skip if insufficient
-              if (autoUser.energy < energyCost) continue;
-              await supabase.from('users').update({
-                energy: autoUser.energy - energyCost,
-              }).eq('id', aa.userId);
-            }
-
-            const scoreField = aa.side === 'attacker' ? 'attackerScore' : 'defenderScore';
-            const { data: currentWar } = await supabase.from('wars').select(scoreField).eq('id', aa.warId).single();
-
-            await supabase.from('wars').update({
-              [scoreField]: (currentWar?.[scoreField] || 0) + baseDmg,
-              updatedAt: new Date().toISOString(),
-            }).eq('id', aa.warId);
-
+            await performWarDeployAction({
+              userId: aa.userId,
+              warId: aa.warId,
+              side: aa.side,
+              weaponId: aa.troopType,
+              ignoreEnergyCost: aa.autoType === 'hourly',
+              allowAutoDrink: aa.autoType !== 'hourly',
+            });
             await supabase.from('war_auto_attacks').update({
               lastFiredAt: new Date().toISOString(),
             }).eq('id', aa.id);
-          } catch (_e) { /* skip failed auto-attacks */ }
-
-          // Check expiration
-          if (aa.expiresAt && new Date(aa.expiresAt).getTime() <= Date.now()) {
-            await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+          } catch (err: any) {
+            const message = (err?.message || '').toLowerCase();
+            if (err?.statusCode === 404 || message.includes('guerra inesistente') || message.includes('armamento sconosciuto')) {
+              await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+            }
           }
         }
       }

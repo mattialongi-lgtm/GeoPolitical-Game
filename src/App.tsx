@@ -93,7 +93,7 @@ import ShopPage from "./components/ShopPage";
 import { HomePage } from "./components/home";
 import { DailyTasksPage } from "./components/daily";
 import { StatePage } from "./components/state";
-import { WarCreatePanel, RevolutionPanel, WarDamageBar, WarHistoryList } from "./components/war";
+import { WarCreatePanel, RevolutionPanel, WarDamageBar, WarHistoryList, WarFactionBadge } from "./components/war";
 import { ArticleBlockRenderer } from "./components/ArticleBlockRenderer";
 import { ArticleEditor } from "./components/ArticleEditor";
 import { ResourceIcon } from "./components/ResourceIcon";
@@ -1643,8 +1643,6 @@ const WarsView = ({
   user,
   fetchData,
   actionLoading,
-  autoAttack,
-  setAutoAttack,
   autoWorkFactoryId,
   setAutoWorkFactoryId
 }: {
@@ -1652,8 +1650,6 @@ const WarsView = ({
   user: any,
   fetchData: () => void,
   actionLoading: boolean,
-  autoAttack: { warId: string, side: string, weaponId: string } | null,
-  setAutoAttack: (val: { warId: string, side: string, weaponId: string } | null) => void,
   autoWorkFactoryId: string | null,
   setAutoWorkFactoryId: (val: string | null) => void
 }) => {
@@ -1661,93 +1657,38 @@ const WarsView = ({
   const navigate = useNavigate();
   const [training, setTraining] = useState(false);
   const [militaryExp, setMilitaryExp] = useState(user?.militaryExp || 0);
+  const [autoAttack, setAutoAttack] = useState<any | null>(null);
+  const [autoTraining, setAutoTraining] = useState<any | null>(null);
 
-  const autoAttackRef = React.useRef(autoAttack);
-  autoAttackRef.current = autoAttack;
+  const refreshAutomationStatus = useCallback(async () => {
+    try {
+      const [warRes, trainingRes] = await Promise.all([
+        fetch("/api/automation/war-attacks"),
+        fetch("/api/automation/training"),
+      ]);
+      const warData = await warRes.json();
+      const trainingData = await trainingRes.json();
 
-  // Auto-training state
-  const [autoTrain, setAutoTrain] = useState(false);
-  const autoTrainRef = React.useRef(autoTrain);
-  autoTrainRef.current = autoTrain;
+      const matchedWar = (warData.autoAttacks || []).find((entry: any) => !warId || entry.warId === warId) || null;
+      setAutoAttack(matchedWar);
+      setAutoTraining(trainingData.autoTraining || null);
+    } catch {
+      setAutoAttack(null);
+      setAutoTraining(null);
+    }
+  }, [warId]);
 
-  // Auto-attack interval handles by App component now for consistency or kept here?
-  // Let's keep it here but it needs the ref updating.
   useEffect(() => {
-    if (!autoAttack) return;
-    let stopped = false;
-    const doAutoAttack = async () => {
-      if (!autoAttackRef.current || stopped) return;
-
-      try {
-        // Auto-refill logic: Use drink if energy < 300
-        const userRes = await fetch("/api/user");
-        const userData = await userRes.json();
-        if (userData && userData.energy < 300 && userData.energyDrinks > 0) {
-          await fetch("/api/actions/use-drink", { method: "POST" });
-        }
-
-        const res = await fetch("/api/wars/deploy", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ warId: autoAttackRef.current.warId, side: autoAttackRef.current.side, weaponId: autoAttackRef.current.weaponId })
-        });
-        const data = await res.json();
-        if (data.error) {
-          const errLower = (data.error || '').toLowerCase();
-          if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('insufficiente') || errLower.includes('not found')) {
-            setAutoAttack(null);
-          }
-        }
-        fetchData();
-      } catch {
-        // Network error - retry next interval
-      }
-    };
-    // Execute immediately, then every 10 minutes
-    doAutoAttack();
-    const iv = setInterval(doAutoAttack, 10 * 60 * 1000);
-    return () => { stopped = true; clearInterval(iv); };
-  }, [autoAttack]);
-
-  // Auto-training interval
-  useEffect(() => {
-    if (!autoTrain) return;
-    let stopped = false;
-    const doAutoTrain = async () => {
-      if (!autoTrainRef.current || stopped) return;
-      try {
-        // Auto-refill logic: Use drink if energy < 300
-        const userRes = await fetch("/api/user");
-        const userData = await userRes.json();
-        if (userData && userData.energy < 300 && userData.energyDrinks > 0) {
-          await fetch("/api/actions/use-drink", { method: "POST" });
-        }
-
-        const res = await fetch("/api/actions/train", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        });
-        const data = await res.json();
-        if (data.error) {
-          const errLower = (data.error || '').toLowerCase();
-          if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('insufficiente')) {
-            setAutoTrain(false);
-          }
-        } else {
-          setMilitaryExp(data.militaryExp || militaryExp + 5);
-        }
-        fetchData();
-      } catch {
-        // Network error - retry next interval
-      }
-    };
-    doAutoTrain();
-    const iv = setInterval(doAutoTrain, 10 * 60 * 1000);
-    return () => { stopped = true; clearInterval(iv); };
-  }, [autoTrain]);
+    refreshAutomationStatus();
+    const iv = setInterval(refreshAutomationStatus, 30000);
+    return () => clearInterval(iv);
+  }, [refreshAutomationStatus]);
 
   const handleTrain = async () => {
-    if (user.energy < 300) { alert("Energia insufficiente (servono 300⚡)!"); return; }
+    if (user.energy < 10) {
+      alert("Energia insufficiente (servono 10 energia)!");
+      return;
+    }
     setTraining(true);
     try {
       const res = await fetch("/api/actions/train", {
@@ -1767,6 +1708,43 @@ const WarsView = ({
     } finally {
       setTraining(false);
     }
+  };
+
+  const handleSetWarAutomation = async (warIdValue: string, side: 'attacker' | 'defender', weaponId: string, mode: 'maximum' | 'hourly') => {
+    const res = await fetch(`/api/wars/${warIdValue}/auto-attack`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ side, weaponId, autoType: mode }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+    await refreshAutomationStatus();
+  };
+
+  const handleStopWarAutomation = async (warIdValue: string) => {
+    await fetch(`/api/wars/${warIdValue}/auto-attack`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: false }),
+    });
+    await refreshAutomationStatus();
+  };
+
+  const handleSetHourlyTraining = async (enabled: boolean) => {
+    const res = await fetch("/api/automation/training", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(enabled ? { mode: 'hourly' } : { enabled: false }),
+    });
+    const data = await res.json();
+    if (data.error) {
+      alert(data.error);
+      return;
+    }
+    await refreshAutomationStatus();
   };
 
   const [warCreating, setWarCreating] = useState(false);
@@ -1864,33 +1842,33 @@ const WarsView = ({
         <div className="flex gap-2">
           <button
             onClick={handleTrain}
-            disabled={training || user.energy < 300}
+            disabled={training || user.energy < 10}
             className="flex-1 py-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-sm shadow-lg shadow-amber-100 hover:bg-amber-600 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {training ? <Loader2 className="w-4 h-4 animate-spin" /> : <Dumbbell className="w-4 h-4" />}
-            Allenati (-300⚡, +5 Exp)
+            Allenati (-10 energia, +5 Exp)
           </button>
-          {autoTrain ? (
+          {autoTraining ? (
             <button
-              onClick={() => setAutoTrain(false)}
+              onClick={() => handleSetHourlyTraining(false)}
               className="py-4 px-4 bg-red-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-red-600 transition-all flex items-center justify-center gap-1"
             >
               ⏹ Stop
             </button>
           ) : (
             <button
-              onClick={() => setAutoTrain(true)}
+              onClick={() => handleSetHourlyTraining(true)}
               className="py-4 px-4 bg-amber-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-amber-700 transition-all flex items-center justify-center gap-1"
-              title="Addestramento automatico ogni 10 minuti"
+              title="Danno orario per 24 ore"
             >
               🤖 Auto
             </button>
           )}
         </div>
-        {autoTrain && (
+        {autoTraining && (
           <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
             <span className="animate-pulse text-lg">⚙️</span>
-            <span className="text-xs font-black text-amber-800">Auto-addestramento attivo! Prossimo turno tra 10 minuti.</span>
+            <span className="text-xs font-black text-amber-800">Danno orario attivo per 24h. Applica un tick ogni 1 ora senza consumare energia o bibite{autoTraining.expiresAt ? ` • Scade: ${new Date(autoTraining.expiresAt).toLocaleString('it-IT')}` : ''}.</span>
           </div>
         )}
       </div>
@@ -1971,7 +1949,13 @@ const WarsView = ({
 
                   <div className="flex justify-between items-center mb-4">
                     <div className="text-center flex-1">
-                      <p className={`text-2xl font-black ${isAttackerPatriot ? 'text-rose-600' : ''}`}>{war.attackerCountryIso2}</p>
+                      <WarFactionBadge
+                        name={war.attackerDisplayName || war.attackerCountryIso2}
+                        icon={war.attackerDisplayIcon}
+                        align="center"
+                        iconSizeClass="w-7 h-7"
+                        textClassName={`text-2xl font-black ${isAttackerPatriot ? 'text-rose-600' : 'text-slate-900'}`}
+                      />
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Attaccante</p>
                       <p className="text-xs font-black text-indigo-500 mt-1">{war.attackerScore.toLocaleString()}</p>
                     </div>
@@ -1980,7 +1964,13 @@ const WarsView = ({
                       {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                     </div>
                     <div className="text-center flex-1">
-                      <p className={`text-2xl font-black ${isDefenderPatriot ? 'text-emerald-600' : ''}`}>{war.defenderCountryIso2}</p>
+                      <WarFactionBadge
+                        name={war.defenderDisplayName || war.defenderCountryIso2}
+                        icon={war.defenderDisplayIcon}
+                        align="center"
+                        iconSizeClass="w-7 h-7"
+                        textClassName={`text-2xl font-black ${isDefenderPatriot ? 'text-emerald-600' : 'text-slate-900'}`}
+                      />
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Difensore</p>
                       <p className="text-xs font-black text-rose-500 mt-1">{war.defenderScore.toLocaleString()}</p>
                     </div>
@@ -2117,10 +2107,10 @@ const WarsView = ({
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="font-black text-amber-800 text-sm uppercase">⚡ Modalità Automatica</p>
-                              <p className="text-[10px] font-bold text-amber-600">Attacca ogni 10 min (ricarica 300 via drink)</p>
+                              <p className="text-[10px] font-bold text-amber-600">Standard: ogni 10 minuti per 24h. Orario: ogni 1 ora senza energia o bibite.</p>
                             </div>
                             {autoAttack?.warId === war.id && (
-                              <button onClick={() => setAutoAttack(null)} className="px-4 py-2 bg-red-500 text-white rounded-xl font-black text-xs uppercase hover:bg-red-600">
+                              <button onClick={() => handleStopWarAutomation(war.id)} className="px-4 py-2 bg-red-500 text-white rounded-xl font-black text-xs uppercase hover:bg-red-600">
                                 ⏹ Ferma
                               </button>
                             )}
@@ -2129,7 +2119,7 @@ const WarsView = ({
                             <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
                               <span className="animate-pulse text-lg">⚔️</span>
                               <span className="text-xs font-black text-amber-800">
-                                Auto-attacco attivo: {autoAttack.side === 'attacker' ? 'Attaccante' : 'Difensore'} con {autoAttack.weaponId === 'infantry' ? 'Fanteria' : autoAttack.weaponId === 'tank' ? 'Corazzata' : autoAttack.weaponId === 'battleship' ? 'Corazzata Navale' : 'Aereo'}
+                                {autoAttack.autoType === 'hourly' ? 'Danno orario' : 'Automatico standard'} attivo: {autoAttack.side === 'attacker' ? 'Attaccante' : 'Difensore'} con {autoAttack.troopType === 'infantry' ? 'Fanteria' : autoAttack.troopType === 'tank' ? 'Corazzata' : autoAttack.troopType === 'battleship' ? 'Corazzata Navale' : 'Aereo'}{autoAttack.expiresAt ? ` • Scade: ${new Date(autoAttack.expiresAt).toLocaleString('it-IT')}` : ''}
                               </span>
                             </div>
                           ) : (
@@ -2143,7 +2133,7 @@ const WarsView = ({
                                         if (!window.confirm("Attivando l'auto-attacco, l'auto-lavoro verrà disattivato. Procedere?")) return;
                                         setAutoWorkFactoryId(null);
                                       }
-                                      setAutoAttack({ warId: war.id, side, weaponId: wep });
+                                      handleSetWarAutomation(war.id, side, wep, 'maximum');
                                     }} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
                                       {wep === 'infantry' ? '🪖 Fanteria' : wep === 'tank' ? '🛡️ Corazzata' : '✈️ Aereo'}
                                     </button>
@@ -2154,11 +2144,29 @@ const WarsView = ({
                                         if (!window.confirm("Attivando l'auto-attacco, l'auto-lavoro verrà disattivato. Procedere?")) return;
                                         setAutoWorkFactoryId(null);
                                       }
-                                      setAutoAttack({ warId: war.id, side, weaponId: 'battleship' });
+                                      handleSetWarAutomation(war.id, side, 'battleship', 'maximum');
                                     }} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
                                       🚢 Corazzata Navale
                                     </button>
                                   )}
+                                  <button
+                                    onClick={() => {
+                                      if (autoWorkFactoryId) {
+                                        if (!window.confirm("Attivando il danno orario, l'auto-lavoro verrà disattivato. Procedere?")) return;
+                                        setAutoWorkFactoryId(null);
+                                      }
+                                      handleSetWarAutomation(
+                                        war.id,
+                                        side,
+                                        war.warType === 'naval' ? 'battleship' : 'airstrike',
+                                        'hourly'
+                                      );
+                                    }}
+                                    className="w-full py-1.5 px-2 bg-amber-100 border border-amber-300 rounded-lg text-[10px] font-black text-amber-900 hover:bg-amber-200 transition-all"
+                                    title="Danno ogni 1 ora per 24h senza consumo di energia o bibite"
+                                  >
+                                    ⚡ Danno orario
+                                  </button>
                                 </div>
                               ))}
                             </div>
@@ -2187,9 +2195,19 @@ const WarsView = ({
                 className={`p-4 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition-colors ${i !== list.length - 1 ? "border-b border-slate-50" : ""}`}
               >
                 <div className="flex items-center gap-3">
-                  <span className="font-black text-slate-900">{war.attackerCountryIso2}</span>
+                  <WarFactionBadge
+                    name={war.attackerDisplayName || war.attackerCountryIso2}
+                    icon={war.attackerDisplayIcon}
+                    iconSizeClass="w-4 h-4"
+                    textClassName="text-sm font-black text-slate-900"
+                  />
                   <ArrowRight className="w-3 h-3 text-slate-300" />
-                  <span className="font-black text-slate-900">{war.defenderCountryIso2}</span>
+                  <WarFactionBadge
+                    name={war.defenderDisplayName || war.defenderCountryIso2}
+                    icon={war.defenderDisplayIcon}
+                    iconSizeClass="w-4 h-4"
+                    textClassName="text-sm font-black text-slate-900"
+                  />
                 </div>
                 <div className="text-right flex items-center gap-3">
                   <div>
@@ -2256,7 +2274,14 @@ const WarStatsView = ({ user }: { user: any }) => {
           
           <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
              <div className="text-center">
-                <p className="text-4xl font-black text-white mb-1 uppercase tracking-tighter">{war.attackerCountryIso2}</p>
+                <WarFactionBadge
+                  name={war.attackerDisplayName || war.attackerCountryIso2}
+                  icon={war.attackerDisplayIcon}
+                  align="center"
+                  iconSizeClass="w-10 h-10"
+                  textClassName="text-4xl font-black text-white uppercase tracking-tighter"
+                  className="mb-1"
+                />
                 <div className="inline-block px-3 py-1 bg-indigo-500/20 rounded-full border border-indigo-500/30">
                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Attaccante</p>
                 </div>
@@ -2280,7 +2305,14 @@ const WarStatsView = ({ user }: { user: any }) => {
              </div>
 
              <div className="text-center">
-                <p className="text-4xl font-black text-white mb-1 uppercase tracking-tighter">{war.defenderCountryIso2}</p>
+                <WarFactionBadge
+                  name={war.defenderDisplayName || war.defenderCountryIso2}
+                  icon={war.defenderDisplayIcon}
+                  align="center"
+                  iconSizeClass="w-10 h-10"
+                  textClassName="text-4xl font-black text-white uppercase tracking-tighter"
+                  className="mb-1"
+                />
                 <div className="inline-block px-3 py-1 bg-rose-500/20 rounded-full border border-rose-500/30">
                    <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Difensore</p>
                 </div>
@@ -2526,16 +2558,12 @@ const PlayerFactoriesView = ({
   user,
   fetchData,
   autoWorkFactoryId,
-  setAutoWorkFactoryId,
-  autoAttack,
-  setAutoAttack
+  setAutoWorkFactoryId
 }: {
   user: any;
   fetchData: () => void;
   autoWorkFactoryId?: string | null;
   setAutoWorkFactoryId?: (id: string | null) => void;
-  autoAttack?: { warId: string; side: string; weaponId: string } | null;
-  setAutoAttack?: (val: { warId: string; side: string; weaponId: string } | null) => void;
 }) => {
   const { iso2 } = useParams();
   const navigate = useNavigate();
@@ -2838,16 +2866,10 @@ const PlayerFactoriesView = ({
                       </button>
                     ) : (
                       <button
-                        onClick={() => {
-                          if (autoAttack) {
-                            if (!window.confirm("Attivando l'auto-lavoro, l'auto-attacco verrà disattivato. Procedere?")) return;
-                            setAutoAttack(null);
-                          }
-                          setAutoWorkFactoryId(f.id);
-                        }}
+                        onClick={() => setAutoWorkFactoryId(f.id)}
                         disabled={!!autoWorkFactoryId}
                         className="py-3 px-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-amber-600 transition-all disabled:opacity-50"
-                        title="Attiva lavoro automatico ogni 10 minuti"
+                        title="Attiva lavoro automatico per 24 ore"
                       >
                         🤖 Auto
                       </button>
@@ -4924,12 +4946,8 @@ export default function App() {
   const [energyTimer, setEnergyTimer] = useState("");
 
   // Auto-work state
-  const [autoWorkFactoryId, setAutoWorkFactoryId] = useState<string | null>(null);
-  const [autoAttack, setAutoAttack] = useState<{ warId: string, side: string, weaponId: string } | null>(null);
-  const autoAttackRef = React.useRef(autoAttack);
-  autoAttackRef.current = autoAttack;
-  const autoWorkFactoryIdRef = React.useRef(autoWorkFactoryId);
-  autoWorkFactoryIdRef.current = autoWorkFactoryId;
+  const [autoWorkFactoryId, setAutoWorkFactoryIdState] = useState<string | null>(null);
+  const [autoWorkExpiresAt, setAutoWorkExpiresAt] = useState<string | null>(null);
 
   // Dark / Light mode toggle with localStorage persistence
   const [isDarkMode, setIsDarkMode] = useState(() => {
@@ -4987,41 +5005,37 @@ export default function App() {
     return () => clearInterval(iv);
   }, [user]);
 
-  // Auto-work interval
-  useEffect(() => {
-    if (!autoWorkFactoryId) return;
-    let stopped = false;
-    const doAutoWork = async () => {
-      if (!autoWorkFactoryIdRef.current || stopped) return;
-      try {
-        // Auto-refill logic: Use drink if energy < 300
-        const userRes = await fetch("/api/user");
-        const userData = await userRes.json();
-        if (userData && userData.energy < 300 && userData.energyDrinks > 0) {
-          await fetch("/api/actions/use-drink", { method: "POST" });
-        }
+  const refreshAutoWorkStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/automation/work");
+      const data = await res.json();
+      setAutoWorkFactoryIdState(data.autoWork?.factoryId || null);
+      setAutoWorkExpiresAt(data.autoWork?.expiresAt || null);
+    } catch {
+      setAutoWorkFactoryIdState(null);
+      setAutoWorkExpiresAt(null);
+    }
+  }, []);
 
-        const res = await fetch("/api/work", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ factoryId: autoWorkFactoryIdRef.current })
-        });
-        const data = await res.json();
-        if (data.error) {
-          const errLower = (data.error || '').toLowerCase();
-          if (errLower.includes('energia') || errLower.includes('energy') || errLower.includes('non trovata') || errLower.includes('not found') || errLower.includes('non attiva')) {
-            setAutoWorkFactoryId(null);
-          }
-        }
-        fetchData();
-      } catch {
-        // Network error - retry next interval
-      }
-    };
-    doAutoWork();
-    const iv = setInterval(doAutoWork, 10 * 60 * 1000);
-    return () => { stopped = true; clearInterval(iv); };
-  }, [autoWorkFactoryId]);
+  const setAutoWorkFactoryId = useCallback(async (factoryId: string | null) => {
+    try {
+      await fetch("/api/automation/work", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(factoryId ? { factoryId } : { enabled: false }),
+      });
+    } finally {
+      await refreshAutoWorkStatus();
+      fetchData();
+    }
+  }, [fetchData, refreshAutoWorkStatus]);
+
+  useEffect(() => {
+    if (!user) return;
+    refreshAutoWorkStatus();
+    const iv = setInterval(refreshAutoWorkStatus, 30000);
+    return () => clearInterval(iv);
+  }, [user, refreshAutoWorkStatus]);
 
   const handleUseDrink = async () => {
     setActionLoading(true);
@@ -5370,7 +5384,7 @@ export default function App() {
                       </div>
                       <div>
                         <h3 className="text-sm font-black text-slate-800">Modalità Automatica</h3>
-                        <p className="text-[10px] text-slate-400 font-medium">Lavora ogni 10 min automaticamente (consuma energia)</p>
+                        <p className="text-[10px] text-slate-400 font-medium">Attivo per 24h, esegue il lavoro ogni 10 minuti e poi scade</p>
                       </div>
                     </div>
                     {autoWorkFactoryId && (
@@ -5382,7 +5396,7 @@ export default function App() {
                   {autoWorkFactoryId ? (
                     <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
                       <span className="animate-pulse text-lg">⚙️</span>
-                      <span className="text-xs font-black text-amber-800">Auto-lavoro attivo! Prossimo turno tra 10 minuti.</span>
+                      <span className="text-xs font-black text-amber-800">Auto-lavoro attivo per 24h. Esegue il lavoro ogni 10 minuti e va riattivato alla scadenza{autoWorkExpiresAt ? ` • Scade: ${new Date(autoWorkExpiresAt).toLocaleString('it-IT')}` : ''}.</span>
                     </div>
                   ) : (
                     <p className="text-xs text-amber-600 font-medium">Seleziona una fabbrica qui sotto e clicca "🤖 Auto" per attivare il lavoro automatico.</p>
@@ -5394,14 +5408,12 @@ export default function App() {
                   fetchData={fetchData}
                   autoWorkFactoryId={autoWorkFactoryId}
                   setAutoWorkFactoryId={setAutoWorkFactoryId}
-                  autoAttack={autoAttack}
-                  setAutoAttack={setAutoAttack}
                 />
               </motion.div>
             ) : <Navigate to="/" />
           } />
-          <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} autoAttack={autoAttack} setAutoAttack={setAutoAttack} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
-          <Route path="/wars/:warId" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} autoAttack={autoAttack} setAutoAttack={setAutoAttack} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
+          <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
+          <Route path="/wars/:warId" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
           <Route path="/war/:warId/summary" element={<WarStatsView user={user} />} />
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} regions={regions} nations={nations} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />

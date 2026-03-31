@@ -6,6 +6,7 @@ import React, { useState, useEffect } from "react";
 import { Swords, Shield, Zap, Target, Clock, ChevronRight, ToggleLeft, ToggleRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ActiveWar } from "./mockData";
+import { WarFactionBadge } from "../war";
 
 interface WarQuickPanelProps {
   wars: ActiveWar[];
@@ -99,12 +100,23 @@ export default function WarQuickPanel({ wars }: WarQuickPanelProps) {
         {/* Factions */}
         <div className="flex items-center justify-between">
           <button className="text-left hover:opacity-80 transition-opacity">
-            <p className="text-sm font-black text-red-400">{currentWar.attackerName}</p>
+            <WarFactionBadge
+              name={currentWar.attackerDisplayName || currentWar.attackerName}
+              icon={currentWar.attackerDisplayIcon}
+              iconSizeClass="w-5 h-5"
+              textClassName="text-sm font-black text-red-400"
+            />
             <p className="text-[9px] text-gray-500 font-medium">🗡️ Attaccante</p>
           </button>
           <span className="text-lg font-black text-gray-600">VS</span>
           <button className="text-right hover:opacity-80 transition-opacity">
-            <p className="text-sm font-black text-blue-400">{currentWar.defenderName}</p>
+            <WarFactionBadge
+              name={currentWar.defenderDisplayName || currentWar.defenderName}
+              icon={currentWar.defenderDisplayIcon}
+              align="right"
+              iconSizeClass="w-5 h-5"
+              textClassName="text-sm font-black text-blue-400"
+            />
             <p className="text-[9px] text-gray-500 font-medium">🛡️ Difensore</p>
           </button>
         </div>
@@ -153,8 +165,18 @@ export default function WarQuickPanel({ wars }: WarQuickPanelProps) {
                 <span className="text-[9px] font-bold text-gray-500 truncate">{war.regionName}</span>
                 <span className="text-[9px] font-bold text-amber-400 tabular-nums">{formatTimeRemaining(war.endsAt)}</span>
               </div>
-              <p className="text-[10px] font-bold text-red-400 truncate">{war.attackerName}</p>
-              <p className="text-[10px] font-bold text-blue-400 truncate">vs {war.defenderName}</p>
+              <WarFactionBadge
+                name={war.attackerDisplayName || war.attackerName}
+                icon={war.attackerDisplayIcon}
+                iconSizeClass="w-4 h-4"
+                textClassName="text-[10px] font-bold text-red-400"
+              />
+              <WarFactionBadge
+                name={`vs ${war.defenderDisplayName || war.defenderName}`}
+                icon={war.defenderDisplayIcon}
+                iconSizeClass="w-4 h-4"
+                textClassName="text-[10px] font-bold text-blue-400"
+              />
             </button>
           ))}
         </div>

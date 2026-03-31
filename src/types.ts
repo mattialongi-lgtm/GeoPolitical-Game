@@ -282,6 +282,16 @@ export interface War {
   endsAt: number;
   attackerScore: number;
   defenderScore: number;
+  attackerDisplayName?: string;
+  attackerDisplayIcon?: string | null;
+  attackerDisplayIconType?: 'state' | 'region';
+  attackerDisplayNationId?: string | null;
+  attackerDisplayRegionId?: string | null;
+  defenderDisplayName?: string;
+  defenderDisplayIcon?: string | null;
+  defenderDisplayIconType?: 'state' | 'region';
+  defenderDisplayNationId?: string | null;
+  defenderDisplayRegionId?: string | null;
 }
 
 // === WAR SYSTEM TYPES ===

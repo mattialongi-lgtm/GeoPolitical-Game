@@ -4705,6 +4705,21 @@ app.post("/api/factories/:id/withdraw", authenticate, async (req: any, res) => {
   }
 });
 
+app.get("/api/users/me/managed-regions", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const { data: regions } = await supabase
+      .from('regions')
+      .select('id, name')
+      .or(`ownerUserId.eq.${user.id},leaderUserId.eq.${user.id}`);
+    
+    res.json(regions || []);
+  } catch (err: any) {
+    console.error("Errore nel recupero delle regioni governate:", err);
+    res.status(500).json({ error: "Errore interno del server." });
+  }
+});
+
 // Wars API (extracted routes: list + stats)
 registerWarRoutes({
   app,

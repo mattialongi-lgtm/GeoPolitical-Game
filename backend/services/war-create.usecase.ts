@@ -1,6 +1,7 @@
 import type { WarType } from '../../src/types';
 import type { WarRepository } from '../repositories/war.repository';
 import type { WarDomainDeps } from './war-domain.helpers';
+import { haversineDistance } from '../utils/geography';
 
 export interface CreateWarInput {
   userId: string;
@@ -53,6 +54,15 @@ export async function executeWarCreateUseCase(
     warRepository.getActiveBlocMembership(defenderRegion.nation_id),
   ]);
 
+  const attackerBorders = attackerRegion.borders || [];
+  const areAdjacent = attackerBorders.includes(defenderRegionId);
+  const attackerHasSeaAccess = attackerRegion.coastline || false;
+  const defenderHasSeaAccess = defenderRegion.coastline || false;
+  const distanceKm = haversineDistance(
+    attackerRegion.lat, attackerRegion.lng,
+    defenderRegion.lat, defenderRegion.lng
+  );
+
   const validation = deps.validateWarCreation({
     attackerRegionId,
     defenderRegionId,
@@ -65,12 +75,13 @@ export async function executeWarCreateUseCase(
     defenderInForcedPeace: false,
     defenderHasRevolution: !!activeRevolution,
     defenderHasCoup: !!activeCoup,
-    areAdjacent: true,
-    attackerHasSeaAccess: true,
-    defenderHasSeaAccess: true,
-    distanceKm: 500,
+    areAdjacent,
+    attackerHasSeaAccess,
+    defenderHasSeaAccess,
+    distanceKm,
     attackerHasSpaceport: true,
   });
+
 
   if (!validation.valid) {
     return {

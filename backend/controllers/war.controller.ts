@@ -33,7 +33,29 @@ export class WarController {
       return res.status(500).json({ error: 'Errore nel caricamento statistiche guerra.' });
     }
   };
+  validateWarTypes = async (req: any, res: any) => {
+    try {
+      const { attacker, defender } = req.query || {};
+      const result = await this.warService.validateWarTypes({ attackerRegionId: attacker, defenderRegionId: defender });
+      const http = mapServiceResultToHttp(result);
+      return res.status(http.statusCode).json(http.body);
+    } catch (err: any) {
+      console.error('War validation error:', err);
+      return res.status(500).json({ error: 'Errore durante la validazione geografica.' });
+    }
+  };
 
+  getValidTargets = async (req: any, res: any) => {
+    try {
+      const { attackerRegionId } = req.params || {};
+      const result = await this.warService.getValidTargets({ attackerRegionId });
+      const http = mapServiceResultToHttp(result);
+      return res.status(http.statusCode).json(http.body);
+    } catch (err: any) {
+      console.error('War targets error:', err);
+      return res.status(500).json({ error: 'Errore nel recupero dei bersagli geografici.' });
+    }
+  };
 
   deployTroops = async (req: any, res: any) => {
     try {

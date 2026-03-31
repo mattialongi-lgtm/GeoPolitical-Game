@@ -1,7 +1,9 @@
 import { WarRepository } from '../repositories/war.repository';
 import type { WarDomainDeps } from './war-domain.helpers';
 import { executeWarCreateUseCase, type CreateWarInput } from './war-create.usecase';
+import { executeWarValidationUseCase, type ValidateWarTypesInput } from './war-validation.usecase';
 import { executeWarDeployUseCase, type DeployTroopsInput } from './war-deploy.usecase';
+import { executeGetValidWarTargetsUseCase, type GetValidWarTargetsInput } from './war-targets.usecase';
 
 const createDefaultDeps = (): WarDomainDeps => ({
   validateWarCreation: () => ({ valid: true }),
@@ -116,7 +118,15 @@ export class WarService {
     return executeWarCreateUseCase(this.warRepository, this.deps, input);
   }
 
+  async validateWarTypes(input: ValidateWarTypesInput) {
+    return executeWarValidationUseCase(this.warRepository, input);
+  }
+
   async deployTroops(input: DeployTroopsInput) {
     return executeWarDeployUseCase(this.warRepository, this.deps, input);
+  }
+
+  async getValidTargets(input: GetValidWarTargetsInput) {
+    return executeGetValidWarTargetsUseCase(this.warRepository, input);
   }
 }

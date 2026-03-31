@@ -77,6 +77,14 @@ export class WarRepository {
     return data;
   }
 
+  async getAllRegionsDetailed() {
+    const { data } = await this.supabase
+      .from('regions')
+      .select('id, name, nation_id, borders, coastline, lat, lng');
+
+    return data || [];
+  }
+
   async getActiveWarTouchingRegion(regionId: string) {
     const { data } = await this.supabase
       .from('wars')

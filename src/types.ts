@@ -122,6 +122,7 @@ export type BuildingType =
   | 'missile_system'
   | 'airport'
   | 'naval_port'
+  | 'space_port'
   | 'real_estate_fund'
   | 'power_plant';
 
@@ -167,7 +168,8 @@ export interface MilitaryStats {
   missileSystems: number;
   airports: number;
   navalPorts: number;
-  power_plant: number;
+  spacePorts: number;
+  powerPlants: number;
 }
 
 export interface AutonomyProposal {
@@ -693,6 +695,7 @@ export const AUTONOMY_CONFIG = {
     missile_system: 2,
     airport: 2,
     naval_port: 2,
+    space_port: 0,
     real_estate_fund: 0,
     power_plant: 0,
   } as Record<string, number>,
@@ -708,6 +711,7 @@ export const AUTONOMY_CONFIG = {
     missile_system: 100000,
     airport: 75000,
     naval_port: 75000,
+    space_port: 150000,
     real_estate_fund: 40000,
     power_plant: 60000,
   } as Record<string, number>,
@@ -736,6 +740,7 @@ export const AUTONOMY_CONFIG = {
       missile_system: 0.8,
       airport: 0.6,
       naval_port: 0.6,
+      space_port: 0.4,
     },
     education: { school: 1.0 },
     development: { real_estate_fund: 1.0 },

@@ -136,6 +136,11 @@ CREATE TABLE regions (
     "isCapital" BOOLEAN DEFAULT FALSE,
     "isAutonomous" BOOLEAN DEFAULT FALSE,
     "isBorderRegion" BOOLEAN DEFAULT FALSE,
+    -- Enclave / micro-region display
+    "isEnclave" BOOLEAN DEFAULT FALSE,
+    "enclaveMarkerLat" FLOAT,
+    "enclaveMarkerLng" FLOAT,
+    "enclaveMarkerSize" FLOAT DEFAULT 6,
     "governorPlayerId" UUID REFERENCES users(id),
     "regionalParliamentEnabled" BOOLEAN DEFAULT FALSE,
     "regionalBudget" BIGINT DEFAULT 0,

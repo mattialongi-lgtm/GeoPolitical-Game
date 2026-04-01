@@ -97,6 +97,15 @@ interface TooltipInfo {
   y: number;
 }
 
+interface EnclaveMarker {
+  iso2: string;
+  name: string;
+  lat: number;
+  lng: number;
+  size: number;
+  color: string;
+}
+
 interface WorldMapProps {
   onRegionClick: (id: string) => void;
   regions: Region[];
@@ -197,7 +206,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
   // Compute enclave markers: regions that either have isEnclave=true from the
   // backend or are present in the DEFAULT_ENCLAVE_DATA fallback map.
   const enclaveMarkers = useMemo(() => {
-    const markers: { iso2: string; name: string; lat: number; lng: number; size: number; color: string }[] = [];
+    const markers: EnclaveMarker[] = [];
     const seen = new Set<string>();
 
     // First pass: regions flagged from the backend
@@ -272,12 +281,12 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
       const iso2 = (geo.properties.ISO_A2 || "").trim().toUpperCase();
       const name = geo.properties.name || "";
       const region = regionByIso.get(iso2);
-      const isEnc = region?.isEnclave || !!DEFAULT_ENCLAVE_DATA[iso2];
+      const isEnclave = region?.isEnclave || !!DEFAULT_ENCLAVE_DATA[iso2];
       setTooltip({
         name,
         iso2,
         ownerName: region?.ownerName || null,
-        isEnclave: isEnc,
+        isEnclave,
         x: e.clientX,
         y: e.clientY,
       });

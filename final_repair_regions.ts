@@ -18,10 +18,12 @@ async function run() {
   for (const region of regions) {
     let targetNationId = region.nation_id;
 
-    if (region.id.length === 2) {
-      targetNationId = region.id.toUpperCase();
-    } else if (region.id.includes('-')) {
-      targetNationId = region.id.split('-')[0].toUpperCase();
+    if (!region.nation_id) {
+      if (region.id.length === 2) {
+        targetNationId = region.id.toUpperCase();
+      } else if (region.id.includes('-')) {
+        targetNationId = region.id.split('-')[0].toUpperCase();
+      }
     }
 
     if (targetNationId && targetNationId !== region.nation_id) {

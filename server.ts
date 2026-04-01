@@ -925,11 +925,11 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     const economyMinister = ministers?.find(m => m.role === 'economics' || m.role === 'ECONOMICS');
     const foreignMinister = ministers?.find(m => m.role === 'foreign' || m.role === 'FOREIGN');
 
-    // 3. Fetch Regions belonging to this nation via the nation_id foreign key
+    // 3. Fetch Regions belonging to this nation via the nation_id foreign key OR leader ownership (definitive fix)
     const { data: regions, error: regionsError } = await supabase
       .from('regions')
       .select('id, name, population, "developmentIndex", governor:users!governorPlayerId(username), "isAutonomous", "energyGeneration", "energyConsumption", "residencePolicy", "workRestrictions", "nextLeaderElectionAt"')
-      .eq('nation_id', nationId);
+      .or(`nation_id.eq.${nationId}${nation.leaderUserId ? `,ownerUserId.eq.${nation.leaderUserId}` : ''}`);
 
     if (regionsError) {
       console.error(`[StatePage] Error fetching regions for ${nationId}:`, regionsError.message);
@@ -1079,7 +1079,7 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
           ? new Date(nation.next_elections || capitalRegion.nextLeaderElectionAt).toLocaleString('it-IT') 
           : '-',
         autonomies: autonomousCount || nation.autonomies || 0,
-        entryTax: nation.entry_tax || capitalRegion?.entryTax || 0,
+        entryTax: nation.entry_tax || 0,
         borders: translateTerm(nation.borders_status || capitalRegion?.residencePolicy || 'open'),
         residenceToWork: translateTerm(nation.residence_to_work || (capitalRegion?.workRestrictions ? 'Necessaria' : 'Non necessaria')),
         residence: translateTerm(nation.residence_policy || capitalRegion?.residencePolicy || 'Aperta'),
@@ -9889,7 +9889,7 @@ async function payoutStateSalaries() {
     // 1. Fetch all nations
     const { data: nations, error: nationsError } = await retrySupabaseOperation(
       "fetch nations for salary payout",
-      () => supabase
+      async () => await supabase
         .from('nations')
         .select('id, government_form, leaderUserId, gold_reserve')
     );
@@ -9902,7 +9902,7 @@ async function payoutStateSalaries() {
     // 2. Count regions per nation
     const { data: regionalCounts } = await retrySupabaseOperation(
       "fetch regional counts for salary payout",
-      () => supabase
+      async () => await supabase
         .from('regions')
         .select('nation_id')
         .not('nation_id', 'is', null)
@@ -9926,12 +9926,12 @@ async function payoutStateSalaries() {
            // Direct update to user gold balance
            const { data: user } = await retrySupabaseOperation(
              `fetch head of state balance for ${nation.id}`,
-             () => supabase.from('users').select('gold').eq('id', nation.leaderUserId).single()
+             async () => await supabase.from('users').select('gold').eq('id', nation.leaderUserId).single()
            );
            if (user) {
              await retrySupabaseOperation(
                `pay head of state salary for ${nation.id}`,
-               () => supabase.from('users').update({ gold: (user.gold || 0) + salaries.headOfStateGold }).eq('id', nation.leaderUserId)
+               async () => await supabase.from('users').update({ gold: (user.gold || 0) + salaries.headOfStateGold }).eq('id', nation.leaderUserId)
              );
              currentReserve -= salaries.headOfStateGold;
              console.log(`[Salaries] Paid ${salaries.headOfStateGold} gold to HOS of ${nation.id}`);
@@ -9944,7 +9944,7 @@ async function payoutStateSalaries() {
       // Pay Ministers
       const { data: ministers } = await retrySupabaseOperation(
         `fetch ministers for ${nation.id}`,
-        () => supabase
+        async () => await supabase
           .from('ministers')
           .select(`
             userId,
@@ -9960,7 +9960,7 @@ async function payoutStateSalaries() {
             const userGold = (m as any).user.gold || 0;
             await retrySupabaseOperation(
               `pay minister salary for ${nation.id}:${m.userId}`,
-              () => supabase.from('users').update({ gold: userGold + salaries.ministerGold }).eq('id', m.userId)
+              async () => await supabase.from('users').update({ gold: userGold + salaries.ministerGold }).eq('id', m.userId)
             );
             currentReserve -= salaries.ministerGold;
             console.log(`[Salaries] Paid ${salaries.ministerGold} gold to Minister ${m.userId} of ${nation.id}`);
@@ -9972,7 +9972,7 @@ async function payoutStateSalaries() {
       if (currentReserve !== nation.gold_reserve) {
         await retrySupabaseOperation(
           `update remaining gold reserve for ${nation.id}`,
-          () => supabase.from('nations').update({ gold_reserve: currentReserve }).eq('id', nation.id)
+          async () => await supabase.from('nations').update({ gold_reserve: currentReserve }).eq('id', nation.id)
         );
       }
     }
@@ -9995,7 +9995,7 @@ async function dailyResourceReset() {
     // Reset daily_extracted to 0 for all region_resources
     const { error } = await retrySupabaseOperation(
       "reset daily extracted resources",
-      () => supabase
+      async () => await supabase
         .from('region_resources')
         .update({ dailyExtracted: 0, updatedAt: new Date().toISOString() })
         .gte('dailyExtracted', 0)
@@ -10008,7 +10008,7 @@ async function dailyResourceReset() {
     const nowStr = new Date().toISOString();
     await retrySupabaseOperation(
       "expire deep explorations during daily reset",
-      () => supabase
+      async () => await supabase
         .from('deep_explorations')
         .update({ isActive: false })
         .eq('isActive', true)
@@ -10019,7 +10019,7 @@ async function dailyResourceReset() {
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const { error: resetErr } = await retrySupabaseOperation(
       "reset regional extraction counters",
-      () => supabase.from('regions').update({
+      async () => await supabase.from('regions').update({
         dailyExtractedGold: 0,
         dailyExtractedOil: 0,
         dailyExtractedMinerals: 0,

@@ -4247,6 +4247,9 @@ async function processAutomationTick() {
           if (err?.statusCode === 404 || message.includes('guerra inesistente') || message.includes('armamento sconosciuto')) {
             await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
           }
+          if (err?.statusCode === 400 && message.includes('corazzate') && message.includes('fase')) {
+            await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+          }
         }
       }
     }
@@ -4524,6 +4527,9 @@ async function performWarDeployAction(params: {
   if (war.status !== 'active') throw createAutomationError(400, "Questa guerra è già terminata.");
   if (war.warType === 'naval' && war.navalPhase === 1 && params.weaponId !== 'battleship') {
     throw createAutomationError(400, "Solo corazzate navali permesse nella Fase 1.");
+  }
+  if (war.warType === 'naval' && war.navalPhase === 2 && params.weaponId === 'battleship') {
+    throw createAutomationError(400, "Corazzate navali NON permesse nella Fase 2 (sbarco).");
   }
 
   const weapon = WAR_WEAPON_CONFIG[params.weaponId];
@@ -5246,7 +5252,7 @@ app.post("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => 
     const { warId } = req.params;
     const { side, troopType, weaponId, autoType, enabled } = req.body;
 
-    const { data: war } = await supabase.from('wars').select('status').eq('id', warId).single();
+    const { data: war } = await supabase.from('wars').select('status, warType, navalPhase').eq('id', warId).single();
     if (!war || war.status !== 'active') return res.status(400).json({ error: "Guerra non attiva." });
 
     if (enabled === false) {
@@ -5263,6 +5269,18 @@ app.post("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => 
 
     if (!side || !resolvedWeaponId || !resolvedAutoType) {
       return res.status(400).json({ error: "Dati mancanti per auto-attacco." });
+    }
+
+    // Naval rules:
+    // - Phase 1: ONLY battleship
+    // - Phase 2 (sbarco): NO battleship
+    if (war.warType === 'naval') {
+      if (war.navalPhase === 1 && resolvedWeaponId !== 'battleship') {
+        return res.status(400).json({ error: "Fase 1 navale: solo corazzate navali permesse." });
+      }
+      if (war.navalPhase === 2 && resolvedWeaponId === 'battleship') {
+        return res.status(400).json({ error: "Fase 2 (sbarco): corazzate navali non permesse." });
+      }
     }
 
     const expiresAt = new Date(Date.now() + AUTOMATION_EXPIRE_MS).toISOString();
@@ -11150,18 +11168,80 @@ async function budgetMaintenanceTick() {
 // War Resolution Cronjob
 async function checkAndResolveWars() {
   try {
-    // 1. Resolve expired wars
+    const nowIso = new Date().toISOString();
+
+    // 1. Naval wars: if Phase 1 expired and attacker won, auto-start Phase 2 (sbarco) for +24h.
+    // NOTE: we must do this BEFORE resolving expired wars, otherwise Phase 1 would be closed prematurely.
+    const { data: expiredNavalPhase1Wars } = await supabase
+      .from('wars')
+      .select('*')
+      .eq('status', 'active')
+      .eq('warType', 'naval')
+      .eq('navalPhase', 1)
+      .lt('endsAt', nowIso);
+
+    if (expiredNavalPhase1Wars && expiredNavalPhase1Wars.length > 0) {
+      for (const war of expiredNavalPhase1Wars) {
+        try {
+          const phase1AttackerTotal = (war.attackerScore || 0) + (war.phase1AttackerScore || 0);
+          const phase1DefenderTotal = (war.defenderScore || 0) + (war.phase1DefenderScore || 0);
+          const scoreDifference = phase1AttackerTotal - phase1DefenderTotal;
+
+          // Tie goes to defender (defense advantage)
+          const attackerWinsPhase1 = scoreDifference > 0;
+
+          if (!attackerWinsPhase1) continue;
+
+          const newEndsAt = new Date(Date.now() + GAME_CONFIG.WAR_NAVAL_PHASE_DURATION_MS).toISOString();
+
+          await supabase.from('wars').update({
+            navalPhase: 2,
+            status: 'active',
+            endsAt: newEndsAt,
+            // Freeze Phase 1 totals for audit/history.
+            phase1AttackerScore: phase1AttackerTotal,
+            phase1DefenderScore: phase1DefenderTotal,
+            // Apply Phase 1 advantage to Phase 2 as initial malus for defender (implemented as attacker head start).
+            attackerScore: scoreDifference,
+            defenderScore: 0,
+            updatedAt: new Date().toISOString(),
+          }).eq('id', war.id).eq('status', 'active').eq('navalPhase', 1);
+
+          await supabase.from('war_history').insert({
+            warId: war.id,
+            eventType: 'phase_change',
+            eventData: {
+              from: 1, to: 2,
+              phase1Winner: 'attacker',
+              phase1AttackerTotal,
+              phase1DefenderTotal,
+              scoreDifference,
+              appliedAs: 'defender_malus',
+            },
+          });
+
+          console.log(`[WAR] Naval war ${war.id} → Phase 2 (attacker won phase 1, difference: ${scoreDifference})`);
+        } catch (phaseErr) {
+          console.error(`[WAR] Error transitioning naval war ${war.id} to phase 2:`, phaseErr);
+        }
+      }
+    }
+
+    // 2. Resolve expired wars
     const { data: expiredWars } = await supabase
       .from('wars')
       .select('*')
       .eq('status', 'active')
-      .lt('endsAt', new Date().toISOString());
+      .lt('endsAt', nowIso);
 
     if (expiredWars && expiredWars.length > 0) {
       for (const war of expiredWars) {
         try {
-          const attackerTotal = (war.attackerScore || 0) + (war.phase1AttackerScore || 0);
-          const defenderTotal = (war.defenderScore || 0) + (war.phase1DefenderScore || 0);
+          // Naval Phase 2 already starts with Phase 1 advantage applied to attackerScore,
+          // so Phase 1 totals must not be added again here (otherwise they would be double-counted).
+          const isNavalPhase2 = war.warType === 'naval' && war.navalPhase === 2;
+          const attackerTotal = (war.attackerScore || 0) + (isNavalPhase2 ? 0 : (war.phase1AttackerScore || 0));
+          const defenderTotal = (war.defenderScore || 0) + (isNavalPhase2 ? 0 : (war.phase1DefenderScore || 0));
           const winner: string = attackerTotal > defenderTotal ? 'attacker' : 'defender';
 
           const effects = getResolutionEffects(war.warType || 'land', winner as WarSide);
@@ -11313,7 +11393,8 @@ async function checkAndResolveWars() {
       }
     }
 
-    // 2. Handle naval phase transitions
+    // 2. Handle naval phase transitions (DEPRECATED: handled earlier in this tick)
+    /*
     const { data: navalWars } = await supabase
       .from('wars')
       .select('*')
@@ -11373,6 +11454,7 @@ async function checkAndResolveWars() {
       }
     }
 
+    */
     // Automations are processed by processAutomationTick()
   } catch (error) {
     console.error("Error in checkAndResolveWars:", error);

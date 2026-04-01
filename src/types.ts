@@ -547,7 +547,7 @@ export const TROOP_MONEY_COST: Record<TroopType, number> = {
 export const WAR_TYPE_ALLOWED_TROOPS: Record<WarType, TroopType[]> = {
   training: ['tank', 'aircraft', 'missile', 'bomber'],
   land: ['tank', 'aircraft', 'missile', 'bomber'],
-  naval: ['battleship', 'tank', 'aircraft', 'missile', 'bomber'],
+  naval: ['tank', 'aircraft', 'missile', 'bomber'], // Phase 1 is handled separately (battleship-only)
   revolution: ['tank', 'aircraft', 'missile', 'bomber'],
   coup: ['tank', 'aircraft', 'missile', 'bomber'],
 };

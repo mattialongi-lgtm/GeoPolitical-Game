@@ -2051,7 +2051,7 @@ const WarsView = ({
                                 </button>
                               </>
                             )}
-                            {war.warType === 'naval' && (
+                            {war.warType === 'naval' && war.navalPhase === 1 && (
                               <button disabled={deploying} onClick={() => handleDeploy('attacker', 'battleship')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                 <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
                                 <div className="flex flex-col items-end">
@@ -2090,7 +2090,7 @@ const WarsView = ({
                                 </button>
                               </>
                             )}
-                            {war.warType === 'naval' && (
+                            {war.warType === 'naval' && war.navalPhase === 1 && (
                               <button disabled={deploying} onClick={() => handleDeploy('defender', 'battleship')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
                                 <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
                                 <div className="flex flex-col items-end">
@@ -2138,7 +2138,7 @@ const WarsView = ({
                                       {wep === 'infantry' ? '🪖 Fanteria' : wep === 'tank' ? '🛡️ Corazzata' : '✈️ Aereo'}
                                     </button>
                                   ))}
-                                  {war.warType === 'naval' && (
+                                  {war.warType === 'naval' && war.navalPhase === 1 && (
                                     <button onClick={() => {
                                       if (autoWorkFactoryId) {
                                         if (!window.confirm("Attivando l'auto-attacco, l'auto-lavoro verrà disattivato. Procedere?")) return;
@@ -2158,7 +2158,7 @@ const WarsView = ({
                                       handleSetWarAutomation(
                                         war.id,
                                         side,
-                                        war.warType === 'naval' ? 'battleship' : 'airstrike',
+                                        (war.warType === 'naval' && war.navalPhase === 1) ? 'battleship' : 'airstrike',
                                         'hourly'
                                       );
                                     }}

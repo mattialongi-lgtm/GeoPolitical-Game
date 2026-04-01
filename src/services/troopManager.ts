@@ -25,6 +25,8 @@ export function validateTroopDeployment(
     if (troopType !== 'battleship') {
       return { valid: false, error: 'Solo corazzate permesse nella Fase 1 navale.', energyCost: 0, moneyCost: 0 };
     }
+  } else if (warType === 'naval' && troopType === 'battleship') {
+    return { valid: false, error: 'Corazzate navali permesse solo nella Fase 1 (guerra navale).', energyCost: 0, moneyCost: 0 };
   } else if (!allowedTroops.includes(troopType)) {
     return { valid: false, error: `Truppe ${troopType} non permesse in guerra ${warType}.`, energyCost: 0, moneyCost: 0 };
   }

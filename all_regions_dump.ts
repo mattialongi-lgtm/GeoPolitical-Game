@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import dotenv from 'dotenv';
 dotenv.config();
+import fs from 'fs';
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -8,17 +9,12 @@ const supabase = createClient(
 );
 
 async function run() {
-  const nationId = 'IT';
-  const { data, error } = await supabase
-    .from('regions')
-    .select('id, name, nation_id')
-    .or(`nation_id.eq.${nationId},id.ilike.${nationId}-%`);
-
+  const { data, error } = await supabase.from('regions').select('id, name, nation_id');
   if (error) {
     console.error(error);
   } else {
-    console.log(`Nation ${nationId} has ${data?.length || 0} regions.`);
-    console.log(data);
+    fs.writeFileSync('all_regions_dump.json', JSON.stringify(data, null, 2));
+    console.log(`Dumped ${data.length} regions to all_regions_dump.json`);
   }
 }
 

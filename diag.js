@@ -1,28 +1,16 @@
-const Database = require('better-sqlite3');
-const db = new Database('game.db');
 
-try {
-    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all();
-    console.log("TABLES:", tables.map(t => t.name).join(", "));
+const fs = require('fs');
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config();
 
-    if (tables.some(t => t.name === 'regions')) {
-        const regionSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='regions'").get();
-        console.log("\nREGIONS SCHEMA:");
-        console.log(regionSchema.sql);
-        
-        const firstRegion = db.prepare("SELECT * FROM regions LIMIT 1").get();
-        console.log("\nFIRST REGION:");
-        console.log(JSON.stringify(firstRegion, null, 2));
-    }
+const supabase = createClient(process.env.VITE_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
-    if (tables.some(t => t.name === 'sanctions')) {
-        const sanctions = db.prepare("SELECT * FROM sanctions").all();
-        console.log("\nSANCTIONS CONTENT:");
-        console.table(sanctions);
-    }
-
-} catch (e) {
-    console.error(e);
-} finally {
-    db.close();
+async function run() {
+  const { data, error } = await supabase.from('regions').select('*').limit(1);
+  if (error) {
+    fs.writeFileSync('diag_output.txt', JSON.stringify(error));
+  } else {
+    fs.writeFileSync('diag_output.txt', JSON.stringify(Object.keys(data[0])));
+  }
 }
+run();

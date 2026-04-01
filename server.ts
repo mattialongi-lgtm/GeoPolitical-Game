@@ -928,7 +928,7 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     // 3. Fetch Regions (Robust query to catch legacy/mismatched links)
     const { data: regions, error: regionsError } = await supabase
       .from('regions')
-      .select('id, name, population, "developmentIndex", governor:users!governorPlayerId(username), "isAutonomous", "energyGeneration", "energyConsumption", "residencePolicy", "workRestrictions", "entryTax", "nextLeaderElectionAt"')
+      .select('id, name, population, "developmentIndex", governor:users!governorPlayerId(username), "isAutonomous", "energyGeneration", "energyConsumption", "residencePolicy", "workRestrictions", "nextLeaderElectionAt"')
       .or(`nation_id.eq.${nationId},id.ilike.${nationId}-%`);
 
     if (regionsError) {

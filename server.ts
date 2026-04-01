@@ -6852,14 +6852,57 @@ app.get("/api/blocs", authenticate, async (req: any, res) => {
 });
 
 app.get("/api/blocs-map", authenticate, async (req, res) => {
-  const { data } = await supabase.from('bloc_memberships').select('stateId, blocId, blocs(name, logo)').eq('status', 'active');
-  const mapped = (data || []).map((m: any) => ({
-    stateId: m.stateId,
-    blocId: m.blocId,
-    blocName: m.blocs?.name,
-    logo: m.blocs?.logo
-  }));
-  res.json(mapped);
+  try {
+    const { data, error } = await supabase
+      .from('bloc_memberships')
+      .select('stateId, blocId, blocs(name, logo)')
+      .eq('status', 'active');
+    if (error) throw error;
+
+    const memberships = (data || []).map((m: any) => ({
+      stateId: m.stateId,
+      blocId: m.blocId,
+      blocName: m.blocs?.name,
+      logo: m.blocs?.logo,
+    }));
+
+    const stateIds = [...new Set(memberships.map((m) => m.stateId).filter(Boolean))];
+    if (stateIds.length === 0) return res.json([]);
+
+    // Expand: apply bloc membership to ALL regions belonging to that state (nation_id = stateId)
+    const { data: memberRegions } = await supabase
+      .from('regions')
+      .select('id, nation_id')
+      .in('nation_id', stateIds);
+
+    const byState = new Map<string, string[]>();
+    (memberRegions || []).forEach((r: any) => {
+      if (!r?.nation_id) return;
+      if (!byState.has(r.nation_id)) byState.set(r.nation_id, []);
+      byState.get(r.nation_id)!.push(r.id);
+    });
+
+    const expanded: any[] = [];
+    for (const m of memberships) {
+      const regionIds = new Set<string>();
+      if (m.stateId) regionIds.add(m.stateId);
+      for (const rid of (byState.get(m.stateId) || [])) regionIds.add(rid);
+      for (const rid of regionIds) {
+        expanded.push({
+          regionId: rid,
+          stateId: m.stateId,
+          blocId: m.blocId,
+          blocName: m.blocName,
+          logo: m.logo,
+        });
+      }
+    }
+
+    res.json(expanded);
+  } catch (e: any) {
+    console.error("[BlocsMap] Error:", e?.message || e);
+    res.status(500).json({ error: "Errore nel caricamento mappa blocchi" });
+  }
 });
 
 app.get("/api/blocs/:id", authenticate, async (req: any, res) => {

@@ -77,6 +77,7 @@ const OWNER_COLORS = [
 ];
 
 const GOV_COLORS: Record<string, string> = {
+  INDEPENDENT_REGION: "#94a3b8", // neutral light gray
   PARLIAMENTARY_REPUBLIC: "#3b82f6",
   PRESIDENTIAL_REPUBLIC: "#06b6d4",
   DOMINANT_PARTY: "#8b5cf6",
@@ -162,7 +163,21 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
           if (Array.isArray(data)) {
             const map: Record<string, { blocId: string; blocName: string; logo?: string }> = {};
             data.forEach((m: any) => {
-              map[m.stateId] = m;
+              const key = (m.regionId || m.stateId || "").toString();
+              if (!key) return;
+              map[key] = {
+                blocId: m.blocId,
+                blocName: m.blocName,
+                logo: m.logo,
+              };
+              // Back-compat: also index by stateId when present
+              if (m.stateId) {
+                map[String(m.stateId)] = {
+                  blocId: m.blocId,
+                  blocName: m.blocName,
+                  logo: m.logo,
+                };
+              }
             });
             setBlocMap(map);
           }
@@ -179,20 +194,32 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
 
     regionByIso.forEach((region, iso2) => {
       if (mapMode === "political") {
-        if (region.ownerUserId) {
+        const isIndependent =
+          !(region as any).nation_id ||
+          ((region as any).territoryStatus && (region as any).territoryStatus !== "STATE_ACTIVE");
+
+        // Regioni indipendenti: grigio neutro (finché non diventano Stati veri)
+        if (isIndependent) {
+          map.set(iso2, DEFAULT_FILL);
+        } else if (region.ownerUserId) {
           map.set(iso2, region.stateColor || hashColor(String(region.ownerUserId)));
         } else {
-          map.set(iso2, DEFAULT_FILL);
+          // Stato attivo ma senza owner esplicito: colore per Stato (nation_id)
+          map.set(iso2, hashColor(String((region as any).nation_id || iso2)));
         }
       } else if (mapMode === "blocs") {
-        const blocData = blocMap[iso2];
+        const blocKey = String((region as any).nation_id || iso2);
+        const blocData = blocMap[iso2] || blocMap[blocKey];
         if (blocData) {
           map.set(iso2, hashColor(blocData.blocId));
         } else {
           map.set(iso2, DEFAULT_FILL);
         }
       } else if (mapMode === "government") {
-        const form = region.governmentForm || "PARLIAMENTARY_REPUBLIC";
+        const isIndependent =
+          !(region as any).nation_id ||
+          ((region as any).territoryStatus && (region as any).territoryStatus !== "STATE_ACTIVE");
+        const form = isIndependent ? "INDEPENDENT_REGION" : (region.governmentForm || "PARLIAMENTARY_REPUBLIC");
         map.set(iso2, GOV_COLORS[form] || DEFAULT_FILL);
       }
     });
@@ -315,22 +342,11 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
         </select>
       </div>
 
-      {/* Legend */}
-      <div className="absolute top-16 left-4 z-40 bg-slate-800/90 backdrop-blur-md p-3 rounded-2xl border border-slate-700 shadow-xl max-w-[180px] max-h-[60vh] overflow-y-auto">
-        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Legenda</p>
-        <div className="space-y-1.5">
-          {mapMode === "political" && (
-            <>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                <span className="text-[9px] font-bold text-slate-200">Occupato</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-slate-700" />
-                <span className="text-[9px] font-bold text-slate-200">Neutrale</span>
-              </div>
-            </>
-          )}
+      {/* Legend (hidden on political map) */}
+      {mapMode !== "political" && (
+        <div className="absolute top-16 left-4 z-40 bg-slate-800/90 backdrop-blur-md p-3 rounded-2xl border border-slate-700 shadow-xl max-w-[180px] max-h-[60vh] overflow-y-auto">
+          <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-2">Legenda</p>
+          <div className="space-y-1.5">
           {mapMode === "blocs" && (
             <>
               {(() => {
@@ -347,7 +363,12 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
                 return blocEntries.map((bloc) => (
                   <div key={bloc.blocId} className="flex items-center gap-2">
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: hashColor(bloc.blocId) }} />
-                    <span className="text-[8px] font-bold text-slate-200 truncate">{bloc.logo ? `${bloc.logo} ` : ''}{bloc.blocName || 'Blocco'}</span>
+                    {bloc.logo && String(bloc.logo).startsWith("http") ? (
+                      <img src={bloc.logo} alt="" className="w-3 h-3 rounded-sm object-cover flex-shrink-0" />
+                    ) : bloc.logo ? (
+                      <span className="text-[10px] leading-none flex-shrink-0">{bloc.logo}</span>
+                    ) : null}
+                    <span className="text-[8px] font-bold text-slate-200 truncate">{bloc.blocName || 'Blocco'}</span>
                   </div>
                 ));
               })()}
@@ -359,6 +380,10 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
           )}
           {mapMode === "government" && (
             <>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-sm bg-[#94a3b8]" />
+                <span className="text-[8px] font-bold text-slate-200">Regione Indipendente</span>
+              </div>
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 rounded-sm bg-[#3b82f6]" />
                 <span className="text-[8px] font-bold text-slate-200">Rep. Parlamentare</span>
@@ -394,8 +419,9 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
               <span className="text-[8px] font-bold text-slate-200">Enclave</span>
             </div>
           )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Zoom Controls */}
       <div className="absolute top-4 right-4 z-40 flex flex-col gap-1">
@@ -531,7 +557,8 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
               {filtered.map((c) => {
                 const regionData = regionByIso.get(c.iso2);
                 const isOwned = regionData?.ownerUserId;
-                const blocData = blocMap[c.iso2];
+                const blocKey = String((regionData as any)?.nation_id || c.iso2);
+                const blocData = blocMap[c.iso2] || blocMap[blocKey];
                 let subText = isOwned ? " • 🟣 Occupato" : " • Neutrale";
                 if (mapMode === "blocs" && blocData)
                   subText = ` • 🛡️ ${blocData.blocName}`;

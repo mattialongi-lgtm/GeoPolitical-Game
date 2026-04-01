@@ -72,6 +72,8 @@ export interface Region {
   economicAdviserId: string | null;
   foreignMinisterId: string | null;
   dictatorshipAttempts: number;
+  nation_id?: string | null;
+  territoryStatus?: 'INDEPENDENT_REGION' | 'PARLIAMENTARY_ELECTION' | 'PRESIDENTIAL_ELECTION' | 'STATE_ACTIVE' | string | null;
   // Autonomy fields
   isCapital?: boolean;
   isAutonomous?: boolean;

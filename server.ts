@@ -925,11 +925,11 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     const economyMinister = ministers?.find(m => m.role === 'economics' || m.role === 'ECONOMICS');
     const foreignMinister = ministers?.find(m => m.role === 'foreign' || m.role === 'FOREIGN');
 
-    // 3. Fetch Regions (Robust query to catch legacy/mismatched links)
+    // 3. Fetch Regions belonging to this nation via the nation_id foreign key
     const { data: regions, error: regionsError } = await supabase
       .from('regions')
       .select('id, name, population, "developmentIndex", governor:users!governorPlayerId(username), "isAutonomous", "energyGeneration", "energyConsumption", "residencePolicy", "workRestrictions", "nextLeaderElectionAt"')
-      .or(`nation_id.eq.${nationId},id.ilike.${nationId}-%`);
+      .eq('nation_id', nationId);
 
     if (regionsError) {
       console.error(`[StatePage] Error fetching regions for ${nationId}:`, regionsError.message);

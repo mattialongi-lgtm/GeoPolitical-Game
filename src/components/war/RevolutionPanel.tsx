@@ -37,7 +37,7 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
   const [loadingLobbies, setLoadingLobbies] = useState(false);
 
   const canRevolution = userGold >= GAME_CONFIG.WAR_REVOLUTION_GOLD_COST;
-  const canCoup = regionDevelopment <= GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT;
+  const canCoup = regionDevelopment === GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT;
 
   const fetchLobbies = async () => {
     if (!regionId) return;
@@ -142,7 +142,7 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
           <div className="flex items-center gap-2 bg-amber-500/30 rounded-xl p-2">
             <AlertTriangle className="w-4 h-4 text-amber-200 flex-shrink-0" />
             <span className="text-[10px] font-bold text-amber-100">
-              Se vinci: regione indipendente, -50% edifici, cambio governo. Cooldown: 4 giorni.
+              Se vinci: regione indipendente, -50% edifici, cambio governo. Cooldown: 5 giorni.
             </span>
           </div>
         </div>
@@ -153,7 +153,7 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
             <div>
               <p className="font-black text-sm uppercase">⚡ Colpo di Stato</p>
               <p className="text-[9px] font-medium text-rose-200">
-                Solo se sviluppo ≤ {GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT} • Min. {GAME_CONFIG.WAR_COUP_MIN_PLAYERS} giocatori
+                Solo se sviluppo = {GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT} • Min. {GAME_CONFIG.WAR_COUP_MIN_PLAYERS} giocatori
               </p>
             </div>
             {coupLobby && (

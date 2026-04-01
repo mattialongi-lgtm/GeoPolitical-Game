@@ -317,14 +317,19 @@ async function getCachedDeepLevels() {
 const calculateMinisterWage = async (stateId: string, role: string) => {
   const { data: region } = await supabase
     .from('regions')
-    .select('governmentForm, education, health, economyLevel, ownerUserId')
+    .select('governmentForm, economyLevel, ownerUserId, healthIndex, educationIndex, developmentIndex')
     .eq('id', stateId)
     .single();
 
   if (!region) return 0;
 
-  // 1. Base from Development Index (Avg of Edu, Health, Economy)
-  const devIndex = (region.education + region.health + region.economyLevel) / 3;
+  // 1. Base from regional indices (no legacy Health/Education/Military params)
+  const devIndex =
+    ((region.developmentIndex ?? 1) +
+      (region.educationIndex ?? 1) +
+      (region.healthIndex ?? 1) +
+      (region.economyLevel ?? 1)) /
+    4;
 
   // 2. Multiplier from Government Form
   let govMult = 1.0;
@@ -1681,9 +1686,7 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
           id: isoId,
           name: isoId,
           population: 1000000,
-          health: 1,
-          education: 1,
-          military: 1,
+          economyLevel: 1,
           stability: 5
         })
         .select()
@@ -1737,10 +1740,11 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       })) || [region],
       indicators: {
         ...(gameStats?.indicators || {}),
-        health: region.health || 1,
-        education: region.education || 1,
-        military: region.military || 1,
-        stability: region.stability || 1
+        healthIndex: region.healthIndex || 1,
+        educationIndex: region.educationIndex || 1,
+        militaryIndex: region.militaryIndex || 1,
+        developmentIndex: region.developmentIndex || 1,
+        stability: region.stability || 1,
       }
     };
 
@@ -4121,6 +4125,136 @@ const normalizeWarAutoType = (value: any): 'hourly' | 'maximum' => {
   return value === 'hourly' ? 'hourly' : 'maximum';
 };
 
+let missingAutomationTablesWarned = {
+  work: false,
+  training: false,
+} as { work: boolean; training: boolean };
+
+async function processAutomationTick() {
+  try {
+    // 1. Process auto-work
+    const { data: activeAutoWork, error: autoWorkErr } = await supabase
+      .from('work_auto_actions')
+      .select('*')
+      .eq('isActive', true);
+
+    if (autoWorkErr) {
+      if (autoWorkErr.code === 'PGRST205') {
+        if (!missingAutomationTablesWarned.work) {
+          missingAutomationTablesWarned.work = true;
+          console.error('[AUTOMATION] work_auto_actions missing. Apply supabase/migration_automation_modes.sql to your DB.');
+        }
+      } else {
+        console.error('[AUTOMATION] work_auto_actions read error:', autoWorkErr);
+      }
+    } else if (activeAutoWork && activeAutoWork.length > 0) {
+      for (const aw of activeAutoWork) {
+        if (isAutomationExpired(aw.activatedAt, aw.expiresAt)) {
+          await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
+          continue;
+        }
+
+        const mode: 'standard' = 'standard';
+        if (!shouldRecurringAutomationFire(mode, aw.lastFiredAt, aw.activatedAt)) continue;
+
+        try {
+          await performWorkAction(aw.userId, aw.factoryId, { allowAutoDrink: true });
+          await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
+        } catch (err: any) {
+          const message = (err?.message || '').toLowerCase();
+
+          // Fatal / invalid config → disable automation
+          if (err?.statusCode === 404 || message.includes('fabbrica non trovata') || message.includes('devi viaggiare')) {
+            await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
+            continue;
+          }
+
+          // Non-fatal expected errors (cooldown/budget/storage/energy/permits):
+          // backoff to avoid retrying every minute when lastFiredAt is null.
+          await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
+        }
+      }
+    }
+
+    // 2. Process hourly training damage
+    const { data: activeAutoTraining, error: autoTrainingErr } = await supabase
+      .from('training_auto_actions')
+      .select('*')
+      .eq('isActive', true);
+
+    if (autoTrainingErr) {
+      if (autoTrainingErr.code === 'PGRST205') {
+        if (!missingAutomationTablesWarned.training) {
+          missingAutomationTablesWarned.training = true;
+          console.error('[AUTOMATION] training_auto_actions missing. Apply supabase/migration_automation_modes.sql to your DB.');
+        }
+      } else {
+        console.error('[AUTOMATION] training_auto_actions read error:', autoTrainingErr);
+      }
+    } else if (activeAutoTraining && activeAutoTraining.length > 0) {
+      for (const at of activeAutoTraining) {
+        if (isAutomationExpired(at.activatedAt, at.expiresAt)) {
+          await supabase.from('training_auto_actions').update({ isActive: false }).eq('id', at.id);
+          continue;
+        }
+        if (!shouldRecurringAutomationFire('hourly', at.lastFiredAt, at.activatedAt)) continue;
+
+        try {
+          await performTrainingAction(at.userId, { freeHourly: true });
+          await supabase.from('training_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', at.id);
+        } catch {
+          // Keep active until expiration.
+        }
+      }
+    }
+
+    // 3. Process auto-attacks
+    const { data: activeAutoAttacks, error: autoAttacksErr } = await supabase
+      .from('war_auto_attacks')
+      .select('*')
+      .eq('isActive', true);
+
+    if (autoAttacksErr) {
+      console.error('[AUTOMATION] war_auto_attacks read error:', autoAttacksErr);
+    } else if (activeAutoAttacks && activeAutoAttacks.length > 0) {
+      for (const aa of activeAutoAttacks) {
+        if (isAutomationExpired(aa.activatedAt, aa.expiresAt)) {
+          await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+          continue;
+        }
+
+        if (!shouldRecurringAutomationFire(aa.autoType, aa.lastFiredAt, aa.activatedAt)) continue;
+
+        // Check war is still active
+        const { data: war } = await supabase.from('wars').select('status').eq('id', aa.warId).single();
+        if (!war || war.status !== 'active') {
+          await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+          continue;
+        }
+
+        try {
+          await performWarDeployAction({
+            userId: aa.userId,
+            warId: aa.warId,
+            side: aa.side,
+            weaponId: aa.troopType,
+            ignoreEnergyCost: aa.autoType === 'hourly',
+            allowAutoDrink: aa.autoType !== 'hourly',
+          });
+          await supabase.from('war_auto_attacks').update({ lastFiredAt: new Date().toISOString() }).eq('id', aa.id);
+        } catch (err: any) {
+          const message = (err?.message || '').toLowerCase();
+          if (err?.statusCode === 404 || message.includes('guerra inesistente') || message.includes('armamento sconosciuto')) {
+            await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[AUTOMATION] processAutomationTick error:', error);
+  }
+}
+
 async function tryUseEnergyDrinkForUser(userId: string): Promise<boolean> {
   const now = Date.now();
   const { data: freshUser, error: readError } = await supabase
@@ -4967,12 +5101,23 @@ app.get("/api/wars/:warId/available-troops", authenticate, async (req: any, res)
 // === AUTO-ATTACK ===
 
 app.get("/api/automation/work", authenticate, async (req: any, res) => {
-  const { data: autoWork } = await supabase
+  const { data: autoWork, error: readError } = await supabase
     .from('work_auto_actions')
     .select('*')
     .eq('userId', req.user.id)
     .eq('isActive', true)
     .maybeSingle();
+
+  if (readError) {
+    if (readError.code === 'PGRST205') {
+      return res.json({
+        autoWork: null,
+        disabled: true,
+        warning: "Tabella automazioni mancante: applica supabase/migration_automation_modes.sql nel SQL Editor di Supabase.",
+      });
+    }
+    return res.status(500).json({ error: "Errore nel caricamento dell'auto-lavoro." });
+  }
 
   if (autoWork && isAutomationExpired(autoWork.activatedAt, autoWork.expiresAt)) {
     await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', autoWork.id);
@@ -4986,14 +5131,17 @@ app.post("/api/automation/work", authenticate, async (req: any, res) => {
   try {
     const { factoryId, enabled } = req.body || {};
     if (enabled === false) {
-      await supabase.from('work_auto_actions').update({ isActive: false }).eq('userId', req.user.id);
+      const { error: disableError } = await supabase.from('work_auto_actions')
+        .update({ isActive: false })
+        .eq('userId', req.user.id);
+      if (disableError) throw disableError;
       return res.json({ success: true, message: "Auto-lavoro disattivato." });
     }
 
     if (!factoryId) return res.status(400).json({ error: "Factory mancante per auto-lavoro." });
 
     const expiresAt = new Date(Date.now() + AUTOMATION_EXPIRE_MS).toISOString();
-    await supabase.from('work_auto_actions').upsert({
+    const { error: upsertError } = await supabase.from('work_auto_actions').upsert({
       userId: req.user.id,
       factoryId,
       mode: 'standard',
@@ -5002,20 +5150,35 @@ app.post("/api/automation/work", authenticate, async (req: any, res) => {
       lastFiredAt: null,
       expiresAt,
     }, { onConflict: 'userId' });
+    if (upsertError) throw upsertError;
 
     res.json({ success: true, expiresAt });
   } catch (err: any) {
+    if (err?.code === 'PGRST205') {
+      return res.status(503).json({ error: "Automazioni non disponibili: applica supabase/migration_automation_modes.sql nel DB (manca work_auto_actions)." });
+    }
     res.status(500).json({ error: "Errore nell'impostazione dell'auto-lavoro." });
   }
 });
 
 app.get("/api/automation/training", authenticate, async (req: any, res) => {
-  const { data: autoTraining } = await supabase
+  const { data: autoTraining, error: readError } = await supabase
     .from('training_auto_actions')
     .select('*')
     .eq('userId', req.user.id)
     .eq('isActive', true)
     .maybeSingle();
+
+  if (readError) {
+    if (readError.code === 'PGRST205') {
+      return res.json({
+        autoTraining: null,
+        disabled: true,
+        warning: "Tabella automazioni mancante: applica supabase/migration_automation_modes.sql nel SQL Editor di Supabase.",
+      });
+    }
+    return res.status(500).json({ error: "Errore nel caricamento del danno orario." });
+  }
 
   if (autoTraining && isAutomationExpired(autoTraining.activatedAt, autoTraining.expiresAt)) {
     await supabase.from('training_auto_actions').update({ isActive: false }).eq('id', autoTraining.id);
@@ -5068,7 +5231,10 @@ app.post("/api/automation/training", authenticate, async (req: any, res) => {
     }, { onConflict: 'userId' });
 
     res.json({ success: true, expiresAt, mode });
-  } catch {
+  } catch (err: any) {
+    if (err?.code === 'PGRST205') {
+      return res.status(503).json({ error: "Automazioni non disponibili: applica supabase/migration_automation_modes.sql nel DB (manca training_auto_actions)." });
+    }
     res.status(500).json({ error: "Errore nell'impostazione del danno orario." });
   }
 });
@@ -7602,34 +7768,6 @@ export const LawRegistry: Record<string, {
       await supabase.from('regions').update({ residencePolicy: 'closed' }).eq('id', region.id);
     }
   },
-  build_hospital: {
-    category: "Costruzioni Statali",
-    icon: "Heart",
-    title: "Costruzione Ospedale",
-    description: "Aumenta la Salute (Health) della nazione di 1 punto. Costo: $25.000",
-    threshold: 0.5,
-    delayDays: 1,
-    validate: async (region, params, proposer) => {
-      if (region.health >= 11) return "Livello Salute già al massimo (11).";
-      const { data: budget } = await supabase.from('budgets').select('moneyEUR').eq('ownerType', 'REGION').eq('ownerId', region.id).single();
-      if (!budget || budget.moneyEUR < 25000) return "Fondi statali in bilancio insufficienti ($25.000 richiesti).";
-      return null;
-    },
-    execute: async (region) => {
-      const { data: currentRegion } = await supabase.from('regions').select('health').eq('id', region.id).single();
-      if (currentRegion && currentRegion.health < 11) {
-        await supabase.rpc('add_budget_transaction', {
-          p_owner_type: 'REGION',
-          p_owner_id: region.id,
-          p_type: 'EXPENSE',
-          p_subtype: 'BUILDING',
-          p_money_delta: -25000,
-          p_metadata: { building: 'hospital' }
-        });
-        await supabase.from('regions').update({ health: currentRegion.health + 1 }).eq('id', region.id);
-      }
-    }
-  },
   migration_agreement: {
     category: "Diplomazia",
     icon: "PlaneTakeoff",
@@ -7694,62 +7832,6 @@ export const LawRegistry: Record<string, {
 
       // Reset the other side to unilateral if it was bilateral
       await supabase.from('migration_agreements').update({ type: 'UNILATERAL' }).eq('fromStateId', params.targetRegionId).eq('toStateId', region.id);
-    }
-  },
-  build_military_base: {
-    category: "Costruzioni Statali",
-    icon: "ShieldAlert",
-    title: "Base Militare",
-    description: "Aumenta la potenza Militare della nazione di 1 punto. Costo: $50.000",
-    threshold: 0.5,
-    delayDays: 1,
-    validate: async (region, params, proposer) => {
-      if (region.military >= 11) return "Livello Militare già al massimo (11).";
-      const { data: budget } = await supabase.from('budgets').select('moneyEUR').eq('ownerType', 'REGION').eq('ownerId', region.id).single();
-      if (!budget || budget.moneyEUR < 50000) return "Fondi statali in bilancio insufficienti ($50.000 richiesti).";
-      return null;
-    },
-    execute: async (region) => {
-      const { data: currentRegion } = await supabase.from('regions').select('military').eq('id', region.id).single();
-      if (currentRegion && currentRegion.military < 11) {
-        await supabase.rpc('add_budget_transaction', {
-          p_owner_type: 'REGION',
-          p_owner_id: region.id,
-          p_type: 'EXPENSE',
-          p_subtype: 'BUILDING',
-          p_money_delta: -50000,
-          p_metadata: { building: 'military_base' }
-        });
-        await supabase.from('regions').update({ military: currentRegion.military + 1 }).eq('id', region.id);
-      }
-    }
-  },
-  build_school: {
-    category: "Costruzioni Statali",
-    icon: "GraduationCap",
-    title: "Costruzione Scuola",
-    description: "Aumenta l'Istruzione (Education) della nazione di 1 punto. Costo: $20.000",
-    threshold: 0.5,
-    delayDays: 1,
-    validate: async (region, params, proposer) => {
-      if (region.education >= 11) return "Livello Istruzione già al massimo (11).";
-      const { data: budget } = await supabase.from('budgets').select('moneyEUR').eq('ownerType', 'REGION').eq('ownerId', region.id).single();
-      if (!budget || budget.moneyEUR < 20000) return "Fondi statali in bilancio insufficienti ($20.000 richiesti).";
-      return null;
-    },
-    execute: async (region) => {
-      const { data: currentRegion } = await supabase.from('regions').select('education').eq('id', region.id).single();
-      if (currentRegion && currentRegion.education < 11) {
-        await supabase.rpc('add_budget_transaction', {
-          p_owner_type: 'REGION',
-          p_owner_id: region.id,
-          p_type: 'EXPENSE',
-          p_subtype: 'BUILDING',
-          p_money_delta: -20000,
-          p_metadata: { building: 'school' }
-        });
-        await supabase.from('regions').update({ education: currentRegion.education + 1 }).eq('id', region.id);
-      }
     }
   },
   declare_war: {
@@ -11291,96 +11373,7 @@ async function checkAndResolveWars() {
       }
     }
 
-    // 3. Process auto-work
-    const { data: activeAutoWork } = await supabase
-      .from('work_auto_actions')
-      .select('*')
-      .eq('isActive', true);
-
-    if (activeAutoWork && activeAutoWork.length > 0) {
-      for (const aw of activeAutoWork) {
-        if (isAutomationExpired(aw.activatedAt, aw.expiresAt)) {
-          await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
-          continue;
-        }
-        if (!shouldRecurringAutomationFire('standard', aw.lastFiredAt, aw.activatedAt)) continue;
-
-        try {
-          await performWorkAction(aw.userId, aw.factoryId, { allowAutoDrink: true });
-          await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
-        } catch (err: any) {
-          const message = (err?.message || '').toLowerCase();
-          if (err?.statusCode === 404 || message.includes('fabbrica non trovata') || message.includes('devi viaggiare')) {
-            await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
-          }
-        }
-      }
-    }
-
-    // 4. Process hourly training damage
-    const { data: activeAutoTraining } = await supabase
-      .from('training_auto_actions')
-      .select('*')
-      .eq('isActive', true);
-
-    if (activeAutoTraining && activeAutoTraining.length > 0) {
-      for (const at of activeAutoTraining) {
-        if (isAutomationExpired(at.activatedAt, at.expiresAt)) {
-          await supabase.from('training_auto_actions').update({ isActive: false }).eq('id', at.id);
-          continue;
-        }
-        if (!shouldRecurringAutomationFire('hourly', at.lastFiredAt, at.activatedAt)) continue;
-
-        try {
-          await performTrainingAction(at.userId, { freeHourly: true });
-          await supabase.from('training_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', at.id);
-        } catch {
-          // Keep active until expiration.
-        }
-      }
-    }
-
-    // 5. Process auto-attacks
-    const { data: activeAutoAttacks } = await supabase
-      .from('war_auto_attacks')
-      .select('*')
-      .eq('isActive', true);
-
-    if (activeAutoAttacks && activeAutoAttacks.length > 0) {
-      for (const aa of activeAutoAttacks) {
-        if (isAutomationExpired(aa.activatedAt, aa.expiresAt)) {
-          await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
-          continue;
-        }
-        if (shouldRecurringAutomationFire(aa.autoType, aa.lastFiredAt, aa.activatedAt)) {
-          // Check war is still active
-          const { data: war } = await supabase.from('wars').select('status').eq('id', aa.warId).single();
-          if (!war || war.status !== 'active') {
-            await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
-            continue;
-          }
-
-          try {
-            await performWarDeployAction({
-              userId: aa.userId,
-              warId: aa.warId,
-              side: aa.side,
-              weaponId: aa.troopType,
-              ignoreEnergyCost: aa.autoType === 'hourly',
-              allowAutoDrink: aa.autoType !== 'hourly',
-            });
-            await supabase.from('war_auto_attacks').update({
-              lastFiredAt: new Date().toISOString(),
-            }).eq('id', aa.id);
-          } catch (err: any) {
-            const message = (err?.message || '').toLowerCase();
-            if (err?.statusCode === 404 || message.includes('guerra inesistente') || message.includes('armamento sconosciuto')) {
-              await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
-            }
-          }
-        }
-      }
-    }
+    // Automations are processed by processAutomationTick()
   } catch (error) {
     console.error("Error in checkAndResolveWars:", error);
   }
@@ -11596,6 +11589,7 @@ async function startServer() {
   checkAndResolveLeaderElections();
   checkAndResolveLaws();
   checkAndResolveWars();
+  processAutomationTick();
 
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
@@ -11642,6 +11636,7 @@ async function startServer() {
     checkAndAdvanceIndependentRegions();
     checkAndResolveLaws();
     checkAndResolveWars();
+    processAutomationTick();
   }, 60 * 1000); // Check every minute
 
   // Daily Resource Reset (check every 5 minutes, run once per day at UTC midnight)

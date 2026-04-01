@@ -3687,9 +3687,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   };
 
   const resources = Array.isArray(region.resources) ? region.resources : [];
-  const health = region.health || 1;
-  const education = region.education || 1;
-  const military = region.military || 1;
   const canManageMigration = user?.id === region.ownerUserId || user?.id === region.foreignMinisterId;
 
   return (
@@ -4276,40 +4273,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                   </div>
                 );
               })}
-            </div>
-          </div>
-
-          {/* National Development */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
-            <div className="flex justify-between items-end">
-              <h3 className="text-lg font-black uppercase tracking-tight">Sviluppo Nazionale</h3>
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Obiettivo: 10/10</span>
-            </div>
-            <div className="space-y-5">
-              {[
-                { label: "Infrastruttura Sanitaria", desc: "Efficienza dei servizi medici", val: health, icon: "❤️", color: "#ef4444" },
-                { label: "Indice di Sviluppo", desc: "Progresso tecnologico e culturale", val: education, icon: "📚", color: "#6366f1" },
-                { label: "Potenziale Bellico", desc: "Capacità difensiva e riserve armate", val: military, icon: "🛡️", color: "#f97316" },
-              ].map(ind => (
-                <div key={ind.label} className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-base">{ind.icon}</span>
-                      <div>
-                        <p className="text-[11px] font-black text-slate-700 uppercase tracking-widest">{ind.label}</p>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase">{ind.desc}</p>
-                      </div>
-                    </div>
-                    <span className="text-sm font-black text-slate-700">{ind.val}/10</span>
-                  </div>
-                  <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-700"
-                      style={{ width: `${(ind.val / 10) * 100}%`, backgroundColor: ind.color }}
-                    />
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
 

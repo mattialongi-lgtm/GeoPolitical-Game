@@ -55,9 +55,6 @@ export interface Region {
   stability: number; // 1-10
   treasury: number;
   economyLevel: number; // 1-10
-  health: number; // 1-10
-  education: number; // 1-10
-  military: number; // 1-10
   ownerUserId: string | null;
   ownerName: string | null;
   leaderUserId: string | null;

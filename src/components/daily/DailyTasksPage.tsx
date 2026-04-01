@@ -62,8 +62,8 @@ export default function DailyTasksPage({ user, regions }: DailyTasksPageProps) {
     handleClaimBonus,
   } = useDailyMissions();
 
-  // Derive farming bonus from region health
-  const regionHealth = playerRegion?.health || 5;
+  // Derive farming bonus from regional health index
+  const regionHealth = playerRegion?.healthIndex || 5;
   const farmingBonus = {
     regionHealth,
     bonusMultiplier: Math.min(1 + regionHealth * 0.05, 1.50),

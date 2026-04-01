@@ -76,7 +76,7 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
         pollution: playerRegion.pollution || 0,
         militaryAcademies: 0, // TODO: fetch from API if needed
         onlinePlayers: dashboardStats?.region?.online || 0,
-        health: playerRegion.health || 5,
+        health: playerRegion.healthIndex || 5,
         stability: playerRegion.stability || 5,
       }
     : { ...DEFAULT_REGION_STATS, id: user.regionId || '', name: user.regionId || 'N/A' };

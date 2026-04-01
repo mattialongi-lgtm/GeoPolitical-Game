@@ -34,6 +34,8 @@ DROP TABLE IF EXISTS work_permits CASCADE;
 DROP TABLE IF EXISTS leader_votes CASCADE;
 DROP TABLE IF EXISTS leader_candidates CASCADE;
 DROP TABLE IF EXISTS user_factory_cooldowns CASCADE;
+DROP TABLE IF EXISTS work_auto_actions CASCADE;
+DROP TABLE IF EXISTS training_auto_actions CASCADE;
 DROP TABLE IF EXISTS factories CASCADE;
 DROP TABLE IF EXISTS user_inventory CASCADE;
 DROP TABLE IF EXISTS market_offers CASCADE;
@@ -282,6 +284,48 @@ CREATE TABLE user_factory_cooldowns (
     "lastUsed" TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY ("userId", "factoryId")
 );
+
+-- AUTOMATION MODES (Work / Hourly training)
+CREATE TABLE work_auto_actions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  "userId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  "factoryId" UUID NOT NULL REFERENCES factories(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL DEFAULT 'standard' CHECK (mode IN ('standard')),
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "lastFiredAt" TIMESTAMPTZ,
+  "activatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "expiresAt" TIMESTAMPTZ
+);
+
+ALTER TABLE work_auto_actions
+  ADD CONSTRAINT work_auto_actions_userId_key UNIQUE ("userId");
+
+CREATE INDEX idx_work_auto_actions_userId
+  ON work_auto_actions("userId");
+
+CREATE INDEX idx_work_auto_actions_isActive
+  ON work_auto_actions("isActive")
+  WHERE "isActive" = true;
+
+CREATE TABLE training_auto_actions (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  "userId" UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL DEFAULT 'hourly' CHECK (mode IN ('hourly')),
+  "isActive" BOOLEAN NOT NULL DEFAULT true,
+  "lastFiredAt" TIMESTAMPTZ,
+  "activatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "expiresAt" TIMESTAMPTZ
+);
+
+ALTER TABLE training_auto_actions
+  ADD CONSTRAINT training_auto_actions_userId_key UNIQUE ("userId");
+
+CREATE INDEX idx_training_auto_actions_userId
+  ON training_auto_actions("userId");
+
+CREATE INDEX idx_training_auto_actions_isActive
+  ON training_auto_actions("isActive")
+  WHERE "isActive" = true;
 
 -- MARKET OFFERS
 CREATE TABLE market_offers (

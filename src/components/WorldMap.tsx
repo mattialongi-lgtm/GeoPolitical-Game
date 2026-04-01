@@ -8,11 +8,32 @@ import {
   ComposableMap,
   Geographies,
   Geography,
+  Marker,
   ZoomableGroup,
 } from "react-simple-maps";
 import { ChevronRight, ZoomIn, ZoomOut, RotateCcw } from "lucide-react";
 import type { Region } from "../types";
 import worldTopoJson from "../assets/maps/world_adm1.topo.json";
+
+/**
+ * Default enclave definitions used when the backend does not yet provide
+ * isEnclave / enclaveMarkerLat / enclaveMarkerLng columns.
+ * Key = ISO-2 code, value = { lat, lng, size }.
+ */
+const DEFAULT_ENCLAVE_DATA: Record<string, { lat: number; lng: number; size: number }> = {
+  VA: { lat: 41.90, lng: 12.45, size: 6 },
+  SM: { lat: 43.94, lng: 12.46, size: 6 },
+  MC: { lat: 43.73, lng: 7.42, size: 6 },
+  LI: { lat: 47.14, lng: 9.55, size: 6 },
+  AD: { lat: 42.54, lng: 1.58, size: 6 },
+  MT: { lat: 35.94, lng: 14.40, size: 6 },
+  LU: { lat: 49.82, lng: 6.13, size: 6 },
+  BH: { lat: 26.07, lng: 50.55, size: 6 },
+  SG: { lat: 1.35, lng: 103.82, size: 6 },
+  MO: { lat: 22.20, lng: 113.54, size: 6 },
+  HK: { lat: 22.32, lng: 114.17, size: 6 },
+  BN: { lat: 4.94, lng: 114.95, size: 6 },
+};
 
 const MAP_COUNTRIES = [
   { iso2: "AF", name: "Afghanistan", flag: "🇦🇫" }, { iso2: "DZ", name: "Algeria", flag: "🇩🇿" },
@@ -71,8 +92,18 @@ interface TooltipInfo {
   name: string;
   iso2: string;
   ownerName?: string | null;
+  isEnclave?: boolean;
   x: number;
   y: number;
+}
+
+interface EnclaveMarker {
+  iso2: string;
+  name: string;
+  lat: number;
+  lng: number;
+  size: number;
+  color: string;
 }
 
 interface WorldMapProps {
@@ -172,6 +203,46 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
     return map;
   }, [regions]);
 
+  // Compute enclave markers: regions that either have isEnclave=true from the
+  // backend or are present in the DEFAULT_ENCLAVE_DATA fallback map.
+  const enclaveMarkers = useMemo(() => {
+    const markers: EnclaveMarker[] = [];
+    const seen = new Set<string>();
+
+    // First pass: regions flagged from the backend
+    regions.forEach((r) => {
+      if (r.isEnclave && r.enclaveMarkerLat != null && r.enclaveMarkerLng != null) {
+        seen.add(r.id);
+        markers.push({
+          iso2: r.id,
+          name: r.name,
+          lat: r.enclaveMarkerLat,
+          lng: r.enclaveMarkerLng,
+          size: r.enclaveMarkerSize ?? 6,
+          color: colorMap.get(r.id) || DEFAULT_FILL,
+        });
+      }
+    });
+
+    // Second pass: fallback defaults for regions that exist in the game but
+    // have not been flagged yet by the backend.
+    for (const [iso2, data] of Object.entries(DEFAULT_ENCLAVE_DATA)) {
+      if (seen.has(iso2)) continue;
+      const region = regionByIso.get(iso2);
+      if (!region) continue; // region not in the game — skip
+      markers.push({
+        iso2,
+        name: region.name,
+        lat: data.lat,
+        lng: data.lng,
+        size: data.size,
+        color: colorMap.get(iso2) || DEFAULT_FILL,
+      });
+    }
+
+    return markers;
+  }, [regions, regionByIso, colorMap]);
+
   const filtered = useMemo(
     () =>
       search.length >= 1
@@ -210,10 +281,12 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
       const iso2 = (geo.properties.ISO_A2 || "").trim().toUpperCase();
       const name = geo.properties.name || "";
       const region = regionByIso.get(iso2);
+      const isEnclave = region?.isEnclave || !!DEFAULT_ENCLAVE_DATA[iso2];
       setTooltip({
         name,
         iso2,
         ownerName: region?.ownerName || null,
+        isEnclave,
         x: e.clientX,
         y: e.clientY,
       });
@@ -308,6 +381,15 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
               </div>
             </>
           )}
+          {/* Enclave marker legend (always visible when enclaves exist) */}
+          {enclaveMarkers.length > 0 && (
+            <div className="flex items-center gap-2 pt-1 border-t border-slate-700/50 mt-1">
+              <div className="w-2.5 h-2.5 rounded-full bg-slate-400 border border-white/60 flex items-center justify-center">
+                <div className="w-1 h-1 rounded-full bg-white/70" />
+              </div>
+              <span className="text-[8px] font-bold text-slate-200">Enclave</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -344,7 +426,12 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
         >
           <p className="font-black">{tooltip.name}</p>
           {tooltip.iso2 && (
-            <p className="text-[10px] text-slate-400 uppercase">{tooltip.iso2}</p>
+            <p className="text-[10px] text-slate-400 uppercase">
+              {tooltip.iso2}
+              {tooltip.isEnclave && (
+                <span className="ml-1 text-amber-400 normal-case">• Enclave</span>
+              )}
+            </p>
           )}
           {tooltip.ownerName && (
             <p className="text-[10px] text-indigo-400">👑 {tooltip.ownerName}</p>
@@ -385,6 +472,50 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
               })
             }
           </Geographies>
+
+          {/* Enclave markers — rendered on top of geographies */}
+          {enclaveMarkers.map((enc) => (
+            <Marker
+              key={`enclave-${enc.iso2}`}
+              coordinates={[enc.lng, enc.lat]}
+              onClick={() => onRegionClick(enc.iso2)}
+              onMouseEnter={(e: React.MouseEvent) => {
+                const region = regionByIso.get(enc.iso2);
+                setTooltip({
+                  name: enc.name,
+                  iso2: enc.iso2,
+                  ownerName: region?.ownerName || null,
+                  isEnclave: true,
+                  x: e.clientX,
+                  y: e.clientY,
+                });
+              }}
+              onMouseLeave={handleMouseLeave}
+              style={{ cursor: "pointer" }}
+            >
+              {/* Outer glow ring */}
+              <circle
+                r={enc.size + 2}
+                fill="transparent"
+                stroke="#e2e8f0"
+                strokeWidth={0.5}
+                opacity={0.5}
+              />
+              {/* Main marker circle — colored same as region */}
+              <circle
+                r={enc.size}
+                fill={enc.color}
+                stroke="#fff"
+                strokeWidth={1}
+              />
+              {/* Inner dot */}
+              <circle
+                r={enc.size * 0.35}
+                fill="#fff"
+                opacity={0.7}
+              />
+            </Marker>
+          ))}
         </ZoomableGroup>
       </ComposableMap>
 

@@ -105,6 +105,11 @@ export interface Region {
   nextExtractionResetAt?: string;
   autonomyGrantedAt?: string;
   autonomyRevokedAt?: string;
+  // Enclave / micro-region display
+  isEnclave?: boolean;
+  enclaveMarkerLat?: number;
+  enclaveMarkerLng?: number;
+  enclaveMarkerSize?: number;
   // Game Stats (legacy or from Firestore)
   power?: number;
   economy?: number;

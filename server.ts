@@ -654,7 +654,7 @@ app.get("/api/world-stats", authenticate, async (_req, res) => {
   try {
     const onlineThreshold = Date.now() - 5 * 60 * 1000; // 5 minutes
 
-    const [usersRes, onlineRes, regionsRes, nationsRes, blocsRes, partiesRes, factoriesRes] = await Promise.all([
+    const [usersRes, onlineRes, regionsRes, blocsRes, partiesRes, factoriesRes] = await Promise.all([
       supabase.from('users').select('id', { count: 'exact', head: true })
         .not('username', 'ilike', 'app_%')
         .not('username', 'ilike', 'mgr_%')
@@ -666,11 +666,31 @@ app.get("/api/world-stats", authenticate, async (_req, res) => {
         .not('username', 'ilike', 'out_%')
         .not('username', 'ilike', 'res_%'),
       supabase.from('regions').select('id', { count: 'exact', head: true }),
-      supabase.from('nations').select('id', { count: 'exact', head: true }),
       supabase.from('blocs').select('id', { count: 'exact', head: true }),
       supabase.from('parties').select('id', { count: 'exact', head: true }),
       supabase.from('factories').select('id', { count: 'exact', head: true }),
     ]);
+
+    // Count ACTIVE states only (fallback to legacy behavior if column missing)
+    let nationsRes = await supabase
+      .from('nations')
+      .select('id', { count: 'exact', head: true })
+      .eq('isActiveState', true);
+    if (nationsRes.error) {
+      nationsRes = await supabase.from('nations').select('id', { count: 'exact', head: true });
+    }
+    let totalStates = nationsRes.count || 0;
+    if (totalStates === 0 && !nationsRes.error) {
+      // Safety fallback: derive active states from real players if flags not backfilled yet
+      const { data: userNations } = await supabase
+        .from('users')
+        .select('originalNation')
+        .not('username', 'ilike', 'app_%')
+        .not('username', 'ilike', 'mgr_%')
+        .not('username', 'ilike', 'out_%')
+        .not('username', 'ilike', 'res_%');
+      totalStates = new Set((userNations || []).map((u: any) => u.originalNation).filter(Boolean)).size;
+    }
 
     // Count regions with no nation_id (independent)
     const independentRes = await supabase
@@ -682,7 +702,7 @@ app.get("/api/world-stats", authenticate, async (_req, res) => {
       totalPlayers: usersRes.count || 0,
       onlinePlayers: onlineRes.count || 0,
       totalRegions: regionsRes.count || 0,
-      totalStates: nationsRes.count || 0,
+      totalStates,
       totalBlocs: blocsRes.count || 0,
       independentRegions: independentRes.count || 0,
       totalParties: partiesRes.count || 0,
@@ -740,10 +760,31 @@ app.get("/api/dashboard-stats", authenticate, async (req: any, res) => {
 // List of nations / states with basic info and region counts
 app.get("/api/nations", authenticate, async (_req, res) => {
   try {
-    const { data: nations, error } = await supabase
-      .from('nations')
-      .select('id, name, logo, leaderUserId, updatedAt');
-    if (error) throw error;
+    const includeInactive = String(_req.query.includeInactive || '').toLowerCase() === 'true';
+
+    let nations: any[] = [];
+    let nationsErr: any = null;
+
+    if (!includeInactive) {
+      const filtered = await supabase
+        .from('nations')
+        .select('id, name, logo, leaderUserId, updatedAt')
+        .eq('isActiveState', true);
+      nations = filtered.data || [];
+      nationsErr = filtered.error;
+      if (nationsErr) {
+        // Back-compat fallback (older schema without isActiveState)
+        const legacy = await supabase.from('nations').select('id, name, logo, leaderUserId, updatedAt');
+        nations = legacy.data || [];
+        nationsErr = legacy.error;
+      }
+    } else {
+      const all = await supabase.from('nations').select('id, name, logo, leaderUserId, updatedAt');
+      nations = all.data || [];
+      nationsErr = all.error;
+    }
+
+    if (nationsErr) throw nationsErr;
 
     const { data: regions } = await supabase
       .from('regions')
@@ -10517,26 +10558,39 @@ app.get("/api/nations/:nationId/energy", authenticate, async (req: any, res) => 
 
 // ══════════════════════════════════════════════════════════════════
 async function checkAndResolveElections() {
-  const { data: regions } = await supabase.from('regions').select('id');
+  const { data: regions } = await supabase.from('regions').select('id, nation_id, territoryStatus, parliamentaryElectionStartedAt');
   if (!regions) return;
 
   const now = Date.now();
   const nowIso = new Date().toISOString();
-  const electionDuration = 3 * 24 * 60 * 60 * 1000; // 3 days
+  const DEFAULT_ELECTION_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
+  const INDEPENDENT_PARLIAMENT_DURATION_MS = 24 * 60 * 60 * 1000; // 24h
 
   const { data: activeElections } = await supabase.from('elections').select('*').eq('status', 'active');
   const activeElectionByRegion = new Map(activeElections?.map((e: any) => [e.regionId, e]) || []);
 
   for (const r of regions) {
+    const status = (r as any).territoryStatus as string | null | undefined;
+    const isIndependentParliament = status === 'PARLIAMENTARY_ELECTION';
+
+    // Guard: evita elezioni automatiche per regioni indipendenti non ancora in fase parlamentare
+    const shouldHaveParliamentElections = !!(r as any).nation_id || ['PARLIAMENTARY_ELECTION', 'PRESIDENTIAL_ELECTION', 'STATE_ACTIVE'].includes(status || '');
+    if (!shouldHaveParliamentElections) continue;
+
     const activeElection = activeElectionByRegion.get(r.id);
+    const durationMs = isIndependentParliament ? INDEPENDENT_PARLIAMENT_DURATION_MS : DEFAULT_ELECTION_DURATION_MS;
 
     if (!activeElection) {
+      const startBase = isIndependentParliament && (r as any).parliamentaryElectionStartedAt
+        ? new Date((r as any).parliamentaryElectionStartedAt).getTime()
+        : now;
+      const closesAtIso = new Date(startBase + durationMs).toISOString();
       await supabase.from('elections').insert({
         id: generateSecureId(9),
         regionId: r.id,
         status: 'active',
         createdAt: nowIso,
-        closesAt: new Date(now + electionDuration).toISOString()
+        closesAt: closesAtIso
       });
     } else if (new Date(activeElection.closesAt).getTime() <= now) {
       // Resolve election
@@ -10596,6 +10650,226 @@ async function checkAndResolveElections() {
       // Automatically scheduled by logic above (activeElection resolved, insertion happens next tick or we can insert now)
     }
   }
+}
+
+async function checkAndAdvanceIndependentRegions() {
+  // State-machine per regioni indipendenti:
+  // INDEPENDENT_REGION (>=24h + base politica) -> PARLIAMENTARY_ELECTION (24h) -> PRESIDENTIAL_ELECTION (24h) -> STATE_ACTIVE
+  const now = Date.now();
+  const nowIso = new Date(now).toISOString();
+  const MS_24H = 24 * 60 * 60 * 1000;
+
+  try {
+    const { data: regions, error } = await supabase
+      .from('regions')
+      .select('id, name, nation_id, territoryStatus, independentAt, parliamentaryElectionStartedAt, presidentialElectionStartedAt, presidentialElectionClosesAt');
+    if (error || !regions) return;
+
+    const candidatesByRegion: string[] = [];
+    for (const r of regions as any[]) {
+      const status = (r.territoryStatus as string | null | undefined) || (r.nation_id ? 'STATE_ACTIVE' : 'INDEPENDENT_REGION');
+      if (status === 'STATE_ACTIVE') continue;
+      if (!r.nation_id || ['INDEPENDENT_REGION', 'PARLIAMENTARY_ELECTION', 'PRESIDENTIAL_ELECTION'].includes(status)) {
+        candidatesByRegion.push(r.id);
+      }
+    }
+
+    for (const regionId of candidatesByRegion) {
+      const region = (regions as any[]).find(rr => rr.id === regionId);
+      if (!region) continue;
+
+      const status = (region.territoryStatus as string | null | undefined) || (region.nation_id ? 'STATE_ACTIVE' : 'INDEPENDENT_REGION');
+
+      // Helper: parse timestamps resiliently
+      const ts = (v: any): number => {
+        if (!v) return 0;
+        const d = new Date(v);
+        const t = d.getTime();
+        return isNaN(t) ? 0 : t;
+      };
+
+      if (status === 'INDEPENDENT_REGION') {
+        const independentAtMs = ts(region.independentAt);
+        if (!independentAtMs) {
+          await supabase.from('regions').update({
+            territoryStatus: 'INDEPENDENT_REGION',
+            independentAt: nowIso,
+            parliamentaryElectionStartedAt: null,
+            presidentialElectionStartedAt: null,
+            presidentialElectionClosesAt: null,
+            stateActivatedAt: null,
+          }).eq('id', regionId);
+          continue;
+        }
+
+        // Stop elezioni fantasma: una regione indipendente NON deve avere elezioni attive
+        await supabase.from('elections').update({ status: 'closed' }).eq('regionId', regionId).eq('status', 'active');
+
+        if (now - independentAtMs < MS_24H) continue;
+
+        const hasPoliticalBase = await hasEligiblePoliticalBaseForIndependentRegion(regionId);
+        if (!hasPoliticalBase) continue;
+
+        const startIso = nowIso;
+        await supabase.from('regions').update({
+          territoryStatus: 'PARLIAMENTARY_ELECTION',
+          parliamentaryElectionStartedAt: startIso,
+          presidentialElectionStartedAt: null,
+          presidentialElectionClosesAt: null,
+        }).eq('id', regionId);
+
+        // Crea/aggiorna subito l'elezione parlamentare a 24h
+        await ensureParliamentaryElection24h(regionId, startIso);
+        continue;
+      }
+
+      if (status === 'PARLIAMENTARY_ELECTION') {
+        const startedAtMs = ts(region.parliamentaryElectionStartedAt) || ts(region.independentAt);
+        if (!startedAtMs) continue;
+
+        const startedAtIso = new Date(startedAtMs).toISOString();
+        await ensureParliamentaryElection24h(regionId, startedAtIso);
+
+        if (now - startedAtMs < MS_24H) continue;
+
+        const closesIso = new Date(now + MS_24H).toISOString();
+
+        // Passaggio a presidenziali (abilita candidature/voto leader)
+        await supabase.from('regions').update({
+          territoryStatus: 'PRESIDENTIAL_ELECTION',
+          presidentialElectionStartedAt: nowIso,
+          presidentialElectionClosesAt: closesIso,
+          governmentForm: 'PRESIDENTIAL_REPUBLIC',
+          leaderUserId: null,
+          leaderTitle: 'Presidente',
+          nextLeaderElectionAt: null,
+        }).eq('id', regionId);
+
+        // Chiude eventuali elezioni parlamentari rimaste aperte
+        await supabase.from('elections').update({ status: 'closed' }).eq('regionId', regionId).eq('status', 'active');
+
+        // Reset della votazione leader
+        await supabase.from('leader_candidates').delete().eq('regionId', regionId);
+        await supabase.from('leader_votes').delete().eq('regionId', regionId);
+        continue;
+      }
+
+      if (status === 'PRESIDENTIAL_ELECTION') {
+        const closesAtMs = ts(region.presidentialElectionClosesAt) || (ts(region.presidentialElectionStartedAt) + MS_24H);
+        if (!closesAtMs) {
+          await supabase.from('regions').update({
+            presidentialElectionStartedAt: nowIso,
+            presidentialElectionClosesAt: new Date(now + MS_24H).toISOString(),
+          }).eq('id', regionId);
+          continue;
+        }
+
+        if (now < closesAtMs) continue;
+
+        const { data: winner } = await supabase
+          .from('leader_candidates')
+          .select('userId, votes')
+          .eq('regionId', regionId)
+          .order('votes', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!winner?.userId) {
+          // Niente elezione vuota che crea lo Stato: si prolunga la finestra finché non c'è almeno 1 candidato
+          await supabase.from('regions').update({
+            presidentialElectionClosesAt: new Date(now + MS_24H).toISOString(),
+          }).eq('id', regionId);
+          continue;
+        }
+
+        await activateStateFromRegion(regionId, region.name, winner.userId);
+      }
+    }
+  } catch (e) {
+    console.error('[IndependentRegions] Tick error:', e);
+  }
+}
+
+async function hasEligiblePoliticalBaseForIndependentRegion(regionId: string): Promise<boolean> {
+  const [peopleRes, partiesRes] = await Promise.all([
+    supabase
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .eq('residenceId', regionId)
+      .not('username', 'ilike', 'app_%')
+      .not('username', 'ilike', 'mgr_%')
+      .not('username', 'ilike', 'out_%')
+      .not('username', 'ilike', 'res_%'),
+    supabase.from('parties').select('id').eq('regionId', regionId),
+  ]);
+
+  const peopleOk = (peopleRes.count || 0) > 0;
+  const partyIds = (partiesRes.data || []).map((p: any) => p.id).filter(Boolean);
+  if (!peopleOk || partyIds.length === 0) return false;
+
+  const membersRes = await supabase
+    .from('party_members')
+    .select('userId', { count: 'exact', head: true })
+    .in('partyId', partyIds);
+
+  return (membersRes.count || 0) > 0;
+}
+
+async function ensureParliamentaryElection24h(regionId: string, startedAtIso: string): Promise<void> {
+  const MS_24H = 24 * 60 * 60 * 1000;
+  const startedAtMs = new Date(startedAtIso).getTime();
+  const closesAtIso = new Date(startedAtMs + MS_24H).toISOString();
+
+  const active = await supabase
+    .from('elections')
+    .select('id')
+    .eq('regionId', regionId)
+    .eq('status', 'active')
+    .maybeSingle();
+
+  if (active.data?.id) {
+    await supabase.from('elections').update({ closesAt: closesAtIso }).eq('id', active.data.id);
+    return;
+  }
+
+  await supabase.from('elections').insert({
+    id: generateSecureId(9),
+    regionId,
+    status: 'active',
+    createdAt: new Date().toISOString(),
+    closesAt: closesAtIso,
+  });
+}
+
+async function activateStateFromRegion(regionId: string, regionName: string | null | undefined, leaderUserId: string): Promise<void> {
+  const nowIso = new Date().toISOString();
+  const nationId = regionId;
+
+  const existing = await supabase.from('nations').select('id').eq('id', nationId).maybeSingle();
+  if (existing.data?.id) {
+    await supabase.from('nations').update({
+      isActiveState: true,
+      leaderUserId,
+      updatedAt: Date.now(),
+    }).eq('id', nationId);
+  } else {
+    await supabase.from('nations').insert({
+      id: nationId,
+      name: regionName || nationId,
+      logo: '🏳️',
+      leaderUserId,
+      updatedAt: Date.now(),
+      isActiveState: true,
+    });
+  }
+
+  await supabase.from('regions').update({
+    nation_id: nationId,
+    territoryStatus: 'STATE_ACTIVE',
+    stateActivatedAt: nowIso,
+    leaderUserId,
+    leaderTitle: 'Presidente',
+  }).eq('id', regionId);
 }
 
 async function checkAndResolveLeaderElections() {
@@ -10823,6 +11097,12 @@ async function checkAndResolveWars() {
               ownerUserId: war.attackerUserId,
               leaderUserId: war.attackerUserId,
               stability: 50,
+              territoryStatus: 'INDEPENDENT_REGION',
+              independentAt: new Date().toISOString(),
+              parliamentaryElectionStartedAt: null,
+              presidentialElectionStartedAt: null,
+              presidentialElectionClosesAt: null,
+              stateActivatedAt: null,
             }).eq('id', war.defenderRegionId);
 
             if (effects.governmentChange) {
@@ -11269,6 +11549,7 @@ app.post("/api/daily/missions/claim-bonus", authenticate, async (req: any, res) 
 // Vite middleware for development
 async function startServer() {
   checkAndResolveElections();
+  checkAndAdvanceIndependentRegions();
   checkAndResolveLeaderElections();
   checkAndResolveLaws();
   checkAndResolveWars();
@@ -11315,6 +11596,7 @@ async function startServer() {
   // Game Cronjobs (Laws and Elections)
   setInterval(() => {
     checkAndResolveElections();
+    checkAndAdvanceIndependentRegions();
     checkAndResolveLaws();
     checkAndResolveWars();
   }, 60 * 1000); // Check every minute

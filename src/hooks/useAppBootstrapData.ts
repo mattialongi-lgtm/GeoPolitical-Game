@@ -54,14 +54,20 @@ export function useAppBootstrapData({
           : prev;
 
         if (regionsData.length > 0) {
-          const independentCount = regionsData.filter((r: any) => !r.nation_id).length;
-          const uniqueStates = new Set(regionsData.map((r: any) => r.nation_id).filter(Boolean)).size;
+          const independentCount = regionsData.filter((r: any) =>
+            !r.nation_id || (r.territoryStatus && r.territoryStatus !== 'STATE_ACTIVE')
+          ).length;
           ws = {
             ...ws,
             totalRegions: regionsData.length,
             independentRegions: independentCount,
-            totalStates: uniqueStates,
           };
+        }
+
+        // Non derivare gli "Stati" dalle regioni: usare API /api/world-stats (o fallback su /api/nations)
+        if (!ws.totalStates || ws.totalStates <= 0) {
+          const nationsFallback = data.nations.ok && Array.isArray(data.nations.data) ? (data.nations.data as any[]).length : 0;
+          if (nationsFallback > 0) ws = { ...ws, totalStates: nationsFallback };
         }
 
         return ws;

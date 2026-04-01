@@ -21,19 +21,23 @@ import worldTopoJson from "../assets/maps/world_adm1.topo.json";
  * Key = ISO-2 code, value = { lat, lng, size }.
  */
 const DEFAULT_ENCLAVE_DATA: Record<string, { lat: number; lng: number; size: number }> = {
-  VA: { lat: 41.90, lng: 12.45, size: 6 },
-  SM: { lat: 43.94, lng: 12.46, size: 6 },
-  MC: { lat: 43.73, lng: 7.42, size: 6 },
-  LI: { lat: 47.14, lng: 9.55, size: 6 },
-  AD: { lat: 42.54, lng: 1.58, size: 6 },
-  MT: { lat: 35.94, lng: 14.40, size: 6 },
-  LU: { lat: 49.82, lng: 6.13, size: 6 },
-  BH: { lat: 26.07, lng: 50.55, size: 6 },
-  SG: { lat: 1.35, lng: 103.82, size: 6 },
-  MO: { lat: 22.20, lng: 113.54, size: 6 },
-  HK: { lat: 22.32, lng: 114.17, size: 6 },
-  BN: { lat: 4.94, lng: 114.95, size: 6 },
+  VA: { lat: 41.90, lng: 12.45, size: 2.4 },
+  SM: { lat: 43.94, lng: 12.46, size: 2.4 },
+  MC: { lat: 43.73, lng: 7.42, size: 2.4 },
+  LI: { lat: 47.14, lng: 9.55, size: 2.4 },
+  AD: { lat: 42.54, lng: 1.58, size: 2.4 },
+  MT: { lat: 35.94, lng: 14.40, size: 2.4 },
+  LU: { lat: 49.82, lng: 6.13, size: 2.4 },
+  BH: { lat: 26.07, lng: 50.55, size: 2.4 },
+  SG: { lat: 1.35, lng: 103.82, size: 2.4 },
+  MO: { lat: 22.20, lng: 113.54, size: 2.4 },
+  HK: { lat: 22.32, lng: 114.17, size: 2.4 },
+  BN: { lat: 4.94, lng: 114.95, size: 2.4 },
 };
+
+const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+// Markers are inside a zoomed SVG group -> divide by zoom to keep them visually small.
+const enclaveDotRadius = (rawSize: number, zoom: number) => clamp(rawSize, 1.6, 3.2) / Math.max(zoom, 1);
 
 const MAP_COUNTRIES = [
   { iso2: "AF", name: "Afghanistan", flag: "🇦🇫" }, { iso2: "DZ", name: "Algeria", flag: "🇩🇿" },
@@ -218,7 +222,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
           name: r.name,
           lat: r.enclaveMarkerLat,
           lng: r.enclaveMarkerLng,
-          size: r.enclaveMarkerSize ?? 6,
+          size: r.enclaveMarkerSize ?? 2.4,
           color: colorMap.get(r.id) || DEFAULT_FILL,
         });
       }
@@ -493,26 +497,13 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
               onMouseLeave={handleMouseLeave}
               style={{ cursor: "pointer" }}
             >
-              {/* Outer glow ring */}
               <circle
-                r={enc.size + 2}
-                fill="transparent"
-                stroke="#e2e8f0"
-                strokeWidth={0.5}
-                opacity={0.5}
-              />
-              {/* Main marker circle — colored same as region */}
-              <circle
-                r={enc.size}
+                r={enclaveDotRadius(enc.size, zoom)}
                 fill={enc.color}
                 stroke="#fff"
-                strokeWidth={1}
-              />
-              {/* Inner dot */}
-              <circle
-                r={enc.size * 0.35}
-                fill="#fff"
-                opacity={0.7}
+                strokeWidth={0.9}
+                vectorEffect="non-scaling-stroke"
+                opacity={0.95}
               />
             </Marker>
           ))}

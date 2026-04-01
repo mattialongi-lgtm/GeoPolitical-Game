@@ -506,7 +506,7 @@ export const GAME_CONFIG = {
   WAR_RANDOM_FACTOR: 0.125,                         // ±12.5%
   WAR_REVOLUTION_GOLD_COST: 50,
   WAR_REVOLUTION_MIN_PLAYERS: 3,
-  WAR_REVOLUTION_COOLDOWN_MS: 4 * 24 * 60 * 60 * 1000, // 4 days
+  WAR_REVOLUTION_COOLDOWN_MS: 5 * 24 * 60 * 60 * 1000, // 5 days
   WAR_REVOLUTION_BUILDING_PENALTY: 0.5,             // -50% buildings
   WAR_COUP_MIN_PLAYERS: 3,
   WAR_COUP_MAX_DEVELOPMENT: 1,                      // development must be 1

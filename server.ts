@@ -5128,15 +5128,16 @@ app.post("/api/wars/revolution", authenticate, async (req: any, res) => {
       .maybeSingle();
 
     if (lastRevolution?.cooldownUntil && new Date(lastRevolution.cooldownUntil).getTime() > Date.now()) {
-      return res.status(400).json({ error: "Rivoluzione in cooldown per questa regione." });
+      return res.status(400).json({ error: "In questa regione è già stata avviata una rivoluzione negli ultimi 5 giorni." });
     }
 
-    // Check no active war
-    const { data: activeWar } = await supabase.from('wars')
+    // Check no active revolution/coup war in this region (normal territorial wars do NOT block)
+    const { data: activeInternalWar } = await supabase.from('wars')
       .select('id').eq('status', 'active')
-      .or(`"attackerRegionId".eq.${regionId},"defenderRegionId".eq.${regionId}`)
+      .eq('defenderRegionId', regionId)
+      .in('warType', ['revolution', 'coup'])
       .maybeSingle();
-    if (activeWar) return res.status(400).json({ error: "Regione già in guerra." });
+    if (activeInternalWar) return res.status(400).json({ error: "Una rivoluzione o colpo di stato è già in corso in questa regione." });
 
     const { data: activeRev } = await supabase.from('revolutions')
       .select('id').eq('regionId', regionId).eq('status', 'active').maybeSingle();
@@ -5275,16 +5276,17 @@ app.post("/api/wars/coup", authenticate, async (req: any, res) => {
 
     const buildings = await getRegionBuildings(regionId);
     const indices = calculateRegionalIndices(buildings);
-    if (indices.developmentIndex > GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT) {
-      return res.status(400).json({ error: "Colpo di stato possibile solo con sviluppo = 1." });
+    if (indices.developmentIndex !== GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT) {
+      return res.status(400).json({ error: "Il colpo di stato può essere aperto solo con indice di sviluppo pari a 1." });
     }
 
-    // Check no active war/coup
-    const { data: activeWar } = await supabase.from('wars')
+    // Check no active revolution/coup war in this region (normal territorial wars do NOT block)
+    const { data: activeInternalWar } = await supabase.from('wars')
       .select('id').eq('status', 'active')
-      .or(`"attackerRegionId".eq.${regionId},"defenderRegionId".eq.${regionId}`)
+      .eq('defenderRegionId', regionId)
+      .in('warType', ['revolution', 'coup'])
       .maybeSingle();
-    if (activeWar) return res.status(400).json({ error: "Regione già in guerra." });
+    if (activeInternalWar) return res.status(400).json({ error: "Una rivoluzione o colpo di stato è già in corso in questa regione." });
 
     const { data: activeCoup } = await supabase.from('coups')
       .select('id').eq('regionId', regionId).eq('status', 'active').maybeSingle();

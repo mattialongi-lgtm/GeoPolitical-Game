@@ -22,6 +22,12 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [transferSource, setTransferSource] = useState<string>("");
+  const [transferTarget, setTransferTarget] = useState<string>("");
+  const [transferXp, setTransferXp] = useState<number>(0);
+  const [transferBusy, setTransferBusy] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
+  const [transferOk, setTransferOk] = useState<string | null>(null);
 
   const loadDashboard = async (showLoader = false) => {
     if (!id) return;
@@ -78,6 +84,54 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
   for (const e of playerExperience) {
     expMap[e.resourceType] = e.experience || 0;
   }
+
+  const edu = Math.max(0, Math.floor(Number(user?.perks?.['ISTRUZIONE'] || 0)));
+  const maxWorkXpPerResource = 2000 + (edu * 1000);
+  const transferableResources = (playerExperience || []).map(e => e.resourceType).filter(Boolean);
+  const allResources = (Object.keys(RESOURCE_LABELS || {}) as string[]).filter(Boolean);
+  const targetResources = allResources.length > 0 ? allResources : transferableResources;
+
+  const goldCost = Math.max(1, Math.ceil(Math.max(0, Number(transferXp) || 0) / 100));
+
+  const doTransfer = async () => {
+    setTransferError(null);
+    setTransferOk(null);
+    const src = String(transferSource || '').trim();
+    const dst = String(transferTarget || '').trim();
+    const xp = Math.floor(Number(transferXp) || 0);
+
+    if (!src || !dst) return setTransferError("Seleziona risorsa sorgente e destinazione.");
+    if (src === dst) return setTransferError("Sorgente e destinazione non possono essere uguali.");
+    if (xp <= 0) return setTransferError("Inserisci una quantità XP > 0.");
+
+    const srcXp = Math.max(0, Math.floor(Number(expMap[src]) || 0));
+    if (xp > srcXp) return setTransferError(`XP insufficiente nella sorgente (hai ${srcXp}).`);
+
+    const dstXp = Math.max(0, Math.floor(Number(expMap[dst]) || 0));
+    if (dstXp >= maxWorkXpPerResource) return setTransferError(`La risorsa destinazione è già al cap (${maxWorkXpPerResource}).`);
+    if (dstXp + xp > maxWorkXpPerResource) return setTransferError(`Supera il cap (${dstXp} + ${xp} > ${maxWorkXpPerResource}).`);
+
+    const userGold = Math.max(0, Math.floor(Number(user?.gold) || 0));
+    if (userGold < goldCost) return setTransferError(`Gold insufficiente (costo ${goldCost}, hai ${userGold}).`);
+
+    setTransferBusy(true);
+    try {
+      const r = await fetch(`/api/extraction/transfer-work-exp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceResource: src, targetResource: dst, xpToTransfer: xp }),
+      });
+      const data = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(data?.error || "Errore trasferimento.");
+
+      setTransferOk(`Trasferite ${xp.toLocaleString()} XP (${goldCost} gold).`);
+      await loadDashboard(true);
+    } catch (e: any) {
+      setTransferError(e?.message || "Errore trasferimento.");
+    } finally {
+      setTransferBusy(false);
+    }
+  };
 
   return (
     <div className="space-y-5 max-w-2xl mx-auto pb-24">
@@ -238,6 +292,72 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
           </div>
         </div>
       )}
+
+      {/* Transfer Work Experience */}
+      <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
+        <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4" /> Trasferisci Esperienza
+        </h3>
+        <p className="text-[10px] text-slate-400 font-bold">
+          Cap per risorsa: {maxWorkXpPerResource.toLocaleString()} XP (Istruzione {edu}). Costo: 1 gold ogni 100 XP.
+        </p>
+
+        <div className="grid grid-cols-2 gap-2">
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <p className="text-[9px] font-black text-slate-400 uppercase">Sorgente</p>
+            <select
+              className="w-full mt-1 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-slate-700"
+              value={transferSource}
+              onChange={(e) => setTransferSource(e.target.value)}
+            >
+              <option value="">Seleziona</option>
+              {transferableResources.map((rt) => (
+                <option key={rt} value={rt}>
+                  {RESOURCE_LABELS[rt as ResourceType] || rt} ({(expMap[rt] || 0).toLocaleString()} XP)
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <p className="text-[9px] font-black text-slate-400 uppercase">Destinazione</p>
+            <select
+              className="w-full mt-1 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-slate-700"
+              value={transferTarget}
+              onChange={(e) => setTransferTarget(e.target.value)}
+            >
+              <option value="">Seleziona</option>
+              {targetResources.map((rt) => (
+                <option key={rt} value={rt}>
+                  {RESOURCE_LABELS[rt as ResourceType] || rt} ({(expMap[rt] || 0).toLocaleString()} XP)
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+          <p className="text-[9px] font-black text-slate-400 uppercase">XP da trasferire</p>
+          <div className="flex items-center gap-2 mt-1">
+            <input
+              type="number"
+              min={0}
+              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-slate-700"
+              value={Number.isFinite(transferXp) ? transferXp : 0}
+              onChange={(e) => setTransferXp(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+            />
+            <button
+              onClick={doTransfer}
+              disabled={transferBusy}
+              className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black disabled:opacity-50"
+            >
+              {transferBusy ? "..." : `Trasferisci (${goldCost} gold)`}
+            </button>
+          </div>
+          {transferError && <p className="text-[10px] font-black text-red-600 mt-2">{transferError}</p>}
+          {transferOk && <p className="text-[10px] font-black text-emerald-600 mt-2">{transferOk}</p>}
+        </div>
+      </div>
 
       {/* Leaderboard */}
       <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">

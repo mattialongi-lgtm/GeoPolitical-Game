@@ -4727,13 +4727,15 @@ const StorageView = ({ user }: { user: any }) => {
   );
 };
 
-const MarketView = () => {
+const MarketView = ({ user, fetchData }: { user: User | null, fetchData: () => void }) => {
   const [offers, setOffers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterType, setFilterType] = useState<string>("all");
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [buyQty, setBuyQty] = useState<Record<string, number>>({});
   const [isStateBuy, setIsStateBuy] = useState(false);
+  const [drinkQty, setDrinkQty] = useState<number>(1);
+  const [buyingDrinks, setBuyingDrinks] = useState(false);
 
   // Publish state
   const ITEMS_CATALOG = [
@@ -4796,6 +4798,38 @@ const MarketView = () => {
   };
 
   const filtered = filterType === "all" ? offers : offers.filter(o => o.itemId === filterType);
+  const drinkUnitCost = GAME_CONFIG.ENERGY_DRINK_COST_GOLD;
+  const safeDrinkQty = Math.max(1, Math.floor(Number(drinkQty) || 1));
+  const drinkTotalCost = safeDrinkQty * drinkUnitCost;
+  const userGold = Math.max(0, Math.floor(Number(user?.gold) || 0));
+
+  const handleBuyEnergyDrinks = async () => {
+    setBuyingDrinks(true);
+    try {
+      const res = await fetch("/api/actions/craft-drink", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ quantity: safeDrinkQty })
+      });
+      const raw = await res.text();
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = { error: raw || `HTTP ${res.status}` };
+      }
+      if (data.error) {
+        alert(data.error);
+      } else {
+        alert(`Acquisto completato: +${data.quantity} drink per ${data.totalCost} gold.`);
+        fetchData();
+      }
+    } catch (err: any) {
+      alert(err?.message || "Errore durante l'acquisto dei drink energetici.");
+    } finally {
+      setBuyingDrinks(false);
+    }
+  };
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
@@ -4808,6 +4842,43 @@ const MarketView = () => {
             Mercato Globale
           </h2>
           <p className="text-sm font-bold text-slate-400">Scambia beni con altri giocatori</p>
+        </div>
+      </div>
+
+      {/* Acquisto Drink Energetici */}
+      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
+        <h3 className="text-md font-black uppercase text-slate-800 mb-1 flex items-center gap-2">
+          <Zap className="w-5 h-5 text-amber-500" /> Drink Energetici
+        </h3>
+        <p className="text-xs font-bold text-slate-500 mb-4">
+          Prezzo fisso: {drinkUnitCost} gold per unità.
+        </p>
+        <div className="flex flex-wrap items-end gap-4">
+          <div className="w-28">
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Quantità</label>
+            <input
+              type="number"
+              min="1"
+              value={safeDrinkQty}
+              onChange={e => setDrinkQty(parseInt(e.target.value) || 1)}
+              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold"
+            />
+          </div>
+          <div className="px-4 py-2 rounded-xl bg-amber-50 border border-amber-200">
+            <p className="text-[10px] font-black text-amber-700 uppercase">Costo Totale</p>
+            <p className="text-lg font-black text-amber-700">{drinkTotalCost} gold</p>
+          </div>
+          <div className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200">
+            <p className="text-[10px] font-black text-slate-500 uppercase">Il tuo Gold</p>
+            <p className={`text-lg font-black ${userGold >= drinkTotalCost ? 'text-emerald-600' : 'text-rose-600'}`}>{userGold}</p>
+          </div>
+          <button
+            onClick={handleBuyEnergyDrinks}
+            disabled={buyingDrinks || userGold < drinkTotalCost}
+            className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg shadow-amber-100 transition-all disabled:opacity-50"
+          >
+            {buyingDrinks ? <Loader2 className="w-4 h-4 animate-spin" /> : "Compra Drink"}
+          </button>
         </div>
       </div>
 
@@ -4929,6 +5000,14 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [energyTimer, setEnergyTimer] = useState("");
+
+  // Work experience transfer (profile UI)
+  const [workExpTransferSource, setWorkExpTransferSource] = useState<string>('oil');
+  const [workExpTransferTarget, setWorkExpTransferTarget] = useState<string>('minerals');
+  const [workExpTransferXp, setWorkExpTransferXp] = useState<number>(0);
+  const [workExpTransferBusy, setWorkExpTransferBusy] = useState(false);
+  const [workExpTransferError, setWorkExpTransferError] = useState<string | null>(null);
+  const [workExpTransferOk, setWorkExpTransferOk] = useState<string | null>(null);
 
   // Auto-work state
   const [autoWorkFactoryId, setAutoWorkFactoryIdState] = useState<string | null>(null);
@@ -5265,7 +5344,7 @@ export default function App() {
           <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} worldStats={worldStats} navigateToCountry={navigateToCountry} />} />
           <Route path="/daily" element={<DailyTasksPage user={user} regions={regions} />} />
           <Route path="/map" element={<WorldMap onRegionClick={navigateToCountry} regions={regions} />} />
-          <Route path="/market" element={<MarketView />} />
+          <Route path="/market" element={<MarketView user={user} fetchData={fetchData} />} />
           <Route path="/storage" element={<StorageView user={user} />} />
           <Route path="/produce" element={<ProduceView user={user} />} />
           <Route path="/states" element={<NationsList />} />
@@ -5302,7 +5381,8 @@ export default function App() {
                 {/* Risorse estraibili nella regione */}
                 <ResourceExtractView user={user} fetchData={fetchData} />
 
-                {/* Risorse estraibili nella regione (panoramica) */}
+
+                {false && (
                 <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
                   <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Panoramica risorse in {user.regionId}</h3>
                   <div className="grid grid-cols-5 gap-2">
@@ -5320,8 +5400,10 @@ export default function App() {
                     ))}
                   </div>
                 </div>
+                )}
 
                 {/* Limiti giornalieri */}
+                {false && (
                 <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
                   <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Limite risorse giornaliero</h3>
                   <div className="grid grid-cols-2 gap-3">
@@ -5338,6 +5420,8 @@ export default function App() {
                     <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${Math.min(100, ((user.dailyExtracted || 0) / (user.dailyLimit || 100)) * 100)}%` }} />
                   </div>
                 </div>
+                )}
+
 
                 {/* Esperienza sulle risorse */}
                 <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
@@ -5372,7 +5456,116 @@ export default function App() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Trasferimento EXP (XP -> altra risorsa) */}
+                  {(() => {
+                    const edu = Math.max(0, Math.floor(Number(user?.perks?.['ISTRUZIONE'] || 0)));
+                    const maxWorkXp = 2000 + (edu * 1000);
+                    const expByResource: Record<string, number> = {
+                      oil: Math.max(0, Math.floor(Number(user?.oilExp) || 0)),
+                      minerals: Math.max(0, Math.floor(Number(user?.mineralsExp) || 0)),
+                      uranium: Math.max(0, Math.floor(Number(user?.uraniumExp) || 0)),
+                      diamonds: Math.max(0, Math.floor(Number(user?.diamondsExp) || 0)),
+                    };
+                    const goldAvailable = Math.max(0, Math.floor(Number(user?.gold) || 0));
+                    const xp = Math.max(0, Math.floor(Number(workExpTransferXp) || 0));
+                    const goldCost = Math.max(1, Math.ceil(xp / 100));
+                    const srcXp = expByResource[workExpTransferSource] ?? 0;
+                    const dstXp = expByResource[workExpTransferTarget] ?? 0;
+                    const canSubmit =
+                      !workExpTransferBusy &&
+                      workExpTransferSource !== workExpTransferTarget &&
+                      xp > 0 &&
+                      xp <= srcXp &&
+                      dstXp < maxWorkXp &&
+                      (dstXp + xp) <= maxWorkXp &&
+                      goldAvailable >= goldCost;
+
+                    return (
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[9px] font-black text-slate-400 uppercase">Trasferisci EXP</p>
+                          <p className="text-[9px] font-black text-slate-400">Costo: {goldCost}G</p>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase">Sorgente</p>
+                            <select
+                              className="w-full mt-1 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-slate-700"
+                              value={workExpTransferSource}
+                              onChange={(e) => setWorkExpTransferSource(e.target.value)}
+                            >
+                              <option value="oil">Petrolio ({expByResource.oil.toLocaleString()} XP)</option>
+                              <option value="minerals">Minerali ({expByResource.minerals.toLocaleString()} XP)</option>
+                              <option value="uranium">Uranio ({expByResource.uranium.toLocaleString()} XP)</option>
+                              <option value="diamonds">Diamanti ({expByResource.diamonds.toLocaleString()} XP)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase">Destinazione</p>
+                            <select
+                              className="w-full mt-1 bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-slate-700"
+                              value={workExpTransferTarget}
+                              onChange={(e) => setWorkExpTransferTarget(e.target.value)}
+                            >
+                              <option value="oil">Petrolio ({expByResource.oil.toLocaleString()} XP)</option>
+                              <option value="minerals">Minerali ({expByResource.minerals.toLocaleString()} XP)</option>
+                              <option value="uranium">Uranio ({expByResource.uranium.toLocaleString()} XP)</option>
+                              <option value="diamonds">Diamanti ({expByResource.diamonds.toLocaleString()} XP)</option>
+                            </select>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 mt-2">
+                          <input
+                            type="number"
+                            min={0}
+                            className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1 text-xs font-black text-slate-700"
+                            value={Number.isFinite(workExpTransferXp) ? workExpTransferXp : 0}
+                            onChange={(e) => setWorkExpTransferXp(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                          />
+                          <button
+                            disabled={!canSubmit}
+                            onClick={async () => {
+                              setWorkExpTransferError(null);
+                              setWorkExpTransferOk(null);
+                              const src = String(workExpTransferSource || '').trim();
+                              const dst = String(workExpTransferTarget || '').trim();
+                              const transferXp = Math.max(0, Math.floor(Number(workExpTransferXp) || 0));
+                              setWorkExpTransferBusy(true);
+                              try {
+                                const res = await fetch(`/api/extraction/transfer-work-exp`, {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({ sourceResource: src, targetResource: dst, xpToTransfer: transferXp }),
+                                });
+                                const data = await res.json().catch(() => null);
+                                if (!res.ok) throw new Error(data?.error || "Errore trasferimento.");
+                                setWorkExpTransferOk(`Trasferite ${transferXp.toLocaleString()} XP (${goldCost}G).`);
+                                fetchData();
+                              } catch (e: any) {
+                                setWorkExpTransferError(e?.message || "Errore trasferimento.");
+                              } finally {
+                                setWorkExpTransferBusy(false);
+                              }
+                            }}
+                            className="px-3 py-2 rounded-xl bg-indigo-600 text-white text-xs font-black disabled:opacity-50"
+                          >
+                            {workExpTransferBusy ? "..." : "Trasferisci"}
+                          </button>
+                        </div>
+
+                        <p className="text-[9px] text-slate-400 font-bold mt-2">
+                          Cap: {maxWorkXp.toLocaleString()} XP (Istruzione {edu}) • Gold: {goldAvailable.toLocaleString()}G
+                        </p>
+                        {workExpTransferError && <p className="text-[10px] font-black text-red-600 mt-1">{workExpTransferError}</p>}
+                        {workExpTransferOk && <p className="text-[10px] font-black text-emerald-600 mt-1">{workExpTransferOk}</p>}
+                      </div>
+                    );
+                  })()}
                 </div>
+
 
                 {/* Modalità automatica */}
                 <div className="p-5 rounded-[2.5rem] shadow-sm border space-y-3 bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">

@@ -2749,38 +2749,105 @@ app.post("/api/actions/invest", authenticate, async (req: any, res) => {
   }
 });
 
-app.post("/api/actions/craft-drink", authenticate, async (req: any, res) => {
-  const user = req.user;
-  const cost = GAME_CONFIG.ENERGY_DRINK_COST_GOLD;
-  if (user.gold < cost) return res.status(400).json({ error: `Oro insufficiente. Ti servono 🪙 ${cost}.` });
+async function buyEnergyDrinksForUser(userId: string, quantityInput: unknown) {
+  const quantity = Math.floor(Number(quantityInput) || 0);
+  if (quantity <= 0) {
+    return { ok: false as const, status: 400, error: "Quantita non valida. Deve essere un intero > 0." };
+  }
+
+  const unitCost = GAME_CONFIG.ENERGY_DRINK_COST_GOLD;
+  const totalCost = quantity * unitCost;
 
   try {
-    // Atomic gold deduction to prevent race conditions
-    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: 0,
-      p_gold_cost: cost,
-      p_energy_cost: 0,
+    const { data, error } = await supabase.rpc('buy_energy_drinks', {
+      p_user_id: userId,
+      p_quantity: quantity,
     });
-    if (deductError) throw deductError;
-    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
-    // Now add the drink
-    const { data, error } = await supabase
-      .from('users')
-      .update({
-        energyDrinks: (user.energyDrinks || 0) + 1
-      })
-      .eq('id', user.id)
-      .select('energyDrinks')
-      .single();
+    if (error) {
+      const message = String(error.message || "Errore durante l'acquisto dei drink.");
 
-    if (error) throw error;
-    res.json({ success: true, energyDrinks: data.energyDrinks });
+      // Fallback for environments where the migration has not been applied yet.
+      // Keep business rule server-side: totalCost = quantity * 30 gold.
+      if (/buy_energy_drinks|function .* does not exist/i.test(message)) {
+        const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+          p_user_id: userId,
+          p_money_cost: 0,
+          p_gold_cost: totalCost,
+          p_energy_cost: 0,
+        });
+        if (deductError) {
+          return { ok: false as const, status: 500, error: String(deductError.message || "Errore durante la deduzione gold.") };
+        }
+        const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
+        if (deductData?.error) {
+          return { ok: false as const, status: 400, error: String(deductData.error) };
+        }
+
+        const { data: updatedUser, error: updateError } = await supabase
+          .from('users')
+          .select('gold, energyDrinks')
+          .eq('id', userId)
+          .single();
+        if (updateError || !updatedUser) {
+          return { ok: false as const, status: 500, error: "Impossibile leggere lo stato utente dopo la deduzione gold." };
+        }
+
+        const drinksBefore = Math.max(0, Number(updatedUser.energyDrinks) || 0);
+        const { data: drinkRows, error: drinksError } = await supabase
+          .from('users')
+          .update({ energyDrinks: drinksBefore + quantity })
+          .eq('id', userId)
+          .eq('energyDrinks', updatedUser.energyDrinks)
+          .select('gold, energyDrinks')
+          .single();
+        if (drinksError || !drinkRows) {
+          return { ok: false as const, status: 500, error: "Acquisto parziale: gold scalato ma drink non aggiornati. Contatta un admin." };
+        }
+
+        return {
+          ok: true as const,
+          payload: {
+            success: true,
+            playerId: userId,
+            quantity,
+            unitCost,
+            totalCost,
+            goldAfter: Number(drinkRows.gold || 0),
+            energyDrinksBefore: drinksBefore,
+            energyDrinksAfter: Number(drinkRows.energyDrinks || 0)
+          }
+        };
+      }
+
+      const status = /insufficiente|quantit|non trovato/i.test(message) ? 400 : 500;
+      return { ok: false as const, status, error: message };
+    }
+
+    const payload = (typeof data === 'string' ? JSON.parse(data) : data) || {};
+    return { ok: true as const, payload };
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    return { ok: false as const, status: 500, error: String(err?.message || "Errore durante l'acquisto dei drink.") };
   }
+}
+
+app.post("/api/actions/craft-drink", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const quantity = req.body?.quantity ?? 1;
+  const purchase = await buyEnergyDrinksForUser(user.id, quantity);
+
+  if (!purchase.ok) {
+    return res.status(purchase.status).json({ error: purchase.error });
+  }
+
+  return res.json({
+    success: true,
+    quantity: purchase.payload?.quantity,
+    unitCost: purchase.payload?.unitCost ?? GAME_CONFIG.ENERGY_DRINK_COST_GOLD,
+    totalCost: purchase.payload?.totalCost,
+    goldAfter: purchase.payload?.goldAfter,
+    energyDrinks: purchase.payload?.energyDrinksAfter
+  });
 });
 
 app.post("/api/actions/use-drink", authenticate, async (req: any, res) => {
@@ -7020,6 +7087,27 @@ app.post("/api/market/buy", authenticate, async (req: any, res) => {
   }
 });
 
+app.post("/api/market/energy-drinks/buy", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const quantity = req.body?.quantity;
+  const purchase = await buyEnergyDrinksForUser(user.id, quantity);
+
+  if (!purchase.ok) {
+    return res.status(purchase.status).json({ error: purchase.error });
+  }
+
+  return res.json({
+    success: true,
+    quantity: purchase.payload?.quantity,
+    unitCost: purchase.payload?.unitCost ?? GAME_CONFIG.ENERGY_DRINK_COST_GOLD,
+    totalCost: purchase.payload?.totalCost,
+    goldBefore: purchase.payload?.goldBefore,
+    goldAfter: purchase.payload?.goldAfter,
+    energyDrinksBefore: purchase.payload?.energyDrinksBefore,
+    energyDrinksAfter: purchase.payload?.energyDrinksAfter
+  });
+});
+
 // ==============================================================
 // WEAPON PRODUCTION API (SQLite)
 // ==============================================================
@@ -10757,6 +10845,47 @@ app.get("/api/extraction/player-experience", authenticate, async (req: any, res)
   }
 });
 
+// ── POST /api/extraction/transfer-work-exp ───────────────────────
+// Transfers work experience between resources (atomic) paying gold.
+app.post("/api/extraction/transfer-work-exp", authenticate, async (req: any, res) => {
+  try {
+    const user = req.user;
+    const sourceResource = String(req.body?.sourceResource || '').trim();
+    const targetResource = String(req.body?.targetResource || '').trim();
+    const xpToTransfer = Math.floor(Number(req.body?.xpToTransfer) || 0);
+
+    if (!sourceResource || !targetResource) {
+      return res.status(400).json({ error: "sourceResource e targetResource sono obbligatori" });
+    }
+    if (sourceResource === targetResource) {
+      return res.status(400).json({ error: "sourceResource e targetResource non possono essere uguali" });
+    }
+    if (xpToTransfer <= 0) {
+      return res.status(400).json({ error: "xpToTransfer deve essere > 0" });
+    }
+
+    const allowed = new Set((RESOURCE_TYPES as any[]) || []);
+    if (!allowed.has(sourceResource as any) || !allowed.has(targetResource as any)) {
+      return res.status(400).json({ error: "Risorsa non valida" });
+    }
+
+    const { data, error } = await supabase.rpc('transfer_work_experience', {
+      p_player_id: user.id,
+      p_source_resource: sourceResource,
+      p_target_resource: targetResource,
+      p_xp_to_transfer: xpToTransfer,
+    });
+    if (error) {
+      return res.status(400).json({ error: error.message });
+    }
+
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, transfer: data });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || 'Errore trasferimento work experience' });
+  }
+});
+
 // ── GET /api/extraction/region-dashboard/:id ────────────────────
 // Returns a comprehensive resource dashboard for a region.
 app.get("/api/extraction/region-dashboard/:id", authenticate, async (req: any, res) => {
@@ -12564,3 +12693,5 @@ async function startServer() {
 }
 
 startServer();
+
+

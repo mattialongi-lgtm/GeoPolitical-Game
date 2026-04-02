@@ -9812,7 +9812,8 @@ app.get("/api/resources/player-state", authenticate, async (req: any, res) => {
 });
 
 // ── POST /api/resources/work-extract ────────────────────────────
-// Player works to extract a resource from a region
+// Legacy compatibility endpoint.
+// Delegates to the advanced extraction flow so payout and work XP use one single source of truth.
 app.post("/api/resources/work-extract", authenticate, async (req: any, res) => {
   const user = req.user;
   const { regionId, resourceType } = req.body;
@@ -9831,146 +9832,41 @@ app.post("/api/resources/work-extract", authenticate, async (req: any, res) => {
       return res.status(429).json({ error: "Troppi tentativi ravvicinati. Riprova tra pochi secondi." });
     }
 
-    // 1. Energy check
-    const energyCost = parseInt(await getSetting('work_energy_cost_extract')) || 10;
-    const perks = user.perks || {};
-    const resistenza = perks['RESISTENZA'] || 0;
-    // Max 50% energy reduction at RESISTENZA level 50+ (same formula as factory work)
-    const energyReduction = Math.min(0.5, resistenza / 100);
-    const actualEnergyCost = Math.ceil(energyCost * (1 - energyReduction));
+    const factoryTypeCandidates = Object.entries(FACTORY_CONFIG.TYPES)
+      .filter(([, def]: any) => def?.resource === resourceType)
+      .map(([type]) => type);
 
-    if (user.energy < actualEnergyCost) {
-      return res.status(400).json({ error: "Energia insufficiente.", reason: "no_energy" });
+    if (factoryTypeCandidates.length === 0) {
+      return res.status(400).json({ error: "Nessuna fabbrica compatibile per questa risorsa." });
     }
 
-    // 2. Get region resource
-    const { data: regionRes, error: rrError } = await supabase
-      .from('region_resources')
+    const { data: factories, error: factoryErr } = await supabase
+      .from('factories')
       .select('*')
       .eq('regionId', regionId)
-      .eq('resourceType', resourceType)
-      .single();
+      .in('type', factoryTypeCandidates)
+      .eq('isActive', true)
+      .order('level', { ascending: false })
+      .limit(1);
 
-    if (rrError || !regionRes) {
-      return res.status(404).json({ error: "Risorsa non disponibile in questa regione." });
+    if (factoryErr) throw factoryErr;
+    const targetFactory = factories?.[0];
+    if (!targetFactory) {
+      return res.status(404).json({ error: "Nessuna fabbrica attiva trovata per questa risorsa nella regione selezionata." });
     }
 
-    // 3. Get effective cap
-    const nationId = await getNationForRegion(regionId);
-    const capMaxGlobal = parseInt(await getSetting('cap_max_global')) || 2000;
-    const deep = nationId ? await getActiveDeep(nationId, resourceType) : null;
-    const effectiveCap = computeEffectiveCap(regionRes.baseCapPerRecharge, deep, capMaxGlobal);
-
-    // 4. Get player extraction state
-    const { data: playerState } = await supabase
-      .from('player_extraction_state')
-      .select('*')
-      .eq('playerId', user.id)
-      .eq('regionId', regionId)
-      .eq('resourceType', resourceType)
-      .maybeSingle();
-
-    const extractedSoFar = playerState?.extractedSinceLastRecharge || 0;
-    const remainingCycle = Math.max(0, effectiveCap - extractedSoFar);
-    const remainingDaily = Math.max(0, regionRes.dailyAvailable - regionRes.dailyExtracted);
-
-    // 5. Calculate extraction amount
-    const K = parseFloat(await getSetting('extraction_k')) || 0.02;
-    const baseAmount = Math.max(1, Math.round(effectiveCap * K));
-    const finalAmount = Math.min(baseAmount, remainingCycle, remainingDaily);
-
-    if (finalAmount <= 0) {
-      let reason = "unknown";
-      if (remainingCycle <= 0) reason = "cycle_cap_reached";
-      else if (remainingDaily <= 0) reason = "daily_exhausted";
-      return res.status(400).json({
-        error: reason === "cycle_cap_reached"
-          ? "Cap del ciclo raggiunto. Serve una ricarica amministrativa."
-          : "Risorsa giornaliera esaurita per questa regione.",
-        reason,
+    const result = await executeExtractionWork(user, targetFactory.id);
+    await updateCooldown(user.id, 'resource_extract_work');
+    return res.json(result);
+  } catch (err: any) {
+    if (err?.statusCode) {
+      return res.status(err.statusCode).json({
+        error: err.message,
+        ...(err?.reason ? { reason: err.reason } : {}),
       });
     }
-
-    // 6. Deduct energy
-    const { error: energyErr } = await supabase
-      .from('users')
-      .update({ energy: user.energy - actualEnergyCost })
-      .eq('id', user.id);
-    if (energyErr) throw energyErr;
-
-    // 7. Update daily extracted (region)
-    const { error: dailyErr } = await supabase
-      .from('region_resources')
-      .update({
-        dailyExtracted: regionRes.dailyExtracted + finalAmount,
-        updatedAt: new Date().toISOString(),
-      })
-      .eq('regionId', regionId)
-      .eq('resourceType', resourceType);
-    if (dailyErr) throw dailyErr;
-
-    // 8. Upsert player extraction state
-    if (playerState) {
-      const { error: psErr } = await supabase
-        .from('player_extraction_state')
-        .update({
-          extractedSinceLastRecharge: extractedSoFar + finalAmount,
-          updatedAt: new Date().toISOString(),
-        })
-        .eq('playerId', user.id)
-        .eq('regionId', regionId)
-        .eq('resourceType', resourceType);
-      if (psErr) throw psErr;
-    } else {
-      const { error: psErr } = await supabase
-        .from('player_extraction_state')
-        .insert({
-          playerId: user.id,
-          regionId,
-          resourceType,
-          extractedSinceLastRecharge: finalAmount,
-          updatedAt: new Date().toISOString(),
-        });
-      if (psErr) throw psErr;
-    }
-
-    // 9. Add to player inventory
-    const { data: existingInv } = await supabase.from('user_inventory')
-      .select('quantity').eq('userId', user.id).eq('itemId', resourceType).maybeSingle();
-    if (existingInv) {
-      await supabase.from('user_inventory')
-        .update({ quantity: existingInv.quantity + finalAmount })
-        .eq('userId', user.id).eq('itemId', resourceType);
-    } else {
-      await supabase.from('user_inventory')
-        .insert({ userId: user.id, itemId: resourceType, quantity: finalAmount });
-    }
-
-    // 10. Log extraction
-    await supabase.from('resource_extraction_logs').insert({
-      playerId: user.id,
-      regionId,
-      resourceType,
-      amount: finalAmount,
-    });
-
-    // 11. XP
-    const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
-    await addXP(user.id, xpGain);
-    await updateCooldown(user.id, 'resource_extract_work');
-
-    res.json({
-      success: true,
-      amount: finalAmount,
-      resourceType,
-      remainingCycle: remainingCycle - finalAmount,
-      remainingDaily: remainingDaily - finalAmount,
-      xpGain,
-      energyCost: actualEnergyCost,
-    });
-  } catch (err: any) {
     console.error("Error in work-extract:", err);
-    res.status(500).json({ error: "Errore durante l'estrazione: " + err.message });
+    return res.status(500).json({ error: "Errore durante l'estrazione: " + err.message });
   }
 });
 
@@ -10421,6 +10317,281 @@ app.get("/api/resources/deep-exploration/status", authenticate, async (req: any,
 // ██ ADVANCED EXTRACTION SYSTEM ENDPOINTS
 // ══════════════════════════════════════════════════════════════════
 
+async function executeExtractionWork(user: any, factoryId: string) {
+  const fail = (statusCode: number, message: string, reason?: string) => {
+    const err: any = createAutomationError(statusCode, message);
+    if (reason) err.reason = reason;
+    throw err;
+  };
+
+  const { data: factory, error: fErr } = await supabase
+    .from('factories')
+    .select('*')
+    .eq('id', factoryId)
+    .single();
+
+  if (fErr || !factory) fail(404, "Fabbrica non trovata.");
+  if (factory.isActive === false) fail(400, "Fabbrica non attiva.");
+  const factoryMinLevel = factory.minLevel ?? 1;
+  if ((user.level || 0) < factoryMinLevel) fail(400, `Richiede livello ${factoryMinLevel}.`);
+
+  const factoryType = factory.type || '';
+  const typeDef = FACTORY_CONFIG.TYPES[factoryType];
+  if (!typeDef) fail(400, "Tipo fabbrica non valido.");
+
+  const resourceType = typeDef.resource;
+  if (!resourceType) fail(400, "Questa fabbrica non produce risorse estraibili.");
+
+  const regionId = factory.regionId;
+
+  const { data: regionRel } = await supabase.from('regions').select('*').eq('id', regionId).single();
+  if (!regionRel) fail(404, "Regione non trovata.");
+
+  const restrictionsActive = regionRel.workRestrictions === 1;
+  const isResident = user.residence_id === regionId;
+  const hasWorkPermit = user.work_permit_id === regionId;
+  if (restrictionsActive && !isResident && !hasWorkPermit) {
+    fail(403, "Questa nazione richiede un Permesso di Lavoro.");
+  }
+
+  const perks = user.perks || {};
+  const resistenza = perks['RESISTENZA'] || 0;
+  const energyReduction = Math.min(0.5, resistenza / 100);
+  const actualEnergyCost = Math.ceil(EXTRACTION_CONFIG.WORK_ACTION_ENERGY_COST * (1 - energyReduction));
+  if ((user.energy || 0) < actualEnergyCost) {
+    fail(400, "Energia insufficiente.", "no_energy");
+  }
+
+  const { data: regionRes } = await supabase
+    .from('region_resources')
+    .select('*')
+    .eq('regionId', regionId)
+    .eq('resourceType', resourceType)
+    .maybeSingle();
+
+  const dailyAvailable = regionRes?.dailyAvailable ?? 999999;
+  const dailyExtracted = regionRes?.dailyExtracted ?? 0;
+  const remainingDaily = Math.max(0, dailyAvailable - dailyExtracted);
+  if (remainingDaily <= 0 && regionRes) {
+    fail(400, "Risorsa giornaliera esaurita per questa regione.", "daily_exhausted");
+  }
+
+  const nationId = await getNationForRegion(regionId);
+  const capMaxGlobal = parseInt(await getSetting('cap_max_global')) || 2000;
+  const deep = nationId ? await getActiveDeep(nationId, resourceType) : null;
+  const baseCap = regionRes?.baseCapPerRecharge ?? 200;
+  const effectiveCap = computeEffectiveCap(baseCap, deep, capMaxGlobal);
+  const deepBonus = deep ? Math.max(0, (deep.targetCap || 0) - baseCap) : 0;
+
+  const maxWorkExperience = getMaxWorkXpPerResource(perks['ISTRUZIONE'] || 0);
+  const [workExp, numPowerPlants, departmentBonus] = await Promise.all([
+    getPlayerWorkExperience(user.id, resourceType, maxWorkExperience),
+    getRegionPowerPlants(regionId),
+    getDepartmentBonus(regionId, resourceType),
+  ]);
+
+  const resourceCoefficient = getResourceCoefficient(resourceType, effectiveCap, numPowerPlants);
+
+  const taxRate = regionRel.marketTaxRate ?? regionRel.industryTaxPercent ?? FACTORY_CONFIG.DEFAULT_INDUSTRY_TAX_RATE;
+  const ownerProfitRate = FACTORY_CONFIG.OWNER_PROFIT_RATE;
+  const autonomySharePercent = regionRel.regionalProfitSharePercent ?? 0;
+
+  const breakdown = calculateExtraction({
+    playerLevel: user.level || 1,
+    factoryLevel: factory.level || 1,
+    workExperience: workExp,
+    resourceType,
+    resourceCoefficient,
+    departmentBonusLevel: departmentBonus,
+    nationBonusEnabled: true,
+    taxRate,
+    ownerProfitRate,
+    autonomySharePercent,
+    regionCapMax: baseCap,
+    regionDeepBonus: deepBonus,
+    regionCapTotal: effectiveCap,
+    regionResidualToday: remainingDaily,
+  });
+
+  const { data: playerState } = await supabase
+    .from('player_extraction_state')
+    .select('*')
+    .eq('playerId', user.id)
+    .eq('regionId', regionId)
+    .eq('resourceType', resourceType)
+    .maybeSingle();
+
+  const extractedSoFar = playerState?.extractedSinceLastRecharge || 0;
+  const remainingCycle = Math.max(0, effectiveCap - extractedSoFar);
+
+  const actualPlayerAmount = Math.min(breakdown.playerAmount, remainingCycle, remainingDaily);
+  if (actualPlayerAmount < EXTRACTION_CONFIG.MIN_EXTRACTION_THRESHOLD) {
+    const reason = remainingCycle <= 0 ? "cycle_cap_reached" : "daily_exhausted";
+    fail(
+      400,
+      reason === "cycle_cap_reached"
+        ? "Cap del ciclo raggiunto. Serve una ricarica amministrativa."
+        : "Risorsa giornaliera esaurita.",
+      reason
+    );
+  }
+
+  const scaleFactor = actualPlayerAmount / Math.max(EXTRACTION_CONFIG.MIN_EXTRACTION_THRESHOLD, breakdown.playerAmount);
+  const actualGross = breakdown.grossAmount * scaleFactor;
+  const actualOwner = breakdown.ownerAmount * scaleFactor;
+  const actualTax = breakdown.taxAmount * scaleFactor;
+  const actualState = breakdown.stateAmount * scaleFactor;
+  const actualAutonomy = breakdown.autonomyAmount * scaleFactor;
+  const actualWithdrawn = breakdown.withdrawnPoints * scaleFactor;
+  const actualMoney = breakdown.moneyGenerated * scaleFactor;
+
+  const { error: energyErr } = await supabase
+    .from('users')
+    .update({ energy: user.energy - actualEnergyCost })
+    .eq('id', user.id);
+  if (energyErr) throw energyErr;
+
+  const roundedPlayer = Math.round(actualPlayerAmount);
+  if (roundedPlayer <= 0) {
+    fail(400, "Produttività insufficiente per estrarre.", "insufficient_productivity");
+  }
+
+  if (regionRes) {
+    const newDailyExtracted = Math.min(dailyAvailable, dailyExtracted + roundedPlayer);
+    await supabase.from('region_resources').update({
+      dailyExtracted: newDailyExtracted,
+      updatedAt: new Date().toISOString(),
+    }).eq('regionId', regionId).eq('resourceType', resourceType);
+  }
+
+  const newExtracted = extractedSoFar + roundedPlayer;
+  if (playerState) {
+    await supabase.from('player_extraction_state').update({
+      extractedSinceLastRecharge: newExtracted,
+      updatedAt: new Date().toISOString(),
+    }).eq('playerId', user.id).eq('regionId', regionId).eq('resourceType', resourceType);
+  } else {
+    await supabase.from('player_extraction_state').insert({
+      playerId: user.id,
+      regionId,
+      resourceType,
+      extractedSinceLastRecharge: roundedPlayer,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
+  const { data: existingInv } = await supabase.from('user_inventory')
+    .select('quantity').eq('userId', user.id).eq('itemId', resourceType).maybeSingle();
+  if (existingInv) {
+    await supabase.from('user_inventory')
+      .update({ quantity: existingInv.quantity + roundedPlayer })
+      .eq('userId', user.id).eq('itemId', resourceType);
+  } else {
+    await supabase.from('user_inventory')
+      .insert({ userId: user.id, itemId: resourceType, quantity: roundedPlayer });
+  }
+
+  if (resourceType === 'gold_ore' && actualMoney > 0) {
+    await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: -Math.round(actualMoney),
+      p_gold_cost: 0,
+      p_energy_cost: 0,
+    });
+  }
+
+  if (Math.round(actualOwner) > 0) {
+    await supabase.rpc('increment_factory_storage', {
+      p_factory_id: factoryId,
+      p_amount: Math.round(actualOwner)
+    });
+  }
+
+  if (Math.round(actualTax) > 0) {
+    const taxMoney = Math.round(actualTax * (FACTORY_CONFIG.RESOURCE_VALUES[resourceType] || 1));
+    if (taxMoney > 0) {
+      await supabase.rpc('add_budget_transaction', {
+        p_owner_type: 'REGION',
+        p_owner_id: regionId,
+        p_type: 'INCOME',
+        p_subtype: 'EXTRACTION_TAX',
+        p_money_delta: taxMoney,
+        p_created_by: user.id,
+        p_metadata: { resourceType, factoryId, grossAmount: actualGross, taxAmount: actualTax },
+      });
+    }
+  }
+
+  const requestedWorkExpGain = getWorkExperienceGainForEnergyCost(actualEnergyCost);
+  const cappedRequestedGain = workExp >= maxWorkExperience ? 0 : requestedWorkExpGain;
+  const workExpUpdate = await incrementPlayerWorkExperience(user.id, resourceType, cappedRequestedGain, perks['ISTRUZIONE'] || 0);
+
+  const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
+  await addXP(user.id, xpGain);
+
+  await supabase.from('extraction_detailed_logs').insert({
+    playerId: user.id,
+    regionId,
+    factoryId: factory.id,
+    resourceType,
+    grossAmount: actualGross,
+    playerAmount: roundedPlayer,
+    ownerAmount: Math.round(actualOwner),
+    taxAmount: Math.round(actualTax),
+    stateAmount: Math.round(actualState),
+    autonomyAmount: Math.round(actualAutonomy),
+    moneyGenerated: Math.round(actualMoney),
+    withdrawnPoints: actualWithdrawn,
+    playerLevel: user.level || 1,
+    factoryLevel: factory.level || 1,
+    workExperience: workExp,
+    resourceCoefficient: resourceCoefficient,
+    finalProductivity: breakdown.finalProductivity,
+  });
+
+  await supabase.from('resource_extraction_logs').insert({
+    playerId: user.id, regionId, resourceType, amount: roundedPlayer,
+  });
+
+  await supabase.from('factories').update({
+    totalWorkerCount: (factory.totalWorkerCount || 0) + 1,
+    totalProduction: (factory.totalProduction || 0) + roundedPlayer,
+    totalOwnerProfit: (factory.totalOwnerProfit || 0) + Math.round(actualOwner),
+    totalTaxesPaid: (factory.totalTaxesPaid || 0) + Math.round(actualTax),
+  }).eq('id', factory.id);
+
+  return {
+    success: true,
+    amount: roundedPlayer,
+    resourceType,
+    moneyGenerated: Math.round(actualMoney),
+    remainingCycle: Math.max(0, remainingCycle - roundedPlayer),
+    remainingDaily: Math.max(0, remainingDaily - Math.round(actualWithdrawn)),
+    xpGain,
+    energyCost: actualEnergyCost,
+    workExperience: workExp + workExpUpdate.appliedGain,
+    workExpGain: workExpUpdate.appliedGain,
+    maxWorkExperience,
+    experienceMultiplier: breakdown.experienceMultiplier,
+    breakdown: {
+      baseProductivity: Math.round(breakdown.baseProductivity * 100) / 100,
+      experienceMultiplier: Math.round(breakdown.experienceMultiplier * 1000) / 1000,
+      nationBonus: breakdown.nationBonus,
+      departmentBonus: breakdown.departmentBonus,
+      balancingMultiplier: breakdown.balancingMultiplier,
+      finalProductivity: Math.round(breakdown.finalProductivity * 100) / 100,
+      grossAmount: Math.round(actualGross * 100) / 100,
+      playerAmount: roundedPlayer,
+      ownerAmount: Math.round(actualOwner),
+      taxAmount: Math.round(actualTax),
+      stateAmount: Math.round(actualState),
+      autonomyAmount: Math.round(actualAutonomy),
+      withdrawnPoints: Math.round(actualWithdrawn * 100) / 100,
+      resourceCoefficient: Math.round(resourceCoefficient * 100) / 100,
+    },
+  };
+}
+
 // ── POST /api/extraction/work ───────────────────────────────────
 // Main extraction endpoint: player works in a factory to extract resources.
 // Uses the full productivity formula with breakdown.
@@ -10433,298 +10604,17 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
   }
 
   try {
-    // 1. Get factory
-    const { data: factory, error: fErr } = await supabase
-      .from('factories')
-      .select('*')
-      .eq('id', factoryId)
-      .single();
-
-    if (fErr || !factory) return res.status(404).json({ error: "Fabbrica non trovata." });
-    if (factory.isActive === false) return res.status(400).json({ error: "Fabbrica non attiva." });
-    const factoryMinLevel = factory.minLevel ?? 1;
-    if (user.level < factoryMinLevel) return res.status(400).json({ error: `Richiede livello ${factoryMinLevel}.` });
-
-    const factoryType = factory.type || '';
-    const typeDef = FACTORY_CONFIG.TYPES[factoryType];
-    if (!typeDef) return res.status(400).json({ error: "Tipo fabbrica non valido." });
-
-    const resourceType = typeDef.resource;
-    if (!resourceType) return res.status(400).json({ error: "Questa fabbrica non produce risorse estraibili." });
-
-    const regionId = factory.regionId;
-
-    // 2. Check work restrictions
-    const { data: regionRel } = await supabase.from('regions').select('*').eq('id', regionId).single();
-    if (!regionRel) return res.status(404).json({ error: "Regione non trovata." });
-
-    const restrictionsActive = regionRel.workRestrictions === 1;
-    const isResident = user.residence_id === regionId;
-    const hasWorkPermit = user.work_permit_id === regionId;
-    if (restrictionsActive && !isResident && !hasWorkPermit) {
-      return res.status(403).json({ error: "Questa nazione richiede un Permesso di Lavoro." });
-    }
-
-    // 3. Energy check
-    const perks = user.perks || {};
-    const resistenza = perks['RESISTENZA'] || 0;
-    const energyReduction = Math.min(0.5, resistenza / 100);
-    const actualEnergyCost = Math.ceil(EXTRACTION_CONFIG.WORK_ACTION_ENERGY_COST * (1 - energyReduction));
-    if (user.energy < actualEnergyCost) {
-      return res.status(400).json({ error: "Energia insufficiente.", reason: "no_energy" });
-    }
-
-    // 4. Check region resource availability
-    const { data: regionRes } = await supabase
-      .from('region_resources')
-      .select('*')
-      .eq('regionId', regionId)
-      .eq('resourceType', resourceType)
-      .maybeSingle();
-
-    // For energy-based resources, they may not have a region_resources row
-    const dailyAvailable = regionRes?.dailyAvailable ?? 999999;
-    const dailyExtracted = regionRes?.dailyExtracted ?? 0;
-    const remainingDaily = Math.max(0, dailyAvailable - dailyExtracted);
-
-    if (remainingDaily <= 0 && regionRes) {
-      return res.status(400).json({ error: "Risorsa giornaliera esaurita per questa regione.", reason: "daily_exhausted" });
-    }
-
-    // 5. Gather all formula inputs
-    const nationId = await getNationForRegion(regionId);
-    const capMaxGlobal = parseInt(await getSetting('cap_max_global')) || 2000;
-    const deep = nationId ? await getActiveDeep(nationId, resourceType) : null;
-    const baseCap = regionRes?.baseCapPerRecharge ?? 200;
-    const effectiveCap = computeEffectiveCap(baseCap, deep, capMaxGlobal);
-    const deepBonus = deep ? Math.max(0, (deep.targetCap || 0) - baseCap) : 0;
-
-    const maxWorkExperience = getMaxWorkXpPerResource(perks['ISTRUZIONE'] || 0);
-    const [workExp, numPowerPlants, departmentBonus] = await Promise.all([
-      getPlayerWorkExperience(user.id, resourceType, maxWorkExperience),
-      getRegionPowerPlants(regionId),
-      getDepartmentBonus(regionId, resourceType),
-    ]);
-
-    const resourceCoefficient = getResourceCoefficient(resourceType, effectiveCap, numPowerPlants);
-
-    const taxRate = regionRel.marketTaxRate ?? regionRel.industryTaxPercent ?? FACTORY_CONFIG.DEFAULT_INDUSTRY_TAX_RATE;
-    const ownerProfitRate = FACTORY_CONFIG.OWNER_PROFIT_RATE;
-    const autonomySharePercent = regionRel.regionalProfitSharePercent ?? 0;
-
-    // 6. Calculate extraction
-    const breakdown = calculateExtraction({
-      playerLevel: user.level || 1,
-      factoryLevel: factory.level || 1,
-      workExperience: workExp,
-      resourceType,
-      resourceCoefficient,
-      departmentBonusLevel: departmentBonus,
-      nationBonusEnabled: true,
-      taxRate,
-      ownerProfitRate,
-      autonomySharePercent,
-      regionCapMax: baseCap,
-      regionDeepBonus: deepBonus,
-      regionCapTotal: effectiveCap,
-      regionResidualToday: remainingDaily,
-    });
-
-    // 7. Cap the actual extraction by daily remaining and player cycle cap
-    const { data: playerState } = await supabase
-      .from('player_extraction_state')
-      .select('*')
-      .eq('playerId', user.id)
-      .eq('regionId', regionId)
-      .eq('resourceType', resourceType)
-      .maybeSingle();
-
-    const extractedSoFar = playerState?.extractedSinceLastRecharge || 0;
-    const remainingCycle = Math.max(0, effectiveCap - extractedSoFar);
-
-    // The actual amount the player receives (capped)
-    let actualPlayerAmount = Math.min(breakdown.playerAmount, remainingCycle, remainingDaily);
-    if (actualPlayerAmount < EXTRACTION_CONFIG.MIN_EXTRACTION_THRESHOLD) {
-      const reason = remainingCycle <= 0 ? "cycle_cap_reached" : "daily_exhausted";
-      return res.status(400).json({
-        error: reason === "cycle_cap_reached"
-          ? "Cap del ciclo raggiunto. Serve una ricarica amministrativa."
-          : "Risorsa giornaliera esaurita.",
-        reason,
-      });
-    }
-
-    // Scale all amounts proportionally if capped
-    const scaleFactor = actualPlayerAmount / Math.max(EXTRACTION_CONFIG.MIN_EXTRACTION_THRESHOLD, breakdown.playerAmount);
-    const actualGross = breakdown.grossAmount * scaleFactor;
-    const actualOwner = breakdown.ownerAmount * scaleFactor;
-    const actualTax = breakdown.taxAmount * scaleFactor;
-    const actualState = breakdown.stateAmount * scaleFactor;
-    const actualAutonomy = breakdown.autonomyAmount * scaleFactor;
-    const actualWithdrawn = breakdown.withdrawnPoints * scaleFactor;
-    const actualMoney = breakdown.moneyGenerated * scaleFactor;
-
-    // 8. Deduct energy
-    const { error: energyErr } = await supabase
-      .from('users')
-      .update({ energy: user.energy - actualEnergyCost })
-      .eq('id', user.id);
-    if (energyErr) throw energyErr;
-
-    // 9. Update region daily extracted (track actual resource units, not withdrawn points)
-    const roundedPlayer = Math.round(actualPlayerAmount);
-    if (roundedPlayer <= 0) {
-      return res.status(400).json({ error: "Produttività insufficiente per estrarre.", reason: "insufficient_productivity" });
-    }
-
-    if (regionRes) {
-      const newDailyExtracted = Math.min(
-        dailyAvailable,
-        dailyExtracted + roundedPlayer
-      );
-      await supabase.from('region_resources').update({
-        dailyExtracted: newDailyExtracted,
-        updatedAt: new Date().toISOString(),
-      }).eq('regionId', regionId).eq('resourceType', resourceType);
-    }
-
-    // 10. Update player cycle extraction state
-    const newExtracted = extractedSoFar + roundedPlayer;
-    if (playerState) {
-      await supabase.from('player_extraction_state').update({
-        extractedSinceLastRecharge: newExtracted,
-        updatedAt: new Date().toISOString(),
-      }).eq('playerId', user.id).eq('regionId', regionId).eq('resourceType', resourceType);
-    } else {
-      await supabase.from('player_extraction_state').insert({
-        playerId: user.id, regionId, resourceType,
-        extractedSinceLastRecharge: roundedPlayer,
-        updatedAt: new Date().toISOString(),
-      });
-    }
-
-    // 11. Add resources to player inventory
-    const { data: existingInv } = await supabase.from('user_inventory')
-      .select('quantity').eq('userId', user.id).eq('itemId', resourceType).maybeSingle();
-    if (existingInv) {
-      await supabase.from('user_inventory')
-        .update({ quantity: existingInv.quantity + roundedPlayer })
-        .eq('userId', user.id).eq('itemId', resourceType);
-    } else {
-      await supabase.from('user_inventory')
-        .insert({ userId: user.id, itemId: resourceType, quantity: roundedPlayer });
-    }
-
-    // 12. Gold special: add money to player
-    if (resourceType === 'gold_ore' && actualMoney > 0) {
-      await supabase.rpc('safe_deduct_currency', {
-        p_user_id: user.id,
-        p_money_cost: -Math.round(actualMoney),
-        p_gold_cost: 0,
-        p_energy_cost: 0,
-      });
-    }
-
-    // 13. Owner profit (stored in factory Magazzino)
-    if (Math.round(actualOwner) > 0) {
-      await supabase.rpc('increment_factory_storage', {
-        p_factory_id: factoryId,
-        p_amount: Math.round(actualOwner)
-      });
-    }
-
-    // 14. Taxes to budget
-    if (Math.round(actualTax) > 0) {
-      const taxMoney = Math.round(actualTax * (FACTORY_CONFIG.RESOURCE_VALUES[resourceType] || 1));
-      if (taxMoney > 0) {
-        await supabase.rpc('add_budget_transaction', {
-          p_owner_type: 'REGION',
-          p_owner_id: regionId,
-          p_type: 'INCOME',
-          p_subtype: 'EXTRACTION_TAX',
-          p_money_delta: taxMoney,
-          p_created_by: user.id,
-          p_metadata: { resourceType, factoryId, grossAmount: actualGross, taxAmount: actualTax },
-        });
-      }
-    }
-
-    // 15. Work experience
-    const requestedWorkExpGain = getWorkExperienceGainForEnergyCost(actualEnergyCost);
-    const cappedRequestedGain = workExp >= maxWorkExperience ? 0 : requestedWorkExpGain;
-    const workExpUpdate = await incrementPlayerWorkExperience(user.id, resourceType, cappedRequestedGain, perks['ISTRUZIONE'] || 0);
-
-    // 16. XP gain
-    const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
-    await addXP(user.id, xpGain);
-
-    // 17. Detailed extraction log
-    await supabase.from('extraction_detailed_logs').insert({
-      playerId: user.id,
-      regionId,
-      factoryId: factory.id,
-      resourceType,
-      grossAmount: actualGross,
-      playerAmount: roundedPlayer,
-      ownerAmount: Math.round(actualOwner),
-      taxAmount: Math.round(actualTax),
-      stateAmount: Math.round(actualState),
-      autonomyAmount: Math.round(actualAutonomy),
-      moneyGenerated: Math.round(actualMoney),
-      withdrawnPoints: actualWithdrawn,
-      playerLevel: user.level || 1,
-      factoryLevel: factory.level || 1,
-      workExperience: workExp,
-      resourceCoefficient: resourceCoefficient,
-      finalProductivity: breakdown.finalProductivity,
-    });
-
-    // Also log in old extraction logs for compatibility
-    await supabase.from('resource_extraction_logs').insert({
-      playerId: user.id, regionId, resourceType, amount: roundedPlayer,
-    });
-
-    // 18. Update factory stats
-    await supabase.from('factories').update({
-      totalWorkerCount: (factory.totalWorkerCount || 0) + 1,
-      totalProduction: (factory.totalProduction || 0) + roundedPlayer,
-      totalOwnerProfit: (factory.totalOwnerProfit || 0) + Math.round(actualOwner),
-      totalTaxesPaid: (factory.totalTaxesPaid || 0) + Math.round(actualTax),
-    }).eq('id', factory.id);
-
-    res.json({
-      success: true,
-      amount: roundedPlayer,
-      resourceType,
-      moneyGenerated: Math.round(actualMoney),
-      remainingCycle: Math.max(0, remainingCycle - roundedPlayer),
-      remainingDaily: Math.max(0, remainingDaily - Math.round(actualWithdrawn)),
-      xpGain,
-      energyCost: actualEnergyCost,
-      workExperience: workExp + workExpUpdate.appliedGain,
-      workExpGain: workExpUpdate.appliedGain,
-      maxWorkExperience,
-      experienceMultiplier: breakdown.experienceMultiplier,
-      breakdown: {
-        baseProductivity: Math.round(breakdown.baseProductivity * 100) / 100,
-        experienceMultiplier: Math.round(breakdown.experienceMultiplier * 1000) / 1000,
-        nationBonus: breakdown.nationBonus,
-        departmentBonus: breakdown.departmentBonus,
-        balancingMultiplier: breakdown.balancingMultiplier,
-        finalProductivity: Math.round(breakdown.finalProductivity * 100) / 100,
-        grossAmount: Math.round(actualGross * 100) / 100,
-        playerAmount: roundedPlayer,
-        ownerAmount: Math.round(actualOwner),
-        taxAmount: Math.round(actualTax),
-        stateAmount: Math.round(actualState),
-        autonomyAmount: Math.round(actualAutonomy),
-        withdrawnPoints: Math.round(actualWithdrawn * 100) / 100,
-        resourceCoefficient: Math.round(resourceCoefficient * 100) / 100,
-      },
-    });
+    const result = await executeExtractionWork(user, factoryId);
+    return res.json(result);
   } catch (err: any) {
+    if (err?.statusCode) {
+      return res.status(err.statusCode).json({
+        error: err.message,
+        ...(err?.reason ? { reason: err.reason } : {}),
+      });
+    }
     console.error("Error in extraction/work:", err);
-    res.status(500).json({ error: "Errore durante l'estrazione: " + err.message });
+    return res.status(500).json({ error: "Errore durante l'estrazione: " + err.message });
   }
 });
 

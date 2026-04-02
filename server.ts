@@ -4288,6 +4288,10 @@ const normalizeWarAutoType = (value: any): 'hourly' | 'maximum' => {
   return value === 'hourly' ? 'hourly' : 'maximum';
 };
 
+const isAutoAttackCompatibleWithAutoWork = (autoType: any): boolean => autoType === 'hourly';
+
+const autoWorkIncompatibleMessage = "Auto-Work e compatibile solo con il Danno Orario, non con l'Auto-War standard.";
+
 let missingAutomationTablesWarned = {
   work: false,
   training: false,
@@ -5976,6 +5980,24 @@ app.post("/api/automation/work", authenticate, async (req: any, res) => {
 
     if (!factoryId) return res.status(400).json({ error: "Factory mancante per auto-lavoro." });
 
+    const { data: activeAutoAttacks, error: autoAttacksError } = await supabase
+      .from('war_auto_attacks')
+      .select('id, autoType, activatedAt, expiresAt')
+      .eq('userId', req.user.id)
+      .eq('isActive', true);
+    if (autoAttacksError) throw autoAttacksError;
+
+    for (const attack of activeAutoAttacks || []) {
+      if (isAutomationExpired(attack.activatedAt, attack.expiresAt)) {
+        await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', attack.id);
+        continue;
+      }
+
+      if (!isAutoAttackCompatibleWithAutoWork(attack.autoType)) {
+        return res.status(400).json({ error: autoWorkIncompatibleMessage });
+      }
+    }
+
     const expiresAt = new Date(Date.now() + AUTOMATION_EXPIRE_MS).toISOString();
     const { error: upsertError } = await supabase.from('work_auto_actions').upsert({
       userId: req.user.id,
@@ -6107,6 +6129,24 @@ app.post("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => 
         ? "Fase 1 navale: solo corazzate navali permesse."
         : "Per questa guerra puoi usare solo Carri armati e Aerei.";
       return res.status(400).json({ error: message });
+    }
+
+    if (!isAutoAttackCompatibleWithAutoWork(resolvedAutoType)) {
+      const { data: activeAutoWork, error: autoWorkError } = await supabase
+        .from('work_auto_actions')
+        .select('id, activatedAt, expiresAt')
+        .eq('userId', user.id)
+        .eq('isActive', true)
+        .maybeSingle();
+      if (autoWorkError) throw autoWorkError;
+
+      if (activeAutoWork) {
+        if (isAutomationExpired(activeAutoWork.activatedAt, activeAutoWork.expiresAt)) {
+          await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', activeAutoWork.id);
+        } else {
+          return res.status(400).json({ error: "Non puoi attivare questa modalita di auto-attacco mentre Auto-Work e attivo." });
+        }
+      }
     }
 
     const expiresAt = new Date(Date.now() + AUTOMATION_EXPIRE_MS).toISOString();

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -136,13 +136,13 @@ const formatRemaining = (ms: number): string => {
 
 // Compute flag emoji from ISO2 code using Unicode Regional Indicator Symbols
 const isoToFlag = (iso2: string): string => {
-  if (!iso2 || iso2.length < 2) return "🌍";
+  if (!iso2 || iso2.length < 2) return "ðŸŒ";
   const code = iso2.toUpperCase();
   const offset = 127397; // Regional Indicator Symbol offset
   try {
     return String.fromCodePoint(code.charCodeAt(0) + offset, code.charCodeAt(1) + offset);
   } catch {
-    return "🌍";
+    return "ðŸŒ";
   }
 };
 
@@ -152,7 +152,7 @@ const NationalFlag = ({ iso2, className = "w-[1.2em] h-[0.9em]", style }: { iso2
   const countryCode = (upper.includes('-') ? upper.split('-')[0] : upper).toLowerCase();
   
   if (!countryCode || countryCode === 'st' || countryCode === 'world' || error) {
-    return <span className={className} style={{...style, fontSize: '1em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center'}}>🌍</span>;
+    return <span className={className} style={{...style, fontSize: '1em', display: 'inline-flex', alignItems: 'center', justifyContent: 'center'}}>ðŸŒ</span>;
   }
 
   return (
@@ -177,21 +177,21 @@ const NationLogo = ({ iso2, logo, className = "w-10 h-6", style }: { iso2?: stri
 };
 
 const COUNTRY_FLAGS: Record<string, string> = {
-  IT: "🇮🇹", FR: "🇫🇷", DE: "🇩🇪", ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", CA: "🇨🇦",
-  BR: "🇧🇷", JP: "🇯🇵", CN: "🇨🇳", IN: "🇮🇳", RU: "🇷🇺", AU: "🇦🇺", ZA: "🇿🇦",
-  MX: "🇲🇽", AR: "🇦🇷", EG: "🇪🇬", NG: "🇳🇬", TR: "🇹🇷", KR: "🇰🇷", SA: "🇸🇦",
-  ID: "🇮🇩", PK: "🇵🇰", PL: "🇵🇱", UA: "🇺🇦", SE: "🇸🇪", NO: "🇳🇴", NL: "🇳🇱",
-  BE: "🇧🇪", CH: "🇨🇭", PT: "🇵🇹", GR: "🇬🇷", AT: "🇦🇹", HU: "🇭🇺", CZ: "🇨🇿",
-  RO: "🇷🇴", FI: "🇫🇮", DK: "🇩🇰", IE: "🇮🇪", TH: "🇹🇭", VN: "🇻🇳", PH: "🇵🇭",
-  MY: "🇲🇾", SG: "🇸🇬", IR: "🇮🇷", IQ: "🇮🇶", IL: "🇮🇱", CO: "🇨🇴", CL: "🇨🇱",
-  PE: "🇵🇪", ET: "🇪🇹", KE: "🇰🇪", GH: "🇬🇭", TZ: "🇹🇿", MA: "🇲🇦", DZ: "🇩🇿",
-  NZ: "🇳🇿", AF: "🇦🇫",
+  IT: "ðŸ‡®ðŸ‡¹", FR: "ðŸ‡«ðŸ‡·", DE: "ðŸ‡©ðŸ‡ª", ES: "ðŸ‡ªðŸ‡¸", GB: "ðŸ‡¬ðŸ‡§", US: "ðŸ‡ºðŸ‡¸", CA: "ðŸ‡¨ðŸ‡¦",
+  BR: "ðŸ‡§ðŸ‡·", JP: "ðŸ‡¯ðŸ‡µ", CN: "ðŸ‡¨ðŸ‡³", IN: "ðŸ‡®ðŸ‡³", RU: "ðŸ‡·ðŸ‡º", AU: "ðŸ‡¦ðŸ‡º", ZA: "ðŸ‡¿ðŸ‡¦",
+  MX: "ðŸ‡²ðŸ‡½", AR: "ðŸ‡¦ðŸ‡·", EG: "ðŸ‡ªðŸ‡¬", NG: "ðŸ‡³ðŸ‡¬", TR: "ðŸ‡¹ðŸ‡·", KR: "ðŸ‡°ðŸ‡·", SA: "ðŸ‡¸ðŸ‡¦",
+  ID: "ðŸ‡®ðŸ‡©", PK: "ðŸ‡µðŸ‡°", PL: "ðŸ‡µðŸ‡±", UA: "ðŸ‡ºðŸ‡¦", SE: "ðŸ‡¸ðŸ‡ª", NO: "ðŸ‡³ðŸ‡´", NL: "ðŸ‡³ðŸ‡±",
+  BE: "ðŸ‡§ðŸ‡ª", CH: "ðŸ‡¨ðŸ‡­", PT: "ðŸ‡µðŸ‡¹", GR: "ðŸ‡¬ðŸ‡·", AT: "ðŸ‡¦ðŸ‡¹", HU: "ðŸ‡­ðŸ‡º", CZ: "ðŸ‡¨ðŸ‡¿",
+  RO: "ðŸ‡·ðŸ‡´", FI: "ðŸ‡«ðŸ‡®", DK: "ðŸ‡©ðŸ‡°", IE: "ðŸ‡®ðŸ‡ª", TH: "ðŸ‡¹ðŸ‡­", VN: "ðŸ‡»ðŸ‡³", PH: "ðŸ‡µðŸ‡­",
+  MY: "ðŸ‡²ðŸ‡¾", SG: "ðŸ‡¸ðŸ‡¬", IR: "ðŸ‡®ðŸ‡·", IQ: "ðŸ‡®ðŸ‡¶", IL: "ðŸ‡®ðŸ‡±", CO: "ðŸ‡¨ðŸ‡´", CL: "ðŸ‡¨ðŸ‡±",
+  PE: "ðŸ‡µðŸ‡ª", ET: "ðŸ‡ªðŸ‡¹", KE: "ðŸ‡°ðŸ‡ª", GH: "ðŸ‡¬ðŸ‡­", TZ: "ðŸ‡¹ðŸ‡¿", MA: "ðŸ‡²ðŸ‡¦", DZ: "ðŸ‡©ðŸ‡¿",
+  NZ: "ðŸ‡³ðŸ‡¿", AF: "ðŸ‡¦ðŸ‡«",
 };
 
 // Get flag: try static map first, then compute from ISO2 code
 const getFlag = (iso2: string): string => {
   const upper = (iso2 || '').toUpperCase();
-  // Handle sub-region codes (e.g., "IT-RM" → "IT")
+  // Handle sub-region codes (e.g., "IT-RM" â†’ "IT")
   const countryCode = upper.includes('-') ? upper.split('-')[0] : upper;
   return COUNTRY_FLAGS[countryCode] || isoToFlag(countryCode);
 };
@@ -285,14 +285,14 @@ const ResourceStrip = ({ user }: { user: any }) => (
     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Magazzino Risorse (Clicca per cronologia)</p>
     <div className="flex justify-between items-center gap-2 overflow-x-auto">
       {[
-        { id: "gold_ore", emoji: "🪙", label: "Oro", val: user.gold || 0, color: "text-amber-600" },
-        { id: "oil", emoji: "🛢️", label: "Petrolio", val: user.oil || 0, color: "text-orange-600" },
-        { id: "minerals", emoji: "🪨", label: "Minerali", val: user.minerals || 0, color: "text-slate-600" },
-        { id: "uranium", emoji: "☢️", label: "Uranio", val: user.uranium || 0, color: "text-cyan-600" },
-        { id: "diamonds", emoji: "💎", label: "Diamanti", val: user.diamonds || 0, color: "text-purple-600" },
-        { id: "energy_drink", emoji: "🥤", label: "Drink", val: user.energyDrinks || 0, color: "text-sky-600" },
-        { id: "liquid_oxygen", emoji: "🧊", label: "O₂ Liq.", val: user.liquidOxygen || 0, color: "text-blue-600" },
-        { id: "helium3", emoji: "⚛️", label: "He-3", val: user.helium3 || 0, color: "text-teal-600" },
+        { id: "gold_ore", emoji: "ðŸª™", label: "Oro", val: user.gold || 0, color: "text-amber-600" },
+        { id: "oil", emoji: "ðŸ›¢ï¸", label: "Petrolio", val: user.oil || 0, color: "text-orange-600" },
+        { id: "minerals", emoji: "ðŸª¨", label: "Minerali", val: user.minerals || 0, color: "text-slate-600" },
+        { id: "uranium", emoji: "â˜¢ï¸", label: "Uranio", val: user.uranium || 0, color: "text-cyan-600" },
+        { id: "diamonds", emoji: "ðŸ’Ž", label: "Diamanti", val: user.diamonds || 0, color: "text-purple-600" },
+        { id: "energy_drink", emoji: "ðŸ¥¤", label: "Drink", val: user.energyDrinks || 0, color: "text-sky-600" },
+        { id: "liquid_oxygen", emoji: "ðŸ§Š", label: "Oâ‚‚ Liq.", val: user.liquidOxygen || 0, color: "text-blue-600" },
+        { id: "helium3", emoji: "âš›ï¸", label: "He-3", val: user.helium3 || 0, color: "text-teal-600" },
       ].map(r => (
         <Link key={r.id} to={`/inventory/history/${r.id}`} className="flex flex-col items-center gap-1 min-w-[56px] hover:scale-110 transition-transform cursor-pointer group">
           <span className="text-xl group-hover:drop-shadow-md transition-all">{r.emoji}</span>
@@ -486,7 +486,7 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     className="w-full pl-11 pr-4 py-3 rounded-2xl border border-slate-100 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-300"
-                    placeholder="••••••••"
+                    placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                     required
                   />
                 </div>
@@ -524,13 +524,13 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
               onClick={() => { setIsLogin(!isLogin); setError(""); }}
               className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors"
             >
-              {isLogin ? "Non hai un account? Registrati" : "Hai già un account? Accedi"}
+              {isLogin ? "Non hai un account? Registrati" : "Hai giÃ  un account? Accedi"}
             </button>
           </div>
         </motion.div>
 
         <p className="mt-8 text-center text-[10px] text-slate-300 font-bold uppercase tracking-[0.2em]">
-          Territorial &copy; 2026 • Geopolitical MVP
+          Territorial &copy; 2026 â€¢ Geopolitical MVP
         </p>
       </div>
     </div>
@@ -619,13 +619,13 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
             onClick={() => setChannel('global')}
             className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all ${channel === 'global' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
           >
-            🌍 Globale
+            ðŸŒ Globale
           </button>
           <button
             onClick={() => setChannel('local')}
             className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all ${channel === 'local' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
           >
-            🏠 {currentUser.originalNation || 'IT'}
+            ðŸ  {currentUser.originalNation || 'IT'}
           </button>
         </div>
         <span className="ml-auto text-[10px] font-black text-slate-300 uppercase">{messages.length} messaggi</span>
@@ -849,10 +849,10 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId, actionLoading
       {/* Section tabs (global/local) */}
       <div className="bg-white rounded-[2.5rem] p-2 flex gap-2 shadow-sm border border-slate-100">
         <button onClick={() => setSection('global')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${section === 'global' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "text-slate-400 hover:bg-slate-50"}`}>
-          🌍 Globale
+          ðŸŒ Globale
         </button>
         <button onClick={() => setSection('local')} className={`flex-1 py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${section === 'local' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "text-slate-400 hover:bg-slate-50"}`}>
-          🏠 Locale
+          ðŸ  Locale
         </button>
       </div>
 
@@ -960,7 +960,7 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId, actionLoading
                     </div>
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Descrizione / Linea Editoriale</label>
-                      <textarea value={npDesc} onChange={e => setNpDesc(e.target.value)} placeholder="Di cosa parlerà il tuo giornale?" rows={3} className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700" />
+                      <textarea value={npDesc} onChange={e => setNpDesc(e.target.value)} placeholder="Di cosa parlerÃ  il tuo giornale?" rows={3} className="w-full px-6 py-4 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700" />
                     </div>
                     <div>
                       <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">URL Logo (opzionale)</label>
@@ -1076,7 +1076,7 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
   if (!article) return (
     <div className="bg-white p-12 rounded-[2.5rem] text-center border border-slate-100">
       <p className="text-slate-400 font-bold">Articolo non trovato</p>
-      <button onClick={() => navigate("/articles")} className="mt-4 text-indigo-600 font-black text-sm">← Torna al Feed</button>
+      <button onClick={() => navigate("/articles")} className="mt-4 text-indigo-600 font-black text-sm">â† Torna al Feed</button>
     </div>
   );
 
@@ -1090,7 +1090,7 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
         onClick={() => navigate("/articles")}
         className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1"
       >
-        ← Torna al Feed
+        â† Torna al Feed
       </button>
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
         <div>
@@ -1226,7 +1226,7 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
             value={newComment}
             onChange={e => setNewComment(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleComment(); }}
-            placeholder="Lascia un commento…"
+            placeholder="Lascia un commentoâ€¦"
             className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-100 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-100"
           />
           <button
@@ -1323,7 +1323,7 @@ const NewspaperDetailView = ({ user }: { user: any }) => {
   const canManage = myMembership && (myMembership.role === 'owner' || myMembership.role === 'editor');
 
   if (loading) return <div className="p-12 text-center flex flex-col items-center gap-4"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /><p className="text-slate-400 font-bold">Caricamento Redazione...</p></div>;
-  if (!newspaper) return <div className="p-12 text-center bg-white rounded-[2.5rem] border border-slate-100"><p className="text-slate-400 font-bold">Giornale non trovato</p><button onClick={() => navigate("/articles")} className="mt-4 text-indigo-600 font-black text-sm">← Torna agli Articoli</button></div>;
+  if (!newspaper) return <div className="p-12 text-center bg-white rounded-[2.5rem] border border-slate-100"><p className="text-slate-400 font-bold">Giornale non trovato</p><button onClick={() => navigate("/articles")} className="mt-4 text-indigo-600 font-black text-sm">â† Torna agli Articoli</button></div>;
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
@@ -1422,7 +1422,7 @@ const NewspaperDetailView = ({ user }: { user: any }) => {
               <div className="mt-6 pt-6 border-t border-rose-100">
                 <button
                   onClick={async () => {
-                    if (!window.confirm('Sei sicuro di voler cancellare questo giornale? Questa azione è irreversibile. Gli articoli non verranno eliminati ma scollegati.')) return;
+                    if (!window.confirm('Sei sicuro di voler cancellare questo giornale? Questa azione Ã¨ irreversibile. Gli articoli non verranno eliminati ma scollegati.')) return;
                     try {
                       const res = await fetch(`/api/newspapers/${id}`, { method: "DELETE" });
                       if (res.ok) {
@@ -1436,9 +1436,9 @@ const NewspaperDetailView = ({ user }: { user: any }) => {
                   }}
                   className="w-full py-3 bg-rose-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-rose-100 hover:bg-rose-600 transition-all flex items-center justify-center gap-2"
                 >
-                  🗑️ Cancella Giornale
+                  ðŸ—‘ï¸ Cancella Giornale
                 </button>
-                <p className="text-[9px] text-rose-400 font-bold mt-2 text-center">Questa azione è irreversibile. Gli articoli verranno scollegati.</p>
+                <p className="text-[9px] text-rose-400 font-bold mt-2 text-center">Questa azione Ã¨ irreversibile. Gli articoli verranno scollegati.</p>
               </div>
             </motion.div>
           )}
@@ -1572,7 +1572,7 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
           onClick={() => navigate("/articles")}
           className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1 bg-white px-4 py-2 rounded-xl shadow-sm border border-slate-100"
         >
-          ← Annulla
+          â† Annulla
         </button>
         <button
           onClick={handlePublish}
@@ -1602,10 +1602,10 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-1">Sezione Pubblicazione</label>
               <div className="bg-slate-50 p-1.5 rounded-2xl flex gap-1 border border-slate-100">
                 <button onClick={() => setArticleSection('global')} className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${articleSection === 'global' ? "bg-white text-indigo-600 shadow-sm border border-indigo-100" : "text-slate-400 hover:bg-white/50"}`}>
-                  🌍 Globale
+                  ðŸŒ Globale
                 </button>
                 <button onClick={() => setArticleSection('local')} className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${articleSection === 'local' ? "bg-white text-indigo-600 shadow-sm border border-indigo-100" : "text-slate-400 hover:bg-white/50"}`}>
-                  🏠 Locale
+                  ðŸ  Locale
                 </button>
               </div>
             </div>
@@ -1618,9 +1618,9 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
                   onChange={e => setSelectedNewspaperId(e.target.value || null)}
                   className="w-full pl-4 pr-10 py-3 rounded-2xl bg-slate-50 border border-slate-100 text-xs font-black text-slate-700 appearance-none cursor-pointer focus:ring-2 focus:ring-indigo-100 outline-none"
                 >
-                  <option value="">👤 Pubblica come Me</option>
+                  <option value="">ðŸ‘¤ Pubblica come Me</option>
                   {newspapers.map(n => (
-                    <option key={n.id} value={n.id}>📰 {n.name}</option>
+                    <option key={n.id} value={n.id}>ðŸ“° {n.name}</option>
                   ))}
                 </select>
                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
@@ -1663,6 +1663,7 @@ const WarsView = ({
   const navigate = useNavigate();
   const [training, setTraining] = useState(false);
   const [militaryExp, setMilitaryExp] = useState(user?.militaryExp || 0);
+  const [activeAutoAttacks, setActiveAutoAttacks] = useState<any[]>([]);
   const [autoAttack, setAutoAttack] = useState<any | null>(null); 
   const [autoTraining, setAutoTraining] = useState<any | null>(null); 
  
@@ -1682,10 +1683,13 @@ const WarsView = ({
       const warData = await warRes.json();
       const trainingData = await trainingRes.json();
 
-      const matchedWar = (warData.autoAttacks || []).find((entry: any) => !warId || entry.warId === warId) || null;
+      const allAutoAttacks = warData.autoAttacks || [];
+      const matchedWar = allAutoAttacks.find((entry: any) => !warId || entry.warId === warId) || null;
+      setActiveAutoAttacks(allAutoAttacks);
       setAutoAttack(matchedWar);
       setAutoTraining(trainingData.autoTraining || null);
     } catch {
+      setActiveAutoAttacks([]);
       setAutoAttack(null);
       setAutoTraining(null);
     }
@@ -1696,6 +1700,8 @@ const WarsView = ({
     const iv = setInterval(refreshAutomationStatus, 30000);
     return () => clearInterval(iv);
   }, [refreshAutomationStatus]);
+
+  const hasIncompatibleAutoAttackWithAutoWork = activeAutoAttacks.some((entry: any) => entry?.autoType !== 'hourly');
 
   const handleTrain = async () => {
     if (user.energy < 10) {
@@ -1724,6 +1730,11 @@ const WarsView = ({
   };
 
   const handleSetWarAutomation = async (warIdValue: string, side: 'attacker' | 'defender', weaponId: string, mode: 'maximum' | 'hourly') => {
+    if (mode !== 'hourly' && autoWorkFactoryId) {
+      alert("Non puoi attivare questa modalità di auto-attacco mentre Auto-Work è attivo.");
+      return;
+    }
+
     const res = await fetch(`/api/wars/${warIdValue}/auto-attack`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1826,7 +1837,7 @@ const WarsView = ({
         <p className="text-slate-400 text-sm font-medium mt-1">Conflitti globali e conquiste territoriali.</p>
         {warId && (
           <button onClick={() => navigate('/wars')} className="mt-4 text-xs font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-700 transition-colors">
-            ← Mostra tutte le guerre
+            â† Mostra tutte le guerre
           </button>
         )}
       </div>
@@ -1849,7 +1860,7 @@ const WarsView = ({
           </div>
           <div className="text-right">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Energia</p>
-            <p className="text-lg font-black text-amber-600">{user.energy}⚡</p>
+            <p className="text-lg font-black text-amber-600">{user.energy}âš¡</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -1866,7 +1877,7 @@ const WarsView = ({
               onClick={() => handleSetHourlyTraining(false)}
               className="py-4 px-4 bg-red-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-red-600 transition-all flex items-center justify-center gap-1"
             >
-              ⏹ Stop
+              â¹ Stop
             </button>
           ) : (
             <button
@@ -1874,14 +1885,14 @@ const WarsView = ({
               className="py-4 px-4 bg-amber-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-amber-700 transition-all flex items-center justify-center gap-1"
               title="Danno orario per 24 ore"
             >
-              🤖 Auto
+              ðŸ¤– Auto
             </button>
           )}
         </div>
         {autoTraining && (
           <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
-            <span className="animate-pulse text-lg">⚙️</span>
-            <span className="text-xs font-black text-amber-800">Danno orario attivo per 24h. Applica un tick ogni 1 ora senza consumare energia o bibite{autoTraining.expiresAt ? ` • Scade: ${new Date(autoTraining.expiresAt).toLocaleString('it-IT')}` : ''}.</span>
+            <span className="animate-pulse text-lg">âš™ï¸</span>
+            <span className="text-xs font-black text-amber-800">Danno orario attivo per 24h. Applica un tick ogni 1 ora senza consumare energia o bibite{autoTraining.expiresAt ? ` â€¢ Scade: ${new Date(autoTraining.expiresAt).toLocaleString('it-IT')}` : ''}.</span>
           </div>
         )}
       </div>
@@ -2000,7 +2011,7 @@ const WarsView = ({
                   {war.warType && war.warType !== 'land' && (
                     <div className="flex justify-center mt-2">
                       <span className="bg-slate-100 text-slate-600 text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-lg">
-                        {war.warType === 'naval' ? '🚢 Navale' : war.warType === 'space' ? '🚀 Spaziale' : war.warType === 'lunar' ? '🌙 Lunare' : war.warType === 'revolution' ? '🔥 Rivoluzione' : war.warType === 'coup' ? '⚡ Golpe' : war.warType === 'training' ? '🎯 Addestramento' : war.warType}
+                        {war.warType === 'naval' ? 'ðŸš¢ Navale' : war.warType === 'space' ? 'ðŸš€ Spaziale' : war.warType === 'lunar' ? 'ðŸŒ™ Lunare' : war.warType === 'revolution' ? 'ðŸ”¥ Rivoluzione' : war.warType === 'coup' ? 'âš¡ Golpe' : war.warType === 'training' ? 'ðŸŽ¯ Addestramento' : war.warType}
                         {war.warType === 'naval' && war.navalPhase ? ` (Fase ${war.navalPhase})` : ''}
                       </span>
                     </div>
@@ -2021,7 +2032,7 @@ const WarsView = ({
                             onClick={(e) => { e.stopPropagation(); navigate(`/war/${war.id}/summary`); }}
                             className="px-6 py-2 bg-slate-900 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-slate-800 hover:scale-105 transition-all flex items-center gap-2"
                           >
-                            📊 Visualizza Statistiche e Top Danni
+                            ðŸ“Š Visualizza Statistiche e Top Danni
                           </button>
                         </div>
 
@@ -2030,7 +2041,7 @@ const WarsView = ({
                         {/* Naval Phase 1 Warning */}
                         {war.warType === 'naval' && war.navalPhase === 1 && (
                           <div className="mb-4 bg-blue-50 border border-blue-200 rounded-2xl p-3 flex items-center gap-2">
-                            <span className="text-lg">🚢</span>
+                            <span className="text-lg">ðŸš¢</span>
                             <span className="text-xs font-black text-blue-800">Fase 1 Navale: solo corazzate navali disponibili (prime 24h)</span>
                           </div>
                         )}
@@ -2042,27 +2053,27 @@ const WarsView = ({
                             {!(war.warType === 'naval' && war.navalPhase === 1) && (
                               <>
                                 <button disabled={deploying} onClick={() => handleDeploy('attacker', 'tank')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">🛡️ Carri armati</span>
+                                  <span className="font-bold text-sm flex items-center gap-2">ðŸ›¡ï¸ Carri armati</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-indigo-600">+20 Danni base</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}âš¡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('attacker', 'aircraft')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">✈️ Aerei</span>
+                                  <span className="font-bold text-sm flex items-center gap-2">âœˆï¸ Aerei</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-indigo-600">+120 Danni base</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}âš¡</span>
                                   </div>
                                 </button>
                               </>
                             )}
                             {war.warType === 'naval' && war.navalPhase === 1 && (
                               <button disabled={deploying} onClick={() => handleDeploy('attacker', 'battleship')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
+                                <span className="font-bold text-sm flex items-center gap-2">ðŸš¢ Corazzata Navale</span>
                                 <div className="flex flex-col items-end">
                                   <span className="text-xs font-black text-indigo-600">+2000 Danni</span>
-                                  <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
+                                  <span className="text-[10px] font-bold text-slate-400">-{300}âš¡</span>
                                 </div>
                               </button>
                             )}
@@ -2074,27 +2085,27 @@ const WarsView = ({
                             {!(war.warType === 'naval' && war.navalPhase === 1) && (
                               <>
                                 <button disabled={deploying} onClick={() => handleDeploy('defender', 'tank')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">🛡️ Carri armati</span>
+                                  <span className="font-bold text-sm flex items-center gap-2">ðŸ›¡ï¸ Carri armati</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-rose-600">+20 Danni base</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}âš¡</span>
                                   </div>
                                 </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('defender', 'aircraft')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">✈️ Aerei</span>
+                                  <span className="font-bold text-sm flex items-center gap-2">âœˆï¸ Aerei</span>
                                   <div className="flex flex-col items-end">
                                     <span className="text-xs font-black text-rose-600">+120 Danni base</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
+                                    <span className="text-[10px] font-bold text-slate-400">-{300}âš¡</span>
                                   </div>
                                 </button>
                               </>
                             )}
                             {war.warType === 'naval' && war.navalPhase === 1 && (
                               <button disabled={deploying} onClick={() => handleDeploy('defender', 'battleship')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                <span className="font-bold text-sm flex items-center gap-2">🚢 Corazzata Navale</span>
+                                <span className="font-bold text-sm flex items-center gap-2">ðŸš¢ Corazzata Navale</span>
                                 <div className="flex flex-col items-end">
                                   <span className="text-xs font-black text-rose-600">+2000 Danni</span>
-                                  <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
+                                  <span className="text-[10px] font-bold text-slate-400">-{300}âš¡</span>
                                 </div>
                               </button>
                             )}
@@ -2106,7 +2117,7 @@ const WarsView = ({
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="font-black text-amber-800 text-sm uppercase">⚡ Modalità Automatica</p>
-                              <p className="text-[10px] font-bold text-amber-600">Standard: ogni 10 minuti per 24h. Orario: ogni 1 ora senza energia o bibite.</p>
+                              <p className="text-[10px] font-bold text-amber-600">Auto-War standard: ogni 10 minuti per 24h. Danno Orario: ogni 1 ora senza energia o bibite. Solo il Danno Orario è compatibile con Auto-Work.</p>
                             </div>
                             {autoAttack?.warId === war.id && (
                               <button onClick={() => handleStopWarAutomation(war.id)} className="px-4 py-2 bg-red-500 text-white rounded-xl font-black text-xs uppercase hover:bg-red-600">
@@ -2114,6 +2125,11 @@ const WarsView = ({
                               </button>
                             )}
                           </div>
+                          {autoWorkFactoryId && hasIncompatibleAutoAttackWithAutoWork && (
+                            <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[10px] font-bold text-red-700">
+                              Auto-Work non può coesistere con l'Auto-War standard o con altre modalità di auto-attacco frequente.
+                            </div>
+                          )}
                           {autoAttack?.warId === war.id ? (
                             <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
                               <span className="animate-pulse text-lg">⚔️</span>
@@ -2128,10 +2144,6 @@ const WarsView = ({
                                   <p className="text-[9px] font-black text-center uppercase text-amber-700">{side === 'attacker' ? 'Attaccante' : 'Difensore'}</p>
                                   {!(war.warType === 'naval' && war.navalPhase === 1) && (['tank', 'aircraft'] as const).map(wep => (
                                     <button key={wep} onClick={() => {
-                                      if (autoWorkFactoryId) {
-                                        if (!window.confirm("Attivando l'auto-attacco, l'auto-lavoro verrà disattivato. Procedere?")) return;
-                                        setAutoWorkFactoryId(null);
-                                      }
                                       handleSetWarAutomation(war.id, side, wep, 'maximum');
                                     }} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
                                       {wep === 'tank' ? '🛡️ Carri armati' : '✈️ Aerei'}
@@ -2139,10 +2151,6 @@ const WarsView = ({
                                   ))}
                                   {war.warType === 'naval' && war.navalPhase === 1 && (
                                     <button onClick={() => {
-                                      if (autoWorkFactoryId) {
-                                        if (!window.confirm("Attivando l'auto-attacco, l'auto-lavoro verrà disattivato. Procedere?")) return;
-                                        setAutoWorkFactoryId(null);
-                                      }
                                       handleSetWarAutomation(war.id, side, 'battleship', 'maximum');
                                     }} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
                                       🚢 Corazzata Navale
@@ -2150,10 +2158,6 @@ const WarsView = ({
                                   )}
                                   <button
                                     onClick={() => {
-                                      if (autoWorkFactoryId) {
-                                        if (!window.confirm("Attivando il danno orario, l'auto-lavoro verrà disattivato. Procedere?")) return;
-                                        setAutoWorkFactoryId(null);
-                                      }
                                       handleSetWarAutomation(
                                         war.id,
                                         side,
@@ -2162,7 +2166,7 @@ const WarsView = ({
                                       );
                                     }}
                                     className="w-full py-1.5 px-2 bg-amber-100 border border-amber-300 rounded-lg text-[10px] font-black text-amber-900 hover:bg-amber-200 transition-all"
-                                    title="Danno ogni 1 ora per 24h senza consumo di energia o bibite"
+                                    title="Danno ogni 1 ora per 24h senza consumo di energia o bibite. Compatibile con Auto-Work."
                                   >
                                     ⚡ Danno orario
                                   </button>
@@ -2407,10 +2411,10 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
 };
 
 const PERK_ICONS: Record<string, string> = {
-  FORZA: "⚔️",
-  EDUCAZIONE: "📚",
-  INDUSTRIA: "🏭",
-  LOGISTICA: "🔋"
+  FORZA: "âš”ï¸",
+  EDUCAZIONE: "ðŸ“š",
+  INDUSTRIA: "ðŸ­",
+  LOGISTICA: "ðŸ”‹"
 };
 
 const formatTime = (ms: number) => {
@@ -2521,7 +2525,7 @@ const UsernameEditor = ({ username, fetchData }: { username: string; fetchData: 
           maxLength={20}
         />
         <button onClick={save} disabled={saving} className="w-7 h-7 bg-indigo-600 rounded-xl flex items-center justify-center text-white disabled:opacity-50"><CheckCircle2 className="w-4 h-4" /></button>
-        <button onClick={() => { setEditing(false); setValue(username); }} className="w-7 h-7 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500"><span className="text-sm font-black">✕</span></button>
+        <button onClick={() => { setEditing(false); setValue(username); }} className="w-7 h-7 bg-slate-100 rounded-xl flex items-center justify-center text-slate-500"><span className="text-sm font-black">âœ•</span></button>
       </div>
       {err && <p className="text-[10px] font-bold text-rose-500">{err}</p>}
     </div>
@@ -2539,13 +2543,13 @@ const UsernameEditor = ({ username, fetchData }: { username: string; fetchData: 
 
 // Player Factories View (New Resource System)
 const RESOURCE_ICONS: Record<string, string> = {
-  gold: "🪙",
-  oil: "🛢️",
-  minerals: "🪨",
-  uranium: "☢️",
-  diamonds: "💎",
-  liquid_oxygen: "🧊",
-  helium3: "⚗️",
+  gold: "ðŸª™",
+  oil: "ðŸ›¢ï¸",
+  minerals: "ðŸª¨",
+  uranium: "â˜¢ï¸",
+  diamonds: "ðŸ’Ž",
+  liquid_oxygen: "ðŸ§Š",
+  helium3: "âš—ï¸",
 };
 
 const RESOURCE_NAMES: Record<string, string> = {
@@ -2678,7 +2682,7 @@ const PlayerFactoriesView = ({
     }
     const cost = upgradeCost[id];
     const costDisplay = cost != null ? cost : '?';
-    if (!window.confirm(`Vuoi potenziare la fabbrica dal livello ${currentLevel} al livello ${target}? Costo: 🪙 ${costDisplay} Gold`)) return;
+    if (!window.confirm(`Vuoi potenziare la fabbrica dal livello ${currentLevel} al livello ${target}? Costo: ðŸª™ ${costDisplay} Gold`)) return;
     setActionLoading(true);
     try {
       const res = await fetch("/api/factories/upgrade", {
@@ -2688,7 +2692,7 @@ const PlayerFactoriesView = ({
       const data = await res.json();
       if (data.error) alert(data.error);
       else {
-        alert(`Fabbrica potenziata al livello ${data.newLevel}! Costo: 🪙 ${data.goldCost} Gold`);
+        alert(`Fabbrica potenziata al livello ${data.newLevel}! Costo: ðŸª™ ${data.goldCost} Gold`);
         setUpgradeTarget(prev => ({ ...prev, [id]: '' }));
         setUpgradeCost(prev => ({ ...prev, [id]: null }));
         fetchData(); load();
@@ -2745,7 +2749,7 @@ const PlayerFactoriesView = ({
           onClick={() => setShowWorldFactories(true)}
           className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${showWorldFactories ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}
         >
-          🌍 Fabbriche nel mondo
+          ðŸŒ Fabbriche nel mondo
         </button>
       </div>
 
@@ -2757,7 +2761,7 @@ const PlayerFactoriesView = ({
             onClick={() => navigate('/world-factories')}
             className="px-6 py-3 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs shadow-md hover:bg-emerald-600 transition-all"
           >
-            🌍 Lista Fabbriche
+            ðŸŒ Lista Fabbriche
           </button>
         </div>
       )}
@@ -2792,7 +2796,7 @@ const PlayerFactoriesView = ({
         <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-600 w-8 h-8" /></div>
       ) : !showWorldFactories && factories.length === 0 ? (
         <div className="bg-white p-10 rounded-[2rem] text-center border border-slate-100 shadow-sm">
-          <span className="text-4xl">🏗️</span>
+          <span className="text-4xl">ðŸ—ï¸</span>
           <p className="text-slate-400 font-bold text-sm mt-3">Nessuna fabbrica in questa regione. Sii il primo ad investire qui!</p>
         </div>
       ) : !showWorldFactories ? (() => {
@@ -2812,7 +2816,7 @@ const PlayerFactoriesView = ({
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-4">
                     <div className={`w-14 h-14 rounded-3xl flex items-center justify-center text-3xl shadow-inner ${isOwner ? "bg-indigo-50 text-indigo-600" : "bg-slate-50"}`}>
-                      {RESOURCE_ICONS[f.type] || "🏭"}
+                      {RESOURCE_ICONS[f.type] || "ðŸ­"}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -2820,8 +2824,8 @@ const PlayerFactoriesView = ({
                         {isOwner && <span className="text-[9px] font-black uppercase text-white bg-indigo-500 px-2 py-0.5 rounded-lg shadow-sm">La Tua Azienda</span>}
                       </div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">
-                        Estrazione <span className="text-slate-600">{RESOURCE_NAMES[f.type]}</span> • CEO <span className="text-indigo-500">{f.ownerName}</span>
-                        {isResourceMode ? <span className="ml-2 text-emerald-600">• Modalità Risorse</span> : <span className="ml-2 text-amber-600">• Stipendio Fisso</span>}
+                        Estrazione <span className="text-slate-600">{RESOURCE_NAMES[f.type]}</span> â€¢ CEO <span className="text-indigo-500">{f.ownerName}</span>
+                        {isResourceMode ? <span className="ml-2 text-emerald-600">â€¢ ModalitÃ  Risorse</span> : <span className="ml-2 text-amber-600">â€¢ Stipendio Fisso</span>}
                       </p>
                     </div>
                   </div>
@@ -2833,8 +2837,8 @@ const PlayerFactoriesView = ({
 
                 {isResourceMode ? (
                   <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100/50">
-                    <span className="text-[10px] font-black uppercase text-emerald-700/70">Modalità</span>
-                    <span className="text-xs font-black text-emerald-700">🪨 Scava {RESOURCE_NAMES[f.type]} (diviso tra player, proprietario e stato)</span>
+                    <span className="text-[10px] font-black uppercase text-emerald-700/70">ModalitÃ </span>
+                    <span className="text-xs font-black text-emerald-700">ðŸª¨ Scava {RESOURCE_NAMES[f.type]} (diviso tra player, proprietario e stato)</span>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-50">
@@ -2855,14 +2859,14 @@ const PlayerFactoriesView = ({
                     disabled={actionLoading || needsBudget}
                     className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:shadow-none"
                   >
-                    {isResourceMode ? `🪨 Scava ${RESOURCE_NAMES[f.type]} (-300⚡)` : '💼 Lavora Qui (-300⚡)'}
+                    {isResourceMode ? `ðŸª¨ Scava ${RESOURCE_NAMES[f.type]} (-300âš¡)` : 'ðŸ’¼ Lavora Qui (-300âš¡)'}
                   </button>
                   <button
                     onClick={() => navigate(`/factory/${f.id}`)}
                     className="py-3 px-4 bg-slate-100 text-slate-700 rounded-2xl font-black uppercase text-xs hover:bg-slate-200 transition-all"
                     title="Dettagli fabbrica"
                   >
-                    📋
+                    ðŸ“‹
                   </button>
                   {setAutoWorkFactoryId && (
                     autoWorkFactoryId === f.id ? (
@@ -2870,7 +2874,7 @@ const PlayerFactoriesView = ({
                         onClick={() => setAutoWorkFactoryId(null)}
                         className="py-3 px-4 bg-red-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-red-600 transition-all"
                       >
-                        ⏹ Stop
+                        â¹ Stop
                       </button>
                     ) : (
                       <button
@@ -2879,7 +2883,7 @@ const PlayerFactoriesView = ({
                         className="py-3 px-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-amber-600 transition-all disabled:opacity-50"
                         title="Attiva lavoro automatico per 24 ore"
                       >
-                        🤖 Auto
+                        ðŸ¤– Auto
                       </button>
                     )
                   )}
@@ -2894,14 +2898,14 @@ const PlayerFactoriesView = ({
                         disabled={actionLoading || !isResourceMode}
                         className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${!isResourceMode ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                       >
-                        💰 Stipendio Fisso
+                        ðŸ’° Stipendio Fisso
                       </button>
                       <button
                         onClick={() => handlePayMode(f.id, 'resource')}
                         disabled={actionLoading || isResourceMode}
                         className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${isResourceMode ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                       >
-                        🪨 Modalità Risorse
+                        ðŸª¨ ModalitÃ  Risorse
                       </button>
                     </div>
                     {/* Deposit + Upgrade (only show deposit for salary mode) */}
@@ -2926,9 +2930,9 @@ const PlayerFactoriesView = ({
                         </div>
                       )}
                       <div className="space-y-2 mt-2">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">⬆️ Potenzia Fabbrica</label>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">â¬†ï¸ Potenzia Fabbrica</label>
                         <div className="flex gap-2 items-center">
-                          <span className="text-xs font-bold text-slate-600 whitespace-nowrap">Lv {f.level || 1} →</span>
+                          <span className="text-xs font-bold text-slate-600 whitespace-nowrap">Lv {f.level || 1} â†’</span>
                           <input
                             type="number"
                             min={(f.level || 1) + 1}
@@ -2943,7 +2947,7 @@ const PlayerFactoriesView = ({
                             className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500"
                           />
                           {upgradeCost[f.id] != null && (
-                            <span className="text-xs font-bold text-amber-600">🪙 {upgradeCost[f.id]} Gold</span>
+                            <span className="text-xs font-bold text-amber-600">ðŸª™ {upgradeCost[f.id]} Gold</span>
                           )}
                         </div>
                         <button
@@ -2951,7 +2955,7 @@ const PlayerFactoriesView = ({
                           disabled={actionLoading}
                           className="w-full py-3 bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md shadow-amber-100 hover:bg-amber-600 hover:scale-[1.02] transition-all disabled:opacity-50"
                         >
-                          ⬆️ Potenzia {upgradeTarget[f.id] ? `al Lv ${upgradeTarget[f.id]}` : `al Lv ${(f.level || 1) + 1}`} {upgradeCost[f.id] != null ? `(🪙 ${upgradeCost[f.id]} Gold)` : ''}
+                          â¬†ï¸ Potenzia {upgradeTarget[f.id] ? `al Lv ${upgradeTarget[f.id]}` : `al Lv ${(f.level || 1) + 1}`} {upgradeCost[f.id] != null ? `(ðŸª™ ${upgradeCost[f.id]} Gold)` : ''}
                         </button>
                       </div>
                     </div>
@@ -2977,7 +2981,7 @@ const Toast = ({ message, onDismiss }: { key?: React.Key; message: string; onDis
   >
     <CheckCircle2 className="w-5 h-5 shrink-0" />
     <span className="font-black text-sm">{message}</span>
-    <button onClick={onDismiss} className="ml-2 text-emerald-200 hover:text-white text-xs font-black">✕</button>
+    <button onClick={onDismiss} className="ml-2 text-emerald-200 hover:text-white text-xs font-black">âœ•</button>
   </motion.div>
 );
 
@@ -3018,7 +3022,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
         body: JSON.stringify({ cash: 10000, gold: 10000 })
       });
       if (res.ok) {
-        addToast("💰 Cheat attivato!", "cheat");
+        addToast("ðŸ’° Cheat attivato!", "cheat");
         fetchData();
       }
     } catch (err) { console.error(err); }
@@ -3135,7 +3139,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
         <div className="bg-gray-900 py-4 px-6 flex justify-between items-center shadow-inner border border-gray-800/50">
             <div className="flex items-baseline gap-2">
                 <span className="text-2xl font-black text-gray-50 military-font tracking-wider">{(user.money || 0).toLocaleString()}</span>
-                <span className="text-2xl font-black text-gray-50 military-font">€</span>
+                <span className="text-2xl font-black text-gray-50 military-font">â‚¬</span>
             </div>
             <div className="flex items-center gap-2">
                 <span className="text-2xl font-black text-amber-400 military-font tracking-wider">{(user.gold || 0).toLocaleString()}</span>
@@ -3154,7 +3158,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
 
         <div className="space-y-1">
             <div className="bg-gray-800 p-4 flex justify-between items-center border-y border-gray-700/50">
-                <span className="text-sm font-black text-gray-300 uppercase tracking-widest text-[11px] military-font">Informazioni Unità Operativa</span>
+                <span className="text-sm font-black text-gray-300 uppercase tracking-widest text-[11px] military-font">Informazioni UnitÃ  Operativa</span>
             </div>
             <div className="bg-gray-900/50 p-5 space-y-6">
                 <button onClick={() => navigate(`/regions/${user.regionId}`)} className="flex gap-4 items-center w-full text-left hover:bg-white/5 rounded-lg p-1 -m-1 transition-colors">
@@ -3254,7 +3258,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                                         <div className="grid grid-cols-2 gap-4">
                                             <button onClick={() => handleUpgradePerk(perk.id, false)} disabled={actionLoading || !!activeUpgrade || !canAffordCash} className={`p-4 rounded-none border transition-all flex flex-col items-center gap-1 ${canAffordCash && !activeUpgrade ? 'bg-gray-800 border-gray-700 hover:bg-gray-700' : 'bg-black/20 border-transparent opacity-40 cursor-not-allowed'}`}>
                                                 <span className="text-[10px] font-black uppercase text-gray-500 tracking-widest">Valuta Cash</span>
-                                                <span className={`text-base font-black ${canAffordCash ? 'text-white' : 'text-red-500'}`}>€{cashCost.toLocaleString()}</span>
+                                                <span className={`text-base font-black ${canAffordCash ? 'text-white' : 'text-red-500'}`}>â‚¬{cashCost.toLocaleString()}</span>
                                                 <span className="text-[10px] font-bold text-gray-500">{formatDuration(Math.round(perk.baseTimeCashSec * Math.pow(1.3, currentLevel)))}</span>
                                             </button>
                                             <button onClick={() => handleUpgradePerk(perk.id, true)} disabled={actionLoading || !!activeUpgrade || !canAffordGold} className={`p-4 rounded-none border transition-all flex flex-col items-center gap-1 ${canAffordGold && !activeUpgrade ? 'bg-gray-800 border-yellow-900/20 hover:bg-gray-700' : 'bg-black/20 border-transparent opacity-40 cursor-not-allowed'}`}>
@@ -3285,7 +3289,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                 <motion.div initial={{ scale: 0.9, y: 40 }} animate={{ scale: 1, y: 0 }} className="bg-gray-900 w-full max-w-md rounded-none border border-gray-800 overflow-hidden shadow-2xl">
                     <div className="p-5 bg-black/40 flex justify-between items-center border-b border-gray-800">
                         <h3 className="text-base font-black text-gray-50 uppercase tracking-[0.2em] military-font">SISTEMA DI CONTROLLO</h3>
-                        <button onClick={() => setShowSettings(false)} className="text-gray-500 hover:text-white p-2">✕</button>
+                        <button onClick={() => setShowSettings(false)} className="text-gray-500 hover:text-white p-2">âœ•</button>
                     </div>
                     <div className="p-8 space-y-6">
                         <button onClick={() => {
@@ -3318,7 +3322,7 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                         <div className="pt-8 text-center space-y-2">
                            <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.3em]">Protocollo v2.4.1</p>
                            <p className="text-[10px] text-indigo-500/40 font-bold">{user.email}</p>
-                           <button onClick={async () => { await supabase.auth.signOut(); clearBackendAuthCookie(); window.location.reload(); }} className="mt-4 text-red-500/60 hover:text-red-500 text-[10px] font-black uppercase tracking-widest transition-colors">Disconnetti Unità</button>
+                           <button onClick={async () => { await supabase.auth.signOut(); clearBackendAuthCookie(); window.location.reload(); }} className="mt-4 text-red-500/60 hover:text-red-500 text-[10px] font-black uppercase tracking-widest transition-colors">Disconnetti UnitÃ </button>
                         </div>
                     </div>
                 </motion.div>
@@ -3476,7 +3480,7 @@ const BudgetView = ({ regionId, user, isLeader }: { regionId: string, user: any,
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <div className="bg-emerald-50 p-5 rounded-3xl border border-emerald-100 flex flex-col justify-center items-center text-center">
-          <p className="text-[10px] uppercase font-black tracking-widest text-emerald-600 mb-1">Fondi in €</p>
+          <p className="text-[10px] uppercase font-black tracking-widest text-emerald-600 mb-1">Fondi in â‚¬</p>
           <p className="text-xl font-black text-emerald-800">${budgetData.moneyEUR.toLocaleString()}</p>
         </div>
         {Object.entries(resources).map(([res, val]: any) => (
@@ -3493,12 +3497,12 @@ const BudgetView = ({ regionId, user, isLeader }: { regionId: string, user: any,
           <div className="flex flex-col md:flex-row gap-3">
             <input type="number" min="1" value={donateAmount} onChange={e => setDonateAmount(e.target.value)} placeholder="0" className="flex-1 px-4 py-3 bg-white rounded-xl border border-slate-200 font-bold focus:ring-2 focus:ring-emerald-500 outline-none" />
             <select value={donateCurrency} onChange={e => setDonateCurrency(e.target.value)} className="px-4 py-3 bg-white rounded-xl border border-slate-200 font-bold outline-none">
-              <option value="EUR">Euro (€)</option>
+              <option value="EUR">Euro (â‚¬)</option>
               <option value="GOLD">Gold</option>
             </select>
             <button onClick={handleDonate} className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-wider transition-colors">Dona</button>
           </div>
-          <p className="text-[10px] text-slate-400 mt-3 font-bold">Tasso di cambio: 1 Gold = 500.000 €</p>
+          <p className="text-[10px] text-slate-400 mt-3 font-bold">Tasso di cambio: 1 Gold = 500.000 â‚¬</p>
         </div>
       )}
 
@@ -3541,7 +3545,7 @@ const BudgetView = ({ regionId, user, isLeader }: { regionId: string, user: any,
                 </div>
                 <div className="text-right">
                   <p className={`text-sm font-black ${t.moneyDelta >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                    {t.moneyDelta > 0 ? '+' : ''}{t.moneyDelta.toLocaleString()} €
+                    {t.moneyDelta > 0 ? '+' : ''}{t.moneyDelta.toLocaleString()} â‚¬
                   </p>
                   <p className="text-[9px] text-slate-400 font-bold mt-1">{new Date(t.createdAt).toLocaleString()}</p>
                 </div>
@@ -3650,7 +3654,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       <Globe className="w-16 h-16 text-slate-200 mx-auto mb-4" />
       <h2 className="text-2xl font-black text-slate-900">Paese non trovato</h2>
       <p className="text-slate-400 mt-2">"{iso2}" non corrisponde a nessuna regione.</p>
-      <button onClick={() => navigate("/")} className="mt-6 text-indigo-600 font-black uppercase text-xs">← Torna alla Mappa</button>
+      <button onClick={() => navigate("/")} className="mt-6 text-indigo-600 font-black uppercase text-xs">â† Torna alla Mappa</button>
     </div>
   );
 
@@ -3671,7 +3675,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       else {
         if (data.autoAccepted) alert("Richiesta accettata automaticamente (Regione Neutrale)!");
         else if (endpoint.includes("apply")) alert("Richiesta inviata con successo all'ufficio immigrazione.");
-        else if (data.travelMinutes) alert(`✈️ Viaggio iniziato verso ${data.regionId}! Tempo stimato: ${data.travelMinutes} minuti.`);
+        else if (data.travelMinutes) alert(`âœˆï¸ Viaggio iniziato verso ${data.regionId}! Tempo stimato: ${data.travelMinutes} minuti.`);
         fetchCountryDetail();
       }
     } catch (err) {
@@ -3708,7 +3712,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       className="space-y-6"
     >
       <button onClick={() => navigate("/")} className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1">
-        ← Mappa Mondiale
+        â† Mappa Mondiale
       </button>
 
       {/* Header Card */}
@@ -3722,12 +3726,12 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <span className="text-[10px] font-black uppercase bg-slate-100 text-slate-400 px-2 py-1 rounded-lg">ISO: {region.id || iso2}</span>
                 <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg ${region.ownerUserId ? "bg-indigo-50 text-indigo-600" : "bg-emerald-50 text-emerald-600"}`}>
-                  {region.ownerName ? `🟣 ${region.ownerName}` : "🟢 Territorio Neutrale"}
+                  {region.ownerName ? `ðŸŸ£ ${region.ownerName}` : "ðŸŸ¢ Territorio Neutrale"}
                 </span>
-                {region.isCapital && <span className="text-[10px] font-black uppercase bg-yellow-50 text-yellow-700 px-2 py-1 rounded-lg">👑 Capitale</span>}
-                {region.isAutonomous && <span className="text-[10px] font-black uppercase bg-purple-50 text-purple-700 px-2 py-1 rounded-lg">🏛️ Autonomia</span>}
-                {region.isBorderRegion && <span className="text-[10px] font-black uppercase bg-red-50 text-red-600 px-2 py-1 rounded-lg">⚔️ Frontaliera</span>}
-                {region.governorName && <span className="text-[10px] font-black uppercase bg-blue-50 text-blue-600 px-2 py-1 rounded-lg">👤 Gov: {region.governorName}</span>}
+                {region.isCapital && <span className="text-[10px] font-black uppercase bg-yellow-50 text-yellow-700 px-2 py-1 rounded-lg">ðŸ‘‘ Capitale</span>}
+                {region.isAutonomous && <span className="text-[10px] font-black uppercase bg-purple-50 text-purple-700 px-2 py-1 rounded-lg">ðŸ›ï¸ Autonomia</span>}
+                {region.isBorderRegion && <span className="text-[10px] font-black uppercase bg-red-50 text-red-600 px-2 py-1 rounded-lg">âš”ï¸ Frontaliera</span>}
+                {region.governorName && <span className="text-[10px] font-black uppercase bg-blue-50 text-blue-600 px-2 py-1 rounded-lg">ðŸ‘¤ Gov: {region.governorName}</span>}
                 <span className="text-[10px] font-black uppercase bg-amber-50 text-amber-600 px-2 py-1 rounded-lg ml-auto">
                   Tassa Mercato: {region.marketTaxRate || 10}%
                 </span>
@@ -3761,13 +3765,13 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               onClick={() => setActiveTab('resources')}
               className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'resources' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
             >
-              ⛏️ Risorse
+              â›ï¸ Risorse
             </button>
             <button
               onClick={() => setActiveTab('autonomy')}
               className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'autonomy' ? "bg-purple-600 text-white shadow-lg shadow-purple-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
             >
-              🏛️ Autonomia
+              ðŸ›ï¸ Autonomia
             </button>
           </div>
 
@@ -3778,7 +3782,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 <p className="text-xl font-black">{region.citizenCount ?? 0}</p>
               </div>
               <div className="bg-slate-50 p-4 rounded-3xl text-center">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stabilità</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">StabilitÃ </p>
                 <p className="text-xl font-black">{region.stability || 5}/10</p>
               </div>
               <div className="bg-emerald-50 p-4 rounded-3xl text-center">
@@ -3860,14 +3864,14 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
           <div className="bg-emerald-50 p-4 rounded-[2rem] border border-emerald-100">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm font-black text-emerald-800">⛏️ Dashboard Estrazione Avanzata</h4>
+                <h4 className="text-sm font-black text-emerald-800">â›ï¸ Dashboard Estrazione Avanzata</h4>
                 <p className="text-[10px] font-bold text-emerald-600 mt-1">Visualizza cap, analytics 24h, leaderboard, esperienza lavorativa e distribuzione risorse.</p>
               </div>
               <button
                 onClick={() => navigate(`/extraction/${region.id}`)}
                 className="px-4 py-2 bg-emerald-500 text-white rounded-xl font-black text-xs uppercase hover:bg-emerald-600 transition-all"
               >
-                Apri →
+                Apri â†’
               </button>
             </div>
           </div>
@@ -3892,20 +3896,20 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               {/* Autonomy Status */}
               <div className={`bg-white p-6 rounded-[2.5rem] shadow-sm border ${autonomyData.region.isAutonomous ? 'border-purple-200' : 'border-slate-100'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-black uppercase tracking-tight">🏛️ Stato Autonomia</h3>
+                  <h3 className="text-lg font-black uppercase tracking-tight">ðŸ›ï¸ Stato Autonomia</h3>
                   <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${autonomyData.region.isAutonomous ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-500'}`}>
-                    {autonomyData.region.isAutonomous ? '✅ Attiva' : '❌ Non Attiva'}
+                    {autonomyData.region.isAutonomous ? 'âœ… Attiva' : 'âŒ Non Attiva'}
                   </span>
                 </div>
                 {autonomyData.region.isAutonomous && (
                   <div className="grid grid-cols-2 gap-3">
                     <div className="bg-purple-50 p-4 rounded-3xl text-center">
                       <p className="text-[9px] font-black text-purple-400 uppercase">Governatore</p>
-                      <p className="text-sm font-black text-purple-700">{autonomyData.region.governorName || '— Vacante —'}</p>
+                      <p className="text-sm font-black text-purple-700">{autonomyData.region.governorName || 'â€” Vacante â€”'}</p>
                     </div>
                     <div className="bg-emerald-50 p-4 rounded-3xl text-center">
                       <p className="text-[9px] font-black text-emerald-400 uppercase">Budget Regionale</p>
-                      <p className="text-sm font-black text-emerald-700">€{(autonomyData.region.regionalBudget || 0).toLocaleString()}</p>
+                      <p className="text-sm font-black text-emerald-700">â‚¬{(autonomyData.region.regionalBudget || 0).toLocaleString()}</p>
                     </div>
                     <div className="bg-blue-50 p-4 rounded-3xl text-center">
                       <p className="text-[9px] font-black text-blue-400 uppercase">Quota Regionale</p>
@@ -3917,7 +3921,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                     </div>
                     <div className="bg-slate-50 p-4 rounded-3xl text-center">
                       <p className="text-[9px] font-black text-slate-400 uppercase">Parlamento</p>
-                      <p className="text-sm font-black">{autonomyData.region.regionalParliamentEnabled ? '✅ Attivo' : '❌ Disattivo'}</p>
+                      <p className="text-sm font-black">{autonomyData.region.regionalParliamentEnabled ? 'âœ… Attivo' : 'âŒ Disattivo'}</p>
                     </div>
                     {autonomyData.region.autonomyGrantedAt && (
                       <div className="bg-slate-50 p-4 rounded-3xl text-center">
@@ -3928,16 +3932,16 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                   </div>
                 )}
                 {!autonomyData.region.isAutonomous && !autonomyData.region.isCapital && (
-                  <p className="text-xs font-bold text-slate-400 mt-2">Questa regione può essere resa autonoma tramite legge parlamentare.</p>
+                  <p className="text-xs font-bold text-slate-400 mt-2">Questa regione puÃ² essere resa autonoma tramite legge parlamentare.</p>
                 )}
                 {autonomyData.region.isCapital && (
-                  <p className="text-xs font-bold text-amber-600 mt-2">👑 La capitale non può diventare un'autonomia.</p>
+                  <p className="text-xs font-bold text-amber-600 mt-2">ðŸ‘‘ La capitale non puÃ² diventare un'autonomia.</p>
                 )}
               </div>
 
               {/* Taxes */}
               <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black uppercase tracking-tight mb-4">💰 Tasse Regionali</h3>
+                <h3 className="text-lg font-black uppercase tracking-tight mb-4">ðŸ’° Tasse Regionali</h3>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-amber-50 p-4 rounded-3xl text-center">
                     <p className="text-[9px] font-black text-amber-500 uppercase">Lavoratori</p>
@@ -3957,11 +3961,11 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               {/* Regional Indices */}
               <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-black uppercase tracking-tight">📊 Indici Regionali</h3>
+                  <h3 className="text-lg font-black uppercase tracking-tight">ðŸ“Š Indici Regionali</h3>
                   {/* Regional Classification Badge */}
                   {(() => {
                     const cls = autonomyData.indices.regionalClassification;
-                    const clsLabel = cls === 'developed' ? '🟢 Sviluppata' : cls === 'developing' ? '🟡 In Via di Sviluppo' : '🔴 Arretrata';
+                    const clsLabel = cls === 'developed' ? 'ðŸŸ¢ Sviluppata' : cls === 'developing' ? 'ðŸŸ¡ In Via di Sviluppo' : 'ðŸ”´ Arretrata';
                     const clsColor = cls === 'developed' ? 'bg-emerald-100 text-emerald-800' : cls === 'developing' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
                     return (
                       <span className={`px-3 py-1 rounded-xl text-[10px] font-black ${clsColor}`}>{clsLabel}</span>
@@ -3971,7 +3975,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 {/* Crisis risk warning for underdeveloped regions */}
                 {autonomyData.indices.regionalClassification === 'underdeveloped' && (
                   <div className="mb-4 p-3 bg-red-50 rounded-2xl border border-red-200">
-                    <p className="text-xs font-black text-red-700">⚠️ Regione Arretrata — rischio di instabilità politica attivo</p>
+                    <p className="text-xs font-black text-red-700">âš ï¸ Regione Arretrata â€” rischio di instabilitÃ  politica attivo</p>
                     <p className="text-[10px] font-bold text-red-600">Aumenta lo Sviluppo costruendo Fondi Immobiliari per stabilizzare la regione.</p>
                   </div>
                 )}
@@ -3982,10 +3986,10 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       val: autonomyData.indices.healthIndex,
                       effective: autonomyData.indices.effectiveHealthIndex,
                       progress: autonomyData.indices.healthProgress,
-                      icon: "❤️",
+                      icon: "â¤ï¸",
                       color: "#ef4444",
                       colorClass: "bg-red-50",
-                      source: "Ospedali 🏥",
+                      source: "Ospedali ðŸ¥",
                       buildingKey: "hospital",
                       effect: `Riduce costo energetico delle azioni (-${((autonomyData.indices.healthIndex || 0) * 1).toFixed(0)}% attuale)`,
                       nextThreshold: autonomyData.indices.nextThresholds?.health,
@@ -3995,10 +3999,10 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       label: "Militare",
                       val: autonomyData.indices.militaryIndex,
                       progress: autonomyData.indices.militaryProgress,
-                      icon: "🛡️",
+                      icon: "ðŸ›¡ï¸",
                       color: "#f97316",
                       colorClass: "bg-orange-50",
-                      source: "Basi Militari 🏛️ (+ Accademie, Missili, Aeroporti, Porti)",
+                      source: "Basi Militari ðŸ›ï¸ (+ Accademie, Missili, Aeroporti, Porti)",
                       buildingKey: "military_base",
                       effect: `Bonus danno guerra (+${((autonomyData.indices.militaryIndex || 0) * 3).toFixed(0)}% attacco, +${((autonomyData.indices.militaryIndex || 0) * 2).toFixed(0)}% difesa)`,
                       nextThreshold: autonomyData.indices.nextThresholds?.military,
@@ -4009,10 +4013,10 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       label: "Istruzione",
                       val: autonomyData.indices.educationIndex,
                       progress: autonomyData.indices.educationProgress,
-                      icon: "📚",
+                      icon: "ðŸ“š",
                       color: "#6366f1",
                       colorClass: "bg-indigo-50",
-                      source: "Scuole 🏫",
+                      source: "Scuole ðŸ«",
                       buildingKey: "school",
                       effect: `Aumenta XP guadagnata (+${((autonomyData.indices.educationIndex || 0) * 2).toFixed(0)}% per azione)`,
                       nextThreshold: autonomyData.indices.nextThresholds?.education,
@@ -4022,12 +4026,12 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       label: "Sviluppo",
                       val: autonomyData.indices.developmentIndex,
                       progress: autonomyData.indices.developmentProgress,
-                      icon: "🏘️",
+                      icon: "ðŸ˜ï¸",
                       color: "#10b981",
                       colorClass: "bg-emerald-50",
-                      source: "Fondi Immobiliari 🏘️",
+                      source: "Fondi Immobiliari ðŸ˜ï¸",
                       buildingKey: "real_estate_fund",
-                      effect: `Stabilità politica e stipendi (+${((autonomyData.indices.developmentIndex || 0) * 5).toFixed(0)}% stipendi, -${((autonomyData.indices.developmentIndex || 0) * 8).toFixed(0)}% rischio crisi)`,
+                      effect: `StabilitÃ  politica e stipendi (+${((autonomyData.indices.developmentIndex || 0) * 5).toFixed(0)}% stipendi, -${((autonomyData.indices.developmentIndex || 0) * 8).toFixed(0)}% rischio crisi)`,
                       nextThreshold: autonomyData.indices.nextThresholds?.development,
                       primaryCount: autonomyData.indices.primaryCounts?.development ?? (autonomyData.buildings?.real_estate_fund || 0),
                     },
@@ -4066,21 +4070,21 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-[9px] font-bold text-slate-500">
                             {isMaxed
-                              ? '✅ Livello massimo raggiunto'
-                              : `Score: ${typeof ind.primaryCount === 'number' ? (Number.isInteger(ind.primaryCount) ? ind.primaryCount : ind.primaryCount.toFixed(1)) : '—'}${ind.nextThreshold != null ? ` / ${ind.nextThreshold} per lv.${level + 1}` : ''}`
+                              ? 'âœ… Livello massimo raggiunto'
+                              : `Score: ${typeof ind.primaryCount === 'number' ? (Number.isInteger(ind.primaryCount) ? ind.primaryCount : ind.primaryCount.toFixed(1)) : 'â€”'}${ind.nextThreshold != null ? ` / ${ind.nextThreshold} per lv.${level + 1}` : ''}`
                             }
                           </p>
-                          <p className="text-[9px] font-black" style={{ color: ind.color }}>{isMaxed ? '🏆' : `${Math.round(progressVal)}%`}</p>
+                          <p className="text-[9px] font-black" style={{ color: ind.color }}>{isMaxed ? 'ðŸ†' : `${Math.round(progressVal)}%`}</p>
                         </div>
                         {/* Effect description */}
-                        <p className="text-[9px] font-bold text-slate-600 italic">⚡ {ind.effect}</p>
+                        <p className="text-[9px] font-bold text-slate-600 italic">âš¡ {ind.effect}</p>
                       </div>
                     );
                   })}
                 </div>
                 {autonomyData.region.pollution > 0 && (
                   <div className="mt-4 p-3 bg-yellow-50 rounded-2xl border border-yellow-200">
-                    <p className="text-xs font-black text-yellow-700">⚠️ Inquinamento: livello {autonomyData.region.pollution}</p>
+                    <p className="text-xs font-black text-yellow-700">âš ï¸ Inquinamento: livello {autonomyData.region.pollution}</p>
                     <p className="text-[10px] font-bold text-yellow-600">Malus efficacia salute: -{autonomyData.pollutionMalus.toFixed(1)}%</p>
                   </div>
                 )}
@@ -4089,9 +4093,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               {/* Energy Dashboard */}
               <div className={`bg-white p-6 rounded-[2.5rem] shadow-sm border ${autonomyData.energy.isDeficit ? 'border-red-200' : 'border-emerald-200'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-black uppercase tracking-tight">⚡ Energia Regionale</h3>
+                  <h3 className="text-lg font-black uppercase tracking-tight">âš¡ Energia Regionale</h3>
                   <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${autonomyData.energy.isDeficit ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                    {autonomyData.energy.isDeficit ? '🔴 Deficit' : '🟢 Surplus'}
+                    {autonomyData.energy.isDeficit ? 'ðŸ”´ Deficit' : 'ðŸŸ¢ Surplus'}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 mb-4">
@@ -4125,13 +4129,13 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 </div>
                 {autonomyData.energy.stateCompensation > 0 && (
                   <div className="mt-3 p-3 bg-blue-50 rounded-2xl border border-blue-200">
-                    <p className="text-xs font-black text-blue-700">🔄 Compensazione statale: +{autonomyData.energy.stateCompensation} mW</p>
+                    <p className="text-xs font-black text-blue-700">ðŸ”„ Compensazione statale: +{autonomyData.energy.stateCompensation} mW</p>
                     <p className="text-[10px] font-bold text-blue-600">Efficienza netta (dopo compensazione): {autonomyData.energy.netEfficiency} mW</p>
                   </div>
                 )}
                 {autonomyData.energyDeficitMalus > 0 && (
                   <div className="mt-3 p-3 bg-red-50 rounded-2xl border border-red-200">
-                    <p className="text-xs font-black text-red-700">⚠️ Deficit energetico attivo!</p>
+                    <p className="text-xs font-black text-red-700">âš ï¸ Deficit energetico attivo!</p>
                     <p className="text-[10px] font-bold text-red-600">Malus efficienza economica: -{autonomyData.energyDeficitMalus.toFixed(1)}%</p>
                   </div>
                 )}
@@ -4139,7 +4143,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
 
               {/* Military Stats */}
               <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black uppercase tracking-tight mb-4">⚔️ Capacità Militare Regionale</h3>
+                <h3 className="text-lg font-black uppercase tracking-tight mb-4">âš”ï¸ CapacitÃ  Militare Regionale</h3>
                 <div className="grid grid-cols-2 gap-3 mb-4">
                   <div className="bg-red-50 p-4 rounded-3xl text-center">
                     <p className="text-[9px] font-black text-red-500 uppercase">Danno Iniziale Attacco</p>
@@ -4152,26 +4156,26 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 </div>
                 {autonomyData.region.isBorderRegion && (
                   <div className="p-3 bg-red-50 rounded-2xl border border-red-200">
-                    <p className="text-[10px] font-black text-red-700">⚔️ Regione Frontaliera — le strutture militari sono particolarmente rilevanti!</p>
+                    <p className="text-[10px] font-black text-red-700">âš”ï¸ Regione Frontaliera â€” le strutture militari sono particolarmente rilevanti!</p>
                   </div>
                 )}
               </div>
 
               {/* Buildings */}
               <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black uppercase tracking-tight mb-4">🏗️ Edifici Regionali</h3>
+                <h3 className="text-lg font-black uppercase tracking-tight mb-4">ðŸ—ï¸ Edifici Regionali</h3>
                 <div className="space-y-2">
                   {Object.entries(autonomyData.buildings).filter(([_, qty]) => (qty as number) > 0).length > 0 ? (
                     Object.entries(autonomyData.buildings)
                       .sort(([, a], [, b]) => (b as number) - (a as number))
                       .map(([bt, qty]) => {
-                        const icons: Record<string, string> = { hospital: '🏥', military_base: '🏛️', school: '🏫', military_academy: '🎖️', missile_system: '🚀', airport: '✈️', naval_port: '⚓', space_port: '🛸', real_estate_fund: '🏘️', power_plant: '⚡' };
+                        const icons: Record<string, string> = { hospital: 'ðŸ¥', military_base: 'ðŸ›ï¸', school: 'ðŸ«', military_academy: 'ðŸŽ–ï¸', missile_system: 'ðŸš€', airport: 'âœˆï¸', naval_port: 'âš“', space_port: 'ðŸ›¸', real_estate_fund: 'ðŸ˜ï¸', power_plant: 'âš¡' };
                         const labels: Record<string, string> = { hospital: 'Ospedali', military_base: 'Basi Militari', school: 'Scuole', military_academy: 'Accademie Militari', missile_system: 'Sistemi Missilistici', airport: 'Aeroporti', naval_port: 'Porti Navali', space_port: 'Porti Spaziali', real_estate_fund: 'Fondi Immobiliari', power_plant: 'Centrali Elettriche' };
                         if ((qty as number) === 0) return null;
                         return (
                           <div key={bt} className="flex items-center justify-between p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
                             <div className="flex items-center gap-3">
-                              <span className="text-2xl">{icons[bt] || '🏢'}</span>
+                              <span className="text-2xl">{icons[bt] || 'ðŸ¢'}</span>
                               <span className="text-xs font-black text-indigo-900">{labels[bt] || bt}</span>
                             </div>
                             <span className="text-lg font-black text-indigo-700">{qty as number}</span>
@@ -4189,21 +4193,21 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
 
               {/* Daily Extraction Limits */}
               <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black uppercase tracking-tight mb-4">⛏️ Limiti Estrazione Giornalieri</h3>
+                <h3 className="text-lg font-black uppercase tracking-tight mb-4">â›ï¸ Limiti Estrazione Giornalieri</h3>
                 <div className="space-y-3">
                   {[
-                    { key: 'gold', label: 'Oro', icon: '🥇', data: autonomyData.extraction.gold, color: '#d97706' },
-                    { key: 'oil', label: 'Petrolio', icon: '🛢️', data: autonomyData.extraction.oil, color: '#ea580c' },
-                    { key: 'minerals', label: 'Minerali', icon: '🪨', data: autonomyData.extraction.minerals, color: '#64748b' },
-                    { key: 'uranium', label: 'Uranio', icon: '☢️', data: autonomyData.extraction.uranium, color: '#0891b2' },
-                    { key: 'diamonds', label: 'Diamanti', icon: '💎', data: autonomyData.extraction.diamonds, color: '#7c3aed' },
+                    { key: 'gold', label: 'Oro', icon: 'ðŸ¥‡', data: autonomyData.extraction.gold, color: '#d97706' },
+                    { key: 'oil', label: 'Petrolio', icon: 'ðŸ›¢ï¸', data: autonomyData.extraction.oil, color: '#ea580c' },
+                    { key: 'minerals', label: 'Minerali', icon: 'ðŸª¨', data: autonomyData.extraction.minerals, color: '#64748b' },
+                    { key: 'uranium', label: 'Uranio', icon: 'â˜¢ï¸', data: autonomyData.extraction.uranium, color: '#0891b2' },
+                    { key: 'diamonds', label: 'Diamanti', icon: 'ðŸ’Ž', data: autonomyData.extraction.diamonds, color: '#7c3aed' },
                   ].map(res => (
                     <div key={res.key} className="space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-black text-slate-700">{res.icon} {res.label}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-bold text-slate-500">{res.data.extracted} / {res.data.limit}</span>
-                          <span className="text-[10px] font-black text-emerald-600">({res.data.remaining} 🔄)</span>
+                          <span className="text-[10px] font-black text-emerald-600">({res.data.remaining} ðŸ”„)</span>
                         </div>
                       </div>
                       <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
@@ -4213,7 +4217,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                   ))}
                   {autonomyData.extraction.nextResetAt && (
                     <p className="text-[10px] font-bold text-slate-400 text-center pt-2">
-                      ⏰ Prossimo reset: {new Date(autonomyData.extraction.nextResetAt).toLocaleString()}
+                      â° Prossimo reset: {new Date(autonomyData.extraction.nextResetAt).toLocaleString()}
                     </p>
                   )}
                 </div>
@@ -4222,7 +4226,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               {/* Budget Transactions (for autonomous regions) */}
               {autonomyData.region.isAutonomous && autonomyData.transactions.length > 0 && (
                 <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                  <h3 className="text-lg font-black uppercase tracking-tight mb-4">📜 Storico Budget Regionale</h3>
+                  <h3 className="text-lg font-black uppercase tracking-tight mb-4">ðŸ“œ Storico Budget Regionale</h3>
                   <div className="space-y-2 max-h-72 overflow-y-auto">
                     {autonomyData.transactions.slice(0, 30).map((tx: any) => (
                       <div key={tx.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
@@ -4231,7 +4235,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                           <p className="text-[9px] font-bold text-slate-400">{new Date(tx.createdAt).toLocaleString()}</p>
                         </div>
                         <span className={`text-sm font-black ${(tx.moneyDelta || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                          {(tx.moneyDelta || 0) >= 0 ? '+' : ''}€{Math.abs(tx.moneyDelta || 0).toLocaleString()}
+                          {(tx.moneyDelta || 0) >= 0 ? '+' : ''}â‚¬{Math.abs(tx.moneyDelta || 0).toLocaleString()}
                         </span>
                       </div>
                     ))}
@@ -4242,11 +4246,11 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               {/* Autonomy History */}
               {autonomyData.history.length > 0 && (
                 <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                  <h3 className="text-lg font-black uppercase tracking-tight mb-4">📋 Storico Decisioni Autonomia</h3>
+                  <h3 className="text-lg font-black uppercase tracking-tight mb-4">ðŸ“‹ Storico Decisioni Autonomia</h3>
                   <div className="space-y-2">
                     {autonomyData.history.map((h: any) => (
                       <div key={h.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl">
-                        <span className="text-2xl">{h.action === 'granted' ? '✅' : '❌'}</span>
+                        <span className="text-2xl">{h.action === 'granted' ? 'âœ…' : 'âŒ'}</span>
                         <div>
                           <p className="text-xs font-black text-slate-700">{h.action === 'granted' ? 'Autonomia istituita' : 'Autonomia revocata'}</p>
                           <p className="text-[9px] font-bold text-slate-400">{new Date(h.createdAt).toLocaleString()}</p>
@@ -4269,10 +4273,10 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { id: 'oil', label: 'Petrolio', icon: '🛢️', val: region.oilBonus || 1.0, color: 'text-slate-800', bg: 'bg-slate-50' },
-                { id: 'minerals', label: 'Minerali', icon: '🪨', val: region.mineralsBonus || 1.0, color: 'text-stone-700', bg: 'bg-stone-50' },
-                { id: 'uranium', label: 'Uranio', icon: '☢️', val: region.uraniumBonus || 1.0, color: 'text-emerald-700', bg: 'bg-emerald-50' },
-                { id: 'diamonds', label: 'Diamanti', icon: '💎', val: region.diamondsBonus || 1.0, color: 'text-sky-700', bg: 'bg-sky-50' },
+                { id: 'oil', label: 'Petrolio', icon: 'ðŸ›¢ï¸', val: region.oilBonus || 1.0, color: 'text-slate-800', bg: 'bg-slate-50' },
+                { id: 'minerals', label: 'Minerali', icon: 'ðŸª¨', val: region.mineralsBonus || 1.0, color: 'text-stone-700', bg: 'bg-stone-50' },
+                { id: 'uranium', label: 'Uranio', icon: 'â˜¢ï¸', val: region.uraniumBonus || 1.0, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+                { id: 'diamonds', label: 'Diamanti', icon: 'ðŸ’Ž', val: region.diamondsBonus || 1.0, color: 'text-sky-700', bg: 'bg-sky-50' },
               ].map(res => {
                 const percentage = Math.round((res.val - 1) * 100);
                 return (
@@ -4332,7 +4336,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 onClick={() => handleImmigrationAction("/api/actions/travel", { regionId: region.id })}
                 className="flex flex-col items-center justify-center p-4 bg-sky-50 rounded-2xl hover:bg-sky-100 transition-colors disabled:opacity-50 border border-sky-100"
               >
-                <span className="text-2xl mb-2">✈️</span>
+                <span className="text-2xl mb-2">âœˆï¸</span>
                 <span className="text-[11px] font-black uppercase tracking-widest text-sky-700">
                   {user.travelingUntil && Date.now() < user.travelingUntil ? "In Viaggio..." : "Viaggia Qui"}
                 </span>
@@ -4348,7 +4352,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "residence" })}
                 className="flex flex-col items-center justify-center p-4 bg-emerald-50 rounded-2xl hover:bg-emerald-100 transition-colors disabled:opacity-50 border border-emerald-100"
               >
-                <span className="text-2xl mb-2">🏠</span>
+                <span className="text-2xl mb-2">ðŸ </span>
                 <span className="text-[11px] font-black uppercase tracking-widest text-emerald-700">Residenza</span>
                 <span className="text-[9px] font-bold text-emerald-500 mt-1">Diventa cittadino</span>
               </button>
@@ -4358,7 +4362,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "work_permit" })}
                 className="flex flex-col items-center justify-center p-4 bg-amber-50 rounded-2xl hover:bg-amber-100 transition-colors disabled:opacity-50 border border-amber-100"
               >
-                <span className="text-2xl mb-2">📄</span>
+                <span className="text-2xl mb-2">ðŸ“„</span>
                 <span className="text-[11px] font-black uppercase tracking-widest text-amber-700">Visto Lavorativo</span>
                 <span className="text-[9px] font-bold text-amber-500 mt-1">Permesso di lavoro estero</span>
               </button>
@@ -4419,12 +4423,12 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 {regionFactories.map((f) => (
                   <div key={f.id} className="flex items-center gap-3 p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
                     <div className="p-3 bg-white rounded-xl text-xl">
-                      {RESOURCE_ICONS[f.type] || "🏭"}
+                      {RESOURCE_ICONS[f.type] || "ðŸ­"}
                     </div>
                     <div className="flex-1">
                       <p className="font-black text-indigo-900 leading-tight">{f.name}</p>
                       <p className="text-[10px] font-bold text-indigo-400 uppercase">
-                        {RESOURCE_NAMES[f.type] || f.type} • Livello {f.level}
+                        {RESOURCE_NAMES[f.type] || f.type} â€¢ Livello {f.level}
                       </p>
                     </div>
                     <div className="text-right">
@@ -4472,7 +4476,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                   <div className="p-3 bg-white rounded-2xl shadow-sm"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
                   <div className="text-left">
                     <p className="font-black text-emerald-900 leading-none">Investi</p>
-                    <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Sviluppa Economia & Stabilità</p>
+                    <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Sviluppa Economia & StabilitÃ </p>
                   </div>
                 </div>
                 <span className="font-black text-emerald-700">-${GAME_CONFIG.INVEST_MONEY_COST}</span>
@@ -4487,10 +4491,10 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                   <div className="p-3 bg-white rounded-2xl shadow-sm"><LogOut className="w-5 h-5 text-indigo-600 rotate-180" /></div>
                   <div className="text-left">
                     <p className="font-black text-indigo-900 leading-none">Propaganda</p>
-                    <p className="text-[10px] font-bold text-indigo-600 mt-1 uppercase">Aumenta Stabilità</p>
+                    <p className="text-[10px] font-bold text-indigo-600 mt-1 uppercase">Aumenta StabilitÃ </p>
                   </div>
                 </div>
-                <span className="font-black text-indigo-700">-{GAME_CONFIG.PROPAGANDA_ENERGY_COST}⚡</span>
+                <span className="font-black text-indigo-700">-{GAME_CONFIG.PROPAGANDA_ENERGY_COST}âš¡</span>
               </button>
             </div>
           </div>
@@ -4506,7 +4510,7 @@ const NationView = ({ user, fetchData }: { user: any, fetchData: () => void }) =
   const [submitting, setSubmitting] = useState(false);
 
   const NATION_OPTS = [
-    { id: "ST", name: "São Tomé" },
+    { id: "ST", name: "SÃ£o TomÃ©" },
     { id: "IT", name: "Italy" }, { id: "FR", name: "France" }, { id: "DE", name: "Germany" },
     { id: "ES", name: "Spain" }, { id: "GB", name: "UK" }, { id: "US", name: "USA" },
     { id: "CA", name: "Canada" }, { id: "BR", name: "Brazil" }, { id: "JP", name: "Japan" },
@@ -4555,7 +4559,7 @@ const NationView = ({ user, fetchData }: { user: any, fetchData: () => void }) =
         </div>
         <div>
           <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Gestione Nazione</h2>
-          <p className="text-sm font-bold text-slate-400">Personalizza la tua identità e i tuoi bonus di guerra</p>
+          <p className="text-sm font-bold text-slate-400">Personalizza la tua identitÃ  e i tuoi bonus di guerra</p>
         </div>
       </div>
 
@@ -4577,12 +4581,12 @@ const NationView = ({ user, fetchData }: { user: any, fetchData: () => void }) =
           <h3 className="text-lg font-black text-rose-900 uppercase flex items-center gap-2">
             <Swords className="w-5 h-5" /> Nazione Originale (Bonus +10% Danni)
           </h3>
-          <p className="text-xs text-rose-500 font-bold mb-4">La tua vera fedeltà. Riceverai un bonus del +10% ai danni se combatti a favore di questa nazione. Puoi cambiarla solo <b className="font-black">una volta ogni 30 giorni</b>.</p>
+          <p className="text-xs text-rose-500 font-bold mb-4">La tua vera fedeltÃ . Riceverai un bonus del +10% ai danni se combatti a favore di questa nazione. Puoi cambiarla solo <b className="font-black">una volta ogni 30 giorni</b>.</p>
 
           <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl mb-4 flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
             <p className="text-xs font-bold text-rose-900">
-              {canChangeOriginal ? "Puoi cambiare la tua Nazione Originale ora." : `Hai già cambiato nazione di recente. Prossimo cambio disponibile il: ${nextAvailDate}`}
+              {canChangeOriginal ? "Puoi cambiare la tua Nazione Originale ora." : `Hai giÃ  cambiato nazione di recente. Prossimo cambio disponibile il: ${nextAvailDate}`}
             </p>
           </div>
 
@@ -4591,7 +4595,7 @@ const NationView = ({ user, fetchData }: { user: any, fetchData: () => void }) =
               {NATION_OPTS.map(n => <option key={n.id} value={n.id}>{n.id} - {n.name}</option>)}
             </select>
             <button onClick={handleUpdateOriginal} disabled={submitting || !canChangeOriginal || originalNation === user.originalNation} className="px-6 py-3 bg-rose-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-rose-100 disabled:opacity-50">
-              Giura Fedeltà
+              Giura FedeltÃ 
             </button>
           </div>
         </div>
@@ -4647,7 +4651,7 @@ const StorageView = ({ user }: { user: any }) => {
           <div>
             <div className="flex justify-between items-end mb-2">
               <h3 className="font-black text-slate-800 uppercase">Spazio Occupato</h3>
-              <span className="text-xs font-bold text-slate-500">{privateVolume} / {privateMax} unità</span>
+              <span className="text-xs font-bold text-slate-500">{privateVolume} / {privateMax} unitÃ </span>
             </div>
             <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden">
               <div className={`h-full transition-all duration-500 ${pct > 90 ? 'bg-rose-500' : 'bg-indigo-500'}`} style={{ width: `${pct}%` }} />
@@ -4731,10 +4735,10 @@ const MarketView = ({ user, fetchData }: { user: User | null, fetchData: () => v
 
   // Publish state
   const ITEMS_CATALOG = [
-    { id: 'oil', name: 'Petrolio', emoji: '🛢️' },
-    { id: 'minerals', name: 'Minerali', emoji: '🪨' },
-    { id: 'uranium', name: 'Uranio', emoji: '☢️' },
-    { id: 'diamonds', name: 'Diamanti', emoji: '💎' },
+    { id: 'oil', name: 'Petrolio', emoji: 'ðŸ›¢ï¸' },
+    { id: 'minerals', name: 'Minerali', emoji: 'ðŸª¨' },
+    { id: 'uranium', name: 'Uranio', emoji: 'â˜¢ï¸' },
+    { id: 'diamonds', name: 'Diamanti', emoji: 'ðŸ’Ž' },
     ...WEAPONS_CATALOG
   ];
 
@@ -4755,7 +4759,7 @@ const MarketView = ({ user, fetchData }: { user: User | null, fetchData: () => v
 
   const handleBuy = async (offer: any) => {
     const q = buyQty[offer.id] || 1;
-    if (q <= 0 || q > offer.quantity) return alert("Quantità non valida");
+    if (q <= 0 || q > offer.quantity) return alert("QuantitÃ  non valida");
     setPurchasingId(offer.id);
     try {
       const res = await fetch("/api/market/buy", {
@@ -4844,11 +4848,11 @@ const MarketView = ({ user, fetchData }: { user: User | null, fetchData: () => v
           <Zap className="w-5 h-5 text-amber-500" /> Drink Energetici
         </h3>
         <p className="text-xs font-bold text-slate-500 mb-4">
-          Prezzo fisso: {drinkUnitCost} gold per unità.
+          Prezzo fisso: {drinkUnitCost} gold per unitÃ .
         </p>
         <div className="flex flex-wrap items-end gap-4">
           <div className="w-28">
-            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Quantità</label>
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">QuantitÃ </label>
             <input
               type="number"
               min="1"
@@ -4888,11 +4892,11 @@ const MarketView = ({ user, fetchData }: { user: User | null, fetchData: () => v
             </select>
           </div>
           <div className="w-24">
-            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Quantità</label>
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">QuantitÃ </label>
             <input type="number" min="1" value={postQty} onChange={e => setPostQty(parseInt(e.target.value) || 1)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold" />
           </div>
           <div className="w-24">
-            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Prezzo/Unità</label>
+            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Prezzo/UnitÃ </label>
             <input type="number" min="1" value={postPrice} onChange={e => setPostPrice(parseInt(e.target.value) || 1)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold" />
           </div>
           <button onClick={handlePostOffer} disabled={posting} className="px-6 py-2.5 bg-indigo-600 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg shadow-indigo-100 hover:scale-105 transition-all h-full">
@@ -4919,7 +4923,7 @@ const MarketView = ({ user, fetchData }: { user: User | null, fetchData: () => v
           <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-600 w-8 h-8" /></div>
         ) : filtered.length === 0 ? (
           <div className="text-center bg-white p-12 rounded-[2.5rem] border border-slate-100 shadow-sm">
-            <span className="text-4xl mb-3 block">🏜️</span>
+            <span className="text-4xl mb-3 block">ðŸœï¸</span>
             <p className="text-slate-400 font-bold">Nessuna offerta trovata sul mercato per questo filtro.</p>
           </div>
         ) : (
@@ -5076,11 +5080,25 @@ export default function App() {
 
   const setAutoWorkFactoryId = useCallback(async (factoryId: string | null) => {
     try {
-      await fetch("/api/automation/work", {
+      if (factoryId) {
+        const warRes = await fetch("/api/automation/war-attacks");
+        const warData = await warRes.json();
+        const hasIncompatibleAutoAttack = (warData.autoAttacks || []).some((entry: any) => entry?.autoType !== 'hourly');
+        if (hasIncompatibleAutoAttack) {
+          alert("Auto-Work è compatibile solo con il Danno Orario, non con l'Auto-War standard.");
+          return;
+        }
+      }
+
+      const res = await fetch("/api/automation/work", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(factoryId ? { factoryId } : { enabled: false }),
       });
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+      }
     } finally {
       await refreshAutoWorkStatus();
       fetchData();
@@ -5145,7 +5163,7 @@ export default function App() {
       const data = await res.json();
       if (data.error) alert(data.error);
       else {
-        // Optimistic update — show the timer immediately
+        // Optimistic update â€” show the timer immediately
         if (data.queued && user) {
           setUser({
             ...user,
@@ -5223,7 +5241,7 @@ export default function App() {
             {/* Gold */}
             <div className="bg-amber-500/10 px-3 py-2 rounded-2xl border border-amber-500/20 flex items-center gap-1.5 shrink-0 transition-all hover:bg-amber-500/20">
               <span className="text-[11px] font-black text-amber-400/90 tracking-tighter">
-                🪙{user.gold || 0}
+                ðŸª™{user.gold || 0}
               </span>
             </div>
 
@@ -5250,7 +5268,7 @@ export default function App() {
               title="Usa Drink Energetico"
               className="bg-sky-500/10 p-2 rounded-2xl border border-sky-500/20 flex items-center justify-center shrink-0 hover:bg-sky-500/20 transition-all active:scale-95 disabled:opacity-50 group relative"
             >
-              <span className="text-lg leading-none filter drop-shadow-sm group-hover:rotate-12 transition-transform">🥤</span>
+              <span className="text-lg leading-none filter drop-shadow-sm group-hover:rotate-12 transition-transform">ðŸ¥¤</span>
               <div className="absolute -top-1 -right-1 bg-sky-500 text-[8px] font-black text-white px-1.5 py-0.5 rounded-full shadow-lg border border-sky-400/50">
                 {user.energyDrinks || 0}
               </div>
@@ -5317,9 +5335,9 @@ export default function App() {
                         <Gem className="w-4 h-4 text-yellow-400" /> NEGOZIO
                       </button>
                       <div className="h-px bg-gray-700/50 my-1" />
-                      <button onClick={() => { setIsDarkMode(prev => !prev); setIsMenuOpen(false); }} aria-label={isDarkMode ? 'Passa alla modalità chiara' : 'Passa alla modalità scura'} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
+                      <button onClick={() => { setIsDarkMode(prev => !prev); setIsMenuOpen(false); }} aria-label={isDarkMode ? 'Passa alla modalitÃ  chiara' : 'Passa alla modalitÃ  scura'} className="w-full px-4 py-3 text-left text-sm font-bold text-gray-200 hover:bg-gray-700/50 flex items-center gap-3 transition-colors">
                         {isDarkMode ? <Sun className="w-4 h-4 text-yellow-400" /> : <Moon className="w-4 h-4 text-blue-400" />}
-                        {isDarkMode ? 'MODALITÀ CHIARA' : 'MODALITÀ SCURA'}
+                        {isDarkMode ? 'MODALITÃ€ CHIARA' : 'MODALITÃ€ SCURA'}
                       </button>
                       <div className="h-px bg-gray-700/50 my-1" />
                       <button onClick={handleLogout} className="w-full px-4 py-3 text-left text-sm font-bold text-red-400 hover:bg-red-900/20 flex items-center gap-3 transition-colors">
@@ -5336,7 +5354,6 @@ export default function App() {
 
       {/* Main Content */}
       <main className={`${isDashboardRoute ? 'max-w-none p-0' : 'max-w-2xl mx-auto p-6'}`}>
-        {!isDashboardRoute && <div className="mb-6"><ResourceStrip user={user} /></div>}
         <Routes>
           <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} worldStats={worldStats} navigateToCountry={navigateToCountry} />} />
           <Route path="/daily" element={<DailyTasksPage user={user} regions={regions} />} />
@@ -5385,11 +5402,11 @@ export default function App() {
                   <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Panoramica risorse in {user.regionId}</h3>
                   <div className="grid grid-cols-5 gap-2">
                     {[
-                      { emoji: "🪙", label: "Oro", color: "bg-amber-50" },
-                      { emoji: "🛢️", label: "Petrolio", color: "bg-orange-50" },
-                      { emoji: "🪨", label: "Minerali", color: "bg-slate-50" },
-                      { emoji: "☢️", label: "Uranio", color: "bg-cyan-50" },
-                      { emoji: "💎", label: "Diamanti", color: "bg-purple-50" },
+                      { emoji: "ðŸª™", label: "Oro", color: "bg-amber-50" },
+                      { emoji: "ðŸ›¢ï¸", label: "Petrolio", color: "bg-orange-50" },
+                      { emoji: "ðŸª¨", label: "Minerali", color: "bg-slate-50" },
+                      { emoji: "â˜¢ï¸", label: "Uranio", color: "bg-cyan-50" },
+                      { emoji: "ðŸ’Ž", label: "Diamanti", color: "bg-purple-50" },
                     ].map(r => (
                       <div key={r.label} className={`${r.color} p-2 rounded-xl flex flex-col items-center gap-1`}>
                         <span className="text-lg">{r.emoji}</span>
@@ -5426,10 +5443,10 @@ export default function App() {
                   <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Esperienza Lavorativa</h3>
                   <div className="grid grid-cols-2 gap-3">
                     {[
-                      { emoji: "🛢️", label: "Petrolio", exp: user.oilExp || 0 },
-                      { emoji: "🪨", label: "Minerali", exp: user.mineralsExp || 0 },
-                      { emoji: "☢️", label: "Uranio", exp: user.uraniumExp || 0 },
-                      { emoji: "💎", label: "Diamanti", exp: user.diamondsExp || 0 },
+                      { emoji: "ðŸ›¢ï¸", label: "Petrolio", exp: user.oilExp || 0 },
+                      { emoji: "ðŸª¨", label: "Minerali", exp: user.mineralsExp || 0 },
+                      { emoji: "â˜¢ï¸", label: "Uranio", exp: user.uraniumExp || 0 },
+                      { emoji: "ðŸ’Ž", label: "Diamanti", exp: user.diamondsExp || 0 },
                     ].map(r => (
                       <div key={r.label} className="bg-slate-50 p-3 rounded-xl flex items-center gap-2">
                         <span className="text-lg">{r.emoji}</span>
@@ -5555,7 +5572,7 @@ export default function App() {
                         </div>
 
                         <p className="text-[9px] text-slate-400 font-bold mt-2">
-                          Cap: {maxWorkXp.toLocaleString()} XP (Istruzione {edu}) • Gold: {goldAvailable.toLocaleString()}G
+                          Cap: {maxWorkXp.toLocaleString()} XP (Istruzione {edu}) â€¢ Gold: {goldAvailable.toLocaleString()}G
                         </p>
                         {workExpTransferError && <p className="text-[10px] font-black text-red-600 mt-1">{workExpTransferError}</p>}
                         {workExpTransferOk && <p className="text-[10px] font-black text-emerald-600 mt-1">{workExpTransferOk}</p>}
@@ -5565,7 +5582,7 @@ export default function App() {
                 </div>
 
 
-                {/* Modalità automatica */}
+                {/* ModalitÃ  automatica */}
                 <div className="p-5 rounded-[2.5rem] shadow-sm border space-y-3 bg-gradient-to-r from-amber-50 to-yellow-50 border-amber-200">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -5574,7 +5591,7 @@ export default function App() {
                       </div>
                       <div>
                         <h3 className="text-sm font-black text-slate-800">Modalità Automatica</h3>
-                        <p className="text-[10px] text-slate-400 font-medium">Attivo per 24h, esegue il lavoro ogni 10 minuti e poi scade</p>
+                        <p className="text-[10px] text-slate-400 font-medium">Attivo per 24h, esegue il lavoro ogni 10 minuti e può coesistere solo con il Danno Orario</p>
                       </div>
                     </div>
                     {autoWorkFactoryId && (
@@ -5586,10 +5603,10 @@ export default function App() {
                   {autoWorkFactoryId ? (
                     <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
                       <span className="animate-pulse text-lg">⚙️</span>
-                      <span className="text-xs font-black text-amber-800">Auto-lavoro attivo per 24h. Esegue il lavoro ogni 10 minuti e va riattivato alla scadenza{autoWorkExpiresAt ? ` • Scade: ${new Date(autoWorkExpiresAt).toLocaleString('it-IT')}` : ''}.</span>
+                      <span className="text-xs font-black text-amber-800">Auto-lavoro attivo per 24h. Esegue il lavoro ogni 10 minuti, resta compatibile con il Danno Orario, ma non con l'Auto-War standard{autoWorkExpiresAt ? ` • Scade: ${new Date(autoWorkExpiresAt).toLocaleString('it-IT')}` : ''}.</span>
                     </div>
                   ) : (
-                    <p className="text-xs text-amber-600 font-medium">Seleziona una fabbrica qui sotto e clicca "🤖 Auto" per attivare il lavoro automatico.</p>
+                    <p className="text-xs text-amber-600 font-medium">Seleziona una fabbrica qui sotto e clicca "Auto" per attivare il lavoro automatico. Auto-Work è compatibile solo con il Danno Orario.</p>
                   )}
                 </div>
 
@@ -5633,9 +5650,9 @@ export default function App() {
 }
 
 const WEAPONS_CATALOG = [
-  { id: "tank", name: "Carri armati", emoji: "🛡️", timeMin: 8, costCash: 1800, reqOil: 35, reqMinerals: 60, reqUranium: 0, reqDiamonds: 0, power: 45 },
-  { id: "aircraft", name: "Aerei", emoji: "✈️", timeMin: 16, costCash: 4200, reqOil: 70, reqMinerals: 110, reqUranium: 0, reqDiamonds: 0, power: 110 },
-  { id: "battleship", name: "Corazzate navali", emoji: "🚢", timeMin: 36, costCash: 12000, reqOil: 180, reqMinerals: 260, reqUranium: 0, reqDiamonds: 0, power: 220 },
+  { id: "tank", name: "Carri armati", emoji: "ðŸ›¡ï¸", timeMin: 8, costCash: 1800, reqOil: 35, reqMinerals: 60, reqUranium: 0, reqDiamonds: 0, power: 45 },
+  { id: "aircraft", name: "Aerei", emoji: "âœˆï¸", timeMin: 16, costCash: 4200, reqOil: 70, reqMinerals: 110, reqUranium: 0, reqDiamonds: 0, power: 110 },
+  { id: "battleship", name: "Corazzate navali", emoji: "ðŸš¢", timeMin: 36, costCash: 12000, reqOil: 180, reqMinerals: 260, reqUranium: 0, reqDiamonds: 0, power: 220 },
 ];
 
 const LEGACY_MILITARY_UNITS = new Set([
@@ -5683,7 +5700,7 @@ const ProduceView = ({ user }: { user: any }) => {
       });
       const data = await res.json();
       if (data.error) alert(data.error);
-      else { fetchQueue(); alert(`✅ ${amount}x ${weaponId} in coda!`); }
+      else { fetchQueue(); alert(`âœ… ${amount}x ${weaponId} in coda!`); }
     } catch { alert("Errore nella produzione"); }
     finally { setSubmitting(false); }
   };
@@ -5697,11 +5714,11 @@ const ProduceView = ({ user }: { user: any }) => {
       className="space-y-6"
     >
       <button onClick={() => navigate(-1)} className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1">
-        ← Indietro
+        â† Indietro
       </button>
 
       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
-        <h2 className="text-2xl font-black tracking-tight">🔨 Produci Armi</h2>
+        <h2 className="text-2xl font-black tracking-tight">ðŸ”¨ Produci Armi</h2>
         <div className="grid grid-cols-1 gap-4">
           {WEAPONS_CATALOG.map(w => {
             const amount = qty[w.id] || 1;
@@ -5737,7 +5754,7 @@ const ProduceView = ({ user }: { user: any }) => {
                       {w.reqDiamonds > 0 && <div className="flex items-center gap-1 text-[10px] font-black text-slate-600 bg-white px-2 py-1.5 rounded-xl border border-slate-200/60 shadow-sm uppercase tracking-wider">
                         <ResourceIcon id="diamonds" size={12} /> {w.reqDiamonds}
                       </div>}
-                      <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1.5 rounded-xl border border-slate-100 italic">⏱ {w.timeMin}m</span>
+                      <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-1.5 rounded-xl border border-slate-100 italic">â± {w.timeMin}m</span>
                       <span className="text-[10px] font-black text-emerald-600 bg-emerald-50 px-2 py-1.5 rounded-xl border border-emerald-100 uppercase tracking-widest">+{w.power} pw</span>
                     </div>
                   </div>
@@ -5783,7 +5800,7 @@ const ProduceView = ({ user }: { user: any }) => {
                     <span className="font-black text-slate-900 capitalize">{item.weaponType}</span>
                     <span className="text-[10px] font-black bg-slate-100 text-slate-500 px-2 py-0.5 rounded-lg">x{item.qty}</span>
                     <span className={`text-[10px] font-black px-2 py-0.5 rounded-lg ${isReady ? "bg-emerald-50 text-emerald-600" : "bg-amber-50 text-amber-600"}`}>
-                      {isReady ? "✅ Pronto in magazzino" : "🔄 In coda"}
+                      {isReady ? "âœ… Pronto in magazzino" : "ðŸ”„ In coda"}
                     </span>
                   </div>
                   {!isReady && item.willCompleteAt && (
@@ -5984,7 +6001,7 @@ const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, relo
                 <tr className="border-b border-slate-100">
                   <th className="pb-3 px-2 text-xs font-black text-slate-400 uppercase tracking-widest">Player</th>
                   <th className="pb-3 px-2 text-xs font-black text-slate-400 uppercase tracking-widest">Ruolo</th>
-                  <th className="pb-3 px-2 text-xs font-black text-slate-400 uppercase tracking-widest">Attività</th>
+                  <th className="pb-3 px-2 text-xs font-black text-slate-400 uppercase tracking-widest">AttivitÃ </th>
                   <th className="pb-3 px-2 text-xs font-black text-slate-400 uppercase tracking-widest">Azioni</th>
                 </tr>
               </thead>
@@ -6094,12 +6111,12 @@ const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, relo
         <div className="bg-white p-6 md:p-10 rounded-[2.5rem] border border-slate-100 shadow-sm text-center">
           <Trophy className="w-16 h-16 text-indigo-200 mx-auto mb-4" />
           <h3 className="text-2xl font-black text-slate-800 mb-2">Elezioni Primarie</h3>
-          <p className="text-slate-500 font-bold mb-8 max-w-md mx-auto">Vota un membro del tuo partito! I vincitori avranno la possibilità di candidarsi al Parlamento per le Elezioni Nazionali. Ciclo ogni 5 giorni.</p>
+          <p className="text-slate-500 font-bold mb-8 max-w-md mx-auto">Vota un membro del tuo partito! I vincitori avranno la possibilitÃ  di candidarsi al Parlamento per le Elezioni Nazionali. Ciclo ogni 5 giorni.</p>
 
           {hasVotedPrimaries && (
             <div className="flex items-center justify-center gap-2 mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-3">
               <Check className="w-4 h-4 text-emerald-600" />
-              <span className="text-xs font-black text-emerald-700 uppercase">Hai già votato in questo ciclo</span>
+              <span className="text-xs font-black text-emerald-700 uppercase">Hai giÃ  votato in questo ciclo</span>
             </div>
           )}
 
@@ -6144,19 +6161,19 @@ const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, relo
                 <div>
                   <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Risorsa</label>
                   <select value={contributeForm.itemType} onChange={e => setContributeForm({ ...contributeForm, targetUserId: targetUser.userId, itemType: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-3 rounded-xl font-bold outline-none text-slate-700 focus:border-indigo-300">
-                    <option value="cash">💵 Cash ($)</option>
-                    <option value="gold">🪙 Gold</option>
-                    <option value="oil">🛢️ Petrolio</option>
-                    <option value="minerals">🪨 Minerali</option>
-                    <option value="uranium">☢️ Uranio</option>
-                    <option value="diamonds">💎 Diamanti</option>
-                    <option value="tank">🛡️ Carri armati</option>
-                    <option value="aircraft">✈️ Aerei</option>
-                    <option value="battleship">🚢 Corazzate navali</option>
+                    <option value="cash">ðŸ’µ Cash ($)</option>
+                    <option value="gold">ðŸª™ Gold</option>
+                    <option value="oil">ðŸ›¢ï¸ Petrolio</option>
+                    <option value="minerals">ðŸª¨ Minerali</option>
+                    <option value="uranium">â˜¢ï¸ Uranio</option>
+                    <option value="diamonds">ðŸ’Ž Diamanti</option>
+                    <option value="tank">ðŸ›¡ï¸ Carri armati</option>
+                    <option value="aircraft">âœˆï¸ Aerei</option>
+                    <option value="battleship">ðŸš¢ Corazzate navali</option>
                   </select>
                 </div>
                 <div>
-                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">Quantità</label>
+                  <label className="text-xs font-black text-slate-400 uppercase tracking-widest pl-1 mb-1 block">QuantitÃ </label>
                   <input type="number" min={1} value={contributeForm.amount || ''} onChange={e => setContributeForm({ ...contributeForm, targetUserId: targetUser.userId, amount: parseInt(e.target.value) || 0 })} className="w-full bg-white border border-slate-200 p-3 rounded-xl font-bold outline-none focus:border-indigo-300 focus:ring-4 ring-indigo-50" placeholder="0" />
                 </div>
               </div>
@@ -6332,7 +6349,7 @@ const PartyHub = ({ user, fetchData }: any) => {
                 {p.logo ? <img src={p.logo} alt="logo" className="w-14 h-14 rounded-xl object-cover shadow-sm bg-white shrink-0" /> : <div className="w-14 h-14 bg-indigo-50 rounded-xl flex items-center justify-center font-black text-indigo-200 border border-indigo-100 shrink-0">{p.tag || "P"}</div>}
                 <div>
                   <p className="font-black text-slate-900 text-[15px] leading-tight transition-colors group-hover:text-indigo-900">{p.name} {p.tag && <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] ml-1.5 align-middle select-none">{p.tag}</span>}</p>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-wider"><span className="text-indigo-600">{p.memberCount} Membri</span> <span className="mx-1.5 text-slate-300">•</span> Leader: <span className="text-slate-700">{p.leaderName}</span></p>
+                  <p className="text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-wider"><span className="text-indigo-600">{p.memberCount} Membri</span> <span className="mx-1.5 text-slate-300">â€¢</span> Leader: <span className="text-slate-700">{p.leaderName}</span></p>
                 </div>
               </div>
               <div className="hidden md:flex shrink-0">
@@ -6352,11 +6369,11 @@ const PartyHub = ({ user, fetchData }: any) => {
   );
 };
 
-// ══════════════════════════════════════════════════════════════════
-// ██ REGIONAL RESOURCES UI COMPONENTS
-// ══════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// â–ˆâ–ˆ REGIONAL RESOURCES UI COMPONENTS
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-// ── Region Resources Tab ────────────────────────────────────────
+// â”€â”€ Region Resources Tab â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const RegionResourcesTab = ({ regionId, user }: { regionId: string; user: any }) => {
   const [resources, setResources] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -6388,7 +6405,7 @@ const RegionResourcesTab = ({ regionId, user }: { regionId: string; user: any })
         <Pickaxe className="w-4 h-4" /> Risorse Regionali
       </h3>
       {resources.map((r: any) => {
-        const icon = RESOURCE_ICONS_MAP[r.resourceType as ResourceType] || '📦';
+        const icon = RESOURCE_ICONS_MAP[r.resourceType as ResourceType] || 'ðŸ“¦';
         const label = RESOURCE_LABELS[r.resourceType as ResourceType] || r.resourceType;
         const pctDaily = r.dailyAvailable > 0 ? Math.min(100, (r.dailyExtracted / r.dailyAvailable) * 100) : 0;
         return (
@@ -6398,7 +6415,7 @@ const RegionResourcesTab = ({ regionId, user }: { regionId: string; user: any })
                 <span className="text-xl">{icon}</span>
                 <span className="font-black text-slate-800 text-sm">{label}</span>
                 {r.deepActive && (
-                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[9px] font-black uppercase">🔮 Deep</span>
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[9px] font-black uppercase">ðŸ”® Deep</span>
                 )}
               </div>
               <div className="text-right">
@@ -6429,7 +6446,7 @@ const RegionResourcesTab = ({ regionId, user }: { regionId: string; user: any })
             </div>
             {r.deepActive && r.deepEndsAt && (
               <p className="text-[9px] text-purple-500 font-medium">
-                🔮 Deep attiva fino al {new Date(r.deepEndsAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                ðŸ”® Deep attiva fino al {new Date(r.deepEndsAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
               </p>
             )}
           </div>
@@ -6439,7 +6456,7 @@ const RegionResourcesTab = ({ regionId, user }: { regionId: string; user: any })
   );
 };
 
-// ── Resource Work / Extract UI ──────────────────────────────────
+// â”€â”€ Resource Work / Extract UI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => void }) => {
   const [regionId, setRegionId] = useState(user?.regionId || '');
   const [resources, setResources] = useState<any[]>([]);
@@ -6486,7 +6503,7 @@ const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => 
       if (data.error) {
         setMessage({ text: data.error, type: 'error' });
       } else {
-        const icon = RESOURCE_ICONS_MAP[selectedResource as ResourceType] || '📦';
+        const icon = RESOURCE_ICONS_MAP[selectedResource as ResourceType] || 'ðŸ“¦';
         setMessage({ text: `+${data.amount} ${icon} ${RESOURCE_LABELS[selectedResource as ResourceType] || selectedResource} estratti! (+${data.xpGain} XP)`, type: 'success' });
         fetchAll();
         fetchData();
@@ -6517,7 +6534,7 @@ const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => 
       {resources.length > 0 ? (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {resources.map((r: any) => {
-            const icon = RESOURCE_ICONS_MAP[r.resourceType as ResourceType] || '📦';
+            const icon = RESOURCE_ICONS_MAP[r.resourceType as ResourceType] || 'ðŸ“¦';
             const label = RESOURCE_LABELS[r.resourceType as ResourceType] || r.resourceType;
             const isSelected = selectedResource === r.resourceType;
             return (
@@ -6529,7 +6546,7 @@ const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => 
                 }`}
               >
                 <span>{icon}</span> {label}
-                {r.deepActive && <span className="text-purple-500">🔮</span>}
+                {r.deepActive && <span className="text-purple-500">ðŸ”®</span>}
               </button>
             );
           })}
@@ -6593,7 +6610,7 @@ const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => 
   );
 };
 
-// ── Government Recharge Panel ───────────────────────────────────
+// â”€â”€ Government Recharge Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const RechargeResourcePanel = ({ regionId, user }: { regionId: string; user: any }) => {
   const [resources, setResources] = useState<any[]>([]);
   const [selectedResource, setSelectedResource] = useState<string>('');
@@ -6675,7 +6692,7 @@ const RechargeResourcePanel = ({ regionId, user }: { regionId: string; user: any
           {/* Resource selector */}
           <div className="flex gap-2 flex-wrap">
             {resources.map((r: any) => {
-              const icon = RESOURCE_ICONS_MAP[r.resourceType as ResourceType] || '📦';
+              const icon = RESOURCE_ICONS_MAP[r.resourceType as ResourceType] || 'ðŸ“¦';
               return (
                 <button
                   key={r.resourceType}
@@ -6695,11 +6712,11 @@ const RechargeResourcePanel = ({ regionId, user }: { regionId: string; user: any
               <div className="grid grid-cols-2 gap-2 text-xs">
                 <div className="bg-slate-50 p-2 rounded-lg">
                   <span className="text-slate-400 font-bold">Costo ricarica</span>
-                  <p className="font-black text-slate-800">€{(rechargeInfo.costEur || 0).toLocaleString()}</p>
+                  <p className="font-black text-slate-800">â‚¬{(rechargeInfo.costEur || 0).toLocaleString()}</p>
                 </div>
                 <div className="bg-slate-50 p-2 rounded-lg">
                   <span className="text-slate-400 font-bold">Tesoro</span>
-                  <p className={`font-black ${canAfford ? 'text-emerald-600' : 'text-red-500'}`}>€{(rechargeInfo.treasuryEur || 0).toLocaleString()}</p>
+                  <p className={`font-black ${canAfford ? 'text-emerald-600' : 'text-red-500'}`}>â‚¬{(rechargeInfo.treasuryEur || 0).toLocaleString()}</p>
                 </div>
               </div>
 
@@ -6738,7 +6755,7 @@ const RechargeResourcePanel = ({ regionId, user }: { regionId: string; user: any
   );
 };
 
-// ── Deep Exploration Panel ──────────────────────────────────────
+// â”€â”€ Deep Exploration Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string }) => {
   const [levels, setLevels] = useState<any[]>([]);
   const [active, setActive] = useState<any>(null);
@@ -6796,7 +6813,7 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
     if (!costPreview) return;
     const resLabel = RESOURCE_LABELS[selectedResource as ResourceType];
     const goldPart = costPreview.costGold > 0 ? ` + ${costPreview.costGold.toLocaleString()} gold` : '';
-    const confirmMsg = `Confermi l'attivazione di Deep Exploration Lv${selectedLevel} per ${resLabel}?\n\nCosto: 💎${costPreview.costDiamonds.toLocaleString()} + €${costPreview.costEur.toLocaleString()}${goldPart}`;
+    const confirmMsg = `Confermi l'attivazione di Deep Exploration Lv${selectedLevel} per ${resLabel}?\n\nCosto: ðŸ’Ž${costPreview.costDiamonds.toLocaleString()} + â‚¬${costPreview.costEur.toLocaleString()}${goldPart}`;
     if (!window.confirm(confirmMsg)) return;
 
     setActivating(true);
@@ -6827,7 +6844,7 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
   return (
     <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4">
       <h3 className="text-sm font-black uppercase tracking-widest text-purple-600 flex items-center gap-2">
-        🔮 Deep Exploration
+        ðŸ”® Deep Exploration
       </h3>
       <p className="text-[10px] text-slate-400">
         Attiva una legge temporanea (7 giorni) che aumenta i cap di ricarica per una risorsa in tutte le regioni della nazione.
@@ -6838,7 +6855,7 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
       {active && (
         <div className="bg-purple-50 p-3 rounded-xl border border-purple-200 space-y-1">
           <div className="flex items-center gap-2">
-            <span className="text-lg">🔮</span>
+            <span className="text-lg">ðŸ”®</span>
             <span className="font-black text-purple-700 text-sm">Deep Exploration ATTIVA</span>
           </div>
           <p className="text-xs text-purple-600">
@@ -6884,7 +6901,7 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
                     selectedLevel === l.level ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'bg-slate-50 text-slate-600 border border-slate-200'
                   }`}
                 >
-                  Lv {l.level} — Cap {l.targetCap}
+                  Lv {l.level} â€” Cap {l.targetCap}
                 </button>
               ))}
             </div>
@@ -6910,19 +6927,19 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
                   <p className="text-sm font-black text-slate-700">{costPreview.numRegions}</p>
                 </div>
                 <div className="bg-white p-2 rounded-lg border border-slate-100">
-                  <p className="text-[9px] text-slate-400">ΣDelta</p>
+                  <p className="text-[9px] text-slate-400">Î£Delta</p>
                   <p className="text-sm font-black text-amber-700">{costPreview.sumDelta.toLocaleString()}</p>
                 </div>
               </div>
               <div className="flex gap-2 text-xs font-bold">
                 {costPreview.costDiamonds > 0 && (
-                  <span className="bg-purple-50 text-purple-700 px-2 py-1 rounded">💎 {costPreview.costDiamonds.toLocaleString()}</span>
+                  <span className="bg-purple-50 text-purple-700 px-2 py-1 rounded">ðŸ’Ž {costPreview.costDiamonds.toLocaleString()}</span>
                 )}
                 {costPreview.costEur > 0 && (
-                  <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded">€{costPreview.costEur.toLocaleString()}</span>
+                  <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded">â‚¬{costPreview.costEur.toLocaleString()}</span>
                 )}
                 {costPreview.costGold > 0 && (
-                  <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded">🪙 {costPreview.costGold.toLocaleString()}</span>
+                  <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded">ðŸª™ {costPreview.costGold.toLocaleString()}</span>
                 )}
               </div>
             </div>
@@ -6936,7 +6953,7 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
               costPreview && !activating ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
           >
-            {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>🔮</span>}
+            {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>ðŸ”®</span>}
             Attiva Deep Exploration Lv{selectedLevel}
           </button>
         </>
@@ -6951,7 +6968,7 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
   );
 };
 
-// ══════════════════════════════════════════════════════════════════
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 const ParliamentView = ({ user }: { user: any }) => {
   const [activeTab, setActiveTab] = useState<'elections' | 'parliament' | 'laws' | 'dictatorship'>('elections');
@@ -7038,7 +7055,7 @@ const ParliamentView = ({ user }: { user: any }) => {
         <Crown className="w-12 h-12 text-rose-200 shrink-0" />
         <div>
           <h3 className="text-xl font-black uppercase tracking-widest">Regime Dittatoriale</h3>
-          <p className="font-bold text-rose-100 text-sm mt-1">Il parlamento è sospeso. Il Dittatore ha potere esecutivo e legislativo assoluto.</p>
+          <p className="font-bold text-rose-100 text-sm mt-1">Il parlamento Ã¨ sospeso. Il Dittatore ha potere esecutivo e legislativo assoluto.</p>
         </div>
       </div>
 
@@ -7055,7 +7072,7 @@ const ParliamentView = ({ user }: { user: any }) => {
                 <p className="text-[10px] font-bold text-rose-500 uppercase mt-0.5">Potere assoluto</p>
               </div>
             </div>
-            <span className="text-sm font-black text-slate-700">{regionData?.leaderName || regionData?.leader?.username || '—'}</span>
+            <span className="text-sm font-black text-slate-700">{regionData?.leaderName || regionData?.leader?.username || 'â€”'}</span>
           </div>
           <div className="flex items-center justify-between p-4 bg-amber-50 rounded-2xl border border-amber-100">
             <div className="flex items-center gap-3">
@@ -7067,14 +7084,14 @@ const ParliamentView = ({ user }: { user: any }) => {
                 <p className="text-[10px] font-bold text-amber-500 uppercase mt-0.5">Gestione economica</p>
               </div>
             </div>
-            <span className="text-sm font-black text-slate-700">{regionData?.economicAdviserName || '—'}</span>
+            <span className="text-sm font-black text-slate-700">{regionData?.economicAdviserName || 'â€”'}</span>
           </div>
         </div>
       </div>
 
       <div className="bg-slate-50 p-6 rounded-3xl border border-dashed border-slate-200 text-center">
         <p className="text-slate-400 font-bold italic text-sm">Le elezioni parlamentari sono sospese durante il regime dittatoriale.</p>
-        <p className="text-[10px] text-slate-300 font-bold mt-1">Il Dittatore può emanare editti dalla sezione Leggi.</p>
+        <p className="text-[10px] text-slate-300 font-bold mt-1">Il Dittatore puÃ² emanare editti dalla sezione Leggi.</p>
       </div>
     </div>
   );
@@ -7169,7 +7186,7 @@ const ElectionsTab = ({ data, user, reload }: any) => {
                 onClick={() => handleVote(p.id)}
                 className={`w-full md:w-auto px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all shrink-0 ${data.myVote === p.id ? "bg-emerald-500 text-white shadow-emerald-200 shadow-lg" : data.myVote ? "bg-slate-100 text-slate-400" : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-200 shadow-lg"}`}
               >
-                {data.myVote === p.id ? "Hai Votato" : data.myVote ? "Già Votato" : "Vota"}
+                {data.myVote === p.id ? "Hai Votato" : data.myVote ? "GiÃ  Votato" : "Vota"}
               </button>
             </div>
           );
@@ -7263,7 +7280,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
   const displayLaws = showHistory ? historyLaws : activeLaws;
 
   const handleWithdraw = async (lawId: string) => {
-    if (!window.confirm("Sei sicuro di voler ritirare questa proposta di legge? Verrà spostata nell'archivio storico.")) return;
+    if (!window.confirm("Sei sicuro di voler ritirare questa proposta di legge? VerrÃ  spostata nell'archivio storico.")) return;
     setActing(true);
     try {
       const res = await fetch("/api/parliament/laws/withdraw", {
@@ -7302,7 +7319,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
         setShowPropose(false);
         setSelectedLaw(null);
         setParamsForm({});
-        if (data.immediate) alert("Come Dittatore, la legge è stata approvata ed eseguita immediatamente!");
+        if (data.immediate) alert("Come Dittatore, la legge Ã¨ stata approvata ed eseguita immediatamente!");
         reload();
       }
     } catch { alert("Errore di connessione"); }
@@ -7355,7 +7372,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
           <Crown className="w-12 h-12 text-rose-200 shrink-0" />
           <div>
             <h3 className="text-xl font-black uppercase tracking-widest">Regime Dittatoriale</h3>
-            <p className="font-bold text-rose-100 text-sm mt-1">Il parlamento è sospeso. Il Dittatore ha potere esecutivo e legislativo assoluto. Le leggi passano senza essere votate.</p>
+            <p className="font-bold text-rose-100 text-sm mt-1">Il parlamento Ã¨ sospeso. Il Dittatore ha potere esecutivo e legislativo assoluto. Le leggi passano senza essere votate.</p>
           </div>
         </div>
       )}
@@ -7474,7 +7491,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                       <div>
                         <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Quota Profitto Regionale (%)</label>
                         <input type="number" min="0" max="100" placeholder="Es: 30" value={paramsForm.profitShare || ''} onChange={e => setParamsForm({ ...paramsForm, profitShare: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
-                        <p className="text-[10px] font-bold text-slate-400 mt-1">La regione tratterrà questa % degli utili, il resto andrà allo Stato.</p>
+                        <p className="text-[10px] font-bold text-slate-400 mt-1">La regione tratterrÃ  questa % degli utili, il resto andrÃ  allo Stato.</p>
                       </div>
                     )}
                   </div>
@@ -7509,16 +7526,16 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                       <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Tipo Edificio</label>
                       <select value={paramsForm.buildingType || ''} onChange={e => setParamsForm({ ...paramsForm, buildingType: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500">
                         <option value="">Seleziona...</option>
-                        <option value="hospital">🏥 Ospedale</option>
-                        <option value="military_base">🏛️ Base Militare</option>
-                        <option value="school">🏫 Scuola</option>
-                        <option value="military_academy">🎖️ Accademia Militare</option>
-                        <option value="missile_system">🚀 Sistema Missilistico</option>
-                        <option value="airport">✈️ Aeroporto</option>
-                        <option value="naval_port">⚓ Porto Navale</option>
-                        <option value="space_port">🛸 Porto Spaziale</option>
-                        <option value="real_estate_fund">🏘️ Fondo Immobiliare</option>
-                        <option value="power_plant">⚡ Centrale Elettrica</option>
+                        <option value="hospital">ðŸ¥ Ospedale</option>
+                        <option value="military_base">ðŸ›ï¸ Base Militare</option>
+                        <option value="school">ðŸ« Scuola</option>
+                        <option value="military_academy">ðŸŽ–ï¸ Accademia Militare</option>
+                        <option value="missile_system">ðŸš€ Sistema Missilistico</option>
+                        <option value="airport">âœˆï¸ Aeroporto</option>
+                        <option value="naval_port">âš“ Porto Navale</option>
+                        <option value="space_port">ðŸ›¸ Porto Spaziale</option>
+                        <option value="real_estate_fund">ðŸ˜ï¸ Fondo Immobiliare</option>
+                        <option value="power_plant">âš¡ Centrale Elettrica</option>
                       </select>
                     </div>
                     <div>
@@ -7620,7 +7637,7 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
 
               {l.status === 'pending' && isMp && !l.myVote && !region?.dictatorship && (
                 <div className="flex flex-col gap-2 shrink-0 md:justify-center">
-                  <button disabled={acting} onClick={() => handleVote(l.id, 'yes')} className="bg-emerald-500 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition-all">SÌ</button>
+                  <button disabled={acting} onClick={() => handleVote(l.id, 'yes')} className="bg-emerald-500 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-200 hover:bg-emerald-600 transition-all">SÃŒ</button>
                   <button disabled={acting} onClick={() => handleVote(l.id, 'no')} className="bg-rose-500 text-white px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-rose-200 hover:bg-rose-600 transition-all">NO</button>
                 </div>
               )}
@@ -7636,3 +7653,4 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
     </div>
   );
 };
+

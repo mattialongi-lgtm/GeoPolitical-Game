@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { Zap, Timer } from 'lucide-react';
 import type { TroopType, WarSide, AutoAttackType } from '../../types';
 
@@ -38,7 +38,7 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
               <p className="text-[10px] font-bold text-amber-600">
                 {currentAutoAttack.side === 'attacker' ? 'Attaccante' : 'Difensore'} •{' '}
                 {TROOP_LABELS[currentAutoAttack.troopType] || currentAutoAttack.troopType} •{' '}
-                {currentAutoAttack.autoType === 'hourly' ? 'Orario (gratis)' : 'Max (ogni 10 min)'}
+                {currentAutoAttack.autoType === 'hourly' ? 'Danno Orario (1h, senza energia o bibite)' : 'Auto-War standard (ogni 10 min)'}
               </p>
             </div>
           </div>
@@ -65,7 +65,7 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
         <Zap className="w-5 h-5 text-amber-600" />
         <div>
           <p className="font-black text-amber-800 text-sm uppercase">Attacco Automatico</p>
-          <p className="text-[10px] font-bold text-amber-600">Configura attacchi automatici (scade dopo 24h)</p>
+          <p className="text-[10px] font-bold text-amber-600">Configura attacchi automatici. Solo il Danno Orario è compatibile con Auto-Work.</p>
         </div>
       </div>
 
@@ -90,8 +90,8 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
           <label className="text-[9px] font-black text-amber-700 uppercase mb-1 block">Modalità</label>
           <div className="flex gap-1">
             {([
-              { type: 'hourly' as AutoAttackType, label: 'Orario' },
-              { type: 'maximum' as AutoAttackType, label: 'Max' },
+              { type: 'hourly' as AutoAttackType, label: 'Danno Orario' },
+              { type: 'maximum' as AutoAttackType, label: 'Auto-War' },
             ]).map(m => (
               <button
                 key={m.type}
@@ -132,7 +132,7 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
       </button>
 
       <div className="text-[9px] font-medium text-amber-500">
-        ⏰ Orario: gratis, ogni 1h • Max: ogni 10 min, consuma energia
+        ⏰ Danno Orario: ogni 1h, senza energia o bibite • Auto-War standard: ogni 10 min, incompatibile con Auto-Work
       </div>
     </div>
   );

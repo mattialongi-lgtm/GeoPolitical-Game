@@ -39,20 +39,23 @@ const resolveDisplayIcon = (logo: any, fallbackCode?: string | null): string | n
   return buildFlagUrl(fallbackCode);
 };
 
-const buildSideDisplay = (
-  war: any,
-  side: 'attacker' | 'defender',
-  regionMap: Record<string, any>,
-  nationMap: Record<string, any>,
-): WarDisplaySide => {
-  const regionId = side === 'attacker' ? war.attackerRegionId : war.defenderRegionId;
-  const fallbackId = side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2;
-  const region = regionId ? regionMap[regionId] : null;
-  const nationId = region?.nation_id || (fallbackId && nationMap[fallbackId] ? fallbackId : null);
-  const nation = nationId ? nationMap[nationId] : null;
-  const displayName = nation?.name || region?.name || fallbackId || 'Sconosciuto';
-  const displayIconType = nationId ? 'state' : 'region';
-  const displayIcon = resolveDisplayIcon(nation?.logo, nationId || region?.id || fallbackId);
+const buildSideDisplay = ( 
+  war: any, 
+  side: 'attacker' | 'defender', 
+  regionMap: Record<string, any>, 
+  nationMap: Record<string, any>, 
+): WarDisplaySide => { 
+  const regionId = side === 'attacker' ? war.attackerRegionId : war.defenderRegionId; 
+  const fallbackId = side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2; 
+  const region = regionId ? regionMap[regionId] : null; 
+  // Prefer the country code stored on the war row for display, because the region's
+  // current `nation_id` might have changed since the war was created/ended.
+  const fallbackNationId = fallbackId && nationMap[fallbackId] ? fallbackId : null; 
+  const nationId = fallbackNationId || region?.nation_id || null; 
+  const nation = nationId ? nationMap[nationId] : null; 
+  const displayName = nation?.name || region?.name || fallbackId || 'Sconosciuto'; 
+  const displayIconType = nationId ? 'state' : 'region'; 
+  const displayIcon = resolveDisplayIcon(nation?.logo, nationId || region?.id || fallbackId); 
 
   return {
     displayName,

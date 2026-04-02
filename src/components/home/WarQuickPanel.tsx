@@ -102,7 +102,7 @@ export default function WarQuickPanel({ wars }: WarQuickPanelProps) {
           <button className="text-left hover:opacity-80 transition-opacity">
             <WarFactionBadge
               name={currentWar.attackerDisplayName || currentWar.attackerName}
-              icon={currentWar.attackerDisplayIcon}
+              icon={currentWar.attackerIso2}
               iconSizeClass="w-5 h-5"
               textClassName="text-sm font-black text-red-400"
             />
@@ -112,7 +112,7 @@ export default function WarQuickPanel({ wars }: WarQuickPanelProps) {
           <button className="text-right hover:opacity-80 transition-opacity">
             <WarFactionBadge
               name={currentWar.defenderDisplayName || currentWar.defenderName}
-              icon={currentWar.defenderDisplayIcon}
+              icon={currentWar.defenderIso2}
               align="right"
               iconSizeClass="w-5 h-5"
               textClassName="text-sm font-black text-blue-400"
@@ -167,13 +167,13 @@ export default function WarQuickPanel({ wars }: WarQuickPanelProps) {
               </div>
               <WarFactionBadge
                 name={war.attackerDisplayName || war.attackerName}
-                icon={war.attackerDisplayIcon}
+                icon={war.attackerIso2}
                 iconSizeClass="w-4 h-4"
                 textClassName="text-[10px] font-bold text-red-400"
               />
               <WarFactionBadge
                 name={`vs ${war.defenderDisplayName || war.defenderName}`}
-                icon={war.defenderDisplayIcon}
+                icon={war.defenderIso2}
                 iconSizeClass="w-4 h-4"
                 textClassName="text-[10px] font-bold text-blue-400"
               />

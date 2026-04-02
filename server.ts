@@ -10627,6 +10627,7 @@ app.get("/api/extraction/breakdown", authenticate, async (req: any, res) => {
     const energyReduction = Math.min(0.5, resistenza / 100);
     const actualEnergyCost = Math.ceil(EXTRACTION_CONFIG.WORK_ACTION_ENERGY_COST * (1 - energyReduction));
 
+    res.set('Cache-Control', 'no-store');
     res.json({
       breakdown,
       energyCost: actualEnergyCost,
@@ -10649,10 +10650,18 @@ app.get("/api/extraction/player-experience", authenticate, async (req: any, res)
     const { data, error } = await supabase
       .from('player_resource_work_experience')
       .select('*')
-      .eq('playerId', req.user.id);
+      .eq('playerId', req.user.id)
+      .order('resourceType', { ascending: true });
 
     if (error) throw error;
-    res.json({ experience: data || [] });
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      experience: (data || []).map((entry: any) => ({
+        ...entry,
+        experience: Math.max(0, Math.floor(Number(entry?.experience) || 0)),
+        totalExtractions: Math.max(0, Math.floor(Number(entry?.totalExtractions) || 0)),
+      })),
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

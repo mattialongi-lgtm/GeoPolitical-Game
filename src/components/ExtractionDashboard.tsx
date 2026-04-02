@@ -23,19 +23,43 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
   const [loading, setLoading] = useState(true);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
 
-  useEffect(() => {
+  const loadDashboard = async (showLoader = false) => {
     if (!id) return;
-    setLoading(true);
+    if (showLoader) setLoading(true);
     Promise.all([
-      fetch(`/api/extraction/region-dashboard/${id}`).then(r => r.ok ? r.json() : null),
-      fetch(`/api/extraction/player-experience`).then(r => r.ok ? r.json() : null),
-      fetch(`/api/extraction/leaderboard?regionId=${id}`).then(r => r.ok ? r.json() : null),
+      fetch(`/api/extraction/region-dashboard/${id}`, { cache: "no-store" }).then(r => r.ok ? r.json() : null),
+      fetch(`/api/extraction/player-experience`, { cache: "no-store" }).then(r => r.ok ? r.json() : null),
+      fetch(`/api/extraction/leaderboard?regionId=${id}`, { cache: "no-store" }).then(r => r.ok ? r.json() : null),
     ]).then(([dash, exp, lb]) => {
       if (dash) setDashboard(dash);
       if (exp?.experience) setPlayerExperience(exp.experience);
+      else setPlayerExperience([]);
       if (lb?.leaderboard) setLeaderboard(lb.leaderboard);
+      else setLeaderboard([]);
     }).catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (showLoader) setLoading(false);
+      });
+  };
+
+  useEffect(() => {
+    loadDashboard(true);
+  }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const refresh = () => { loadDashboard(false); };
+    const intervalId = window.setInterval(refresh, 30000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [id]);
 
   if (loading) return (

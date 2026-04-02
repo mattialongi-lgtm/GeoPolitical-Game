@@ -39,18 +39,45 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
     finally { setLoading(false); }
   };
 
+  const loadExtractionBreakdown = async () => {
+    if (!id) return;
+    try {
+      const res = await fetch(`/api/extraction/breakdown?factoryId=${id}`, { cache: "no-store" });
+      const data = res.ok ? await res.json() : null;
+      if (data) setExtractionBreakdown(data);
+    } catch { }
+  };
+
   useEffect(() => { load(); }, [id]);
 
   // Load extraction breakdown preview when factory data is available
   useEffect(() => {
     if (!factory || !id) return;
     const typeDef = FACTORY_CONFIG.TYPES[factory.type];
+    if (!typeDef?.resource) {
+      setExtractionBreakdown(null);
+      return;
+    }
+    loadExtractionBreakdown();
+  }, [factory?.id, factory?.level, id]);
+
+  useEffect(() => {
+    if (!factory || !id) return;
+    const typeDef = FACTORY_CONFIG.TYPES[factory.type];
     if (!typeDef?.resource) return;
-    fetch(`/api/extraction/breakdown?factoryId=${id}`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setExtractionBreakdown(data); })
-      .catch(() => {});
-  }, [factory?.id, factory?.level]);
+
+    const refresh = () => { loadExtractionBreakdown(); };
+    const intervalId = window.setInterval(refresh, 30000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [factory?.id, id]);
 
   const handleExtract = async () => {
     setExtractionLoading(true);
@@ -70,7 +97,9 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
         msg += `\n⚡ Energia: -${data.energyCost}`;
         msg += `\n📊 EXP lavoro: ${data.workExperience}`;
         alert(msg);
-        fetchData(); load();
+        fetchData();
+        await load();
+        await loadExtractionBreakdown();
       }
     } catch { alert("Errore durante l'estrazione."); }
     finally { setExtractionLoading(false); }

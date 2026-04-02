@@ -1638,27 +1638,36 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
 
 
 
-const WarsView = ({
-  wars,
-  user,
-  fetchData,
-  actionLoading,
-  autoWorkFactoryId,
-  setAutoWorkFactoryId
-}: {
-  wars: any,
-  user: any,
-  fetchData: () => void,
-  actionLoading: boolean,
-  autoWorkFactoryId: string | null,
-  setAutoWorkFactoryId: (val: string | null) => void
-}) => {
+const WarsView = ({ 
+  wars, 
+  user, 
+  nations,
+  fetchData, 
+  actionLoading, 
+  autoWorkFactoryId, 
+  setAutoWorkFactoryId 
+}: { 
+  wars: any, 
+  user: any, 
+  nations: any[],
+  fetchData: () => void, 
+  actionLoading: boolean, 
+  autoWorkFactoryId: string | null, 
+  setAutoWorkFactoryId: (val: string | null) => void 
+}) => { 
   const { warId } = useParams();
   const navigate = useNavigate();
   const [training, setTraining] = useState(false);
   const [militaryExp, setMilitaryExp] = useState(user?.militaryExp || 0);
-  const [autoAttack, setAutoAttack] = useState<any | null>(null);
-  const [autoTraining, setAutoTraining] = useState<any | null>(null);
+  const [autoAttack, setAutoAttack] = useState<any | null>(null); 
+  const [autoTraining, setAutoTraining] = useState<any | null>(null); 
+ 
+  const resolveFactionName = useCallback((iso2?: string | null, displayName?: string | null) => { 
+    const rawIso = (iso2 || "").trim(); 
+    const countryCode = rawIso.includes("-") ? rawIso.split("-")[0] : rawIso; 
+    const fromNations = nations?.find((n: any) => (n?.id || "").toLowerCase() === countryCode.toLowerCase())?.name; 
+    return fromNations || displayName || iso2 || "Sconosciuto"; 
+  }, [nations]); 
 
   const refreshAutomationStatus = useCallback(async () => {
     try {
@@ -1949,13 +1958,13 @@ const WarsView = ({
 
                   <div className="flex justify-between items-center mb-4">
                     <div className="text-center flex-1">
-                      <WarFactionBadge
-                        name={war.attackerDisplayName || war.attackerCountryIso2}
-                        icon={war.attackerDisplayIcon}
-                        align="center"
-                        iconSizeClass="w-7 h-7"
-                        textClassName={`text-2xl font-black ${isAttackerPatriot ? 'text-rose-600' : 'text-slate-900'}`}
-                      />
+                      <WarFactionBadge 
+                        name={resolveFactionName(war.attackerCountryIso2, war.attackerDisplayName)} 
+                        icon={war.attackerCountryIso2} 
+                        align="center" 
+                        iconSizeClass="w-7 h-7" 
+                        textClassName={`text-2xl font-black ${isAttackerPatriot ? 'text-rose-600' : 'text-slate-900'}`} 
+                      /> 
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Attaccante</p>
                       <p className="text-xs font-black text-indigo-500 mt-1">{war.attackerScore.toLocaleString()}</p>
                     </div>
@@ -1964,13 +1973,13 @@ const WarsView = ({
                       {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
                     </div>
                     <div className="text-center flex-1">
-                      <WarFactionBadge
-                        name={war.defenderDisplayName || war.defenderCountryIso2}
-                        icon={war.defenderDisplayIcon}
-                        align="center"
-                        iconSizeClass="w-7 h-7"
-                        textClassName={`text-2xl font-black ${isDefenderPatriot ? 'text-emerald-600' : 'text-slate-900'}`}
-                      />
+                      <WarFactionBadge 
+                        name={resolveFactionName(war.defenderCountryIso2, war.defenderDisplayName)} 
+                        icon={war.defenderCountryIso2} 
+                        align="center" 
+                        iconSizeClass="w-7 h-7" 
+                        textClassName={`text-2xl font-black ${isDefenderPatriot ? 'text-emerald-600' : 'text-slate-900'}`} 
+                      /> 
                       <p className="text-[10px] font-bold text-slate-400 uppercase">Difensore</p>
                       <p className="text-xs font-black text-rose-500 mt-1">{war.defenderScore.toLocaleString()}</p>
                     </div>
@@ -2195,19 +2204,19 @@ const WarsView = ({
                 className={`p-4 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition-colors ${i !== list.length - 1 ? "border-b border-slate-50" : ""}`}
               >
                 <div className="flex items-center gap-3">
-                  <WarFactionBadge
-                    name={war.attackerDisplayName || war.attackerCountryIso2}
-                    icon={war.attackerDisplayIcon}
-                    iconSizeClass="w-4 h-4"
-                    textClassName="text-sm font-black text-slate-900"
-                  />
+                  <WarFactionBadge 
+                    name={resolveFactionName(war.attackerCountryIso2, war.attackerDisplayName)} 
+                    icon={war.attackerCountryIso2} 
+                    iconSizeClass="w-4 h-4" 
+                    textClassName="text-sm font-black text-slate-900" 
+                  /> 
                   <ArrowRight className="w-3 h-3 text-slate-300" />
-                  <WarFactionBadge
-                    name={war.defenderDisplayName || war.defenderCountryIso2}
-                    icon={war.defenderDisplayIcon}
-                    iconSizeClass="w-4 h-4"
-                    textClassName="text-sm font-black text-slate-900"
-                  />
+                  <WarFactionBadge 
+                    name={resolveFactionName(war.defenderCountryIso2, war.defenderDisplayName)} 
+                    icon={war.defenderCountryIso2} 
+                    iconSizeClass="w-4 h-4" 
+                    textClassName="text-sm font-black text-slate-900" 
+                  /> 
                 </div>
                 <div className="text-right flex items-center gap-3">
                   <div>
@@ -2230,11 +2239,18 @@ const WarsView = ({
   );
 };
 
-const WarStatsView = ({ user }: { user: any }) => {
-  const { warId } = useParams();
-  const navigate = useNavigate();
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => { 
+  const { warId } = useParams(); 
+  const navigate = useNavigate(); 
+  const [data, setData] = useState<any>(null); 
+  const [loading, setLoading] = useState(true); 
+ 
+  const resolveFactionName = useCallback((iso2?: string | null, displayName?: string | null) => { 
+    const rawIso = (iso2 || "").trim(); 
+    const countryCode = rawIso.includes("-") ? rawIso.split("-")[0] : rawIso; 
+    const fromNations = nations?.find((n: any) => (n?.id || "").toLowerCase() === countryCode.toLowerCase())?.name; 
+    return fromNations || displayName || iso2 || "Sconosciuto"; 
+  }, [nations]); 
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -2274,14 +2290,14 @@ const WarStatsView = ({ user }: { user: any }) => {
           
           <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
              <div className="text-center">
-                <WarFactionBadge
-                  name={war.attackerDisplayName || war.attackerCountryIso2}
-                  icon={war.attackerDisplayIcon}
-                  align="center"
-                  iconSizeClass="w-10 h-10"
-                  textClassName="text-4xl font-black text-white uppercase tracking-tighter"
-                  className="mb-1"
-                />
+                <WarFactionBadge 
+                  name={resolveFactionName(war.attackerCountryIso2, war.attackerDisplayName)} 
+                  icon={war.attackerCountryIso2} 
+                  align="center" 
+                  iconSizeClass="w-10 h-10" 
+                  textClassName="text-4xl font-black text-white uppercase tracking-tighter" 
+                  className="mb-1" 
+                /> 
                 <div className="inline-block px-3 py-1 bg-indigo-500/20 rounded-full border border-indigo-500/30">
                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Attaccante</p>
                 </div>
@@ -2305,14 +2321,14 @@ const WarStatsView = ({ user }: { user: any }) => {
              </div>
 
              <div className="text-center">
-                <WarFactionBadge
-                  name={war.defenderDisplayName || war.defenderCountryIso2}
-                  icon={war.defenderDisplayIcon}
-                  align="center"
-                  iconSizeClass="w-10 h-10"
-                  textClassName="text-4xl font-black text-white uppercase tracking-tighter"
-                  className="mb-1"
-                />
+                <WarFactionBadge  
+                  name={resolveFactionName(war.defenderCountryIso2, war.defenderDisplayName)}  
+                  icon={war.defenderCountryIso2}  
+                  align="center"  
+                  iconSizeClass="w-10 h-10"  
+                  textClassName="text-4xl font-black text-white uppercase tracking-tighter"  
+                  className="mb-1"  
+                />  
                 <div className="inline-block px-3 py-1 bg-rose-500/20 rounded-full border border-rose-500/30">
                    <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Difensore</p>
                 </div>
@@ -3152,29 +3168,33 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
             </div>
             <div className="bg-gray-900/50 p-5 space-y-6">
                 <button onClick={() => navigate(`/regions/${user.regionId}`)} className="flex gap-4 items-center w-full text-left hover:bg-white/5 rounded-lg p-1 -m-1 transition-colors">
-                    <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center border border-gray-600/30 overflow-hidden shadow-lg">
-                        {(() => {
-                            const rData = regions.find(r => r.id === user.regionId);
-                            const nId = rData?.nation_id || rData?.id; 
-                            return <NationLogo iso2={nId || "it"} logo={nations.find(n => n.id === nId)?.logo} className="w-8 h-5" />;
-                        })()}
-                    </div>
-                    <div className="flex-1">
-                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Posizione: {regions.find(r => r.id === user.regionId)?.name || user.regionId}</p>
-                        <p className="text-[11px] text-emerald-400 font-black uppercase tracking-widest opacity-80 military-font">Settore Operativo</p>
+                    <div className="w-12 h-12 rounded-full bg-slate-900 flex items-center justify-center border border-gray-600/30 overflow-hidden shadow-lg"> 
+                        {(() => { 
+                            const rData = regions.find(r => r.id === user.regionId); 
+                            // Profile should show the *region's* national flag (e.g. IT) next to "Posizione".
+                            // Do NOT use NationLogo here because nations may override with custom state emblems.
+                            const regionId = rData?.id || user.regionId; 
+                            return <NationalFlag iso2={regionId || "it"} className="w-8 h-5" />; 
+                        })()} 
+                    </div> 
+                    <div className="flex-1"> 
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Posizione: {regions.find(r => r.id === user.regionId)?.name || user.regionId}</p> 
+                        <p className="text-[11px] text-emerald-400 font-black uppercase tracking-widest opacity-80 military-font">Settore Operativo</p> 
                     </div>
                 </button>
                 <button onClick={() => navigate(`/regions/${user.residenceId}`)} className="flex gap-4 items-center w-full text-left hover:bg-white/5 rounded-lg p-1 -m-1 transition-colors">
-                    <div className="w-12 h-12 rounded-full bg-slate-950 flex items-center justify-center border border-gray-600/30 overflow-hidden shadow-lg">
-                        {(() => {
-                            const rData = regions.find(r => r.id === user.residenceId);
-                            const nId = rData?.nation_id || rData?.id; 
-                            return <NationLogo iso2={nId || "it"} logo={nations.find(n => n.id === nId)?.logo} className="w-8 h-5" />;
-                        })()}
-                    </div>
-                    <div className="flex-1">
-                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Residenza: {regions.find(r => r.id === user.residenceId)?.name || user.residenceId}</p>
-                        <p className="text-[11px] text-gray-400 font-black uppercase military-font">Registrato il: {new Date(user.createdAt || Date.now()).toLocaleDateString()}</p>
+                    <div className="w-12 h-12 rounded-full bg-slate-950 flex items-center justify-center border border-gray-600/30 overflow-hidden shadow-lg"> 
+                        {(() => { 
+                            const rData = regions.find(r => r.id === user.residenceId); 
+                            // Profile should show the *region's* national flag (e.g. IT) next to "Residenza".
+                            // Do NOT use NationLogo here because nations may override with custom state emblems.
+                            const regionId = rData?.id || user.residenceId; 
+                            return <NationalFlag iso2={regionId || "it"} className="w-8 h-5" />; 
+                        })()} 
+                    </div> 
+                    <div className="flex-1"> 
+                        <p className="text-sm font-black text-gray-50 uppercase tracking-tight military-font">Residenza: {regions.find(r => r.id === user.residenceId)?.name || user.residenceId}</p> 
+                        <p className="text-[11px] text-gray-400 font-black uppercase military-font">Registrato il: {new Date(user.createdAt || Date.now()).toLocaleDateString()}</p> 
                     </div>
                 </button>
                 <button onClick={() => navigate("/party")} className="flex gap-4 items-center w-full text-left hover:bg-white/5 rounded-lg p-1 -m-1 transition-colors">
@@ -5377,9 +5397,9 @@ export default function App() {
               </motion.div>
             ) : <Navigate to="/" />
           } />
-          <Route path="/wars" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
-          <Route path="/wars/:warId" element={<WarsView wars={wars} user={user} fetchData={fetchData} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
-          <Route path="/war/:warId/summary" element={<WarStatsView user={user} />} />
+          <Route path="/wars" element={<WarsView wars={wars} user={user} nations={nations} fetchData={fetchData} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
+          <Route path="/wars/:warId" element={<WarsView wars={wars} user={user} nations={nations} fetchData={fetchData} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
+          <Route path="/war/:warId/summary" element={<WarStatsView user={user} nations={nations} />} />
           <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
           <Route path="/profile" element={<ProfileView user={user} regions={regions} nations={nations} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />
           <Route path="/profile/:userId" element={<PublicProfileView regions={regions} nations={nations} />} />

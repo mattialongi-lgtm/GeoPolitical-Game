@@ -109,12 +109,17 @@ select
   pre."playerId",
   pre."resourceType",
   pre.experience,
-  round(1 + (coalesce(pre.experience, 0)::numeric / 1000), 3) as experience_multiplier,
+  (2000 + (coalesce(edu.level, 0) * 1000)) as work_exp_cap,
+  least(coalesce(pre.experience, 0), (2000 + (coalesce(edu.level, 0) * 1000))) as effective_work_exp_for_bonus,
+  round(1 + (least(coalesce(pre.experience, 0), (2000 + (coalesce(edu.level, 0) * 1000)))::numeric / 1000), 3) as experience_multiplier,
   50 as expected_xp_gain_per_300_energy_cycle,
   pre."totalExtractions",
   pre."lastWorkedAt"
 from tmp_verify_auto_work_params p
 join factories f on f.id = p.factory_id
+left join perks edu
+  on edu."userId" = p.user_id
+ and edu."perkId" = 'ISTRUZIONE'
 join player_resource_work_experience pre
   on pre."playerId" = p.user_id
  and pre."resourceType" = case when f.type = 'gold' then 'gold_ore' else f.type end;

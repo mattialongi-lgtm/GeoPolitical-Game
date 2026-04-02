@@ -639,6 +639,32 @@ const authenticate = async (req: any, res: any, next: any) => {
       req.user.inventoryVolume = 0;
     }
 
+    // Backward-compatible work experience fields used by legacy UI cards.
+    req.user.oilExp = 0;
+    req.user.mineralsExp = 0;
+    req.user.uraniumExp = 0;
+    req.user.diamondsExp = 0;
+    req.user.goldOreExp = 0;
+    try {
+      const { data: workExpRows } = await supabase
+        .from('player_resource_work_experience')
+        .select('resourceType, experience')
+        .eq('playerId', user.id);
+
+      for (const row of workExpRows || []) {
+        const experience = Math.max(0, Math.floor(Number(row?.experience) || 0));
+        const resourceType = row?.resourceType;
+        if (resourceType === 'oil') req.user.oilExp = experience;
+        else if (resourceType === 'minerals') req.user.mineralsExp = experience;
+        else if (resourceType === 'uranium') req.user.uraniumExp = experience;
+        else if (resourceType === 'diamonds') req.user.diamondsExp = experience;
+        else if (resourceType === 'gold_ore') req.user.goldOreExp = experience;
+      }
+    } catch (workExpErr) {
+      // Non-critical: legacy UI will fall back to 0 if experience table is unavailable.
+      console.error("Error loading player work experience:", workExpErr);
+    }
+
     next();
   } catch (err) {
     console.error("Auth Middleware Critical Error:", err);
@@ -652,6 +678,7 @@ const authenticate = async (req: any, res: any, next: any) => {
 
 // Game Routes
 app.get("/api/me", authenticate, (req: any, res) => {
+  res.set('Cache-Control', 'no-store');
   res.json(req.user);
 });
 
@@ -2192,7 +2219,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
     if (!isGoldMine && factoryType) {
       workExpGain = 1 + Math.floor((perks['ISTRUZIONE'] || 0) * WORK_EXP_PER_ISTRUZIONE_LEVEL);
       try {
-        await incrementPlayerWorkExperience(user.id, factoryType, workExpGain);
+        await incrementPlayerWorkExperience(user.id, factoryType, workExpGain, perks['ISTRUZIONE'] || 0);
       } catch (expErr) {
         console.error("Work experience increment failed (non-critical):", expErr);
       }
@@ -4532,7 +4559,7 @@ async function performWorkAction(userId: string, factoryId: string, options?: { 
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
     await addXP(user.id, xpGain);
     try {
-      await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN);
+      await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN, perks['ISTRUZIONE'] || 0);
     } catch { /* non-critical */ }
 
     return { success: true, earnings: 0, output: playerShare, ownerShare, stateShare, xpGain, payMode: 'resource' };
@@ -4583,7 +4610,7 @@ async function performWorkAction(userId: string, factoryId: string, options?: { 
   const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
   await addXP(user.id, xpGain);
   try {
-    await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN);
+    await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN, perks['ISTRUZIONE'] || 0);
   } catch { /* non-critical */ }
 
   return { success: true, earnings: finalWage, output: finalOutput, xpGain };
@@ -4611,9 +4638,9 @@ async function performWorkActionV2(params: {
   const stateId = region?.nation_id || factory.regionId;
 
   const forzaBoost = (perks['FORZA'] || 0) * 0.03;
-  const workExp = await getPlayerWorkExperience(user.id, factory.type);
-  const workExpBonus = Math.max(0, Math.log10(Math.max(1, workExp))) * 0.15; // +15% per decade
-  const workExpMult = 1 + workExpBonus;
+  const maxWorkExperience = getMaxWorkXpPerResource(perks['ISTRUZIONE'] || 0);
+  const workExp = await getPlayerWorkExperience(user.id, factory.type, maxWorkExperience);
+  const workExpMult = getWorkExperienceMultiplier(workExp);
 
   const parseRpcResultOrThrow = (result: any) => {
     const parsed = typeof result === 'string' ? JSON.parse(result) : result;
@@ -4837,7 +4864,11 @@ async function performWorkActionV2(params: {
 
   const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
   await addXP(user.id, xpGain);
-  try { await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN); } catch { /* non-critical */ }
+  try {
+    const requestedWorkExpGain = EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN;
+    const cappedRequestedGain = workExp >= maxWorkExperience ? 0 : requestedWorkExpGain;
+    await incrementPlayerWorkExperience(user.id, factory.type, cappedRequestedGain, perks['ISTRUZIONE'] || 0);
+  } catch { /* non-critical */ }
 
   if (isGoldMine) {
     return { success: true, payMode: 'gold', earnings: netMoney, goldEarnings: netGold, taxes: taxesMoney, energyCost, xpGain };
@@ -4919,7 +4950,8 @@ async function performWorkActionV3(
   const forceBoost = (perks['FORZA'] || 0) * 0.03;
 
   const expResourceType = typeDef.resource || factory.type;
-  const workExp = await getPlayerWorkExperience(user.id, expResourceType);
+  const maxWorkExperience = getMaxWorkXpPerResource(perks['ISTRUZIONE'] || 0);
+  const workExp = await getPlayerWorkExperience(user.id, expResourceType, maxWorkExperience);
   const workExpMult = getWorkExperienceMultiplier(workExp);
 
   const addTaxSplit = async (
@@ -5152,8 +5184,13 @@ async function performWorkActionV3(
   const xpGain = Math.round((GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2) * (1 + educationBonus));
   await addXP(user.id, xpGain);
 
-  const workExpGain = getWorkExperienceGainForEnergyCost(energyCost);
-  try { await incrementPlayerWorkExperience(user.id, expResourceType, workExpGain); } catch { /* non-critical */ }
+  const requestedWorkExpGain = getWorkExperienceGainForEnergyCost(energyCost);
+  let appliedWorkExpGain = 0;
+  try {
+    const cappedRequestedGain = workExp >= maxWorkExperience ? 0 : requestedWorkExpGain;
+    const workExpUpdate = await incrementPlayerWorkExperience(user.id, expResourceType, cappedRequestedGain, perks['ISTRUZIONE'] || 0);
+    appliedWorkExpGain = workExpUpdate.appliedGain;
+  } catch { /* non-critical */ }
 
   try {
     await updateMissionProgress(user.id, 'WORK', {
@@ -5177,9 +5214,10 @@ async function performWorkActionV3(
       taxes: taxesMoney,
       energyCost,
       xpGain,
-      workExpGain,
+      workExpGain: appliedWorkExpGain,
       workExperience: workExp,
-      workExperienceAfter: workExp + workExpGain,
+      workExperienceAfter: Math.min(maxWorkExperience, workExp + appliedWorkExpGain),
+      maxWorkExperience,
       experienceMultiplier: workExpMult,
       ownerCut: ownerCutMoney,
     };
@@ -5194,9 +5232,10 @@ async function performWorkActionV3(
       taxes: taxesMoney,
       energyCost,
       xpGain,
-      workExpGain,
+      workExpGain: appliedWorkExpGain,
       workExperience: workExp,
-      workExperienceAfter: workExp + workExpGain,
+      workExperienceAfter: Math.min(maxWorkExperience, workExp + appliedWorkExpGain),
+      maxWorkExperience,
       experienceMultiplier: workExpMult,
     };
   }
@@ -5212,9 +5251,10 @@ async function performWorkActionV3(
     taxes: 0,
     energyCost,
     xpGain,
-    workExpGain,
+    workExpGain: appliedWorkExpGain,
     workExperience: workExp,
-    workExperienceAfter: workExp + workExpGain,
+    workExperienceAfter: Math.min(maxWorkExperience, workExp + appliedWorkExpGain),
+    maxWorkExperience,
     experienceMultiplier: workExpMult,
     resourceOutput: {
       type: factory.type,
@@ -9483,19 +9523,47 @@ function getWorkExperienceGainForEnergyCost(energyCost: number): number {
   return fullWorkCycles * EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN_PER_FULL_CYCLE;
 }
 
-async function getPlayerWorkExperience(playerId: string, resourceType: string): Promise<number> {
+function getMaxWorkXpPerResource(educationLevel: number): number {
+  const normalizedEducationLevel = Math.max(0, Math.floor(Number(educationLevel) || 0));
+  // Mandatory rule: maxWorkXpPerResource = 2000 + (educationLevel * 1000)
+  return 2000 + (normalizedEducationLevel * 1000);
+}
+
+async function getPlayerWorkExperience(
+  playerId: string,
+  resourceType: string,
+  maxExperience?: number
+): Promise<number> {
   const { data } = await supabase
     .from('player_resource_work_experience')
     .select('experience')
     .eq('playerId', playerId)
     .eq('resourceType', resourceType)
     .maybeSingle();
-  return Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, Math.floor(Number(data?.experience) || 0));
+
+  const raw = Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, Math.floor(Number(data?.experience) || 0));
+  if (typeof maxExperience === 'number' && Number.isFinite(maxExperience)) {
+    return Math.min(Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, Math.floor(maxExperience)), raw);
+  }
+  return raw;
 }
 
-async function incrementPlayerWorkExperience(playerId: string, resourceType: string, gain: number): Promise<void> {
+async function incrementPlayerWorkExperience(
+  playerId: string,
+  resourceType: string,
+  gain: number,
+  educationLevel: number = 0
+): Promise<{ appliedGain: number; experience: number; maxExperience: number }> {
   const normalizedGain = Math.max(0, Math.floor(Number(gain) || 0));
-  if (normalizedGain <= 0) return;
+  const maxExperience = getMaxWorkXpPerResource(educationLevel);
+  if (normalizedGain <= 0) {
+    const currentExperience = await getPlayerWorkExperience(playerId, resourceType, maxExperience);
+    return {
+      appliedGain: 0,
+      experience: currentExperience,
+      maxExperience,
+    };
+  }
 
   const { data: existing } = await supabase
     .from('player_resource_work_experience')
@@ -9505,19 +9573,33 @@ async function incrementPlayerWorkExperience(playerId: string, resourceType: str
     .maybeSingle();
 
   if (existing) {
+    const currentExperience = Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, Math.floor(Number(existing.experience) || 0));
+    const nextExperience = Math.min(maxExperience, currentExperience + normalizedGain);
+    const appliedGain = Math.max(0, nextExperience - currentExperience);
     await supabase.from('player_resource_work_experience').update({
-      experience: Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, Math.floor(Number(existing.experience) || 0)) + normalizedGain,
+      experience: nextExperience,
       totalExtractions: Math.max(0, Math.floor(Number(existing.totalExtractions) || 0)) + 1,
       lastWorkedAt: new Date().toISOString(),
     }).eq('playerId', playerId).eq('resourceType', resourceType);
+    return {
+      appliedGain,
+      experience: nextExperience,
+      maxExperience,
+    };
   } else {
+    const nextExperience = Math.min(maxExperience, normalizedGain);
     await supabase.from('player_resource_work_experience').insert({
       playerId,
       resourceType,
-      experience: normalizedGain,
+      experience: nextExperience,
       totalExtractions: 1,
       lastWorkedAt: new Date().toISOString(),
     });
+    return {
+      appliedGain: nextExperience,
+      experience: nextExperience,
+      maxExperience,
+    };
   }
 }
 
@@ -10329,8 +10411,9 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
     const effectiveCap = computeEffectiveCap(baseCap, deep, capMaxGlobal);
     const deepBonus = deep ? Math.max(0, (deep.targetCap || 0) - baseCap) : 0;
 
+    const maxWorkExperience = getMaxWorkXpPerResource(perks['ISTRUZIONE'] || 0);
     const [workExp, numPowerPlants, departmentBonus] = await Promise.all([
-      getPlayerWorkExperience(user.id, resourceType),
+      getPlayerWorkExperience(user.id, resourceType, maxWorkExperience),
       getRegionPowerPlants(regionId),
       getDepartmentBonus(regionId, resourceType),
     ]);
@@ -10479,8 +10562,9 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
     }
 
     // 15. Work experience
-    const workExpGain = getWorkExperienceGainForEnergyCost(actualEnergyCost);
-    await incrementPlayerWorkExperience(user.id, resourceType, workExpGain);
+    const requestedWorkExpGain = getWorkExperienceGainForEnergyCost(actualEnergyCost);
+    const cappedRequestedGain = workExp >= maxWorkExperience ? 0 : requestedWorkExpGain;
+    const workExpUpdate = await incrementPlayerWorkExperience(user.id, resourceType, cappedRequestedGain, perks['ISTRUZIONE'] || 0);
 
     // 16. XP gain
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
@@ -10529,8 +10613,9 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
       remainingDaily: Math.max(0, remainingDaily - Math.round(actualWithdrawn)),
       xpGain,
       energyCost: actualEnergyCost,
-      workExperience: workExp + workExpGain,
-      workExpGain,
+      workExperience: workExp + workExpUpdate.appliedGain,
+      workExpGain: workExpUpdate.appliedGain,
+      maxWorkExperience,
       experienceMultiplier: breakdown.experienceMultiplier,
       breakdown: {
         baseProductivity: Math.round(breakdown.baseProductivity * 100) / 100,
@@ -10593,8 +10678,10 @@ app.get("/api/extraction/breakdown", authenticate, async (req: any, res) => {
     const dailyExtracted = regionRes?.dailyExtracted ?? 0;
     const remainingDaily = Math.max(0, dailyAvailable - dailyExtracted);
 
+    const perks = user.perks || {};
+    const maxWorkExperience = getMaxWorkXpPerResource(perks['ISTRUZIONE'] || 0);
     const [workExp, numPowerPlants, departmentBonusLevel] = await Promise.all([
-      getPlayerWorkExperience(user.id, resourceType),
+      getPlayerWorkExperience(user.id, resourceType, maxWorkExperience),
       getRegionPowerPlants(regionId),
       getDepartmentBonus(regionId, resourceType),
     ]);
@@ -10622,7 +10709,6 @@ app.get("/api/extraction/breakdown", authenticate, async (req: any, res) => {
     });
 
     // Energy cost preview
-    const perks = user.perks || {};
     const resistenza = perks['RESISTENZA'] || 0;
     const energyReduction = Math.min(0.5, resistenza / 100);
     const actualEnergyCost = Math.ceil(EXTRACTION_CONFIG.WORK_ACTION_ENERGY_COST * (1 - energyReduction));
@@ -10647,6 +10733,8 @@ app.get("/api/extraction/breakdown", authenticate, async (req: any, res) => {
 // Returns all work experience entries for the current player.
 app.get("/api/extraction/player-experience", authenticate, async (req: any, res) => {
   try {
+    const educationLevel = req.user?.perks?.['ISTRUZIONE'] || 0;
+    const maxExperience = getMaxWorkXpPerResource(educationLevel);
     const { data, error } = await supabase
       .from('player_resource_work_experience')
       .select('*')
@@ -10660,7 +10748,9 @@ app.get("/api/extraction/player-experience", authenticate, async (req: any, res)
         ...entry,
         experience: Math.max(0, Math.floor(Number(entry?.experience) || 0)),
         totalExtractions: Math.max(0, Math.floor(Number(entry?.totalExtractions) || 0)),
+        maxExperience,
       })),
+      maxExperience,
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

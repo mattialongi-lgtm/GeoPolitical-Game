@@ -211,6 +211,10 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
           <div className="grid grid-cols-2 gap-2">
             {playerExperience.map((exp: any) => {
               const rt = exp.resourceType as ResourceType;
+              const maxExp = Math.max(0, Math.floor(Number(exp.maxExperience ?? exp.maxWorkExperience ?? exp.max_exp ?? 0) || 0));
+              const current = Math.max(0, Math.floor(Number(exp.experience) || 0));
+              const effective = maxExp > 0 ? Math.min(current, maxExp) : current;
+              const pct = maxExp > 0 ? Math.min(100, (effective / maxExp) * 100) : 0;
               return (
                 <div key={exp.resourceType} className="bg-indigo-50 p-3 rounded-xl border border-indigo-100">
                   <div className="flex items-center gap-3">
@@ -219,7 +223,12 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
                     </div>
                     <div>
                       <p className="text-[10px] font-black text-indigo-700">{RESOURCE_LABELS[rt] || exp.resourceType}</p>
-                      <p className="text-xs font-black text-indigo-900">EXP: {exp.experience}</p>
+                      <p className="text-xs font-black text-indigo-900">EXP: {effective.toLocaleString()}{maxExp > 0 ? ` / ${maxExp.toLocaleString()}` : ''}</p>
+                      {maxExp > 0 && (
+                        <div className="w-full bg-indigo-100 h-1.5 rounded-full overflow-hidden mt-1">
+                          <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${pct}%` }} />
+                        </div>
+                      )}
                       <p className="text-[9px] text-indigo-400">Estrazioni: {exp.totalExtractions}</p>
                     </div>
                   </div>

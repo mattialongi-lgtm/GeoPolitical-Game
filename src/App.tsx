@@ -5353,7 +5353,21 @@ export default function App() {
                         <span className="text-lg">{r.emoji}</span>
                         <div>
                           <span className="text-[9px] font-black text-slate-400 uppercase">{r.label}</span>
-                          <p className="text-sm font-black text-slate-800">{r.exp} XP</p>
+                          {(() => {
+                            const edu = Math.max(0, Math.floor(Number(user?.perks?.['ISTRUZIONE'] || 0)));
+                            const maxWorkXp = 2000 + (edu * 1000);
+                            const current = Math.max(0, Math.floor(Number(r.exp) || 0));
+                            const effective = Math.min(current, maxWorkXp);
+                            const pct = maxWorkXp > 0 ? Math.min(100, (effective / maxWorkXp) * 100) : 0;
+                            return (
+                              <>
+                                <p className="text-sm font-black text-slate-800">{effective.toLocaleString()} / {maxWorkXp.toLocaleString()} XP</p>
+                                <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden mt-1">
+                                  <div className="bg-indigo-500 h-full rounded-full transition-all" style={{ width: `${pct}%` }} />
+                                </div>
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
                     ))}

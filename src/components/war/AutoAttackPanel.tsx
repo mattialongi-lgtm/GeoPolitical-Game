@@ -2,12 +2,10 @@ import React, { useState } from 'react';
 import { Zap, Timer } from 'lucide-react';
 import type { TroopType, WarSide, AutoAttackType } from '../../types';
 
-const TROOP_LABELS: Record<string, string> = {
-  tank: '🛡️ Carri',
+const TROOP_LABELS: Record<TroopType, string> = {
+  tank: '🛡️ Carri armati',
   aircraft: '✈️ Aerei',
-  missile: '🚀 Missili',
-  bomber: '💣 Bombardieri',
-  battleship: '🚢 Corazzate',
+  battleship: '🚢 Corazzate navali',
 };
 
 interface AutoAttackPanelProps {

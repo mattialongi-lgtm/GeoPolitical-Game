@@ -8,11 +8,9 @@ import {
 import { serviceSuccess, systemError, type ServiceResult, validationError } from './service-result';
 
 const WEAPONS_DEF: Record<string, { timeMin: number; costCash: number; power: number; reqOil?: number; reqMinerals?: number; reqUranium?: number; reqDiamonds?: number }> = {
-  rifle: { timeMin: 1, costCash: 100, power: 2, reqMinerals: 2 },
-  drone: { timeMin: 8, costCash: 800, power: 20, reqMinerals: 10, reqOil: 5 },
-  artillery: { timeMin: 5, costCash: 500, power: 12, reqMinerals: 15, reqOil: 2 },
-  tank: { timeMin: 15, costCash: 1500, power: 40, reqMinerals: 30, reqOil: 15, reqUranium: 1 },
-  missile: { timeMin: 30, costCash: 5000, power: 150, reqMinerals: 50, reqOil: 40, reqUranium: 10, reqDiamonds: 2 },
+  tank: { timeMin: 8, costCash: 1800, power: 45, reqMinerals: 60, reqOil: 35 },
+  aircraft: { timeMin: 16, costCash: 4200, power: 110, reqMinerals: 110, reqOil: 70 },
+  battleship: { timeMin: 36, costCash: 12000, power: 220, reqMinerals: 260, reqOil: 180 },
 };
 
 type ResourceItem = { itemId: 'oil' | 'minerals' | 'uranium' | 'diamonds'; quantity: number };
@@ -44,7 +42,7 @@ export class ProductionService {
     }
 
     const inv = await this.repository.getUserInventory(params.userId);
-    const inventoryMap = new Map((inv || []).map((i: any) => [i.itemId, Number(i.quantity || 0)]));
+    const inventoryMap = new Map<string, number>((inv || []).map((i: any) => [i.itemId, Number(i.quantity || 0)]));
 
     const reqs: ResourceItem[] = [
       { itemId: 'oil', quantity: (weapon.reqOil || 0) * amount },

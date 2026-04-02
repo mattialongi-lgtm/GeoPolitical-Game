@@ -301,7 +301,7 @@ export interface War {
 // === WAR SYSTEM TYPES ===
 
 export type WarType = 'training' | 'land' | 'naval' | 'revolution' | 'coup';
-export type TroopType = 'tank' | 'aircraft' | 'missile' | 'bomber' | 'battleship';
+export type TroopType = 'tank' | 'aircraft' | 'battleship';
 export type WarSide = 'attacker' | 'defender';
 export type AutoAttackType = 'hourly' | 'maximum';
 export type AgreementType = 'bilateral' | 'unilateral';
@@ -521,35 +521,29 @@ export const GAME_CONFIG = {
 };
 
 export const TROOP_BASE_DAMAGE: Record<TroopType, number> = {
-  tank: 10,
-  aircraft: 75,
-  missile: 900,
-  bomber: 800,
+  tank: 20,
+  aircraft: 120,
   battleship: 2000,
 };
 
 export const TROOP_ENERGY_COST: Record<TroopType, number> = {
   tank: 300,
   aircraft: 300,
-  missile: 300,
-  bomber: 300,
   battleship: 300,
 };
 
 export const TROOP_MONEY_COST: Record<TroopType, number> = {
   tank: 0,
   aircraft: 0,
-  missile: 0,
-  bomber: 0,
   battleship: 0,
 };
 
 export const WAR_TYPE_ALLOWED_TROOPS: Record<WarType, TroopType[]> = {
-  training: ['tank', 'aircraft', 'missile', 'bomber'],
-  land: ['tank', 'aircraft', 'missile', 'bomber'],
-  naval: ['tank', 'aircraft', 'missile', 'bomber'], // Phase 1 is handled separately (battleship-only)
-  revolution: ['tank', 'aircraft', 'missile', 'bomber'],
-  coup: ['tank', 'aircraft', 'missile', 'bomber'],
+  training: ['tank', 'aircraft'],
+  land: ['tank', 'aircraft'],
+  naval: ['tank', 'aircraft'], // Phase 1 is handled separately (battleship-only)
+  revolution: ['tank', 'aircraft'],
+  coup: ['tank', 'aircraft'],
 };
 
 // ── Factory System Configuration ──────────────────────────

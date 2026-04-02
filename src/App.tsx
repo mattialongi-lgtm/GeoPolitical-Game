@@ -2041,24 +2041,17 @@ const WarsView = ({
                             <h5 className="text-center text-xs font-black text-indigo-700 uppercase mb-3">Supporta Attaccante</h5>
                             {!(war.warType === 'naval' && war.navalPhase === 1) && (
                               <>
-                                <button disabled={deploying} onClick={() => handleDeploy('attacker', 'infantry')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
-                                  <div className="flex flex-col items-end">
-                                    <span className="text-xs font-black text-indigo-600">+100 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
-                                  </div>
-                                </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('attacker', 'tank')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
+                                  <span className="font-bold text-sm flex items-center gap-2">🛡️ Carri armati</span>
                                   <div className="flex flex-col items-end">
-                                    <span className="text-xs font-black text-indigo-600">+1000 Danni</span>
+                                    <span className="text-xs font-black text-indigo-600">+20 Danni base</span>
                                     <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
-                                <button disabled={deploying} onClick={() => handleDeploy('attacker', 'airstrike')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
+                                <button disabled={deploying} onClick={() => handleDeploy('attacker', 'aircraft')} className="w-full bg-white hover:bg-indigo-100 text-slate-800 border border-indigo-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                  <span className="font-bold text-sm flex items-center gap-2">✈️ Aerei</span>
                                   <div className="flex flex-col items-end">
-                                    <span className="text-xs font-black text-indigo-600">+5000 Danni</span>
+                                    <span className="text-xs font-black text-indigo-600">+120 Danni base</span>
                                     <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
@@ -2080,24 +2073,17 @@ const WarsView = ({
                             <h5 className="text-center text-xs font-black text-rose-700 uppercase mb-3">Supporta Difensore</h5>
                             {!(war.warType === 'naval' && war.navalPhase === 1) && (
                               <>
-                                <button disabled={deploying} onClick={() => handleDeploy('defender', 'infantry')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">🪖 Fanteria</span>
-                                  <div className="flex flex-col items-end">
-                                    <span className="text-xs font-black text-rose-600">+100 Danni</span>
-                                    <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
-                                  </div>
-                                </button>
                                 <button disabled={deploying} onClick={() => handleDeploy('defender', 'tank')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">🛡️ Divisione Corazzata</span>
+                                  <span className="font-bold text-sm flex items-center gap-2">🛡️ Carri armati</span>
                                   <div className="flex flex-col items-end">
-                                    <span className="text-xs font-black text-rose-600">+1000 Danni</span>
+                                    <span className="text-xs font-black text-rose-600">+20 Danni base</span>
                                     <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
-                                <button disabled={deploying} onClick={() => handleDeploy('defender', 'airstrike')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
-                                  <span className="font-bold text-sm flex items-center gap-2">✈️ Supporto Aereo</span>
+                                <button disabled={deploying} onClick={() => handleDeploy('defender', 'aircraft')} className="w-full bg-white hover:bg-rose-100 text-slate-800 border border-rose-200/50 p-3 rounded-2xl flex items-center justify-between transition-colors shadow-sm">
+                                  <span className="font-bold text-sm flex items-center gap-2">✈️ Aerei</span>
                                   <div className="flex flex-col items-end">
-                                    <span className="text-xs font-black text-rose-600">+5000 Danni</span>
+                                    <span className="text-xs font-black text-rose-600">+120 Danni base</span>
                                     <span className="text-[10px] font-bold text-slate-400">-{300}⚡</span>
                                   </div>
                                 </button>
@@ -2132,7 +2118,7 @@ const WarsView = ({
                             <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
                               <span className="animate-pulse text-lg">⚔️</span>
                               <span className="text-xs font-black text-amber-800">
-                                {autoAttack.autoType === 'hourly' ? 'Danno orario' : 'Automatico standard'} attivo: {autoAttack.side === 'attacker' ? 'Attaccante' : 'Difensore'} con {autoAttack.troopType === 'infantry' ? 'Fanteria' : autoAttack.troopType === 'tank' ? 'Corazzata' : autoAttack.troopType === 'battleship' ? 'Corazzata Navale' : 'Aereo'}{autoAttack.expiresAt ? ` • Scade: ${new Date(autoAttack.expiresAt).toLocaleString('it-IT')}` : ''}
+                                {autoAttack.autoType === 'hourly' ? 'Danno orario' : 'Automatico standard'} attivo: {autoAttack.side === 'attacker' ? 'Attaccante' : 'Difensore'} con {autoAttack.troopType === 'tank' ? 'Carri armati' : autoAttack.troopType === 'battleship' ? 'Corazzata navale' : 'Aerei'}{autoAttack.expiresAt ? ` • Scade: ${new Date(autoAttack.expiresAt).toLocaleString('it-IT')}` : ''}
                               </span>
                             </div>
                           ) : (
@@ -2140,7 +2126,7 @@ const WarsView = ({
                               {(['attacker', 'defender'] as const).map(side => (
                                 <div key={side} className="space-y-1">
                                   <p className="text-[9px] font-black text-center uppercase text-amber-700">{side === 'attacker' ? 'Attaccante' : 'Difensore'}</p>
-                                  {!(war.warType === 'naval' && war.navalPhase === 1) && (['infantry', 'tank', 'airstrike'] as const).map(wep => (
+                                  {!(war.warType === 'naval' && war.navalPhase === 1) && (['tank', 'aircraft'] as const).map(wep => (
                                     <button key={wep} onClick={() => {
                                       if (autoWorkFactoryId) {
                                         if (!window.confirm("Attivando l'auto-attacco, l'auto-lavoro verrà disattivato. Procedere?")) return;
@@ -2148,7 +2134,7 @@ const WarsView = ({
                                       }
                                       handleSetWarAutomation(war.id, side, wep, 'maximum');
                                     }} className="w-full py-1.5 px-2 bg-white border border-amber-200 rounded-lg text-[10px] font-black text-amber-800 hover:bg-amber-100 transition-all">
-                                      {wep === 'infantry' ? '🪖 Fanteria' : wep === 'tank' ? '🛡️ Corazzata' : '✈️ Aereo'}
+                                      {wep === 'tank' ? '🛡️ Carri armati' : '✈️ Aerei'}
                                     </button>
                                   ))}
                                   {war.warType === 'naval' && war.navalPhase === 1 && (
@@ -2171,7 +2157,7 @@ const WarsView = ({
                                       handleSetWarAutomation(
                                         war.id,
                                         side,
-                                        (war.warType === 'naval' && war.navalPhase === 1) ? 'battleship' : 'airstrike',
+                                        (war.warType === 'naval' && war.navalPhase === 1) ? 'battleship' : 'aircraft',
                                         'hourly'
                                       );
                                     }}
@@ -4671,7 +4657,7 @@ const StorageView = ({ user }: { user: any }) => {
 
           <div className="grid grid-cols-2 gap-4">
             {(() => {
-              const inventoryEntries = Object.entries(user.inventory || {}).filter(([_, qty]) => (qty as number) > 0);
+              const inventoryEntries = Object.entries(user.inventory || {}).filter(([itemId, qty]) => (qty as number) > 0 && !LEGACY_MILITARY_UNITS.has(itemId));
               if (inventoryEntries.length === 0) {
                 return <div className="col-span-2 text-center p-6 text-slate-400 font-bold">Magazzino vuoto</div>;
               }
@@ -4701,7 +4687,9 @@ const StorageView = ({ user }: { user: any }) => {
           {loadingState ? <Loader2 className="animate-spin w-6 h-6 text-emerald-600 mx-auto" /> : (
             <div className="grid grid-cols-2 gap-4">
             {Array.isArray(stateInventory) ? (
-              stateInventory.map((item: any) => {
+              stateInventory
+                .filter((item: any) => !LEGACY_MILITARY_UNITS.has(String(item.itemId || '')))
+                .map((item: any) => {
                 const weapon = WEAPONS_CATALOG.find(w => w.id === item.itemId);
                 return (
                   <div key={item.itemId} className="p-4 bg-white rounded-2xl border border-emerald-200 flex justify-between items-center shadow-sm transition-all hover:border-emerald-400">
@@ -4801,7 +4789,8 @@ const MarketView = ({ user, fetchData }: { user: User | null, fetchData: () => v
     finally { setPosting(false); }
   };
 
-  const filtered = filterType === "all" ? offers : offers.filter(o => o.itemId === filterType);
+  const sanitizedOffers = offers.filter((o: any) => !LEGACY_MILITARY_UNITS.has(String(o.itemId || '')));
+  const filtered = filterType === "all" ? sanitizedOffers : sanitizedOffers.filter(o => o.itemId === filterType);
   const drinkUnitCost = GAME_CONFIG.ENERGY_DRINK_COST_GOLD;
   const safeDrinkQty = Math.max(1, Math.floor(Number(drinkQty) || 1));
   const drinkTotalCost = safeDrinkQty * drinkUnitCost;
@@ -5644,12 +5633,22 @@ export default function App() {
 }
 
 const WEAPONS_CATALOG = [
-  { id: "rifle", name: "Fucile", emoji: "🔫", timeMin: 1, costCash: 100, reqOil: 2, reqMinerals: 5, reqUranium: 0, reqDiamonds: 0, power: 2 },
-  { id: "drone", name: "Drone", emoji: "🚁", timeMin: 8, costCash: 800, reqOil: 10, reqMinerals: 20, reqUranium: 2, reqDiamonds: 1, power: 20 },
-  { id: "artillery", name: "Artiglieria", emoji: "💣", timeMin: 5, costCash: 500, reqOil: 15, reqMinerals: 30, reqUranium: 0, reqDiamonds: 0, power: 12 },
-  { id: "tank", name: "Carro Armato", emoji: "🛡️", timeMin: 15, costCash: 1500, reqOil: 50, reqMinerals: 100, reqUranium: 5, reqDiamonds: 2, power: 40 },
-  { id: "missile", name: "Missile", emoji: "🚀", timeMin: 30, costCash: 5000, reqOil: 100, reqMinerals: 50, reqUranium: 50, reqDiamonds: 10, power: 150 },
+  { id: "tank", name: "Carri armati", emoji: "🛡️", timeMin: 8, costCash: 1800, reqOil: 35, reqMinerals: 60, reqUranium: 0, reqDiamonds: 0, power: 45 },
+  { id: "aircraft", name: "Aerei", emoji: "✈️", timeMin: 16, costCash: 4200, reqOil: 70, reqMinerals: 110, reqUranium: 0, reqDiamonds: 0, power: 110 },
+  { id: "battleship", name: "Corazzate navali", emoji: "🚢", timeMin: 36, costCash: 12000, reqOil: 180, reqMinerals: 260, reqUranium: 0, reqDiamonds: 0, power: 220 },
 ];
+
+const LEGACY_MILITARY_UNITS = new Set([
+  "rifle",
+  "drone",
+  "artillery",
+  "infantry",
+  "airstrike",
+  "missile",
+  "bomber",
+  "lunar_tank",
+  "space_station",
+]);
 
 const ProduceView = ({ user }: { user: any }) => {
   const [queue, setQueue] = useState<any[]>([]);
@@ -6151,7 +6150,9 @@ const PartyDashboard = ({ party, members, activeMembersCount, myRole, user, relo
                     <option value="minerals">🪨 Minerali</option>
                     <option value="uranium">☢️ Uranio</option>
                     <option value="diamonds">💎 Diamanti</option>
-                    <option value="rifle">🔫 Fucili</option>
+                    <option value="tank">🛡️ Carri armati</option>
+                    <option value="aircraft">✈️ Aerei</option>
+                    <option value="battleship">🚢 Corazzate navali</option>
                   </select>
                 </div>
                 <div>

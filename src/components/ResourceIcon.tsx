@@ -1,8 +1,8 @@
 import React from 'react';
 import { RESOURCE_ICONS_MAP } from '../types';
 
-type ResourceId = 
-  | 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore' 
+type ResourceId =
+  | 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_ore'
   | 'energy'
   | 'food' | 'steel' | 'gas'
   | 'money' | 'gold_currency'
@@ -15,29 +15,26 @@ interface ResourceIconProps {
   color?: string;
 }
 
-// Fallback emoji mapping for items not in RESOURCE_ICONS_MAP (e.g. weapons)
+// Fallback emoji mapping for items not in RESOURCE_ICONS_MAP (e.g. military units)
 const ITEM_EMOJIS: Record<string, string> = {
-  tank: "🛡️",
-  missile: "🚀",
-  aircraft: "✈️",
-  bomber: "🛩️",
-  battleship: "🚢",
-  money: "💵",
-  gold_currency: "🪙",
+  tank: '🛡️',
+  aircraft: '✈️',
+  battleship: '🚢',
+  money: '💵',
+  gold_currency: '🪙',
 };
 
 /**
  * ResourceIcon - Renders a simple, clean icon for game resources using system emojis.
- * Aligns with the "barra magazzino" style as requested by the user.
  */
-export const ResourceIcon: React.FC<ResourceIconProps> = ({ id, size = 24, className = "" }) => {
+export const ResourceIcon: React.FC<ResourceIconProps> = ({ id, size = 24, className = '' }) => {
   const normalizedId = id.toLowerCase();
-  
-  // Try RESOURCE_ICONS_MAP first, then ITEM_EMOJIS, then default package
-  const emoji = RESOURCE_ICONS_MAP[normalizedId] || ITEM_EMOJIS[normalizedId] || "📦";
+
+  // Try RESOURCE_ICONS_MAP first, then ITEM_EMOJIS, then default package.
+  const emoji = RESOURCE_ICONS_MAP[normalizedId] || ITEM_EMOJIS[normalizedId] || '📦';
 
   return (
-    <div 
+    <div
       style={{ fontSize: `${size * 0.8}px`, width: size, height: size }}
       className={`flex items-center justify-center select-none ${className}`}
       title={id}

@@ -925,7 +925,7 @@ const DEPT_RESOURCE: readonly string[] = Object.freeze([
   'oil','minerals','uranium','diamonds','gold_ore','liquid_oxygen','helium3','energy','food','steel','gas'
 ]);
 const DEPT_MILITARY: readonly string[] = Object.freeze([
-  'tank','aircraft','missile','bomber','battleship','lunar_tank','space_station'
+  'tank','aircraft','battleship'
 ]);
 const ALL_VALID_DEPARTMENTS = new Set<string>([...DEPT_RESOURCE, ...DEPT_MILITARY]);
 const DEPARTMENT_DAILY_POINTS = 10;
@@ -946,11 +946,7 @@ const DEPT_META: Record<string, { label: string; icon: string; category: 'resour
   gas:           { label: 'Gas Naturale',      icon: '🔥', category: 'resource' },
   tank:          { label: 'Carri Armati',      icon: '🛡️', category: 'military' },
   aircraft:      { label: 'Aerei',             icon: '✈️', category: 'military' },
-  missile:       { label: 'Missili',           icon: '🚀', category: 'military' },
-  bomber:        { label: 'Bombardieri',       icon: '💣', category: 'military' },
   battleship:    { label: 'Corazzate Navali',  icon: '⚓', category: 'military' },
-  lunar_tank:    { label: 'Tank Lunari',       icon: '🌑', category: 'military' },
-  space_station: { label: 'Stazione Spaziale', icon: '🛸', category: 'military' },
 };
 
 /**
@@ -4250,13 +4246,24 @@ const AUTOMATION_HOURLY_INTERVAL_MS = 60 * 60 * 1000;
 const AUTOMATION_EXPIRE_MS = 24 * 60 * 60 * 1000;
 
 const WAR_WEAPON_CONFIG: Record<string, { energy: number; cash: number; damage: number }> = {
-  infantry: { energy: 10, cash: 0, damage: 100 },
-  tank: { energy: 30, cash: 0, damage: 1000 },
-  airstrike: { energy: 50, cash: 0, damage: 5000 },
+  tank: { energy: 30, cash: 0, damage: TROOP_BASE_DAMAGE.tank },
   aircraft: { energy: 50, cash: 0, damage: TROOP_BASE_DAMAGE.aircraft },
-  missile: { energy: 50, cash: 0, damage: TROOP_BASE_DAMAGE.missile },
-  bomber: { energy: 50, cash: 0, damage: TROOP_BASE_DAMAGE.bomber },
-  battleship: { energy: 40, cash: 0, damage: 2000 },
+  battleship: { energy: 40, cash: 0, damage: TROOP_BASE_DAMAGE.battleship },
+};
+
+const LEGACY_WAR_WEAPON_ALIASES: Record<string, string> = {
+  infantry: 'tank',
+  airstrike: 'aircraft',
+};
+
+const normalizeWarWeaponId = (weaponId: string): string => {
+  const normalized = (weaponId || '').trim().toLowerCase();
+  return LEGACY_WAR_WEAPON_ALIASES[normalized] || normalized;
+};
+
+const getAllowedWeaponsForWar = (warType: string, navalPhase: number): string[] => {
+  if (warType === 'naval' && navalPhase === 1) return ['battleship'];
+  return ['tank', 'aircraft'];
 };
 
 const isAutomationExpired = (activatedAt?: string | null, expiresAt?: string | null, now = Date.now()) => {
@@ -5346,14 +5353,16 @@ async function performWarDeployAction(params: {
   const { data: war } = await supabase.from('wars').select('*').eq('id', params.warId).single();
   if (!war) throw createAutomationError(404, "Guerra inesistente.");
   if (war.status !== 'active') throw createAutomationError(400, "Questa guerra è già terminata.");
-  if (war.warType === 'naval' && war.navalPhase === 1 && params.weaponId !== 'battleship') {
-    throw createAutomationError(400, "Solo corazzate navali permesse nella Fase 1.");
-  }
-  if (war.warType === 'naval' && war.navalPhase === 2 && params.weaponId === 'battleship') {
-    throw createAutomationError(400, "Corazzate navali NON permesse nella Fase 2 (sbarco).");
+  const normalizedWeaponId = normalizeWarWeaponId(params.weaponId);
+  const allowedWeapons = getAllowedWeaponsForWar(war.warType || 'land', war.navalPhase || 0);
+  if (!allowedWeapons.includes(normalizedWeaponId)) {
+    const label = war.warType === 'naval' && war.navalPhase === 1
+      ? 'In fase navale 1 puoi usare solo Corazzate navali.'
+      : 'In questa guerra puoi usare solo Carri armati e Aerei.';
+    throw createAutomationError(400, label);
   }
 
-  const weapon = WAR_WEAPON_CONFIG[params.weaponId];
+  const weapon = WAR_WEAPON_CONFIG[normalizedWeaponId];
   if (!weapon) throw createAutomationError(400, "Armamento sconosciuto.");
 
   const energyCost = 300;
@@ -5405,7 +5414,7 @@ async function performWarDeployAction(params: {
 
   if (existingParticipant) {
     const deployed = existingParticipant.troopsDeployed || {};
-    deployed[params.weaponId] = (deployed[params.weaponId] || 0) + 1;
+    deployed[normalizedWeaponId] = (deployed[normalizedWeaponId] || 0) + 1;
     await supabase.from('war_participants').update({
       totalDamage: (existingParticipant.totalDamage || 0) + totalDamage,
       troopsDeployed: deployed,
@@ -5416,7 +5425,7 @@ async function performWarDeployAction(params: {
       userId: user.id,
       side: params.side,
       totalDamage,
-      troopsDeployed: { [params.weaponId]: 1 },
+      troopsDeployed: { [normalizedWeaponId]: 1 },
     });
   }
 
@@ -5426,7 +5435,7 @@ async function performWarDeployAction(params: {
     details: JSON.stringify({
       warId: params.warId,
       side: params.side,
-      weaponId: params.weaponId,
+      weaponId: normalizedWeaponId,
       damage: totalDamage,
       username: user.username,
       isPatriot
@@ -6085,23 +6094,19 @@ app.post("/api/wars/:warId/auto-attack", authenticate, async (req: any, res) => 
       return res.json({ success: true, message: "Auto-attacco disattivato." });
     }
 
-    const resolvedWeaponId = weaponId || troopType;
+    const resolvedWeaponId = normalizeWarWeaponId(weaponId || troopType);
     const resolvedAutoType = normalizeWarAutoType(autoType);
 
     if (!side || !resolvedWeaponId || !resolvedAutoType) {
       return res.status(400).json({ error: "Dati mancanti per auto-attacco." });
     }
 
-    // Naval rules:
-    // - Phase 1: ONLY battleship
-    // - Phase 2 (sbarco): NO battleship
-    if (war.warType === 'naval') {
-      if (war.navalPhase === 1 && resolvedWeaponId !== 'battleship') {
-        return res.status(400).json({ error: "Fase 1 navale: solo corazzate navali permesse." });
-      }
-      if (war.navalPhase === 2 && resolvedWeaponId === 'battleship') {
-        return res.status(400).json({ error: "Fase 2 (sbarco): corazzate navali non permesse." });
-      }
+    const allowedWeapons = getAllowedWeaponsForWar(war.warType || 'land', war.navalPhase || 0);
+    if (!allowedWeapons.includes(resolvedWeaponId)) {
+      const message = war.warType === 'naval' && war.navalPhase === 1
+        ? "Fase 1 navale: solo corazzate navali permesse."
+        : "Per questa guerra puoi usare solo Carri armati e Aerei.";
+      return res.status(400).json({ error: message });
     }
 
     const expiresAt = new Date(Date.now() + AUTOMATION_EXPIRE_MS).toISOString();
@@ -7640,7 +7645,7 @@ app.post("/api/parties/kick", authenticate, async (req: any, res) => {
 
 const getItemType = (itemId: string): string => {
   const resources = ['oil', 'minerals', 'uranium', 'diamonds'];
-  const weapons = ['infantry', 'tank', 'airstrike'];
+  const weapons = ['tank', 'aircraft', 'battleship'];
   if (resources.includes(itemId)) return 'resources';
   if (weapons.includes(itemId)) return 'weapons';
   return 'items';

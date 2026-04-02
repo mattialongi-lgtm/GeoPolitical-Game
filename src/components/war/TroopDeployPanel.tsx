@@ -1,14 +1,12 @@
 import React, { useState } from 'react';
 import { Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { TroopType, WarSide } from '../../types';
-import { TROOP_BASE_DAMAGE, TROOP_ENERGY_COST, TROOP_MONEY_COST } from '../../types';
+import { TROOP_BASE_DAMAGE, TROOP_ENERGY_COST } from '../../types';
 
-const TROOP_LABELS: Record<string, { emoji: string; name: string }> = {
-  tank: { emoji: '🛡️', name: 'Carri Armati' },
+const TROOP_LABELS: Record<TroopType, { emoji: string; name: string }> = {
+  tank: { emoji: '🛡️', name: 'Carri armati' },
   aircraft: { emoji: '✈️', name: 'Aerei' },
-  missile: { emoji: '🚀', name: 'Missili' },
-  bomber: { emoji: '💣', name: 'Bombardieri' },
-  battleship: { emoji: '🚢', name: 'Corazzate' },
+  battleship: { emoji: '🚢', name: 'Corazzate navali' },
 };
 
 interface TroopDeployPanelProps {

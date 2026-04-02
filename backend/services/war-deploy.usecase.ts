@@ -80,9 +80,7 @@ export async function executeWarDeployUseCase(
   let departmentBonus = 0;
   const nationId = side === 'attacker' ? war.attackerCountryIso2 : war.defenderCountryIso2;
   if (nationId) {
-    const deptType = ['battleship'].includes(troopType) ? 'naval'
-      : ['lunar_tank', 'space_station'].includes(troopType) ? 'space'
-      : 'land';
+    const deptType = troopType === 'battleship' ? 'naval' : 'land';
     const dept = await warRepository.getWarDepartmentBonus(nationId, deptType);
     if (dept) departmentBonus = (dept.bonusPercent || 0) / 100;
   }

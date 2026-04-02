@@ -4920,13 +4920,7 @@ async function performWorkActionV3(
 
   const expResourceType = typeDef.resource || factory.type;
   const workExp = await getPlayerWorkExperience(user.id, expResourceType);
-  const workExpMult = Math.max(
-    1,
-    Math.pow(
-      Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, workExp) / EXTRACTION_CONFIG.WORK_EXPERIENCE_DIVISOR,
-      EXTRACTION_CONFIG.WORK_EXPERIENCE_EXPONENT
-    )
-  );
+  const workExpMult = getWorkExperienceMultiplier(workExp);
 
   const addTaxSplit = async (
     subtype: string,
@@ -5158,9 +5152,7 @@ async function performWorkActionV3(
   const xpGain = Math.round((GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2) * (1 + educationBonus));
   await addXP(user.id, xpGain);
 
-  let workExpGain = 0;
-  const WORK_EXP_PER_ISTRUZIONE_LEVEL = 0.5;
-  workExpGain = 1 + Math.floor((perks['ISTRUZIONE'] || 0) * WORK_EXP_PER_ISTRUZIONE_LEVEL);
+  const workExpGain = getWorkExperienceGainForEnergyCost(energyCost);
   try { await incrementPlayerWorkExperience(user.id, expResourceType, workExpGain); } catch { /* non-critical */ }
 
   try {
@@ -5187,6 +5179,8 @@ async function performWorkActionV3(
       xpGain,
       workExpGain,
       workExperience: workExp,
+      workExperienceAfter: workExp + workExpGain,
+      experienceMultiplier: workExpMult,
       ownerCut: ownerCutMoney,
     };
   }
@@ -5202,6 +5196,8 @@ async function performWorkActionV3(
       xpGain,
       workExpGain,
       workExperience: workExp,
+      workExperienceAfter: workExp + workExpGain,
+      experienceMultiplier: workExpMult,
     };
   }
 
@@ -5218,6 +5214,8 @@ async function performWorkActionV3(
     xpGain,
     workExpGain,
     workExperience: workExp,
+    workExperienceAfter: workExp + workExpGain,
+    experienceMultiplier: workExpMult,
     resourceOutput: {
       type: factory.type,
       player: playerResourceOutput,
@@ -9388,19 +9386,19 @@ function calculateExtraction(params: {
 }): ExtractionBreakdown {
   const cfg = EXTRACTION_CONFIG;
 
-  // Ensure minimum values to avoid 0^exp issues
+  // Ensure minimum values to avoid degenerate outputs
   const pLvl = Math.max(1, params.playerLevel);
   const fLvl = Math.max(1, params.factoryLevel);
   const wExp = Math.max(cfg.MIN_WORK_EXPERIENCE, params.workExperience);
   const rCoeff = Math.max(0.01, params.resourceCoefficient);
+  const experienceMultiplier = getWorkExperienceMultiplier(wExp);
 
   // 1. Base productivity
   const baseProductivity =
     cfg.BASE_COEFFICIENT
     * Math.pow(pLvl, cfg.PLAYER_LEVEL_EXPONENT)
     * Math.pow(rCoeff / cfg.RESOURCE_COEFF_DIVISOR, cfg.RESOURCE_COEFF_EXPONENT)
-    * Math.pow(fLvl, cfg.FACTORY_LEVEL_EXPONENT)
-    * Math.pow(wExp / cfg.WORK_EXPERIENCE_DIVISOR, cfg.WORK_EXPERIENCE_EXPONENT);
+    * Math.pow(fLvl, cfg.FACTORY_LEVEL_EXPONENT);
 
   // 2. Nation bonus
   const nationBonus = (cfg.NATION_BONUS_ENABLED && params.nationBonusEnabled)
@@ -9415,7 +9413,7 @@ function calculateExtraction(params: {
   const balancingMultiplier = cfg.BALANCING_MULTIPLIERS[params.resourceType] ?? 1;
 
   // 5. Final productivity
-  const finalProductivity = baseProductivity * nationBonus * departmentBonus * balancingMultiplier;
+  const finalProductivity = baseProductivity * experienceMultiplier * nationBonus * departmentBonus * balancingMultiplier;
 
   // 6. Regional consumption
   const consumptionCfg = cfg.CONSUMPTION_COEFFICIENTS[params.resourceType] || { linearCoeff: 200000, baseOffset: 20000000 };
@@ -9444,6 +9442,7 @@ function calculateExtraction(params: {
     playerLevel: pLvl,
     factoryLevel: fLvl,
     workExperience: wExp,
+    experienceMultiplier,
     resourceCoefficient: rCoeff,
     resourceType: params.resourceType as ResourceType,
     baseProductivity,
@@ -9474,6 +9473,16 @@ function getRegionalConsumptionCoefficient(resourceType: string, factoryLevel: n
 }
 
 // ── WorkExperienceService ───────────────────────────────────────
+function getWorkExperienceMultiplier(workXp: number): number {
+  const normalizedXp = Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, Math.floor(Number(workXp) || 0));
+  return 1 + (normalizedXp / EXTRACTION_CONFIG.WORK_EXPERIENCE_MULTIPLIER_DIVISOR);
+}
+
+function getWorkExperienceGainForEnergyCost(energyCost: number): number {
+  const fullWorkCycles = Math.floor(Math.max(0, Number(energyCost) || 0) / GAME_CONFIG.ENERGY_MAX);
+  return fullWorkCycles * EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN_PER_FULL_CYCLE;
+}
+
 async function getPlayerWorkExperience(playerId: string, resourceType: string): Promise<number> {
   const { data } = await supabase
     .from('player_resource_work_experience')
@@ -9481,10 +9490,13 @@ async function getPlayerWorkExperience(playerId: string, resourceType: string): 
     .eq('playerId', playerId)
     .eq('resourceType', resourceType)
     .maybeSingle();
-  return data?.experience || EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE;
+  return Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, Math.floor(Number(data?.experience) || 0));
 }
 
 async function incrementPlayerWorkExperience(playerId: string, resourceType: string, gain: number): Promise<void> {
+  const normalizedGain = Math.max(0, Math.floor(Number(gain) || 0));
+  if (normalizedGain <= 0) return;
+
   const { data: existing } = await supabase
     .from('player_resource_work_experience')
     .select('experience, totalExtractions')
@@ -9494,15 +9506,15 @@ async function incrementPlayerWorkExperience(playerId: string, resourceType: str
 
   if (existing) {
     await supabase.from('player_resource_work_experience').update({
-      experience: existing.experience + gain,
-      totalExtractions: existing.totalExtractions + 1,
+      experience: Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, Math.floor(Number(existing.experience) || 0)) + normalizedGain,
+      totalExtractions: Math.max(0, Math.floor(Number(existing.totalExtractions) || 0)) + 1,
       lastWorkedAt: new Date().toISOString(),
     }).eq('playerId', playerId).eq('resourceType', resourceType);
   } else {
     await supabase.from('player_resource_work_experience').insert({
       playerId,
       resourceType,
-      experience: EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE + gain,
+      experience: normalizedGain,
       totalExtractions: 1,
       lastWorkedAt: new Date().toISOString(),
     });
@@ -10467,7 +10479,8 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
     }
 
     // 15. Work experience
-    await incrementPlayerWorkExperience(user.id, resourceType, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN);
+    const workExpGain = getWorkExperienceGainForEnergyCost(actualEnergyCost);
+    await incrementPlayerWorkExperience(user.id, resourceType, workExpGain);
 
     // 16. XP gain
     const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
@@ -10516,9 +10529,12 @@ app.post("/api/extraction/work", authenticate, async (req: any, res) => {
       remainingDaily: Math.max(0, remainingDaily - Math.round(actualWithdrawn)),
       xpGain,
       energyCost: actualEnergyCost,
-      workExperience: workExp + EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN,
+      workExperience: workExp + workExpGain,
+      workExpGain,
+      experienceMultiplier: breakdown.experienceMultiplier,
       breakdown: {
         baseProductivity: Math.round(breakdown.baseProductivity * 100) / 100,
+        experienceMultiplier: Math.round(breakdown.experienceMultiplier * 1000) / 1000,
         nationBonus: breakdown.nationBonus,
         departmentBonus: breakdown.departmentBonus,
         balancingMultiplier: breakdown.balancingMultiplier,

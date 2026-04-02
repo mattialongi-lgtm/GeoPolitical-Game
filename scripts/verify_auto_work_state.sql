@@ -109,6 +109,8 @@ select
   pre."playerId",
   pre."resourceType",
   pre.experience,
+  round(1 + (coalesce(pre.experience, 0)::numeric / 1000), 3) as experience_multiplier,
+  50 as expected_xp_gain_per_300_energy_cycle,
   pre."totalExtractions",
   pre."lastWorkedAt"
 from tmp_verify_auto_work_params p
@@ -212,6 +214,7 @@ select
   p.factory_id,
   f.type as factory_type,
   case when f.type = 'gold' then 'gold_ore' else f.type end as expected_exp_resource,
+  50 as expected_work_exp_gain,
   awa."isActive" as auto_work_active,
   awa."lastFiredAt" as auto_work_last_fired_at,
   ufc."lastUsed" as cooldown_last_used,
@@ -220,6 +223,7 @@ select
   lwl."resourceAmount" as latest_worker_resource_amount,
   ui.quantity as player_inventory_qty,
   pre.experience as work_experience,
+  round(1 + (coalesce(pre.experience, 0)::numeric / 1000), 3) as experience_multiplier,
   lbt.subtype as latest_tax_subtype,
   lbt."createdAt" as latest_tax_created_at,
   (lwl."workedAt" is not null) as has_worker_log,

@@ -297,7 +297,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
             )}
             <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
               <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">EXP Lavorativa</span>
-              <p className="text-lg font-black text-slate-700">📊 {extractionBreakdown.workExperience || 1}</p>
+              <p className="text-lg font-black text-slate-700">📊 {extractionBreakdown.workExperience || 0}</p>
               <p className="text-[9px] font-bold text-slate-400">{RESOURCE_LABELS[extractionBreakdown.breakdown?.resourceType as ResourceType] || ''}</p>
             </div>
           </div>
@@ -361,12 +361,13 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
             <div className="bg-indigo-50 p-4 rounded-xl space-y-2 border border-indigo-100">
               <p className="text-[10px] font-black uppercase text-indigo-500 mb-2">📐 Breakdown Formula Produttività</p>
               <div className="space-y-1 text-[10px] font-mono text-indigo-800">
-                <p>Produttività = {EXTRACTION_CONFIG.BASE_COEFFICIENT} × (LvGiocatore^{EXTRACTION_CONFIG.PLAYER_LEVEL_EXPONENT}) × (CoeffRisorsa/{EXTRACTION_CONFIG.RESOURCE_COEFF_DIVISOR})^{EXTRACTION_CONFIG.RESOURCE_COEFF_EXPONENT} × (LvFabbrica^{EXTRACTION_CONFIG.FACTORY_LEVEL_EXPONENT}) × (EXP/{EXTRACTION_CONFIG.WORK_EXPERIENCE_DIVISOR})^{EXTRACTION_CONFIG.WORK_EXPERIENCE_EXPONENT}</p>
+                <p>Produttività = {EXTRACTION_CONFIG.BASE_COEFFICIENT} × (LvGiocatore^{EXTRACTION_CONFIG.PLAYER_LEVEL_EXPONENT}) × (CoeffRisorsa/{EXTRACTION_CONFIG.RESOURCE_COEFF_DIVISOR})^{EXTRACTION_CONFIG.RESOURCE_COEFF_EXPONENT} × (LvFabbrica^{EXTRACTION_CONFIG.FACTORY_LEVEL_EXPONENT}) × (1 + EXP/{EXTRACTION_CONFIG.WORK_EXPERIENCE_MULTIPLIER_DIVISOR})</p>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
                 <BreakdownRow label="Livello Giocatore" value={extractionBreakdown.breakdown.playerLevel} />
                 <BreakdownRow label="Livello Fabbrica" value={extractionBreakdown.breakdown.factoryLevel} />
                 <BreakdownRow label="Esperienza Lavoro" value={extractionBreakdown.breakdown.workExperience} />
+                <BreakdownRow label="Moltiplicatore EXP" value={`×${r2(extractionBreakdown.breakdown.experienceMultiplier || 1)}`} />
                 <BreakdownRow label="Coeff. Risorsa" value={r2(extractionBreakdown.breakdown.resourceCoefficient)} />
                 <BreakdownRow label="Produttività Base" value={r2(extractionBreakdown.breakdown.baseProductivity)} />
                 <BreakdownRow label="Bonus Nazione" value={`×${extractionBreakdown.breakdown.nationBonus}`} />

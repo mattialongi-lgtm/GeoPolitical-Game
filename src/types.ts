@@ -1054,9 +1054,8 @@ export const EXTRACTION_CONFIG = {
   PLAYER_LEVEL_EXPONENT: 0.8,
   RESOURCE_COEFF_EXPONENT: 0.8,
   FACTORY_LEVEL_EXPONENT: 0.8,
-  WORK_EXPERIENCE_EXPONENT: 0.6,
   RESOURCE_COEFF_DIVISOR: 10,       // CoeffRisorsa / this
-  WORK_EXPERIENCE_DIVISOR: 10,      // WorkExp / this
+  WORK_EXPERIENCE_MULTIPLIER_DIVISOR: 1000,
 
   // ── Resource coefficient multipliers (based on region max cap incl. deep) ──
   RESOURCE_COEFF_MULTIPLIERS: {
@@ -1111,8 +1110,9 @@ export const EXTRACTION_CONFIG = {
   } as Record<string, { linearCoeff: number; baseOffset: number }>,
 
   // ── Work experience gain per extraction action ──
-  WORK_EXPERIENCE_GAIN: 1,
-  MIN_WORK_EXPERIENCE: 1,  // floor for formula (avoid 0^exp)
+  WORK_EXPERIENCE_GAIN_PER_FULL_CYCLE: 50,
+  WORK_EXPERIENCE_GAIN: 50,
+  MIN_WORK_EXPERIENCE: 0,
 
   // ── Minimum extraction threshold (below this, extraction is considered exhausted) ──
   MIN_EXTRACTION_THRESHOLD: 0.001,
@@ -1127,6 +1127,7 @@ export interface ExtractionBreakdown {
   playerLevel: number;
   factoryLevel: number;
   workExperience: number;
+  experienceMultiplier: number;
   resourceCoefficient: number;
   resourceType: ResourceType;
   // Intermediate

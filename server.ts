@@ -1873,8 +1873,42 @@ async function addBudgetTransaction(
   createdByUserId: string | null = null,
   metadata: any = {}
 ) {
+  // Older DBs may not have pre-created budgets for all owners.
+  // Keep backend automation resilient by auto-creating missing budgets.
+  const ensureBudgetExists = async () => {
+    const { data: existing, error: readErr } = await supabase
+      .from('budgets')
+      .select('id')
+      .eq('ownerType', ownerType)
+      .eq('ownerId', ownerId)
+      .maybeSingle();
+    if (readErr) throw readErr;
+    if (existing?.id) return;
+
+    const { error: insertErr } = await supabase.from('budgets').insert({
+      ownerType,
+      ownerId,
+      moneyEUR: 0,
+      resources: {},
+      updatedAt: Date.now(),
+    });
+    if (insertErr) {
+      // Race-safe retry read
+      const { data: retry, error: retryErr } = await supabase
+        .from('budgets')
+        .select('id')
+        .eq('ownerType', ownerType)
+        .eq('ownerId', ownerId)
+        .maybeSingle();
+      if (retryErr) throw retryErr;
+      if (!retry?.id) throw insertErr;
+    }
+  };
+
+  await ensureBudgetExists();
+
   // We use an RPC 'add_budget_transaction' defined in schema.sql to ensure atomicity
-  const { data, error } = await supabase.rpc('add_budget_transaction', {
+  let { data, error } = await supabase.rpc('add_budget_transaction', {
     p_owner_type: ownerType,
     p_owner_id: ownerId,
     p_type: type,
@@ -1885,6 +1919,23 @@ async function addBudgetTransaction(
     p_metadata: metadata
   });
 
+  if (error) {
+    const msg = String((error as any)?.message || '').toLowerCase();
+    if (msg.includes('budget') || msg.includes('non trovato')) {
+      await ensureBudgetExists();
+      ({ data, error } = await supabase.rpc('add_budget_transaction', {
+        p_owner_type: ownerType,
+        p_owner_id: ownerId,
+        p_type: type,
+        p_subtype: subtype,
+        p_money_delta: moneyDelta,
+        p_resources_delta: resourcesDelta,
+        p_created_by: createdByUserId,
+        p_metadata: metadata
+      }));
+    }
+  }
+
   if (error) throw error;
   return data;
 }
@@ -1894,6 +1945,17 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
   const userRegion = user.region_id || 'IT';
 
   const { factoryId } = req.body;
+
+  // Canonical work logic lives in performWorkAction(); keep this endpoint as a compatibility alias.
+  // NOTE: legacy implementation below is kept for now but bypassed to prevent divergence.
+  try {
+    if (!factoryId) return res.status(400).json({ error: "factoryId mancante." });
+    const result = await performWorkAction(user.id, factoryId, { allowAutoDrink: false });
+    return res.json(result);
+  } catch (error: any) {
+    if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
+    return res.status(500).json({ error: error?.message || "Errore durante il lavoro." });
+  }
 
   // 1. Get Factory Data
   const { data: factory, error: fError } = await supabase
@@ -4349,12 +4411,19 @@ async function performTrainingAction(userId: string, options?: { freeHourly?: bo
 }
 
 async function performWorkAction(userId: string, factoryId: string, options?: { allowAutoDrink?: boolean }) {
+  // Canonical implementation (shared by manual + automation).
+  // Kept as a wrapper to avoid touching legacy code paths below.
+  return await performWorkActionV3(userId, factoryId, options);
+
   let { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
   if (!user) throw createAutomationError(404, "Utente non trovato.");
 
   const userRegion = user.regionId || 'IT';
   const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
   if (!factory) throw createAutomationError(404, "Fabbrica non trovata.");
+  if (factory.isActive === false) throw createAutomationError(400, "Fabbrica non attiva.");
+  const factoryMinLevel = factory.minLevel ?? 1;
+  if ((user.level || 1) < factoryMinLevel) throw createAutomationError(400, `Richiede livello ${factoryMinLevel}.`);
   if (factory.regionId !== userRegion) throw createAutomationError(400, "Devi viaggiare in questa regione per lavorare qui.");
 
   const { data: currentRegion } = await supabase.from('regions').select('*').eq('id', factory.regionId).single();
@@ -4381,8 +4450,8 @@ async function performWorkAction(userId: string, factoryId: string, options?: { 
   }
 
   const perks = await getUserPerks(user.id);
-  const energyEfficiency = (perks['RESISTENZA'] || 0) * 0.005;
-  const energyCost = Math.ceil(10 * (1 - energyEfficiency));
+  // Business rule: each work action consumes the full energy bar (300).
+  const energyCost = GAME_CONFIG.ENERGY_MAX;
 
   if (user.energy < energyCost && options?.allowAutoDrink) {
     const drank = await tryUseEnergyDrinkForUser(user.id);
@@ -4391,9 +4460,18 @@ async function performWorkAction(userId: string, factoryId: string, options?: { 
       if (refreshedUser) user = refreshedUser;
     }
   }
-  if (user.energy < energyCost) throw createAutomationError(400, "Energia insufficiente.");
+  if (user.energy < energyCost) throw createAutomationError(400, "Energia insufficiente (richiesti 300).");
 
-  const payMode = factory.payMode || 'salary';
+  // New source of truth (manual + auto-work): full 300-energy work action with correct payout/taxes.
+  return await performWorkActionV2({
+    user,
+    factory,
+    region: currentRegion,
+    perks,
+    energyCost,
+  });
+
+  const payMode = factory.payMode || 'resource';
   const { data: owner } = await supabase.from('users').select('id').eq('id', factory.ownerUserId).single();
   if (!owner) throw createAutomationError(404, "Proprietario inesistente.");
 
@@ -4509,6 +4587,644 @@ async function performWorkAction(userId: string, factoryId: string, options?: { 
   } catch { /* non-critical */ }
 
   return { success: true, earnings: finalWage, output: finalOutput, xpGain };
+}
+
+async function performWorkActionV2(params: {
+  user: any;
+  factory: any;
+  region: any;
+  perks: Record<string, number>;
+  energyCost: number;
+}) {
+  const { user, factory, region, perks, energyCost } = params;
+
+  const { data: owner } = await supabase.from('users').select('id').eq('id', factory.ownerUserId).single();
+  if (!owner) throw createAutomationError(404, "Proprietario inesistente.");
+
+  const level = factory.level || 1;
+  const payMode = factory.payMode || 'resource';
+  const typeDef = FACTORY_CONFIG.TYPES[factory.type] || null;
+  const isGoldMine = typeDef?.category === 'gold';
+
+  const taxRate = region?.marketTaxRate ?? region?.industryTaxPercent ?? FACTORY_CONFIG.DEFAULT_INDUSTRY_TAX_RATE;
+  const autonomySharePercent = region?.regionalProfitSharePercent ?? 0;
+  const stateId = region?.nation_id || factory.regionId;
+
+  const forzaBoost = (perks['FORZA'] || 0) * 0.03;
+  const workExp = await getPlayerWorkExperience(user.id, factory.type);
+  const workExpBonus = Math.max(0, Math.log10(Math.max(1, workExp))) * 0.15; // +15% per decade
+  const workExpMult = 1 + workExpBonus;
+
+  const parseRpcResultOrThrow = (result: any) => {
+    const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+    if (parsed?.error) throw createAutomationError(400, parsed.error);
+    return parsed;
+  };
+
+  const addTaxToBudgets = async (
+    subtype: string,
+    moneyDelta: number,
+    resourcesDelta: Record<string, number>,
+    metadata: any
+  ) => {
+    const hasResources = resourcesDelta && Object.values(resourcesDelta).some(v => (v || 0) > 0);
+    if ((moneyDelta || 0) <= 0 && !hasResources) return;
+
+    // Autonomy split: if the region is autonomous, split tax between State (nation_id) and Autonomy (regionId).
+    const shouldSplit = !!region?.isAutonomous && autonomySharePercent > 0 && stateId !== factory.regionId;
+    const autonomyFraction = shouldSplit ? (autonomySharePercent / 100) : 0;
+
+    const autonomyMoney = Math.floor((moneyDelta || 0) * autonomyFraction);
+    const stateMoney = (moneyDelta || 0) - autonomyMoney;
+
+    const autonomyResources: Record<string, number> = {};
+    const stateResources: Record<string, number> = {};
+    for (const [key, value] of Object.entries(resourcesDelta || {})) {
+      const units = Math.max(0, Math.floor(Number(value) || 0));
+      if (units <= 0) continue;
+      const autoUnits = Math.floor(units * autonomyFraction);
+      const stateUnits = units - autoUnits;
+      if (stateUnits > 0) stateResources[key] = stateUnits;
+      if (autoUnits > 0) autonomyResources[key] = autoUnits;
+    }
+
+    const hasStateResources = Object.keys(stateResources).length > 0;
+    const hasAutonomyResources = Object.keys(autonomyResources).length > 0;
+
+    if (stateMoney > 0 || hasStateResources) {
+      await supabase.rpc('add_budget_transaction', {
+        p_owner_type: 'REGION',
+        p_owner_id: stateId,
+        p_type: 'INCOME',
+        p_subtype: subtype,
+        p_money_delta: stateMoney,
+        p_resources_delta: stateResources,
+        p_created_by: user.id,
+        p_metadata: { ...metadata, scope: 'STATE', autonomySharePercent },
+      });
+    }
+
+    if (autonomyMoney > 0 || hasAutonomyResources) {
+      await supabase.rpc('add_budget_transaction', {
+        p_owner_type: 'REGION',
+        p_owner_id: factory.regionId,
+        p_type: 'INCOME',
+        p_subtype: subtype,
+        p_money_delta: autonomyMoney,
+        p_resources_delta: autonomyResources,
+        p_created_by: user.id,
+        p_metadata: { ...metadata, scope: 'AUTONOMY', autonomySharePercent },
+      });
+    }
+  };
+
+  let netMoney = 0;
+  let netGold = 0;
+  let taxesMoney = 0;
+  let grossValue = 0;
+  let playerResourceOutput = 0;
+  let stateResourceUnits = 0;
+  let ownerCutUnits = 0;
+
+  if (isGoldMine) {
+    const yieldMult = factoryYieldMultiplier(level);
+    const baseMoney = Math.floor(FACTORY_CONFIG.GOLD_MINE_MONEY_PER_WORK * yieldMult * (1 + forzaBoost) * workExpMult);
+    const baseGold = Math.round(FACTORY_CONFIG.GOLD_MINE_GOLD_PER_WORK * yieldMult * (1 + forzaBoost) * workExpMult * 100) / 100;
+
+    const moneyTax = Math.floor(baseMoney * (taxRate / 100));
+    const goldTax = Math.round(baseGold * (taxRate / 100) * 100) / 100;
+
+    netMoney = baseMoney - moneyTax;
+    netGold = Math.round((baseGold - goldTax) * 100) / 100;
+    taxesMoney = moneyTax;
+    grossValue = baseMoney;
+
+    const ownerCutMoney = Math.floor(baseMoney * FACTORY_CONFIG.OWNER_PROFIT_RATE);
+
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: -netMoney,
+      p_gold_cost: -netGold,
+      p_energy_cost: energyCost,
+    });
+    if (deductError) throw deductError;
+    parseRpcResultOrThrow(deductResult);
+
+    if (ownerCutMoney > 0 && owner.id !== user.id) {
+      const { data: ownerResult, error: ownerErr } = await supabase.rpc('safe_deduct_currency', {
+        p_user_id: owner.id,
+        p_money_cost: -ownerCutMoney,
+        p_gold_cost: 0,
+        p_energy_cost: 0,
+      });
+      if (ownerErr) throw ownerErr;
+      parseRpcResultOrThrow(ownerResult);
+    }
+
+    await addTaxToBudgets('INDUSTRY_TAX', taxesMoney, {}, { factoryId: factory.id, factoryType: 'gold', taxRate, grossMoney: baseMoney });
+  } else if (payMode === 'salary') {
+    const grossEarnings = Math.floor((factory.payoutMoney ?? factory.wage ?? 50) * (1 + forzaBoost) * workExpMult);
+    const taxes = Math.floor(grossEarnings * (taxRate / 100));
+    netMoney = grossEarnings - taxes;
+    taxesMoney = taxes;
+    grossValue = grossEarnings;
+
+    const { data: freshFactory } = await supabase.from('factories').select('budget, currentStorage').eq('id', factory.id).single();
+    if (!freshFactory) throw createAutomationError(404, "Fabbrica non trovata.");
+    if ((freshFactory.budget || 0) < grossEarnings) throw createAutomationError(400, "L'azienda non ha abbastanza fondi per pagarti il salario.");
+
+    let bonusMult = 1.0;
+    if (factory.type === 'oil') bonusMult = region?.oilBonus || 1.0;
+    else if (factory.type === 'minerals') bonusMult = region?.mineralsBonus || 1.0;
+    else if (factory.type === 'uranium') bonusMult = region?.uraniumBonus || 1.0;
+    else if (factory.type === 'diamonds') bonusMult = region?.diamondsBonus || 1.0;
+
+    const outputQty = Math.max(1, Math.floor(level * FACTORY_CONFIG.BASE_RESOURCE_OUTPUT * bonusMult * (1 + forzaBoost) * workExpMult));
+    const storageCap = factoryStorageLimit(factory.type, level);
+    if (storageCap > 0 && (freshFactory.currentStorage || 0) + outputQty > storageCap) {
+      throw createAutomationError(400, "Il magazzino della fabbrica è pieno.");
+    }
+
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: -netMoney,
+      p_gold_cost: 0,
+      p_energy_cost: energyCost,
+    });
+    if (deductError) throw deductError;
+    parseRpcResultOrThrow(deductResult);
+
+    const { error: factoryUpdateErr } = await supabase.from('factories').update({
+      budget: (freshFactory.budget || 0) - grossEarnings,
+      currentStorage: (freshFactory.currentStorage || 0) + outputQty,
+    }).eq('id', factory.id);
+    if (factoryUpdateErr) throw factoryUpdateErr;
+
+    await addTaxToBudgets('WORK_TAX', taxesMoney, {}, { factoryId: factory.id, factoryType: factory.type, taxRate, grossMoney: grossEarnings, payMode: 'salary' });
+  } else {
+    let bonusMult = 1.0;
+    if (factory.type === 'oil') bonusMult = region?.oilBonus || 1.0;
+    else if (factory.type === 'minerals') bonusMult = region?.mineralsBonus || 1.0;
+    else if (factory.type === 'uranium') bonusMult = region?.uraniumBonus || 1.0;
+    else if (factory.type === 'diamonds') bonusMult = region?.diamondsBonus || 1.0;
+
+    const resourceOutput = Math.max(1, Math.floor(level * FACTORY_CONFIG.BASE_RESOURCE_OUTPUT * bonusMult * (1 + forzaBoost) * workExpMult));
+    stateResourceUnits = Math.floor(resourceOutput * (taxRate / 100));
+    ownerCutUnits = Math.floor(resourceOutput * FACTORY_CONFIG.OWNER_PROFIT_RATE);
+    playerResourceOutput = Math.max(0, resourceOutput - stateResourceUnits - ownerCutUnits);
+
+    const storageCap = factoryStorageLimit(factory.type, level);
+    if (storageCap > 0 && (factory.currentStorage || 0) + ownerCutUnits > storageCap) {
+      throw createAutomationError(400, "Il magazzino della fabbrica è pieno.");
+    }
+
+    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: 0,
+      p_gold_cost: 0,
+      p_energy_cost: energyCost,
+    });
+    if (deductError) throw deductError;
+    parseRpcResultOrThrow(deductResult);
+
+    if (playerResourceOutput > 0) {
+      const { data: playerInv } = await supabase.from('user_inventory')
+        .select('quantity').eq('userId', user.id).eq('itemId', factory.type).maybeSingle();
+      if (playerInv) {
+        await supabase.from('user_inventory').update({ quantity: playerInv.quantity + playerResourceOutput })
+          .eq('userId', user.id).eq('itemId', factory.type);
+      } else {
+        await supabase.from('user_inventory').insert({ userId: user.id, itemId: factory.type, quantity: playerResourceOutput });
+      }
+    }
+
+    if (ownerCutUnits > 0) {
+      await supabase.rpc('increment_factory_storage', { p_factory_id: factory.id, p_amount: ownerCutUnits });
+    }
+
+    const resourceKey = (typeDef?.resource || factory.type) as string;
+    const resourceValue = FACTORY_CONFIG.RESOURCE_VALUES[resourceKey] || 1;
+    taxesMoney = Math.floor(stateResourceUnits * resourceValue);
+    grossValue = Math.floor(resourceOutput * resourceValue);
+
+    await addTaxToBudgets('RESOURCE_TAX', 0, { [factory.type]: stateResourceUnits }, {
+      factoryId: factory.id,
+      factoryType: factory.type,
+      taxRate,
+      resourceUnits: stateResourceUnits,
+      resourceValue,
+      grossUnits: resourceOutput,
+    });
+  }
+
+  await supabase.from('user_factory_cooldowns').upsert({
+    userId: user.id,
+    factoryId: factory.id,
+    lastUsed: new Date().toISOString(),
+  }, { onConflict: 'userId,factoryId' });
+
+  try {
+    await supabase.from('factory_worker_logs').insert({
+      factoryId: factory.id,
+      workerId: user.id,
+      earningsMoney: netMoney,
+      earningsGold: netGold,
+      resourceType: (!isGoldMine && playerResourceOutput > 0) ? factory.type : null,
+      resourceAmount: (!isGoldMine && playerResourceOutput > 0) ? playerResourceOutput : 0,
+      ownerCut: isGoldMine ? Math.floor(grossValue * FACTORY_CONFIG.OWNER_PROFIT_RATE) : ownerCutUnits,
+    });
+  } catch { /* non-critical */ }
+
+  const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
+  await addXP(user.id, xpGain);
+  try { await incrementPlayerWorkExperience(user.id, factory.type, EXTRACTION_CONFIG.WORK_EXPERIENCE_GAIN); } catch { /* non-critical */ }
+
+  if (isGoldMine) {
+    return { success: true, payMode: 'gold', earnings: netMoney, goldEarnings: netGold, taxes: taxesMoney, energyCost, xpGain };
+  }
+  if (payMode === 'salary') {
+    return { success: true, payMode: 'salary', earnings: netMoney, taxes: taxesMoney, energyCost, xpGain };
+  }
+  return { success: true, payMode: 'resource', earnings: 0, output: playerResourceOutput, ownerShare: ownerCutUnits, stateShare: stateResourceUnits, taxes: taxesMoney, energyCost, xpGain };
+}
+
+async function performWorkActionV3(
+  userId: string,
+  factoryId: string,
+  options?: { allowAutoDrink?: boolean }
+) {
+  let { data: user } = await supabase.from('users').select('*').eq('id', userId).single();
+  if (!user) throw createAutomationError(404, "Utente non trovato.");
+
+  const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
+  if (!factory) throw createAutomationError(404, "Fabbrica non trovata.");
+  if (factory.isActive === false) throw createAutomationError(400, "Fabbrica non attiva.");
+
+  const factoryMinLevel = factory.minLevel ?? 1;
+  if ((user.level || 1) < factoryMinLevel) throw createAutomationError(400, `Richiede livello ${factoryMinLevel}.`);
+
+  if ((user.regionId || 'IT') !== factory.regionId) throw createAutomationError(400, "Devi viaggiare in questa regione per lavorare qui.");
+
+  const { data: region } = await supabase.from('regions').select('*').eq('id', factory.regionId).single();
+  const restrictionsActive = region?.workRestrictions === 1;
+  const isResident = user.residenceId === factory.regionId;
+
+  let hasWorkPermit = user.workPermitId === factory.regionId;
+  if (!hasWorkPermit) {
+    try {
+      const { data: permitRow } = await supabase.from('work_permits')
+        .select('id')
+        .eq('userId', user.id)
+        .eq('regionId', factory.regionId)
+        .maybeSingle();
+      hasWorkPermit = !!permitRow;
+    } catch { /* optional table */ }
+  }
+
+  if (restrictionsActive && !isResident && !hasWorkPermit && user.id !== factory.ownerUserId) {
+    throw createAutomationError(403, "Questa regione richiede un Permesso di Lavoro.");
+  }
+
+  const cooldownMs = Math.max(1, Number(factory.cooldownSec || 600)) * 1000;
+  const { data: lastWork } = await supabase.from('user_factory_cooldowns')
+    .select('lastUsed')
+    .eq('userId', user.id)
+    .eq('factoryId', factoryId)
+    .maybeSingle();
+  if (lastWork && Date.now() - new Date(lastWork.lastUsed).getTime() < cooldownMs) {
+    throw createAutomationError(400, "Fabbrica in cooldown.");
+  }
+
+  const perks = await getUserPerks(user.id);
+  const energyCost = GAME_CONFIG.ENERGY_MAX; // 300
+
+  if ((user.energy || 0) < energyCost && options?.allowAutoDrink) {
+    const drank = await tryUseEnergyDrinkForUser(user.id);
+    if (drank) {
+      const { data: refreshedUser } = await supabase.from('users').select('*').eq('id', user.id).single();
+      if (refreshedUser) user = refreshedUser;
+    }
+  }
+  if ((user.energy || 0) < energyCost) throw createAutomationError(400, "Energia insufficiente (richiesti 300).");
+
+  const typeDef = FACTORY_CONFIG.TYPES[factory.type] || null;
+  if (!typeDef) throw createAutomationError(400, "Tipo fabbrica non valido.");
+  const isGoldMine = typeDef.category === 'gold';
+  const payMode = factory.payMode || 'resource';
+
+  const taxRate = region?.marketTaxRate ?? region?.industryTaxPercent ?? FACTORY_CONFIG.DEFAULT_INDUSTRY_TAX_RATE;
+  const autonomySharePercent = Math.max(0, Math.min(100, region?.regionalProfitSharePercent ?? 0));
+  const nationId = region?.nation_id || null;
+
+  const forceBoost = (perks['FORZA'] || 0) * 0.03;
+
+  const expResourceType = typeDef.resource || factory.type;
+  const workExp = await getPlayerWorkExperience(user.id, expResourceType);
+  const workExpMult = Math.max(
+    1,
+    Math.pow(
+      Math.max(EXTRACTION_CONFIG.MIN_WORK_EXPERIENCE, workExp) / EXTRACTION_CONFIG.WORK_EXPERIENCE_DIVISOR,
+      EXTRACTION_CONFIG.WORK_EXPERIENCE_EXPONENT
+    )
+  );
+
+  const addTaxSplit = async (
+    subtype: string,
+    moneyDelta: number,
+    resourcesDelta: Record<string, number>,
+    metadata: any
+  ) => {
+    const hasResources = resourcesDelta && Object.values(resourcesDelta).some(v => (Number(v) || 0) > 0);
+    if ((moneyDelta || 0) <= 0 && !hasResources) return;
+
+    const shouldSplit = !!region?.isAutonomous && !!nationId && autonomySharePercent > 0;
+    const autonomyFraction = shouldSplit ? (autonomySharePercent / 100) : 0;
+
+    const autonomyMoney = Math.floor((moneyDelta || 0) * autonomyFraction);
+    const stateMoney = (moneyDelta || 0) - autonomyMoney;
+
+    const autonomyResources: Record<string, number> = {};
+    const stateResources: Record<string, number> = {};
+    for (const [key, raw] of Object.entries(resourcesDelta || {})) {
+      const units = Math.max(0, Math.floor(Number(raw) || 0));
+      if (units <= 0) continue;
+      const autoUnits = Math.floor(units * autonomyFraction);
+      const stUnits = units - autoUnits;
+      if (stUnits > 0) stateResources[key] = stUnits;
+      if (autoUnits > 0) autonomyResources[key] = autoUnits;
+    }
+
+    if (!shouldSplit) {
+      const ownerType = nationId ? 'STATE' : 'REGION';
+      const ownerId = nationId || factory.regionId;
+      await addBudgetTransaction(ownerType, ownerId, 'INCOME', subtype, moneyDelta, resourcesDelta, user.id, metadata);
+      return;
+    }
+
+    if (stateMoney > 0 || Object.keys(stateResources).length > 0) {
+      await addBudgetTransaction('STATE', nationId!, 'INCOME', subtype, stateMoney, stateResources, user.id, {
+        ...metadata,
+        scope: 'STATE',
+        autonomySharePercent,
+      });
+    }
+    if (autonomyMoney > 0 || Object.keys(autonomyResources).length > 0) {
+      await addBudgetTransaction('AUTONOMY', factory.regionId, 'INCOME', subtype, autonomyMoney, autonomyResources, user.id, {
+        ...metadata,
+        scope: 'AUTONOMY',
+        autonomySharePercent,
+      });
+    }
+  };
+
+  const parseRpcResultOrThrow = (result: any) => {
+    const parsed = typeof result === 'string' ? JSON.parse(result) : result;
+    if (parsed?.error) throw createAutomationError(400, parsed.error);
+    return parsed;
+  };
+
+  const safeDeduct = async (moneyDelta: number, goldDelta: number, energyDelta: number) => {
+    const { data, error } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      // RPC semantics: positive = cost (deduct), negative = grant (add)
+      p_money_cost: moneyDelta,
+      p_gold_cost: goldDelta,
+      p_energy_cost: energyDelta,
+    });
+    if (error) throw error;
+    parseRpcResultOrThrow(data);
+  };
+
+  const level = factory.level || 1;
+  const yieldMult = factoryYieldMultiplier(level);
+
+  let earningsMoney = 0;
+  let earningsGold = 0;
+  let taxesMoney = 0;
+  let grossValueMoney = 0;
+  let playerResourceOutput = 0;
+  let stateResourceUnits = 0;
+  let ownerCutUnits = 0;
+  let ownerCutMoney = 0;
+
+  const ownerId = factory.ownerUserId;
+
+  if (isGoldMine) {
+    const baseMoney = Math.floor(FACTORY_CONFIG.GOLD_MINE_MONEY_PER_WORK * yieldMult * (1 + forceBoost) * workExpMult);
+    const baseGoldFloat = Math.round(FACTORY_CONFIG.GOLD_MINE_GOLD_PER_WORK * yieldMult * (1 + forceBoost) * workExpMult * 100) / 100;
+
+    taxesMoney = Math.floor(baseMoney * (taxRate / 100));
+    const netMoney = baseMoney - taxesMoney;
+
+    // Gold is stored as integer currency in DB: award only whole units (legacy behavior)
+    const goldTaxFloat = Math.round(baseGoldFloat * (taxRate / 100) * 100) / 100;
+    const netGoldFloat = Math.max(0, Math.round((baseGoldFloat - goldTaxFloat) * 100) / 100);
+    const goldAward = Math.floor(netGoldFloat);
+
+    earningsMoney = netMoney;
+    earningsGold = goldAward;
+    grossValueMoney = baseMoney;
+
+    await safeDeduct(-earningsMoney, -earningsGold, energyCost);
+
+    // Owner profit (money)
+    ownerCutMoney = Math.floor(baseMoney * FACTORY_CONFIG.OWNER_PROFIT_RATE);
+    if (ownerCutMoney > 0 && ownerId && ownerId !== user.id) {
+      const { data, error } = await supabase.rpc('safe_deduct_currency', {
+        p_user_id: ownerId,
+        p_money_cost: -ownerCutMoney,
+        p_gold_cost: 0,
+        p_energy_cost: 0,
+      });
+      if (error) throw error;
+      parseRpcResultOrThrow(data);
+    }
+
+    await addTaxSplit('INDUSTRY_TAX', taxesMoney, {}, { factoryId: factory.id, factoryType: factory.type, taxRate });
+  } else if (payMode === 'salary') {
+    const grossEarnings = Math.floor((factory.payoutMoney ?? factory.wage ?? 50) * (1 + forceBoost) * workExpMult);
+    taxesMoney = Math.floor(grossEarnings * (taxRate / 100));
+    earningsMoney = grossEarnings - taxesMoney;
+    grossValueMoney = grossEarnings;
+
+    const { data: updated, error: budgetErr } = await supabase
+      .from('factories')
+      .update({ budget: (factory.budget || 0) - grossEarnings })
+      .eq('id', factory.id)
+      .gte('budget', grossEarnings)
+      .select('id')
+      .maybeSingle();
+    if (budgetErr) throw budgetErr;
+    if (!updated) throw createAutomationError(400, "L'azienda non ha abbastanza fondi per pagarti il salario.");
+
+    await safeDeduct(-earningsMoney, 0, energyCost);
+    await addTaxSplit('WORK_TAX', taxesMoney, {}, { factoryId: factory.id, factoryType: factory.type, taxRate, payMode: 'salary' });
+  } else {
+    let bonusMult = 1.0;
+    if (factory.type === 'oil') bonusMult = region?.oilBonus || 1.0;
+    else if (factory.type === 'minerals') bonusMult = region?.mineralsBonus || 1.0;
+    else if (factory.type === 'uranium') bonusMult = region?.uraniumBonus || 1.0;
+    else if (factory.type === 'diamonds') bonusMult = region?.diamondsBonus || 1.0;
+
+    const resourceOutput = Math.max(1, Math.floor(level * FACTORY_CONFIG.BASE_RESOURCE_OUTPUT * bonusMult * (1 + forceBoost) * workExpMult));
+    stateResourceUnits = Math.floor(resourceOutput * (taxRate / 100));
+    ownerCutUnits = Math.floor(resourceOutput * FACTORY_CONFIG.OWNER_PROFIT_RATE);
+    playerResourceOutput = Math.max(0, resourceOutput - stateResourceUnits - ownerCutUnits);
+
+    const storageCap = factoryStorageLimit(factory.type, level);
+    if (storageCap > 0 && (factory.currentStorage || 0) + ownerCutUnits > storageCap) {
+      throw createAutomationError(400, "Il magazzino della fabbrica è pieno.");
+    }
+
+    await safeDeduct(0, 0, energyCost);
+
+    if (playerResourceOutput > 0) {
+      const { data: inv } = await supabase.from('user_inventory')
+        .select('quantity')
+        .eq('userId', user.id)
+        .eq('itemId', factory.type)
+        .maybeSingle();
+      if (inv) {
+        await supabase.from('user_inventory')
+          .update({ quantity: inv.quantity + playerResourceOutput })
+          .eq('userId', user.id)
+          .eq('itemId', factory.type);
+      } else {
+        await supabase.from('user_inventory')
+          .insert({ userId: user.id, itemId: factory.type, quantity: playerResourceOutput });
+      }
+    }
+
+    if (ownerCutUnits > 0) {
+      await supabase.rpc('increment_factory_storage', { p_factory_id: factory.id, p_amount: ownerCutUnits });
+    }
+
+    const resourceKey = (typeDef.resource || factory.type) as string;
+    const resourceValue = FACTORY_CONFIG.RESOURCE_VALUES[resourceKey] || 1;
+    grossValueMoney = Math.floor(resourceOutput * resourceValue);
+
+    // Resource taxes collected as resources only (avoid double taxation).
+    await addTaxSplit('RESOURCE_TAX', 0, { [factory.type]: stateResourceUnits }, {
+      factoryId: factory.id,
+      factoryType: factory.type,
+      taxRate,
+      resourceUnits: stateResourceUnits,
+    });
+  }
+
+  await supabase.from('user_factory_cooldowns').upsert({
+    userId: user.id,
+    factoryId: factory.id,
+    lastUsed: new Date().toISOString(),
+  }, { onConflict: 'userId,factoryId' });
+
+  try {
+    const productionCount = isGoldMine ? grossValueMoney : (playerResourceOutput + stateResourceUnits + ownerCutUnits);
+    const taxesPaidMoney = isGoldMine || payMode === 'salary' ? taxesMoney : 0;
+    const storageDelta = (!isGoldMine && ownerCutUnits > 0) ? ownerCutUnits : 0;
+
+    await supabase.rpc('increment_factory_counters', {
+      p_factory_id: factory.id,
+      p_worker_count: 1,
+      p_production: productionCount,
+      p_owner_profit: isGoldMine ? ownerCutMoney : ownerCutUnits,
+      p_taxes_paid: taxesPaidMoney,
+      p_storage_delta: storageDelta,
+    });
+
+    await supabase.rpc('upsert_factory_economy_log', {
+      p_factory_id: factory.id,
+      p_gross_income: grossValueMoney,
+      p_taxes_paid: taxesPaidMoney,
+      p_owner_profit: isGoldMine ? ownerCutMoney : ownerCutUnits,
+      p_production: productionCount,
+    });
+  } catch { /* non-critical */ }
+
+  try {
+    await supabase.from('factory_worker_logs').insert({
+      factoryId: factory.id,
+      workerId: user.id,
+      earningsMoney,
+      earningsGold,
+      resourceType: (!isGoldMine && payMode !== 'salary' && playerResourceOutput > 0) ? factory.type : null,
+      resourceAmount: (!isGoldMine && payMode !== 'salary' && playerResourceOutput > 0) ? playerResourceOutput : 0,
+      ownerCut: isGoldMine ? ownerCutMoney : ownerCutUnits,
+    });
+  } catch { /* non-critical */ }
+
+  const educationLevel = (region?.educationIndex || 0) as number;
+  const educationBonus = educationLevel * AUTONOMY_CONFIG.INDEX_EFFECTS.education.xpBonusPerLevel;
+  const xpGain = Math.round((GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2) * (1 + educationBonus));
+  await addXP(user.id, xpGain);
+
+  let workExpGain = 0;
+  const WORK_EXP_PER_ISTRUZIONE_LEVEL = 0.5;
+  workExpGain = 1 + Math.floor((perks['ISTRUZIONE'] || 0) * WORK_EXP_PER_ISTRUZIONE_LEVEL);
+  try { await incrementPlayerWorkExperience(user.id, expResourceType, workExpGain); } catch { /* non-critical */ }
+
+  try {
+    await updateMissionProgress(user.id, 'WORK', {
+      work_times: 1,
+      earn_money: earningsMoney,
+      earn_gold: earningsGold,
+      produce_resources: playerResourceOutput > 0 ? playerResourceOutput : 0,
+      start_production: 1,
+      spend_energy: energyCost,
+    });
+    await updateMissionProgress(user.id, 'EARN_XP', { earn_xp: xpGain });
+  } catch { /* non-critical */ }
+
+  if (isGoldMine) {
+    return {
+      success: true,
+      payMode: 'gold',
+      isGoldMine: true,
+      earnings: earningsMoney,
+      goldEarnings: earningsGold,
+      taxes: taxesMoney,
+      energyCost,
+      xpGain,
+      workExpGain,
+      workExperience: workExp,
+      ownerCut: ownerCutMoney,
+    };
+  }
+
+  if (payMode === 'salary') {
+    return {
+      success: true,
+      payMode: 'salary',
+      isGoldMine: false,
+      earnings: earningsMoney,
+      taxes: taxesMoney,
+      energyCost,
+      xpGain,
+      workExpGain,
+      workExperience: workExp,
+    };
+  }
+
+  return {
+    success: true,
+    payMode: 'resource',
+    isGoldMine: false,
+    earnings: 0,
+    output: playerResourceOutput,
+    ownerShare: ownerCutUnits,
+    stateShare: stateResourceUnits,
+    taxes: 0,
+    energyCost,
+    xpGain,
+    workExpGain,
+    workExperience: workExp,
+    resourceOutput: {
+      type: factory.type,
+      player: playerResourceOutput,
+      state: stateResourceUnits,
+      ownerCut: ownerCutUnits,
+    },
+  };
 }
 
 async function performWarDeployAction(params: {

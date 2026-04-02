@@ -2633,7 +2633,9 @@ const PlayerFactoriesView = ({
       const data = await res.json();
       if (data.error) alert(data.error);
       else {
-        if (data.payMode === 'resource') {
+        if (data.payMode === 'gold') {
+          alert(`Hai lavorato! +$${data.earnings} e +${data.goldEarnings} Gold. Tasse: $${data.taxes || 0}.`);
+        } else if (data.payMode === 'resource') {
           alert(`Hai lavorato! +${data.output} ${factory?.type || 'risorse'} per te, ${data.ownerShare} al proprietario, ${data.stateShare} allo stato.`);
         } else {
           alert(`Hai lavorato! +$${data.earnings} salario.${data.output ? ` L'azienda ha prodotto ${data.output} risorse.` : ''}`);

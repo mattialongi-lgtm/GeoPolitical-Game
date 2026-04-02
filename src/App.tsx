@@ -99,6 +99,7 @@ import { ArticleEditor } from "./components/ArticleEditor";
 import { ResourceIcon } from "./components/ResourceIcon";
 import type { WarType, TroopType, WarSide } from "./types";
 import territorialBrand from "./assets/branding/territorial-brand.svg";
+import ResourceHistoryView from "./components/ResourceHistoryView";
 
 // --- Utilities ---
 const getTs = (val: any) => {
@@ -280,21 +281,24 @@ const StatCard = ({ icon: Icon, label, value, color, subValue }: { icon: any, la
 // --- Reusable Components ---
 
 const ResourceStrip = ({ user }: { user: any }) => (
-  <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100">
-    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Magazzino Risorse</p>
+  <div className="bg-white p-4 rounded-[2.5rem] shadow-sm border border-slate-100">
+    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Magazzino Risorse (Clicca per cronologia)</p>
     <div className="flex justify-between items-center gap-2 overflow-x-auto">
       {[
-        { emoji: "🪙", label: "Oro", val: user.gold || 0, color: "text-amber-600" },
-        { emoji: "🛢️", label: "Petrolio", val: user.oil || 0, color: "text-orange-600" },
-        { emoji: "🪨", label: "Minerali", val: user.minerals || 0, color: "text-slate-600" },
-        { emoji: "☢️", label: "Uranio", val: user.uranium || 0, color: "text-cyan-600" },
-        { emoji: "💎", label: "Diamanti", val: user.diamonds || 0, color: "text-purple-600" },
+        { id: "gold_ore", emoji: "🪙", label: "Oro", val: user.gold || 0, color: "text-amber-600" },
+        { id: "oil", emoji: "🛢️", label: "Petrolio", val: user.oil || 0, color: "text-orange-600" },
+        { id: "minerals", emoji: "🪨", label: "Minerali", val: user.minerals || 0, color: "text-slate-600" },
+        { id: "uranium", emoji: "☢️", label: "Uranio", val: user.uranium || 0, color: "text-cyan-600" },
+        { id: "diamonds", emoji: "💎", label: "Diamanti", val: user.diamonds || 0, color: "text-purple-600" },
+        { id: "energy_drink", emoji: "🥤", label: "Drink", val: user.energyDrinks || 0, color: "text-sky-600" },
+        { id: "liquid_oxygen", emoji: "🧊", label: "O₂ Liq.", val: user.liquidOxygen || 0, color: "text-blue-600" },
+        { id: "helium3", emoji: "⚛️", label: "He-3", val: user.helium3 || 0, color: "text-teal-600" },
       ].map(r => (
-        <div key={r.label} className="flex flex-col items-center gap-1 min-w-[56px]">
-          <span className="text-xl">{r.emoji}</span>
+        <Link key={r.id} to={`/inventory/history/${r.id}`} className="flex flex-col items-center gap-1 min-w-[56px] hover:scale-110 transition-transform cursor-pointer group">
+          <span className="text-xl group-hover:drop-shadow-md transition-all">{r.emoji}</span>
           <span className={`text-sm font-black ${r.color}`}>{r.val}</span>
-          <span className="text-[8px] font-bold text-slate-400 uppercase">{r.label}</span>
-        </div>
+          <span className="text-[8px] font-bold text-slate-400 uppercase truncate w-full text-center">{r.label}</span>
+        </Link>
       ))}
     </div>
   </div>
@@ -4674,15 +4678,15 @@ const StorageView = ({ user }: { user: any }) => {
               return inventoryEntries.map(([itemId, qty]) => {
                 const weapon = WEAPONS_CATALOG.find(w => w.id === itemId);
                 return (
-                  <div key={itemId} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center transition-all hover:bg-white hover:shadow-sm">
+                  <Link key={itemId} to={`/inventory/history/${itemId}`} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center transition-all hover:bg-white hover:shadow-md hover:border-indigo-200 group">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm border border-slate-100/50">
+                      <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shadow-sm border border-slate-100/50 group-hover:scale-110 transition-transform">
                         <ResourceIcon id={itemId} size={24} />
                       </div>
                       <span className="font-black text-slate-800 capitalize">{RESOURCE_LABELS[itemId] || weapon?.name || itemId}</span>
                     </div>
                     <span className="font-black text-indigo-600 bg-indigo-50 px-3 py-1 rounded-lg text-sm">x{qty as number}</span>
-                  </div>
+                  </Link>
                 );
               });
             })()}
@@ -5206,7 +5210,10 @@ export default function App() {
   const selectedRegion = regions.find(r => r.id === selectedRegionId);
 
   // Check if we are on a dashboard route that has its own sidebar/navigation
-  const isDashboardRoute = location.pathname.startsWith("/leader") || location.pathname.startsWith("/ministers");
+  const isDashboardRoute = 
+    location.pathname.startsWith("/leader") || 
+    location.pathname.startsWith("/ministers") ||
+    location.pathname.startsWith("/inventory/history");
 
   return (
     <div className={`min-h-screen bg-gray-950 text-gray-100 font-sans pb-24`}>
@@ -5340,12 +5347,14 @@ export default function App() {
 
       {/* Main Content */}
       <main className={`${isDashboardRoute ? 'max-w-none p-0' : 'max-w-2xl mx-auto p-6'}`}>
+        {!isDashboardRoute && <div className="mb-6"><ResourceStrip user={user} /></div>}
         <Routes>
           <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} worldStats={worldStats} navigateToCountry={navigateToCountry} />} />
           <Route path="/daily" element={<DailyTasksPage user={user} regions={regions} />} />
           <Route path="/map" element={<WorldMap onRegionClick={navigateToCountry} regions={regions} />} />
           <Route path="/market" element={<MarketView user={user} fetchData={fetchData} />} />
           <Route path="/storage" element={<StorageView user={user} />} />
+          <Route path="/inventory/history/:itemId" element={<ResourceHistoryView fetchData={fetchData} />} />
           <Route path="/produce" element={<ProduceView user={user} />} />
           <Route path="/states" element={<NationsList />} />
           <Route path="/state/:id" element={<StatePage user={user} />} />

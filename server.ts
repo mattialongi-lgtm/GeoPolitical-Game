@@ -7087,6 +7087,121 @@ app.post("/api/market/buy", authenticate, async (req: any, res) => {
   }
 });
 
+app.get("/api/inventory/history/:itemId", authenticate, async (req: any, res) => {
+  const user = req.user;
+  const { itemId } = req.params;
+  const isGold = itemId === 'gold_ore' || itemId === 'gold';
+
+  try {
+    // 1. Get current balance
+    let currentBalance = 0;
+    if (isGold) {
+      const { data: userData } = await supabase.from('users').select('gold').eq('id', user.id).single();
+      currentBalance = userData?.gold || 0;
+    } else {
+      const { data: inv } = await supabase.from('user_inventory')
+        .select('quantity')
+        .eq('userId', user.id)
+        .eq('itemId', itemId)
+        .maybeSingle();
+      currentBalance = inv?.quantity || 0;
+    }
+
+    // 2. Fetch Extractions (Work)
+    let extractions: any[] = [];
+    if (isGold) {
+      const { data: goldLogs } = await supabase.from('factory_worker_logs')
+        .select('earningsGold, workedAt, factoryId')
+        .eq('workerId', user.id)
+        .gt('earningsGold', 0)
+        .order('workedAt', { ascending: false })
+        .limit(20);
+      extractions = (goldLogs || []).map(l => ({
+        resourceAmount: l.earningsGold,
+        workedAt: l.workedAt,
+        factoryId: l.factoryId
+      }));
+    } else {
+      const { data: resLogs } = await supabase.from('factory_worker_logs')
+        .select('resourceAmount, workedAt, factoryId')
+        .eq('workerId', user.id)
+        .eq('resourceType', itemId)
+        .order('workedAt', { ascending: false })
+        .limit(20);
+      extractions = resLogs || [];
+    }
+
+    // 3. Fetch Market Purchases
+    const { data: purchases } = await supabase.from('market_transactions_log')
+      .select('quantity, timestamp, sellerId')
+      .eq('buyerId', user.id)
+      .eq('itemId', itemId)
+      .order('timestamp', { ascending: false })
+      .limit(20);
+
+    // 4. Fetch Withdrawals from Action Logs
+    const { data: actions } = await supabase.from('action_logs')
+      .select('details, timestamp')
+      .eq('userId', user.id)
+      .eq('action', 'FACTORY_WITHDRAW')
+      .order('timestamp', { ascending: false })
+      .limit(50); 
+
+    // 5. Consolidate
+    const history: any[] = [];
+
+    for (const ex of extractions) {
+      history.push({
+        type: 'scavo',
+        amount: ex.resourceAmount,
+        timestamp: ex.workedAt,
+        source: 'Lavoro in Fabbrica'
+      });
+    }
+
+    if (purchases) {
+      for (const p of purchases) {
+        history.push({
+          type: 'acquisto',
+          amount: p.quantity,
+          timestamp: new Date(Number(p.timestamp)).toISOString(),
+          source: 'Acquisto Mercato'
+        });
+      }
+    }
+
+    if (actions) {
+      for (const a of actions) {
+        try {
+          const details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
+          if (details.item === itemId) {
+            history.push({
+              type: 'ritiro',
+              amount: details.amount,
+              timestamp: new Date(Number(a.timestamp)).toISOString(),
+              source: 'Prelievo Magazzino'
+            });
+          }
+        } catch (e) {}
+      }
+    }
+
+    // Sort by timestamp descending
+    history.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    res.json({
+      success: true,
+      itemId,
+      currentBalance,
+      history: history.slice(0, 30)
+    });
+  } catch (err: any) {
+    console.error("Inventory history error:", err);
+    res.status(500).json({ error: "Errore nel caricamento della cronologia." });
+  }
+});
+
+
 app.post("/api/market/energy-drinks/buy", authenticate, async (req: any, res) => {
   const user = req.user;
   const quantity = req.body?.quantity;

@@ -55,7 +55,7 @@ export function useAppBootstrapData({
 
         if (regionsData.length > 0) {
           const independentCount = regionsData.filter((r: any) =>
-            !r.nation_id || (r.territoryStatus && r.territoryStatus !== 'STATE_ACTIVE')
+            !r.nation_id || r.territoryStatus === 'INDEPENDENT_REGION'
           ).length;
           ws = {
             ...ws,

@@ -93,6 +93,14 @@ function hashColor(id: string): string {
   return OWNER_COLORS[hash % OWNER_COLORS.length];
 }
 
+function isIndependentRegion(region: Region): boolean {
+  const territoryStatus = (region as any).territoryStatus as string | null | undefined;
+  const hasNation = Boolean((region as any).nation_id);
+
+  if (!hasNation) return true;
+  return territoryStatus === "INDEPENDENT_REGION";
+}
+
 interface TooltipInfo {
   name: string;
   iso2: string;
@@ -194,9 +202,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
 
     regionByIso.forEach((region, iso2) => {
       if (mapMode === "political") {
-        const isIndependent =
-          !(region as any).nation_id ||
-          ((region as any).territoryStatus && (region as any).territoryStatus !== "STATE_ACTIVE");
+        const isIndependent = isIndependentRegion(region);
 
         // Regioni indipendenti: grigio neutro (finché non diventano Stati veri)
         if (isIndependent) {
@@ -216,9 +222,7 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
           map.set(iso2, DEFAULT_FILL);
         }
       } else if (mapMode === "government") {
-        const isIndependent =
-          !(region as any).nation_id ||
-          ((region as any).territoryStatus && (region as any).territoryStatus !== "STATE_ACTIVE");
+        const isIndependent = isIndependentRegion(region);
         const form = isIndependent ? "INDEPENDENT_REGION" : (region.governmentForm || "PARLIAMENTARY_REPUBLIC");
         map.set(iso2, GOV_COLORS[form] || DEFAULT_FILL);
       }

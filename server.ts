@@ -12290,15 +12290,24 @@ async function checkAndResolveWars() {
 
             if (attackerRegion) {
               const conquestLeader = attackerRegion.leaderUserId || attackerRegion.ownerUserId;
+              const conquestNationId = attackerRegion.nation_id || war.attackerCountryIso2;
+              const nowIso = new Date().toISOString();
               await supabase.from('regions').update({
                 ownerUserId: conquestLeader,
                 leaderUserId: conquestLeader,
-                nation_id: attackerRegion.nation_id || war.attackerCountryIso2,
+                nation_id: conquestNationId,
                 stateColor: attackerRegion.stateColor,
                 governmentForm: attackerRegion.governmentForm,
                 leaderTitle: attackerRegion.leaderTitle,
                 dictatorship: attackerRegion.dictatorship,
                 stability: 30,
+                territoryStatus: 'STATE_ACTIVE',
+                independentAt: null,
+                parliamentaryElectionStartedAt: null,
+                presidentialElectionStartedAt: null,
+                presidentialElectionClosesAt: null,
+                stateActivatedAt: null,
+                updatedAt: nowIso,
               }).eq('id', war.defenderRegionId);
 
               console.log(`[WAR] ${war.attackerCountryIso2} CONQUERED ${war.defenderRegionId}`);

@@ -12,6 +12,11 @@ export function isWarStatsResponse(payload: unknown): boolean {
   return Array.isArray(payload.stats.attacker) && Array.isArray(payload.stats.defender);
 }
 
+export function isPlayerDamageSummaryResponse(payload: unknown): boolean {
+  if (!isObject(payload)) return false;
+  return typeof payload.totalDamage === 'number' && Array.isArray(payload.wars);
+}
+
 export function isDailyMissionClaimSuccess(payload: unknown): boolean {
   if (!isObject(payload)) return false;
   return payload.success === true && typeof payload.mission_key === 'string' && isObject(payload.reward);

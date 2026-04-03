@@ -1,5 +1,5 @@
 import { WarService } from '../services/war.service';
-import { isWarsListResponse, isWarStatsResponse } from '../observability/contract-guards';
+import { isPlayerDamageSummaryResponse, isWarsListResponse, isWarStatsResponse } from '../observability/contract-guards';
 import { mapServiceResultToHttp } from '../services/http-result.mapper';
 
 export class WarController {
@@ -33,6 +33,20 @@ export class WarController {
       return res.status(500).json({ error: 'Errore nel caricamento statistiche guerra.' });
     }
   };
+
+  getPlayerDamageSummary = async (req: any, res: any) => {
+    try {
+      const data = await this.warService.getPlayerDamageSummary(req.user.id);
+      if (!isPlayerDamageSummaryResponse(data)) {
+        console.error('[ContractViolation] GET /api/wars/player-damage-summary unexpected payload shape', { userId: req.user.id });
+      }
+      return res.json(data);
+    } catch (err) {
+      console.error('[Wars] getPlayerDamageSummary error:', err);
+      return res.status(500).json({ error: 'Errore nel caricamento del riepilogo danni.' });
+    }
+  };
+
   validateWarTypes = async (req: any, res: any) => {
     try {
       const { attacker, defender } = req.query || {};

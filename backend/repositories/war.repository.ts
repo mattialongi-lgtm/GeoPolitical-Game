@@ -47,6 +47,16 @@ export class WarRepository {
     return data || [];
   }
 
+  async getDamageParticipantsByUser(userId: string) {
+    const { data } = await this.supabase
+      .from('war_participants')
+      .select('warId, totalDamage, side')
+      .eq('userId', userId)
+      .gt('totalDamage', 0);
+
+    return data || [];
+  }
+
   async getUsersByIds(userIds: string[]) {
     if (userIds.length === 0) return [];
 
@@ -63,6 +73,28 @@ export class WarRepository {
       .from('action_logs')
       .select('*')
       .eq('action', 'WAR_DEPLOY');
+
+    return data || [];
+  }
+
+  async getUserWarDeployLogs(userId: string) {
+    const { data } = await this.supabase
+      .from('action_logs')
+      .select('userId, details, timestamp')
+      .eq('action', 'WAR_DEPLOY')
+      .eq('userId', userId)
+      .order('timestamp', { ascending: false });
+
+    return data || [];
+  }
+
+  async getWarsByIds(warIds: string[]) {
+    if (warIds.length === 0) return [];
+
+    const { data } = await this.supabase
+      .from('wars')
+      .select('*')
+      .in('id', warIds);
 
     return data || [];
   }

@@ -23,6 +23,7 @@ export function registerWarRoutes({
   app.get('/api/wars', authenticate, warController.listWars);
   app.get('/api/wars/validation', authenticate, warController.validateWarTypes);
   app.get('/api/wars/targets/:attackerRegionId', authenticate, warController.getValidTargets);
+  app.get('/api/wars/player-damage-summary', authenticate, warController.getPlayerDamageSummary);
   app.get('/api/wars/:id/stats', authenticate, warController.getWarStats);
   app.post('/api/wars/create', authenticate, warController.createWar);
   app.post('/api/wars/deploy-troops', authenticate, warController.deployTroops);

@@ -218,6 +218,89 @@ export class WarService {
     };
   }
 
+  async getPlayerDamageSummary(userId: string) {
+    const damageByWarId: Record<string, { warId: string; totalDamage: number; side: 'attacker' | 'defender' | null }> = {};
+
+    const participants = await this.warRepository.getDamageParticipantsByUser(userId);
+    for (const participant of participants) {
+      const warId = participant?.warId;
+      if (!warId) continue;
+
+      damageByWarId[warId] = {
+        warId,
+        totalDamage: Number(participant?.totalDamage) || 0,
+        side: participant?.side || null,
+      };
+    }
+
+    const participantWarIds = new Set(Object.keys(damageByWarId));
+    const logs = await this.warRepository.getUserWarDeployLogs(userId);
+
+    for (const log of logs || []) {
+      try {
+        const details = typeof log.details === 'string' ? JSON.parse(log.details) : log.details;
+        const warId = details?.warId;
+        const damage = Number(details?.damage) || 0;
+        if (!warId || damage <= 0) continue;
+
+        if (!damageByWarId[warId]) {
+          damageByWarId[warId] = {
+            warId,
+            totalDamage: 0,
+            side: details?.side || null,
+          };
+        }
+
+        if (!participantWarIds.has(warId)) {
+          damageByWarId[warId].totalDamage += damage;
+        }
+      } catch {
+        // Ignore malformed legacy logs.
+      }
+    }
+
+    const warIds = Object.keys(damageByWarId).filter((warId) => (damageByWarId[warId]?.totalDamage || 0) > 0);
+    if (warIds.length === 0) {
+      return { totalDamage: 0, wars: [] };
+    }
+
+    const [wars, regions, nations] = await Promise.all([
+      this.warRepository.getWarsByIds(warIds),
+      this.warRepository.getAllRegionsDetailed(),
+      this.warRepository.getAllNationsBasic(),
+    ]);
+
+    const regionMap: Record<string, any> = {};
+    (regions || []).forEach((region: any) => { regionMap[region.id] = region; });
+    const nationMap: Record<string, any> = {};
+    (nations || []).forEach((nation: any) => { nationMap[nation.id] = nation; });
+    const warMap: Record<string, any> = {};
+    (wars || []).forEach((war: any) => { warMap[war.id] = enrichWar(war, regionMap, nationMap); });
+
+    const warSummaries = warIds.map((warId) => {
+      const summary = damageByWarId[warId];
+      const war = warMap[warId];
+      const attackerName = war?.attackerDisplayName || war?.attackerCountryIso2 || null;
+      const defenderName = war?.defenderDisplayName || war?.defenderCountryIso2 || null;
+      const warLabel = attackerName && defenderName ? `${attackerName} vs ${defenderName}` : warId;
+
+      return {
+        warId,
+        warLabel,
+        totalDamage: summary.totalDamage,
+        side: summary.side,
+        status: war?.status || null,
+        attackerDisplayName: attackerName,
+        defenderDisplayName: defenderName,
+      };
+    }).sort((a, b) => b.totalDamage - a.totalDamage);
+
+    return {
+      totalDamage: warSummaries.reduce((sum, war) => sum + (war.totalDamage || 0), 0),
+      wars: warSummaries,
+    };
+  }
+
   async createWar(input: CreateWarInput) {
     return executeWarCreateUseCase(this.warRepository, this.deps, input);
   }

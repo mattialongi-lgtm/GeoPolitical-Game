@@ -907,6 +907,37 @@ app.get("/api/players/:id", authenticate, async (req: any, res) => {
       console.log(`[ProfileRequest] Player ${req.params.id} NOT FOUND in users table. Supabase error:`, error?.message);
       return res.status(404).json({ error: "Giocatore non trovato" });
     }
+
+    // Attach party membership (name/logo) for public profile.
+    try {
+      const { data: membership } = await supabase
+        .from('party_members')
+        .select('partyId, parties(name, logo)')
+        .eq('userId', player.id)
+        .maybeSingle() as any;
+
+      if (membership) {
+        player.partyId = membership.partyId;
+        player.partyName = membership.parties?.name;
+        player.partyLogo = membership.parties?.logo;
+      }
+    } catch (partyErr) {
+      console.error("[ProfileRequest] Error loading party membership:", partyErr);
+    }
+
+    // Attach perks and upgrade queue for public profile.
+    try {
+      player.perks = await getUserPerks(player.id);
+    } catch (perkErr) {
+      console.error("[ProfileRequest] Error loading perks:", perkErr);
+      player.perks = {};
+    }
+    try {
+      player.perkUpgrades = JSON.parse(player.perkUpgradesJson || '{}');
+    } catch {
+      player.perkUpgrades = {};
+    }
+
     console.log(`[ProfileRequest] Player FOUND: ${player.username}, sending data...`);
     // Remove sensitive data
     delete player.email;
@@ -1616,7 +1647,7 @@ app.get("/api/regions", authenticate, async (req, res) => {
       .from('regions')
       .select(`
         *,
-        owner:users!ownerUserId(username),
+        owner:users!ownerUserId(username, avatarData),
         leader:users!leaderUserId(username, level, avatarData)
       `);
 
@@ -1638,6 +1669,7 @@ app.get("/api/regions", authenticate, async (req, res) => {
     const formatted = (regions || []).map(r => ({
       ...r,
       ownerName: r.owner?.username,
+      ownerAvatarData: r.owner?.avatarData || null,
       leaderName: r.leader?.username,
       leaderLevel: r.leader?.level,
       playerCount: playerRegionCounts[r.id] || 0
@@ -1658,10 +1690,11 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
       .from('regions')
       .select(`
         *,
-        owner:users!ownerUserId(username),
+        owner:users!ownerUserId(username, avatarData),
         leader:users!leaderUserId(username, level, avatarData),
         governor:users!governorPlayerId(username),
-        economicAdviser:users!economicAdviserId(username),
+        economicAdviser:users!economicAdviserId(username, avatarData),
+        foreignMinister:users!foreignMinisterId(username, avatarData),
         nation:nations(*),
         factories:factories(count)
       `)
@@ -1691,11 +1724,15 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
     res.json({
       ...region,
       ownerName: region.owner?.username,
+      ownerAvatarData: region.owner?.avatarData || null,
       leaderName: region.leader?.username,
       leaderLevel: region.leader?.level,
       leaderAvatarData: region.leader?.avatarData || null,
       governorName: region.governor?.username || null,
       economicAdviserName: region.economicAdviser?.username || null,
+      economicAdviserAvatarData: region.economicAdviser?.avatarData || null,
+      foreignMinisterName: region.foreignMinister?.username || null,
+      foreignMinisterAvatarData: region.foreignMinister?.avatarData || null,
       citizenCount: memberPlayerCounts[regionId] || 0,
       memberRegions: (memberRegions || []).map(mr => ({
         ...mr,
@@ -1719,9 +1756,11 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       .from('regions')
       .select(`
         *,
-        owner:users!ownerUserId(username),
+        owner:users!ownerUserId(username, avatarData),
         leader:users!leaderUserId(username, level, avatarData),
         governor:users!governorPlayerId(username),
+        economicAdviser:users!economicAdviserId(username, avatarData),
+        foreignMinister:users!foreignMinisterId(username, avatarData),
         nation:nations(*)
       `)
       .eq('id', isoId)
@@ -1784,10 +1823,15 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       ...gameStats,
       ...region,
       ownerName: region.owner?.username,
+      ownerAvatarData: region.owner?.avatarData || null,
       leaderName: region.leader?.username,
       leaderLevel: region.leader?.level,
       leaderAvatarData: region.leader?.avatarData || null,
       governorName: region.governor?.username || null,
+      economicAdviserName: region.economicAdviser?.username || null,
+      economicAdviserAvatarData: region.economicAdviser?.avatarData || null,
+      foreignMinisterName: region.foreignMinister?.username || null,
+      foreignMinisterAvatarData: region.foreignMinister?.avatarData || null,
       citizenCount: citizenCount || 0,
       residentCount: residentCount || 0,
       memberRegions: (memberRegions || []).map(mr => ({
@@ -3279,7 +3323,7 @@ app.get("/api/ministers/:iso2", authenticate, async (req: any, res) => {
 
   const { data: ministers, error } = await supabase
     .from('ministers')
-    .select('*, users(username)')
+    .select('*, users(username, avatarData)')
     .or(`stateId.eq.${iso2},stateId.eq.nation_${iso2}`)
     .eq('status', 'ACTIVE');
 
@@ -3291,7 +3335,8 @@ app.get("/api/ministers/:iso2", authenticate, async (req: any, res) => {
   // Format for backward compatibility if needed (users property to username)
   const formattedMinisters = ministers?.map((m: any) => ({
     ...m,
-    username: m.users?.username
+    username: m.users?.username,
+    avatarData: m.users?.avatarData || null
   }));
 
   res.json({ ministers: formattedMinisters, wages: { economics: wageEconomics, foreign: wageForeign } });

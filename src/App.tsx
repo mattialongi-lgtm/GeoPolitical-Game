@@ -7,7 +7,6 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
   Globe,
   User as UserIcon,
-  TrendingUp,
   Shield,
   Zap,
   DollarSign,
@@ -3638,7 +3637,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   const [agreementTargetId, setAgreementTargetId] = useState("");
   const [allRegions, setAllRegions] = useState<{ id: string; name: string }[]>([]);
   const [sanctions, setSanctions] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'info' | 'government' | 'leader' | 'resources' | 'autonomy'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'government' | 'resources' | 'autonomy'>('info');
   const [regionFactories, setRegionFactories] = useState<any[]>([]);
   const [autonomyData, setAutonomyData] = useState<any>(null);
 
@@ -3830,14 +3829,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
             >
               Governo
             </button>
-            {region.ownerUserId && (
-              <button
-                onClick={() => setActiveTab('leader')}
-                className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'leader' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
-              >
-                Leader
-              </button>
-            )}
             <button
               onClick={() => setActiveTab('resources')}
               className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'resources' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
@@ -3885,51 +3876,71 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
             </div>
           )}
 
-          {activeTab === 'leader' && (
-            <div className="space-y-4">
-              <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-                <h3 className="text-lg font-black uppercase text-indigo-900 mb-4 flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-indigo-600" /> Capo di Stato
-                </h3>
-                {region.leaderUserId ? (
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center overflow-hidden">
-                      {leaderAvatar ? (
-                        <img src={leaderAvatar} alt={region.leaderName || 'Leader'} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-sm font-black text-indigo-700">{leaderInitial}</span>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-sm font-black text-slate-900">{region.leaderName || 'Leader dello Stato'}</p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm font-bold text-slate-400">Nessun leader attivo in questo Stato.</p>
-                )}
-
-                <div className="mt-6 flex flex-col gap-2">
-                  <button
-                    onClick={() => navigate(`/leader/${(iso2 || '').toUpperCase()}`)}
-                    className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
-                  >
-                    <Crown className="w-4 h-4" /> Pagina Leader & Elezioni
-                  </button>
-                  <button
-                    onClick={() => navigate(`/ministers/${(iso2 || '').toUpperCase()}`)}
-                    className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
-                  >
-                    <Briefcase className="w-4 h-4" /> Ministri & Incarichi
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
       {activeTab === 'government' ? (
-        <GovernmentView region={region} currentUser={user} onUpdate={fetchCountryDetail} />
+        <div className="space-y-4 px-4">
+          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
+              <h3 className="text-lg font-black uppercase text-indigo-900 mb-4 flex items-center gap-2">
+                <Crown className="w-5 h-5 text-indigo-600" /> Capo di Stato
+              </h3>
+              {region.leaderUserId ? (
+                <div className="flex items-center gap-4">
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => navigate(`/profile/${region.leaderUserId}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") navigate(`/profile/${region.leaderUserId}`);
+                    }}
+                    className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center overflow-hidden cursor-pointer"
+                    title="Apri profilo"
+                    aria-label="Apri profilo"
+                  >
+                    {leaderAvatar ? (
+                      <img src={leaderAvatar} alt={region.leaderName || 'Leader'} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-sm font-black text-indigo-700">{leaderInitial}</span>
+                    )}
+                  </div>
+                  <div>
+                    <p
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/profile/${region.leaderUserId}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") navigate(`/profile/${region.leaderUserId}`);
+                      }}
+                      className="text-sm font-black text-slate-900 cursor-pointer"
+                      title="Apri profilo"
+                      aria-label="Apri profilo"
+                    >
+                      {region.leaderName || 'Leader dello Stato'}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm font-bold text-slate-400">Nessun leader attivo in questo Stato.</p>
+              )}
+
+              <div className="mt-6 flex flex-col gap-2">
+                <button
+                  onClick={() => navigate(`/leader/${(iso2 || '').toUpperCase()}`)}
+                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
+                >
+                  <Crown className="w-4 h-4" /> Pagina Leader & Elezioni
+                </button>
+                <button
+                  onClick={() => navigate(`/ministers/${(iso2 || '').toUpperCase()}`)}
+                  className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Briefcase className="w-4 h-4" /> Ministri & Incarichi
+                </button>
+              </div>
+            </div>
+          <GovernmentView region={region} currentUser={user} onUpdate={fetchCountryDetail} />
+        </div>
       ) : activeTab === 'resources' ? (
         <div className="space-y-4">
           {/* Link to Advanced Extraction Dashboard */}
@@ -4370,41 +4381,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
           {/* Budget e Finanze di Stato */}
           <BudgetView regionId={region.id} user={user} isLeader={region.ownerUserId === user?.id} />
 
-          {/* Actions */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-            <h3 className="text-lg font-black uppercase tracking-tight">Azioni Regionali</h3>
-            <div className="grid grid-cols-1 gap-3">
-              <button
-                onClick={() => handleActionWithRefresh("invest", { regionId: region.id })}
-                disabled={actionLoading || (user?.money || 0) < GAME_CONFIG.INVEST_MONEY_COST}
-                className="flex items-center justify-between p-5 rounded-3xl bg-emerald-50 border border-emerald-100 hover:bg-emerald-100 transition-all disabled:opacity-50"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-white rounded-2xl shadow-sm"><TrendingUp className="w-5 h-5 text-emerald-600" /></div>
-                  <div className="text-left">
-                    <p className="font-black text-emerald-900 leading-none">Investi</p>
-                    <p className="text-[10px] font-bold text-emerald-600 mt-1 uppercase">Sviluppa Economia & Stabilità</p>
-                  </div>
-                </div>
-                <span className="font-black text-emerald-700">-${GAME_CONFIG.INVEST_MONEY_COST}</span>
-              </button>
-
-              <button
-                onClick={() => handleActionWithRefresh("propaganda", { regionId: region.id })}
-                disabled={actionLoading || (user?.energy || 0) < GAME_CONFIG.PROPAGANDA_ENERGY_COST}
-                className="flex items-center justify-between p-5 rounded-3xl bg-indigo-50 border border-indigo-100 hover:bg-indigo-100 transition-all disabled:opacity-50"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-white rounded-2xl shadow-sm"><LogOut className="w-5 h-5 text-indigo-600 rotate-180" /></div>
-                  <div className="text-left">
-                    <p className="font-black text-indigo-900 leading-none">Propaganda</p>
-                    <p className="text-[10px] font-bold text-indigo-600 mt-1 uppercase">Aumenta Stabilità</p>
-                  </div>
-                </div>
-                <span className="font-black text-indigo-700">-{GAME_CONFIG.PROPAGANDA_ENERGY_COST}⚡</span>
-              </button>
-            </div>
-          </div>
+          {/* Actions removed by request */}
         </>
       )}
     </motion.div>
@@ -6665,6 +6642,10 @@ const RechargeResourcePanel = ({ regionId, user }: { regionId: string; user: any
 
 // ── Deep Exploration Panel ──────────────────────────────────────
 const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string }) => {
+  const deepResourceTypes = useMemo(
+    () => RESOURCE_TYPES.filter(rt => !['liquid_oxygen', 'helium3', 'energy_drink', 'energy', 'food', 'steel', 'gas'].includes(rt)),
+    []
+  );
   const [levels, setLevels] = useState<any[]>([]);
   const [active, setActive] = useState<any>(null);
   const [selectedResource, setSelectedResource] = useState<string>('oil');
@@ -6683,13 +6664,16 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
         setActive(data.active);
         setLevels(data.levels || []);
         if (data.levels?.length > 0) setSelectedLevel(data.levels[0].level);
+        if (!deepResourceTypes.includes(selectedResource as any)) {
+          setSelectedResource(deepResourceTypes[0] || 'oil');
+        }
       } catch (err: any) {
         console.error(err);
       } finally {
         setLoading(false);
       }
     })();
-  }, [nationId]);
+  }, [nationId, deepResourceTypes, selectedResource]);
 
   const computeCost = useCallback(async () => {
     if (!selectedResource || !selectedLevel || !nationId) return;
@@ -6782,7 +6766,7 @@ const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: string 
           <div>
             <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Risorsa Target</label>
             <div className="flex gap-2 flex-wrap">
-              {RESOURCE_TYPES.map(rt => (
+              {deepResourceTypes.map(rt => (
                 <button
                   key={rt}
                   onClick={() => setSelectedResource(rt)}

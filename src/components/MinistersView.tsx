@@ -24,6 +24,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 interface Minister {
     userId: string;
     username: string;
+    avatarData?: string | null;
     role: 'economics' | 'foreign';
     title: string;
     assignedAt: number;
@@ -256,8 +257,22 @@ export const MinistersView: React.FC<{ user: any; fetchData?: () => any }> = ({ 
                             <div className="p-8 text-center space-y-4">
                                 {econMin ? (
                                     <>
-                                        <div className="w-20 h-20 bg-slate-700 rounded-full mx-auto flex items-center justify-center text-slate-400 border-4 border-slate-800 shadow-xl">
-                                            <User className="w-10 h-10" />
+                                        <div
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => navigate(`/profile/${econMin.userId}`)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter" || e.key === " ") navigate(`/profile/${econMin.userId}`);
+                                            }}
+                                            className="w-20 h-20 bg-slate-700 rounded-full mx-auto flex items-center justify-center text-slate-400 border-4 border-slate-800 shadow-xl overflow-hidden cursor-pointer"
+                                            title="Apri profilo"
+                                            aria-label="Apri profilo"
+                                        >
+                                            {econMin.avatarData ? (
+                                                <img src={econMin.avatarData} alt={econMin.username} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <User className="w-10 h-10" />
+                                            )}
                                         </div>
                                         <div>
                                             <p className="text-xl font-black text-white">{econMin.username}</p>
@@ -293,8 +308,22 @@ export const MinistersView: React.FC<{ user: any; fetchData?: () => any }> = ({ 
                                     <div className="py-8 text-rose-400/60 font-bold text-sm">Carica non disponibile in questo regime.</div>
                                 ) : foreignMin ? (
                                     <>
-                                        <div className="w-20 h-20 bg-slate-700 rounded-full mx-auto flex items-center justify-center text-slate-400 border-4 border-slate-800 shadow-xl">
-                                            <User className="w-10 h-10" />
+                                        <div
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => navigate(`/profile/${foreignMin.userId}`)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === "Enter" || e.key === " ") navigate(`/profile/${foreignMin.userId}`);
+                                            }}
+                                            className="w-20 h-20 bg-slate-700 rounded-full mx-auto flex items-center justify-center text-slate-400 border-4 border-slate-800 shadow-xl overflow-hidden cursor-pointer"
+                                            title="Apri profilo"
+                                            aria-label="Apri profilo"
+                                        >
+                                            {foreignMin.avatarData ? (
+                                                <img src={foreignMin.avatarData} alt={foreignMin.username} className="w-full h-full object-cover" />
+                                            ) : (
+                                                <User className="w-10 h-10" />
+                                            )}
                                         </div>
                                         <div>
                                             <p className="text-xl font-black text-white">{foreignMin.username}</p>

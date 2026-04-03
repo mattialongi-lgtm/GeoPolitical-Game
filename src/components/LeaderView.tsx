@@ -37,6 +37,7 @@ interface Region {
     stateColor: string;
     stateHymn: string;
     nextLeaderElectionAt: number | null;
+    leaderAvatarData?: string | null;
     economicAdviserId: string | null;
     foreignMinisterId: string | null;
     nation: {
@@ -300,7 +301,17 @@ export const LeaderView: React.FC<{ regionId?: string; user: any; fetchData?: ()
                             <p className="text-xs text-slate-400 font-bold">{user?.username}</p>
                             <p className="text-[10px] text-indigo-400 font-black uppercase">Livello {user?.level || 1}</p>
                         </div>
-                        <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 overflow-hidden">
+                        <div
+                            role="button"
+                            tabIndex={0}
+                            onClick={() => navigate("/profile")}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") navigate("/profile");
+                            }}
+                            className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-500 overflow-hidden transition hover:border-indigo-400/70 hover:text-indigo-200 cursor-pointer relative z-10 pointer-events-auto"
+                            title="Apri profilo"
+                            aria-label="Apri profilo"
+                        >
                             {user?.avatarData ? <img src={user.avatarData} alt="" className="w-full h-full object-cover" /> : <User />}
                         </div>
                     </div>
@@ -343,12 +354,15 @@ export const LeaderView: React.FC<{ regionId?: string; user: any; fetchData?: ()
                                         <div className="bg-slate-800/30 p-6 rounded-2xl border border-slate-700/30 hover:bg-slate-800/50 transition-all">
                                             <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mb-2">Leader Attuale</p>
                                             <div className="flex items-center gap-3">
-                                                <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-500">
-                                                    <User className="w-4 h-4" />
+                                                <div className="w-9 h-9 rounded-full bg-indigo-500/20 text-indigo-500 border border-indigo-500/30 overflow-hidden flex items-center justify-center">
+                                                    {region.leaderAvatarData ? (
+                                                        <img src={region.leaderAvatarData} alt={region.leaderName || 'Leader'} className="w-full h-full object-cover" />
+                                                    ) : (
+                                                        <User className="w-4 h-4" />
+                                                    )}
                                                 </div>
                                                 <div>
                                                     <p className="text-lg font-black text-white uppercase tracking-tighter">{region.leaderName || 'VACANTE'}</p>
-                                                    <p className="text-[9px] text-slate-500 font-mono">ID: {region.leaderUserId || 'N/A'}</p>
                                                 </div>
                                             </div>
                                         </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Shield, Crown, Building2, UserCog, User, AlertTriangle, ArrowRightLeft } from 'lucide-react';
 import { Region, User as UserType } from '../types';
+import { useNavigate } from 'react-router-dom';
 
 interface GovernmentViewProps {
     region: Region;
@@ -48,6 +49,7 @@ const GOVERNMENT_INFO: Record<string, { title: string, description: string, icon
 };
 
 export const GovernmentView = ({ region, currentUser, onUpdate }: GovernmentViewProps) => {
+    const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -131,8 +133,23 @@ export const GovernmentView = ({ region, currentUser, onUpdate }: GovernmentView
                     {/* Leader */}
                     <div className="p-4 bg-slate-900/50 rounded-lg flex items-center justify-between border border-emerald-500/20">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                                <Crown className="w-5 h-5 text-emerald-400" />
+                            <div
+                                role="button"
+                                tabIndex={region.ownerUserId ? 0 : -1}
+                                onClick={() => region.ownerUserId && navigate(`/profile/${region.ownerUserId}`)}
+                                onKeyDown={(e) => {
+                                    if (!region.ownerUserId) return;
+                                    if (e.key === "Enter" || e.key === " ") navigate(`/profile/${region.ownerUserId}`);
+                                }}
+                                className={`w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center overflow-hidden border border-emerald-500/30 ${region.ownerUserId ? 'cursor-pointer' : ''}`}
+                                title={region.ownerUserId ? "Apri profilo" : undefined}
+                                aria-label={region.ownerUserId ? "Apri profilo" : undefined}
+                            >
+                                {region.ownerAvatarData ? (
+                                    <img src={region.ownerAvatarData} alt={region.ownerName || 'Leader'} className="w-full h-full object-cover" />
+                                ) : (
+                                    <Crown className="w-5 h-5 text-emerald-400" />
+                                )}
                             </div>
                             <div>
                                 <p className="font-medium text-emerald-400">
@@ -149,13 +166,28 @@ export const GovernmentView = ({ region, currentUser, onUpdate }: GovernmentView
                     {/* Economic Adviser */}
                     <div className="p-4 bg-slate-900/50 rounded-lg flex items-center justify-between border border-slate-700">
                         <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center">
-                                <User className="w-5 h-5 text-blue-400" />
+                            <div
+                                role="button"
+                                tabIndex={region.economicAdviserId ? 0 : -1}
+                                onClick={() => region.economicAdviserId && navigate(`/profile/${region.economicAdviserId}`)}
+                                onKeyDown={(e) => {
+                                    if (!region.economicAdviserId) return;
+                                    if (e.key === "Enter" || e.key === " ") navigate(`/profile/${region.economicAdviserId}`);
+                                }}
+                                className={`w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center overflow-hidden border border-blue-500/30 ${region.economicAdviserId ? 'cursor-pointer' : ''}`}
+                                title={region.economicAdviserId ? "Apri profilo" : undefined}
+                                aria-label={region.economicAdviserId ? "Apri profilo" : undefined}
+                            >
+                                {region.economicAdviserAvatarData ? (
+                                    <img src={region.economicAdviserAvatarData} alt={region.economicAdviserName || 'Consigliere Economico'} className="w-full h-full object-cover" />
+                                ) : (
+                                    <User className="w-5 h-5 text-blue-400" />
+                                )}
                             </div>
                             <div>
                                 <p className="font-medium text-blue-400">Consigliere Economico</p>
                                 <p className="text-sm text-slate-300">
-                                    {region.economicAdviserId ? `ID Utente: ${region.economicAdviserId}` : 'Nessuno assegnato'}
+                                    {region.economicAdviserId ? (region.economicAdviserName || 'Incaricato') : 'Nessuno assegnato'}
                                 </p>
                             </div>
                         </div>
@@ -177,13 +209,28 @@ export const GovernmentView = ({ region, currentUser, onUpdate }: GovernmentView
                     {!isAutocracy && (
                         <div className="p-4 bg-slate-900/50 rounded-lg flex items-center justify-between border border-slate-700">
                             <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center">
-                                    <User className="w-5 h-5 text-purple-400" />
+                                <div
+                                    role="button"
+                                    tabIndex={region.foreignMinisterId ? 0 : -1}
+                                    onClick={() => region.foreignMinisterId && navigate(`/profile/${region.foreignMinisterId}`)}
+                                    onKeyDown={(e) => {
+                                        if (!region.foreignMinisterId) return;
+                                        if (e.key === "Enter" || e.key === " ") navigate(`/profile/${region.foreignMinisterId}`);
+                                    }}
+                                    className={`w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center overflow-hidden border border-purple-500/30 ${region.foreignMinisterId ? 'cursor-pointer' : ''}`}
+                                    title={region.foreignMinisterId ? "Apri profilo" : undefined}
+                                    aria-label={region.foreignMinisterId ? "Apri profilo" : undefined}
+                                >
+                                    {region.foreignMinisterAvatarData ? (
+                                        <img src={region.foreignMinisterAvatarData} alt={region.foreignMinisterName || 'Ministro degli Esteri'} className="w-full h-full object-cover" />
+                                    ) : (
+                                        <User className="w-5 h-5 text-purple-400" />
+                                    )}
                                 </div>
                                 <div>
                                     <p className="font-medium text-purple-400">Ministro degli Esteri</p>
                                     <p className="text-sm text-slate-300">
-                                        {region.foreignMinisterId ? `ID Utente: ${region.foreignMinisterId}` : 'Nessuno assegnato'}
+                                        {region.foreignMinisterId ? (region.foreignMinisterName || 'Incaricato') : 'Nessuno assegnato'}
                                     </p>
                                 </div>
                             </div>

@@ -57,6 +57,7 @@ export interface Region {
   economyLevel: number; // 1-10
   ownerUserId: string | null;
   ownerName: string | null;
+  ownerAvatarData?: string | null;
   leaderUserId: string | null;
   leaderName: string | null;
   leaderLevel: number | null;
@@ -69,6 +70,10 @@ export interface Region {
   governmentForm: 'PARLIAMENTARY_REPUBLIC' | 'PRESIDENTIAL_REPUBLIC' | 'DOMINANT_PARTY' | 'DICTATORSHIP' | 'ONE_PARTY_SYSTEM' | 'EXECUTIVE_MONARCHY';
   economicAdviserId: string | null;
   foreignMinisterId: string | null;
+  economicAdviserName?: string | null;
+  economicAdviserAvatarData?: string | null;
+  foreignMinisterName?: string | null;
+  foreignMinisterAvatarData?: string | null;
   dictatorshipAttempts: number;
   nation_id?: string | null;
   territoryStatus?: 'INDEPENDENT_REGION' | 'PARLIAMENTARY_ELECTION' | 'PRESIDENTIAL_ELECTION' | 'STATE_ACTIVE' | string | null;

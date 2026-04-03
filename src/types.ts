@@ -1098,6 +1098,8 @@ export const EXTRACTION_CONFIG = {
   // ── Gold special: money generated per unit of gold produced ──
   // Derived from base game economy ratio for gold-to-currency conversion.
   GOLD_TO_MONEY_COEFFICIENT: 3.538975,
+  GOLD_BASE_REWARD_PER_DIG: 30,
+  GOLD_HEALTH_BONUS_PER_LEVEL: 0.05,
 
   // ── Regional consumption coefficients (separate from player profit) ──
   // Formula: (LINEAR_COEFF * factoryLevel) + BASE_OFFSET
@@ -1153,6 +1155,10 @@ export interface ExtractionBreakdown {
   autonomyAmount: number;
   // Gold special
   moneyGenerated: number;
+  goldGenerated: number;
+  goldBaseReward: number;
+  goldHealthMultiplier: number;
+  regionHealthIndex: number;
   // Region status
   regionCapMax: number;
   regionDeepBonus: number;

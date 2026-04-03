@@ -205,6 +205,18 @@ export default function ExtractionDashboard({ user }: ExtractionDashboardProps) 
                 </div>
                 <p className="text-[9px] font-bold text-right text-slate-400">{usagePercent}% consumato</p>
               </div>
+              {rt === 'gold_ore' ? (
+                <div className="bg-amber-50 px-3 py-2 rounded-xl border border-amber-100">
+                  <p className="text-[10px] font-black text-amber-700">Solo l'oro restituisce Gold premium.</p>
+                  <p className="text-[9px] font-bold text-amber-600">Base 30 per scavata a salute 1, con bonus crescente sulla salute della regione.</p>
+                </div>
+              ) : (
+                ['oil', 'minerals', 'uranium', 'diamonds'].includes(rt) ? (
+                  <div className="bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                    <p className="text-[9px] font-bold text-slate-600">Risorsa estrattiva: consuma energia e non restituisce Gold premium.</p>
+                  </div>
+                ) : null
+              )}
 
               {/* Analytics 24h */}
               {analytics.extractionCount > 0 && (

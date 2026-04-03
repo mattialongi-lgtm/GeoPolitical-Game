@@ -96,6 +96,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
         if (data.moneyGenerated > 0) msg += ` (+€${data.moneyGenerated} valuta)`;
         msg += `\n⚡ Energia: -${data.energyCost}`;
         msg += `\n📊 EXP lavoro: ${data.workExperience}`;
+        if (data.goldGenerated > 0) msg += ` (+${data.goldGenerated} Gold premium)`;
         alert(msg);
         fetchData();
         await load();
@@ -223,6 +224,10 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
   const storageCap = factory.storageCapacity || factoryStorageLimit(factory.type, level);
   const storagePercent = factory.storagePercent || 0;
   const currentStorage = factory.currentStorage || 0;
+  const goldBaseReward = Math.max(1, Math.floor(Number(extractionBreakdown?.breakdown?.goldBaseReward ?? EXTRACTION_CONFIG.GOLD_BASE_REWARD_PER_DIG ?? 30)));
+  const goldHealthMultiplier = Math.max(1, Number(extractionBreakdown?.breakdown?.goldHealthMultiplier ?? 1));
+  const goldHealthIndex = Math.max(1, Number(extractionBreakdown?.breakdown?.regionHealthIndex ?? 1));
+  const goldRewardPreview = Math.max(goldBaseReward, Math.floor(Number(extractionBreakdown?.breakdown?.goldGenerated ?? Math.round(goldBaseReward * goldHealthMultiplier))));
 
   return (
     <div className="space-y-5 max-w-2xl mx-auto pb-24">
@@ -279,20 +284,25 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
         </h3>
         <div className="space-y-2 text-sm">
           {isGoldMine ? (
-            <p className="font-bold">Guadagno: <span className="text-yellow-300">€{Math.floor(FACTORY_CONFIG.GOLD_MINE_MONEY_PER_WORK * yieldMult)}</span> + <span className="text-yellow-300">🪙 {Math.round(FACTORY_CONFIG.GOLD_MINE_GOLD_PER_WORK * yieldMult * 100) / 100} Gold</span></p>
+            <p className="font-bold">Guadagno: <span className="text-yellow-300">€{Math.floor(FACTORY_CONFIG.GOLD_MINE_MONEY_PER_WORK * yieldMult)}</span> + <span className="text-yellow-300">🪙 {goldRewardPreview} Gold</span></p>
           ) : factory.payMode === 'salary' ? (
             <p className="font-bold">Stipendio: <span className="text-yellow-300">€{factory.wage}</span> (dal budget aziendale)</p>
           ) : (
             <p className="font-bold">Ricompensa: <span className="text-yellow-300">{Math.floor(level * FACTORY_CONFIG.BASE_RESOURCE_OUTPUT)} {typeDef.label}</span></p>
           )}
-          <p className="text-xs opacity-80">Costo energia: ⚡10 • Proprietario riceve: {Math.round(FACTORY_CONFIG.OWNER_PROFIT_RATE * 100)}% del lordo</p>
+          {isGoldMine ? (
+            <p className="text-xs opacity-80">Salute regione: {goldHealthIndex.toFixed(1)} • Gold base: {goldBaseReward} • Moltiplicatore salute: x{r2(goldHealthMultiplier)}</p>
+          ) : (
+            <p className="text-xs opacity-80">Questa estrazione consuma energia e non restituisce gold premium.</p>
+          )}
+          <p className="text-xs opacity-80">Costo energia: ⚡300 • Proprietario riceve: {Math.round(FACTORY_CONFIG.OWNER_PROFIT_RATE * 100)}% del lordo</p>
         </div>
         <button
           onClick={handleWork}
           disabled={actionLoading}
           className="mt-4 w-full py-3.5 bg-white text-indigo-700 rounded-2xl font-black uppercase text-sm shadow-md hover:bg-indigo-50 transition-all disabled:opacity-50"
         >
-          {actionLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (isGoldMine ? '🪙 Lavora (€ + Gold)' : `💼 Lavora (-10⚡)`)}
+          {actionLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (isGoldMine ? '🪙 Lavora (€ + Gold)' : `💼 Lavora (-300⚡)`)}
         </button>
       </div>
 
@@ -322,6 +332,13 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
                 <span className="text-[9px] font-black uppercase tracking-wider text-amber-500">Valuta Generata</span>
                 <p className="text-lg font-black text-amber-700">€{Math.round(extractionBreakdown.breakdown.moneyGenerated)}</p>
                 <p className="text-[9px] font-bold text-amber-500">Dall'oro estratto</p>
+              </div>
+            )}
+            {extractionBreakdown.breakdown?.goldGenerated > 0 && (
+              <div className="bg-yellow-50 p-3 rounded-2xl border border-yellow-100">
+                <span className="text-[9px] font-black uppercase tracking-wider text-yellow-600">Gold da Scavata</span>
+                <p className="text-lg font-black text-yellow-700">🪙 {Math.round(extractionBreakdown.breakdown.goldGenerated)}</p>
+                <p className="text-[9px] font-bold text-yellow-600">Base {Math.round(extractionBreakdown.breakdown.goldBaseReward || 0)} • Salute x{r2(extractionBreakdown.breakdown.goldHealthMultiplier || 1)}</p>
               </div>
             )}
             <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">

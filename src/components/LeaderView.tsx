@@ -67,6 +67,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any; fetchData?: ()
     const [region, setRegion] = useState<Region | null>(null);
     const [orders, setOrders] = useState<Order[]>([]);
     const [applications, setApplications] = useState<Application[]>([]);
+    const [agreements, setAgreements] = useState<{ outgoing: any[]; incoming: any[] }>({ outgoing: [], incoming: [] });
     const [loading, setLoading] = useState(true);
     const [activeTab, setActiveTab] = useState<'info' | 'ministers' | 'residence' | 'orders' | 'elections' | 'branding'>('info');
 
@@ -77,15 +78,17 @@ export const LeaderView: React.FC<{ regionId?: string; user: any; fetchData?: ()
     const fetchData = async () => {
         if (!regionId) return;
         try {
-            const [rRes, oRes, aRes] = await Promise.all([
+            const [rRes, oRes, aRes, agRes] = await Promise.all([
                 fetch(`/api/regions/${regionId}`),
                 fetch(`/api/leader/orders/${regionId}`),
-                fetch(`/api/applications/${regionId}`)
+                fetch(`/api/applications/${regionId}`),
+                fetch(`/api/countries/${regionId}/agreements`)
             ]);
 
             const rData = rRes.ok ? await rRes.json() : { error: "Failed to fetch region" };
             const oData = oRes.ok ? await oRes.json() : [];
             const aData = aRes.ok ? await aRes.json() : [];
+            const agData = agRes.ok ? await agRes.json() : { outgoing: [], incoming: [] };
 
             if (rData.error) {
                 setRegion(null);
@@ -100,9 +103,14 @@ export const LeaderView: React.FC<{ regionId?: string; user: any; fetchData?: ()
             }
             setOrders(Array.isArray(oData) ? oData : []);
             setApplications(Array.isArray(aData) ? aData : []);
+            setAgreements({
+                outgoing: Array.isArray(agData?.outgoing) ? agData.outgoing : [],
+                incoming: Array.isArray(agData?.incoming) ? agData.incoming : [],
+            });
         } catch (err) {
             console.error("Error fetching leader data:", err);
             setRegion(null);
+            setAgreements({ outgoing: [], incoming: [] });
         } finally {
             setLoading(false);
         }
@@ -586,6 +594,51 @@ export const LeaderView: React.FC<{ regionId?: string; user: any; fetchData?: ()
                                 <div className="p-8 border-b border-slate-800 space-y-1">
                                     <h3 className="text-xl font-black text-white uppercase tracking-tight">Candidature in Attesa</h3>
                                     <p className="text-xs text-slate-500 font-medium uppercase tracking-widest">Gestione flussi migratori e permessi di lavoro</p>
+                                </div>
+                                <div className="p-8 border-b border-slate-800 bg-slate-900/30">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h4 className="text-xs font-black text-slate-400 uppercase tracking-widest">Accordi Migratori Attivi</h4>
+                                        <span className="text-[10px] font-black text-slate-500 uppercase">
+                                            {(agreements.outgoing.length + agreements.incoming.length)} Totali
+                                        </span>
+                                    </div>
+                                    {(agreements.outgoing.length + agreements.incoming.length) > 0 ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                            {[...agreements.outgoing, ...agreements.incoming]
+                                                .sort((a, b) => {
+                                                    const ta = new Date(a.activatedAt || a.createdAt || 0).getTime();
+                                                    const tb = new Date(b.activatedAt || b.createdAt || 0).getTime();
+                                                    return tb - ta;
+                                                })
+                                                .map((ag: any) => (
+                                                    <div key={ag.id} className="p-4 rounded-2xl border border-slate-800/70 bg-slate-950/40 flex items-center justify-between gap-4">
+                                                        <div className="flex items-center gap-3 min-w-0">
+                                                            <div className="w-9 h-9 rounded-xl bg-slate-800/80 border border-slate-700 flex items-center justify-center text-xs font-black text-slate-300">
+                                                                {(ag.partnerId || ag.toStateId || ag.fromStateId || '?').toString().slice(0, 2)}
+                                                            </div>
+                                                            <div className="min-w-0">
+                                                                <p className="text-sm font-black text-white truncate">
+                                                                    {ag.partnerName || ag.partnerId || ag.toStateId || ag.fromStateId}
+                                                                </p>
+                                                                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">
+                                                                    {(ag.direction === 'OUTGOING' ? 'In Uscita' : 'In Entrata')} • {(ag.agreementType === 'BILATERAL' ? 'Bilaterale' : 'Unilaterale')}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-right">
+                                                            <p className="text-[10px] font-bold text-slate-500 uppercase">Attivo dal</p>
+                                                            <p className="text-xs font-black text-slate-300">
+                                                                {new Date(ag.activatedAt || ag.createdAt || Date.now()).toLocaleDateString()}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                ))}
+                                        </div>
+                                    ) : (
+                                        <div className="p-6 text-center bg-slate-950/40 rounded-2xl border border-dashed border-slate-800">
+                                            <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Nessun accordo migratorio attivo.</p>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left">

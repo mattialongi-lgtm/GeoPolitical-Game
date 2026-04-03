@@ -2656,7 +2656,10 @@ const PlayerFactoriesView = ({
       if (data.error) alert(data.error);
       else {
         if (data.payMode === 'gold') {
-          alert(`Hai lavorato! +$${data.earnings} e +${data.goldEarnings} Gold. Tasse: $${data.taxes || 0}.`);
+          const healthInfo = Number.isFinite(Number(data.regionHealthIndex))
+            ? ` Salute regione: ${Number(data.regionHealthIndex).toFixed(1)} (x${Number(data.goldHealthMultiplier || 1).toFixed(2)}).`
+            : '';
+          alert(`Hai lavorato! +$${data.earnings} e +${data.goldEarnings} Gold. Tasse: $${data.taxes || 0}.${healthInfo}`);
         } else if (data.payMode === 'resource') {
           alert(`Hai lavorato! +${data.output} ${factory?.type || 'risorse'} per te, ${data.ownerShare} al proprietario, ${data.stateShare} allo stato.`);
         } else {
@@ -2821,6 +2824,7 @@ const PlayerFactoriesView = ({
           {filteredFactories.map(f => {
             const isOwner = f.ownerUserId === user?.id;
             const isResourceMode = f.payMode === 'resource';
+            const isGoldFactory = f.type === 'gold';
             const needsBudget = !isResourceMode && f.budget < f.wage;
 
             return (
@@ -2850,7 +2854,11 @@ const PlayerFactoriesView = ({
                 {isResourceMode ? (
                   <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100/50">
                     <span className="text-[10px] font-black uppercase text-emerald-700/70">Modalità</span>
-                    <span className="text-xs font-black text-emerald-700">🪨 Scava {RESOURCE_NAMES[f.type]} (diviso tra player, proprietario e stato)</span>
+                    {isGoldFactory ? (
+                      <span className="text-xs font-black text-emerald-700">🪙 Scava Oro: cash + gold (gold aumenta con la salute regione)</span>
+                    ) : (
+                      <span className="text-xs font-black text-emerald-700">🪨 Scava {RESOURCE_NAMES[f.type]} (nessun gold premium)</span>
+                    )}
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-50">
@@ -2871,7 +2879,9 @@ const PlayerFactoriesView = ({
                     disabled={actionLoading || needsBudget}
                     className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:shadow-none"
                   >
-                    {isResourceMode ? `🪨 Scava ${RESOURCE_NAMES[f.type]} (-300⚡)` : '💼 Lavora Qui (-300⚡)'}
+                    {isResourceMode
+                      ? (isGoldFactory ? `🪙 Scava Oro (+cash +gold, -300⚡)` : `🪨 Scava ${RESOURCE_NAMES[f.type]} (-300⚡, no gold)`)
+                      : '💼 Lavora Qui (-300⚡)'}
                   </button>
                   <button
                     onClick={() => navigate(`/factory/${f.id}`)}
@@ -3641,6 +3651,17 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   const [regionFactories, setRegionFactories] = useState<any[]>([]);
   const [autonomyData, setAutonomyData] = useState<any>(null);
 
+  const regionalBuildingsForDisplay = useMemo(() => {
+    const base = (autonomyData?.buildings && typeof autonomyData.buildings === 'object')
+      ? autonomyData.buildings
+      : {};
+    const factoryCount = regionFactories.length;
+    if (factoryCount > 0) {
+      return { ...base, factory: factoryCount };
+    }
+    return base;
+  }, [autonomyData, regionFactories.length]);
+
   const fetchCountryDetail = async () => {
     try {
       const res = await fetch(`/api/countries/${iso2}`);
@@ -3704,6 +3725,28 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       console.error(e);
     }
   };
+  const handleRefillExtraction = async (resourceType: string) => {
+    if (!iso2) return;
+    if (!confirm(`Vuoi ripristinare il limite di ${resourceType}? Costo: 100 Gold.`)) return;
+    try {
+      const res = await fetch(`/api/regions/${iso2.toUpperCase()}/refill-extraction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resourceType }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Errore durante il ripristino");
+      } else {
+        fetchAutonomyData();
+        fetchData();
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Errore di connessione");
+    }
+  };
+
 
   useEffect(() => {
     fetchCountryDetail();
@@ -4248,12 +4291,12 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
                 <h3 className="text-lg font-black uppercase tracking-tight mb-4">🏗️ Edifici Regionali</h3>
                 <div className="space-y-2">
-                  {Object.entries(autonomyData.buildings).filter(([_, qty]) => (qty as number) > 0).length > 0 ? (
-                    Object.entries(autonomyData.buildings)
+                  {Object.entries(regionalBuildingsForDisplay).filter(([_, qty]) => (qty as number) > 0).length > 0 ? (
+                    Object.entries(regionalBuildingsForDisplay)
                       .sort(([, a], [, b]) => (b as number) - (a as number))
                       .map(([bt, qty]) => {
-                        const icons: Record<string, string> = { hospital: '🏥', military_base: '🏛️', school: '🏫', military_academy: '🎖️', missile_system: '🚀', airport: '✈️', naval_port: '⚓', space_port: '🛸', real_estate_fund: '🏘️', power_plant: '⚡' };
-                        const labels: Record<string, string> = { hospital: 'Ospedali', military_base: 'Basi Militari', school: 'Scuole', military_academy: 'Accademie Militari', missile_system: 'Sistemi Missilistici', airport: 'Aeroporti', naval_port: 'Porti Navali', space_port: 'Porti Spaziali', real_estate_fund: 'Fondi Immobiliari', power_plant: 'Centrali Elettriche' };
+                        const icons: Record<string, string> = { hospital: '🏥', military_base: '🏛️', school: '🏫', military_academy: '🎖️', missile_system: '🚀', airport: '✈️', naval_port: '⚓', space_port: '🛸', real_estate_fund: '🏘️', power_plant: '⚡', factory: '🏭' };
+                        const labels: Record<string, string> = { hospital: 'Ospedali', military_base: 'Basi Militari', school: 'Scuole', military_academy: 'Accademie Militari', missile_system: 'Sistemi Missilistici', airport: 'Aeroporti', naval_port: 'Porti Navali', space_port: 'Porti Spaziali', real_estate_fund: 'Fondi Immobiliari', power_plant: 'Centrali Elettriche', factory: 'Fabbriche' };
                         if ((qty as number) === 0) return null;
                         return (
                           <div key={bt} className="flex items-center justify-between p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
@@ -4274,34 +4317,56 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 </div>
               </div>
 
-              {/* Daily Extraction Limits */}
-              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black uppercase tracking-tight mb-4">⛏️ Limiti Estrazione Giornalieri</h3>
-                <div className="space-y-3">
+                            {/* Daily Extraction Limits - Premium Redesign */}
+              <div className="bg-[#1e2a3a] p-8 rounded-[2.5rem] shadow-2xl border border-slate-700/50">
+                <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-white flex items-center gap-3">
+                  <Pickaxe className="w-6 h-6 text-indigo-400" />
+                  LIMITI ESTRAZIONE GIORNALIERI
+                </h3>
+                <div className="space-y-6">
                   {[
-                    { key: 'gold', label: 'Oro', icon: '🥇', data: autonomyData.extraction.gold, color: '#d97706' },
-                    { key: 'oil', label: 'Petrolio', icon: '🛢️', data: autonomyData.extraction.oil, color: '#ea580c' },
-                    { key: 'minerals', label: 'Minerali', icon: '🪨', data: autonomyData.extraction.minerals, color: '#64748b' },
-                    { key: 'uranium', label: 'Uranio', icon: '☢️', data: autonomyData.extraction.uranium, color: '#0891b2' },
-                    { key: 'diamonds', label: 'Diamanti', icon: '💎', data: autonomyData.extraction.diamonds, color: '#7c3aed' },
+                    { key: 'gold', label: 'Oro', icon: '🥇', data: autonomyData.extraction.gold, color: 'from-amber-400 to-amber-600' },
+                    { key: 'oil', label: 'Petrolio', icon: '🛢️', data: autonomyData.extraction.oil, color: 'from-blue-400 to-blue-600' },
+                    { key: 'minerals', label: 'Minerali', icon: '🪨', data: autonomyData.extraction.minerals, color: 'from-slate-300 to-slate-500' },
+                    { key: 'uranium', label: 'Uranio', icon: '☢️', data: autonomyData.extraction.uranium, color: 'from-yellow-400 to-yellow-600 text-black' },
+                    { key: 'diamonds', label: 'Diamanti', icon: '💎', data: autonomyData.extraction.diamonds, color: 'from-cyan-400 to-cyan-600' },
                   ].map(res => (
-                    <div key={res.key} className="space-y-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-black text-slate-700">{res.icon} {res.label}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-slate-500">{res.data.extracted} / {res.data.limit}</span>
-                          <span className="text-[10px] font-black text-emerald-600">({res.data.remaining} 🔄)</span>
+                    <div key={res.key} className="group">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl drop-shadow-md">{res.icon}</span>
+                          <span className="text-sm font-black text-slate-100 tracking-wide uppercase">{res.label}</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-[11px] font-bold text-slate-400 tabular-nums">
+                            {res.data.extracted.toLocaleString()} / {res.data.limit.toLocaleString()}
+                          </span>
+                          <button
+                            onClick={() => handleRefillExtraction(res.key)}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-emerald-400 transition-all active:scale-95 group/btn"
+                            title="Ripristina limite (100 Gold)"
+                          >
+                            <span className="text-[11px] font-black tabular-nums">{res.data.remaining.toLocaleString()}</span>
+                            <RefreshCcw className="w-3 h-3 transition-transform group-hover/btn:rotate-180 duration-500" />
+                          </button>
                         </div>
                       </div>
-                      <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, res.data.limit > 0 ? (res.data.extracted / res.data.limit) * 100 : 0)}%`, backgroundColor: res.color }} />
+                      <div className="w-full bg-slate-800/50 h-3 rounded-full overflow-hidden border border-slate-700/30">
+                        <motion.div
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.min(100, res.data.limit > 0 ? (res.data.extracted / res.data.limit) * 100 : 0)}%` }}
+                          className={`h-full rounded-full bg-gradient-to-r shadow-[0_0_10px_rgba(0,0,0,0.5)] ${res.color}`}
+                        />
                       </div>
                     </div>
                   ))}
                   {autonomyData.extraction.nextResetAt && (
-                    <p className="text-[10px] font-bold text-slate-400 text-center pt-2">
-                      ⏰ Prossimo reset: {new Date(autonomyData.extraction.nextResetAt).toLocaleString()}
-                    </p>
+                    <div className="flex items-center justify-center gap-2 pt-4 border-t border-slate-800/50">
+                      <span className="text-lg">⏰</span>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        Prossimo reset: {new Date(autonomyData.extraction.nextResetAt).toLocaleString('it-IT')}
+                      </p>
+                    </div>
                   )}
                 </div>
               </div>
@@ -6389,7 +6454,14 @@ const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => 
         setMessage({ text: data.error, type: 'error' });
       } else {
         const icon = RESOURCE_ICONS_MAP[selectedResource as ResourceType] || '📦';
-        setMessage({ text: `+${data.amount} ${icon} ${RESOURCE_LABELS[selectedResource as ResourceType] || selectedResource} estratti! (+${data.xpGain} XP)`, type: 'success' });
+        const label = RESOURCE_LABELS[selectedResource as ResourceType] || selectedResource;
+        const isGoldOre = selectedResource === 'gold_ore';
+        const moneyPart = data.moneyGenerated > 0 ? ` +€${data.moneyGenerated}` : '';
+        const goldPart = data.goldGenerated > 0 ? ` +🪙${data.goldGenerated}` : '';
+        const resultMsg = isGoldOre
+          ? `+${data.amount} ${icon} ${label} estratti!${moneyPart}${goldPart} (+${data.xpGain} XP)`
+          : `+${data.amount} ${icon} ${label} estratti! (+${data.xpGain} XP, nessun gold premium)`;
+        setMessage({ text: resultMsg, type: 'success' });
         fetchAll();
         fetchData();
       }
@@ -6459,6 +6531,17 @@ const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => 
               </div>
             </div>
           </div>
+          {selectedResource === 'gold_ore' ? (
+            <p className="text-[11px] font-bold text-amber-700 bg-amber-50 px-3 py-2 rounded-xl border border-amber-100">
+              L'oro è l'unica risorsa che restituisce cash + gold premium. Gold base per scavata: 30 (aumenta con la salute della regione).
+            </p>
+          ) : (
+            ['oil', 'minerals', 'uranium', 'diamonds'].includes(selectedResource) ? (
+              <p className="text-[11px] font-bold text-slate-600 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
+                Questa risorsa è puramente estrattiva: consuma energia ma non restituisce gold premium.
+              </p>
+            ) : null
+          )}
 
           {/* Work button */}
           <button

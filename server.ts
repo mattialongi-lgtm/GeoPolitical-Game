@@ -4402,6 +4402,26 @@ async function processAutomationTick() {
         const mode: 'standard' = 'standard';
         if (!shouldRecurringAutomationFire(mode, aw.lastFiredAt, aw.activatedAt)) continue;
 
+        // Apply server-side energy regeneration before attempting work
+        try {
+          const { data: userForRegen } = await supabase.from('users')
+            .select('energy, lastEnergyUpdate')
+            .eq('id', aw.userId)
+            .single();
+          if (userForRegen && (userForRegen.energy || 0) < GAME_CONFIG.ENERGY_MAX) {
+            const nowMs = Date.now();
+            const lastUpdate = userForRegen.lastEnergyUpdate || nowMs;
+            const elapsedHours = (nowMs - lastUpdate) / (60 * 60 * 1000);
+            const regenAmount = Math.floor(elapsedHours * GAME_CONFIG.ENERGY_REGEN_RATE);
+            if (regenAmount > 0) {
+              const newEnergy = Math.min(GAME_CONFIG.ENERGY_MAX, (userForRegen.energy || 0) + regenAmount);
+              await supabase.from('users')
+                .update({ energy: newEnergy, lastEnergyUpdate: nowMs })
+                .eq('id', aw.userId);
+            }
+          }
+        } catch { /* non-critical */ }
+
         try {
           await performWorkAction(aw.userId, aw.factoryId, { allowAutoDrink: true });
           await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
@@ -4414,8 +4434,27 @@ async function processAutomationTick() {
             continue;
           }
 
-          // Non-fatal expected errors (cooldown/budget/storage/energy/permits):
-          // backoff to avoid retrying every minute when lastFiredAt is null.
+          // Energy exhausted: check if user has drinks (possibly on cooldown) or truly has nothing left
+          if (message.includes('energia insufficiente')) {
+            try {
+              const { data: drinkCheck } = await supabase.from('users')
+                .select('energyDrinks')
+                .eq('id', aw.userId)
+                .single();
+              if ((drinkCheck?.energyDrinks || 0) > 0) {
+                // Has drinks but cooldown not yet expired → backoff, will retry next cycle
+                await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
+              } else {
+                // No drinks and no energy → stop correctly
+                await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
+              }
+            } catch {
+              await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
+            }
+            continue;
+          }
+
+          // Other non-fatal expected errors (cooldown/budget/storage/permits): backoff
           await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
         }
       }
@@ -5179,6 +5218,7 @@ async function performWorkActionV3(
 
   const level = factory.level || 1;
   const yieldMult = factoryYieldMultiplier(level);
+  const goldRewardByHealth = getGoldDigRewardByHealth(region?.healthIndex);
 
   let earningsMoney = 0;
   let earningsGold = 0;
@@ -5193,15 +5233,10 @@ async function performWorkActionV3(
 
   if (isGoldMine) {
     const baseMoney = Math.floor(FACTORY_CONFIG.GOLD_MINE_MONEY_PER_WORK * yieldMult * (1 + forceBoost) * workExpMult);
-    const baseGoldFloat = Math.round(FACTORY_CONFIG.GOLD_MINE_GOLD_PER_WORK * yieldMult * (1 + forceBoost) * workExpMult * 100) / 100;
+    const goldAward = goldRewardByHealth.goldReward;
 
     taxesMoney = Math.floor(baseMoney * (taxRate / 100));
     const netMoney = baseMoney - taxesMoney;
-
-    // Gold is stored as integer currency in DB: award only whole units (legacy behavior)
-    const goldTaxFloat = Math.round(baseGoldFloat * (taxRate / 100) * 100) / 100;
-    const netGoldFloat = Math.max(0, Math.round((baseGoldFloat - goldTaxFloat) * 100) / 100);
-    const goldAward = Math.floor(netGoldFloat);
 
     earningsMoney = netMoney;
     earningsGold = goldAward;
@@ -5376,6 +5411,9 @@ async function performWorkActionV3(
       maxWorkExperience,
       experienceMultiplier: workExpMult,
       ownerCut: ownerCutMoney,
+      goldBaseReward: goldRewardByHealth.baseGoldReward,
+      goldHealthMultiplier: Math.round(goldRewardByHealth.healthMultiplier * 1000) / 1000,
+      regionHealthIndex: goldRewardByHealth.healthIndex,
     };
   }
 
@@ -9734,6 +9772,32 @@ function getResourceCoefficient(
 
 // ── ExtractionProductivityService ───────────────────────────────
 // Implements the full productivity pipeline and returns a detailed breakdown.
+function normalizeRegionHealthIndex(rawHealthIndex: unknown): number {
+  const parsed = Number(rawHealthIndex);
+  if (!Number.isFinite(parsed)) return 1;
+  return Math.max(1, parsed);
+}
+
+function getGoldDigRewardByHealth(rawHealthIndex: unknown): {
+  healthIndex: number;
+  baseGoldReward: number;
+  healthMultiplier: number;
+  goldReward: number;
+} {
+  const healthIndex = normalizeRegionHealthIndex(rawHealthIndex);
+  const baseGoldReward = Math.max(1, Math.floor(Number(EXTRACTION_CONFIG.GOLD_BASE_REWARD_PER_DIG) || 30));
+  const healthBonusPerLevel = Math.max(0, Number(EXTRACTION_CONFIG.GOLD_HEALTH_BONUS_PER_LEVEL) || 0);
+  const healthMultiplier = 1 + Math.max(0, healthIndex - 1) * healthBonusPerLevel;
+  const goldReward = Math.max(baseGoldReward, Math.round(baseGoldReward * healthMultiplier));
+
+  return {
+    healthIndex,
+    baseGoldReward,
+    healthMultiplier,
+    goldReward,
+  };
+}
+
 function calculateExtraction(params: {
   playerLevel: number;
   factoryLevel: number;
@@ -9749,6 +9813,7 @@ function calculateExtraction(params: {
   regionDeepBonus: number;
   regionCapTotal: number;
   regionResidualToday: number;
+  regionHealthIndex: number;
 }): ExtractionBreakdown {
   const cfg = EXTRACTION_CONFIG;
 
@@ -9798,10 +9863,18 @@ function calculateExtraction(params: {
   const autonomyAmount = taxAmount * autonomyFraction;
   const stateAmount = taxAmount - autonomyAmount;
 
-  // 9. Gold special: money generated
+  // 9. Gold special: money + premium-gold reward
   let moneyGenerated = 0;
+  let goldGenerated = 0;
+  let goldBaseReward = Math.max(1, Math.floor(Number(cfg.GOLD_BASE_REWARD_PER_DIG) || 30));
+  let goldHealthMultiplier = 1;
+  const normalizedRegionHealth = normalizeRegionHealthIndex(params.regionHealthIndex);
   if (params.resourceType === 'gold_ore') {
     moneyGenerated = playerAmount * cfg.GOLD_TO_MONEY_COEFFICIENT;
+    const goldRewardData = getGoldDigRewardByHealth(normalizedRegionHealth);
+    goldGenerated = goldRewardData.goldReward;
+    goldBaseReward = goldRewardData.baseGoldReward;
+    goldHealthMultiplier = goldRewardData.healthMultiplier;
   }
 
   return {
@@ -9825,6 +9898,10 @@ function calculateExtraction(params: {
     stateAmount,
     autonomyAmount,
     moneyGenerated,
+    goldGenerated,
+    goldBaseReward,
+    goldHealthMultiplier,
+    regionHealthIndex: normalizedRegionHealth,
     regionCapMax: params.regionCapMax,
     regionDeepBonus: params.regionDeepBonus,
     regionCapTotal: params.regionCapTotal,
@@ -10649,6 +10726,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
     regionDeepBonus: deepBonus,
     regionCapTotal: effectiveCap,
     regionResidualToday: remainingDaily,
+    regionHealthIndex: regionRel.healthIndex || 1,
   });
 
   const { data: playerState } = await supabase
@@ -10682,6 +10760,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
   const actualAutonomy = breakdown.autonomyAmount * scaleFactor;
   const actualWithdrawn = breakdown.withdrawnPoints * scaleFactor;
   const actualMoney = breakdown.moneyGenerated * scaleFactor;
+  const actualGold = resourceType === 'gold_ore' ? Math.max(0, Math.floor(Number(breakdown.goldGenerated) || 0)) : 0;
 
   const { error: energyErr } = await supabase
     .from('users')
@@ -10729,11 +10808,11 @@ async function executeExtractionWork(user: any, factoryId: string) {
       .insert({ userId: user.id, itemId: resourceType, quantity: roundedPlayer });
   }
 
-  if (resourceType === 'gold_ore' && actualMoney > 0) {
+  if (resourceType === 'gold_ore' && (actualMoney > 0 || actualGold > 0)) {
     await supabase.rpc('safe_deduct_currency', {
       p_user_id: user.id,
       p_money_cost: -Math.round(actualMoney),
-      p_gold_cost: 0,
+      p_gold_cost: -actualGold,
       p_energy_cost: 0,
     });
   }
@@ -10803,6 +10882,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
     amount: roundedPlayer,
     resourceType,
     moneyGenerated: Math.round(actualMoney),
+    goldGenerated: actualGold,
     remainingCycle: Math.max(0, remainingCycle - roundedPlayer),
     remainingDaily: Math.max(0, remainingDaily - Math.round(actualWithdrawn)),
     xpGain,
@@ -10826,6 +10906,11 @@ async function executeExtractionWork(user: any, factoryId: string) {
       autonomyAmount: Math.round(actualAutonomy),
       withdrawnPoints: Math.round(actualWithdrawn * 100) / 100,
       resourceCoefficient: Math.round(resourceCoefficient * 100) / 100,
+      moneyGenerated: Math.round(actualMoney),
+      goldGenerated: actualGold,
+      goldBaseReward: breakdown.goldBaseReward,
+      goldHealthMultiplier: Math.round(breakdown.goldHealthMultiplier * 1000) / 1000,
+      regionHealthIndex: breakdown.regionHealthIndex,
     },
   };
 }
@@ -10922,6 +11007,7 @@ app.get("/api/extraction/breakdown", authenticate, async (req: any, res) => {
       regionDeepBonus: deepBonus,
       regionCapTotal: effectiveCap,
       regionResidualToday: remainingDaily,
+      regionHealthIndex: regionRel.healthIndex || 1,
     });
 
     // Energy cost preview
@@ -11335,6 +11421,51 @@ app.get("/api/leaderboard", authenticate, async (req, res) => {
 // ══════════════════════════════════════════════════════════════════
 
 // GET region autonomy details (buildings, indices, energy, economy, military)
+  // POST /api/regions/:id/refill-extraction
+  // Resets a specific resource extraction limit for a gold cost
+  app.post("/api/regions/:id/refill-extraction", authenticate, async (req: any, res) => {
+    try {
+      const regionId = (req.params.id || '').toUpperCase();
+      const { resourceType } = req.body;
+      const userId = req.user.id;
+
+      if (!['gold', 'oil', 'minerals', 'uranium', 'diamonds'].includes(resourceType)) {
+        return res.status(400).json({ error: "Tipo risorsa non valido" });
+      }
+
+      const { data: user, error: userErr } = await supabase.from('users').select('gold').eq('id', userId).single();
+      if (userErr || !user) return res.status(404).json({ error: "Utente non trovato" });
+
+      const REFILL_COST = 100;
+      if (user.gold < REFILL_COST) {
+        return res.status(400).json({ error: `Oro insufficiente (richiesti ${REFILL_COST} Gold)` });
+      }
+
+      // Deduct gold
+      const { error: deductErr } = await supabase.from('users').update({ gold: user.gold - REFILL_COST }).eq('id', userId);
+      if (deductErr) throw deductErr;
+
+      // Reset regional counter
+      const columnMap: Record<string, string> = {
+        gold: 'dailyExtractedGold',
+        oil: 'dailyExtractedOil',
+        minerals: 'dailyExtractedMinerals',
+        uranium: 'dailyExtractedUranium',
+        diamonds: 'dailyExtractedDiamonds'
+      };
+      const column = columnMap[resourceType];
+
+      const { error: resetErr } = await supabase.from('regions').update({ [column]: 0 }).eq('id', regionId);
+      if (resetErr) throw resetErr;
+
+      res.json({ success: true, message: `Limite ${resourceType} ripristinato! (-${REFILL_COST} Gold)` });
+    } catch (err: any) {
+      console.error("[RefillExtraction] Error:", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+
 app.get("/api/regions/:id/autonomy", authenticate, async (req: any, res) => {
   try {
     const regionId = (req.params.id || '').toUpperCase();

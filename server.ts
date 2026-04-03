@@ -1163,7 +1163,7 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
         name: r.name,
         population: resCountPerRegion[r.id] || 0,
         mainResource: (r as any).mainResource || (r as any).primary_resource || 'Risorse Varie',
-        developmentLevel: r.developmentIndex || 0,
+        developmentLevel: r.developmentIndex || 1,
         governor: (r as any).governor ? (Array.isArray((r as any).governor) ? (r as any).governor[0]?.username : (r as any).governor?.username) : undefined
       })),
       militaryAgreements: (militaryAgreements || []).map(a => ({
@@ -2204,7 +2204,7 @@ app.post("/api/actions/work", authenticate, async (req: any, res) => {
     }, { onConflict: 'userId,factoryId' });
 
     // XP Gain — boosted by regional Education Index
-    const educationLevel = (regionRel?.educationIndex || 0) as number;
+    const educationLevel = Math.max(1, (regionRel?.educationIndex || 1)) as number;
     const educationBonus = educationLevel * AUTONOMY_CONFIG.INDEX_EFFECTS.education.xpBonusPerLevel;
     const xpGain = Math.round((GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2) * (1 + educationBonus));
     await addXP(user.id, xpGain);
@@ -5257,7 +5257,7 @@ async function performWorkActionV3(
     });
   } catch { /* non-critical */ }
 
-  const educationLevel = (region?.educationIndex || 0) as number;
+  const educationLevel = Math.max(1, (region?.educationIndex || 1)) as number;
   const educationBonus = educationLevel * AUTONOMY_CONFIG.INDEX_EFFECTS.education.xpBonusPerLevel;
   const xpGain = Math.round((GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2) * (1 + educationBonus));
   await addXP(user.id, xpGain);
@@ -8352,16 +8352,16 @@ function calcRawScore(key: string, buildings: Record<string, number>): number {
 }
 
 /**
- * Convert a raw building-score into a discrete level 0–10 using the
- * configured threshold array.  Levels above 10 are capped at 10.
+ * Convert a raw building-score into a discrete level 1–10 using the
+ * configured threshold array.  Minimum is always 1; levels above 10 are capped at 10.
  */
 function calculateIndexLevel(rawScore: number, thresholds: number[]): number {
-  let level = 0;
+  let level = 1; // minimum allowed level is 1, never 0
   for (let i = 0; i < thresholds.length; i++) {
     if (rawScore >= thresholds[i]) level = i + 1;
     else break;
   }
-  return Math.min(level, thresholds.length);
+  return Math.min(Math.max(1, level), thresholds.length);
 }
 
 /**
@@ -11299,7 +11299,7 @@ app.get("/api/regions/:id/autonomy", authenticate, async (req: any, res) => {
 
     // Pollution malus
     const pollutionMalus = (region.pollution || 0) * AUTONOMY_CONFIG.POLLUTION_MALUS_PER_POINT;
-    const effectiveHealthIndex = Math.max(0, indices.healthIndex * (1 - pollutionMalus / 100));
+    const effectiveHealthIndex = Math.max(1, indices.healthIndex * (1 - pollutionMalus / 100));
 
     // Energy deficit malus
     const energyDeficitMalus = netEfficiency < 0 ? AUTONOMY_CONFIG.ENERGY_DEFICIT_MALUS * Math.abs(netEfficiency) : 0;
@@ -11477,7 +11477,7 @@ app.get("/api/regions/:id/indexes", authenticate, async (req: any, res) => {
       warModifier:       region.warModifier       || 0,
       crisisModifier:    region.crisisModifier     || 0,
     };
-    const effectiveHealthIndex = Math.max(0, indices.healthIndex * (1 - pollutionMalus / 100));
+    const effectiveHealthIndex = Math.max(1, indices.healthIndex * (1 - pollutionMalus / 100));
 
     // Build the per-index metadata used by the UI
     const indexMeta = [

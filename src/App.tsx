@@ -1666,8 +1666,21 @@ const WarsView = ({
   const [training, setTraining] = useState(false);
   const [militaryExp, setMilitaryExp] = useState(user?.militaryExp || 0);
   const [activeAutoAttacks, setActiveAutoAttacks] = useState<any[]>([]);
-  const [autoAttack, setAutoAttack] = useState<any | null>(null); 
-  const [autoTraining, setAutoTraining] = useState<any | null>(null); 
+  const [autoAttack, setAutoAttack] = useState<any | null>(null);
+  const [autoTraining, setAutoTraining] = useState<any | null>(null);
+  const [regionDevelopmentIndex, setRegionDevelopmentIndex] = useState<number>(0);
+
+  useEffect(() => {
+    if (!user?.regionId) return;
+    fetch(`/api/regions/${user.regionId}/autonomy`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data?.indices?.developmentIndex !== undefined) {
+          setRegionDevelopmentIndex(data.indices.developmentIndex);
+        }
+      })
+      .catch(() => {});
+  }, [user?.regionId]);
  
   const resolveFactionName = useCallback((iso2?: string | null, displayName?: string | null) => { 
     const rawIso = (iso2 || "").trim(); 
@@ -1911,7 +1924,7 @@ const WarsView = ({
         regionId={user.regionId || ''}
         userId={user.id}
         userGold={user.gold || 0}
-        regionDevelopment={1}
+        regionDevelopment={regionDevelopmentIndex}
         onStartRevolution={handleStartRevolution}
         onStartCoup={handleStartCoup}
         loading={revLoading}
@@ -3302,34 +3315,38 @@ const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, actionLoa
                     </div>
                 );
             })}
-            {!isPublic && (
-              <div className="bg-gray-900 overflow-hidden border-b border-gray-800/50">
-                <button onClick={() => navigate("/profile/total-damage")} className="w-full p-5 flex items-center justify-between hover:bg-gray-800/80 transition-colors text-left">
-                  <div className="flex items-center gap-5">
-                    <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg shadow-white/5">
-                      <Bomb className="w-6 h-6 text-black" />
-                    </div>
-                    <div>
-                      <span className="block text-lg font-black uppercase tracking-tight text-gray-50 military-font">Danni totali</span>
-                      <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">
-                        {damageSummaryLoading ? 'Caricamento...' : damageSummaryError || `${(damageSummary?.wars.length || 0).toLocaleString()} guerre registrate`}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    {damageSummaryLoading ? (
-                      <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
-                    ) : (
-                      <span className="text-2xl font-black text-gray-50 military-font leading-none">
-                        {(damageSummary?.totalDamage || 0).toLocaleString()}
-                      </span>
-                    )}
-                    <ChevronRight className="w-5 h-5 text-gray-500" />
-                  </div>
-                </button>
-              </div>
-            )}
         </div>
+
+        {!isPublic && (
+          <div className="pt-6">
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-600 mb-3 px-1">Statistiche</p>
+            <div className="bg-gray-900 overflow-hidden border-b border-gray-800/50">
+              <button onClick={() => navigate("/profile/total-damage")} className="w-full p-5 flex items-center justify-between hover:bg-gray-800/80 transition-colors text-left">
+                <div className="flex items-center gap-5">
+                  <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center shadow-lg shadow-white/5">
+                    <Bomb className="w-6 h-6 text-black" />
+                  </div>
+                  <div>
+                    <span className="block text-lg font-black uppercase tracking-tight text-gray-50 military-font">Danni totali</span>
+                    <span className="block text-[10px] font-black uppercase tracking-[0.2em] text-gray-500">
+                      {damageSummaryLoading ? 'Caricamento...' : damageSummaryError || `${(damageSummary?.wars.length || 0).toLocaleString()} guerre registrate`}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  {damageSummaryLoading ? (
+                    <Loader2 className="w-5 h-5 text-gray-500 animate-spin" />
+                  ) : (
+                    <span className="text-2xl font-black text-gray-50 military-font leading-none">
+                      {(damageSummary?.totalDamage || 0).toLocaleString()}
+                    </span>
+                  )}
+                  <ChevronRight className="w-5 h-5 text-gray-500" />
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
 
         <div className="flex justify-center p-12 opacity-0 hover:opacity-100 transition-opacity">
             <button onClick={handleDevCheat} className="px-6 py-3 bg-red-900/20 text-red-500 text-xs font-black uppercase rounded-none border border-red-900/30 tracking-[0.3em]">

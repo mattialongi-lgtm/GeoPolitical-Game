@@ -60,6 +60,7 @@ export interface Region {
   leaderUserId: string | null;
   leaderName: string | null;
   leaderLevel: number | null;
+  leaderAvatarData?: string | null;
   stateColor: string | null;
   stateHymn: string | null;
   factoriesCount: number;

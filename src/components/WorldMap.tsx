@@ -96,7 +96,9 @@ function hashColor(id: string): string {
 function isIndependentRegion(region: Region): boolean {
   const territoryStatus = (region as any).territoryStatus as string | null | undefined;
   const hasNation = Boolean((region as any).nation_id);
+  const hasOwner = Boolean(region.ownerUserId);
 
+  if (hasOwner) return false;
   if (!hasNation) return true;
   return territoryStatus === "INDEPENDENT_REGION";
 }
@@ -205,10 +207,10 @@ const WorldMap: React.FC<WorldMapProps> = ({ onRegionClick, regions }) => {
         const isIndependent = isIndependentRegion(region);
 
         // Regioni indipendenti: grigio neutro (finché non diventano Stati veri)
-        if (isIndependent) {
-          map.set(iso2, DEFAULT_FILL);
-        } else if (region.ownerUserId) {
+        if (region.ownerUserId) {
           map.set(iso2, region.stateColor || hashColor(String(region.ownerUserId)));
+        } else if (isIndependent) {
+          map.set(iso2, DEFAULT_FILL);
         } else {
           // Stato attivo ma senza owner esplicito: colore per Stato (nation_id)
           map.set(iso2, hashColor(String((region as any).nation_id || iso2)));

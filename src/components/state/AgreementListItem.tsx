@@ -5,7 +5,7 @@
 import React from 'react';
 import { Handshake, Ban, Shield, AlertTriangle } from 'lucide-react';
 
-type AgreementType = 'alliance' | 'defense_pact' | 'bilateral' | 'coalition' | 'sanction_received' | 'sanction_imposed';
+type AgreementType = 'alliance' | 'defense_pact' | 'bilateral' | 'unilateral' | 'coalition' | 'sanction_received' | 'sanction_imposed';
 
 interface AgreementListItemProps {
   type: AgreementType;
@@ -19,6 +19,7 @@ const typeConfig: Record<AgreementType, { icon: React.ElementType; color: string
   alliance: { icon: Handshake, color: 'text-emerald-400', label: 'Alleanza' },
   defense_pact: { icon: Shield, color: 'text-sky-400', label: 'Patto difensivo' },
   bilateral: { icon: Handshake, color: 'text-indigo-400', label: 'Accordo bilaterale' },
+  unilateral: { icon: Handshake, color: 'text-amber-400', label: 'Accordo unilaterale' },
   coalition: { icon: Shield, color: 'text-purple-400', label: 'Coalizione' },
   sanction_received: { icon: Ban, color: 'text-rose-400', label: 'Sanzione subita' },
   sanction_imposed: { icon: AlertTriangle, color: 'text-amber-400', label: 'Sanzione imposta' },

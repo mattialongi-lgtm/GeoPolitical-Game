@@ -38,6 +38,8 @@ import DetailRow from './DetailRow';
 import RegionListItem from './RegionListItem';
 import AgreementListItem from './AgreementListItem';
 import { MOCK_STATE_DATA, EMPTY_STATE_DATA } from './mockData';
+import { RESOURCE_LABELS, RESOURCE_ICONS_MAP } from '../../types';
+import type { ResourceType } from '../../types';
 import type { StateData } from './mockData';
 import DepartmentsSection from './DepartmentsSection';
 
@@ -92,6 +94,15 @@ export default function StatePage({ user }: StatePageProps) {
   }
 
   const s = stateData;
+  const treasuryResourceIds: ResourceType[] = [
+    'oil',
+    'minerals',
+    'uranium',
+    'diamonds',
+    'gold_ore',
+    'liquid_oxygen',
+    'helium3',
+  ];
 
   return (
     <motion.div
@@ -180,40 +191,35 @@ export default function StatePage({ user }: StatePageProps) {
       {/* 6. TREASURY */}
       <div id="treasury-section">
         <CollapsibleSection title="Tesoreria" icon={<Wallet className="w-4 h-4" />}>
-        <div className="divide-y divide-gray-800/40">
-          <DetailRow label="Saldo dello Stato" value={s.treasury.balance} unit="€" highlight />
-          <DetailRow label="Entrate giornaliere" value={s.treasury.dailyIncome} unit="€" />
-          <DetailRow label="Uscite giornaliere" value={s.treasury.dailyExpenses} unit="€" />
-          <DetailRow label="Saldo netto" value={s.treasury.netBalance} unit="€" highlight />
-          
-          <div className="p-4 bg-gray-900/30">
-            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <Gem className="w-3 h-3 text-indigo-400" />
-              Patrimonio Statale
-            </h4>
+          <div className="divide-y divide-gray-800/40">
+            <DetailRow label="Saldo dello Stato" value={s.treasury.balance} unit="€" highlight />
+            <DetailRow label="Entrate giornaliere" value={s.treasury.dailyIncome} unit="€" />
+            <DetailRow label="Uscite giornaliere" value={s.treasury.dailyExpenses} unit="€" />
+            <DetailRow label="Saldo netto" value={s.treasury.netBalance} unit="€" highlight />
+          </div>
+
+          {/* Patrimonio Statale */}
+          <div className="px-4 pb-4 pt-3">
+            <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Patrimonio Statale</p>
             <div className="grid grid-cols-2 gap-2">
-              {[
-                { id: 'oil', label: 'Petrolio', icon: '🛢️' },
-                { id: 'minerals', label: 'Minerali', icon: '🪨' },
-                { id: 'uranium', label: 'Uranio', icon: '☢️' },
-                { id: 'diamonds', label: 'Diamanti', icon: '💎' },
-                { id: 'liquid_oxygen', label: 'Ossigeno Liq.', icon: '🧊' },
-                { id: 'helium3', label: 'Elio-3', icon: '⚗️' },
-                { id: 'gold_ore', label: 'Oro', icon: '🪙' },
-              ].map((res) => (
-                <div key={res.id} className="flex items-center justify-between p-2 rounded-lg bg-gray-800/40 border border-gray-700/30">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm">{res.icon}</span>
-                    <span className="text-[10px] text-gray-400 font-medium">{res.label}</span>
-                  </div>
-                  <span className="text-xs font-bold text-gray-200">
-                    {s.treasury.resources?.[res.id]?.toLocaleString('it-IT') || '0'}
-                  </span>
-                </div>
-              ))}
+              {treasuryResourceIds
+                .filter((id) => id !== 'liquid_oxygen' && id !== 'helium3')
+                .map((id) => {
+                  const qty = s.treasury.resources?.[id] ?? 0;
+                  const label = RESOURCE_LABELS[id] || id;
+                  const icon = RESOURCE_ICONS_MAP[id] || '📦';
+                  return (
+                    <div key={id} className="p-3 rounded-xl bg-gray-800/40 border border-gray-700/40 flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{icon}</span>
+                        <span className="text-xs font-bold text-gray-200">{label}</span>
+                      </div>
+                      <span className="text-xs font-black text-indigo-300 tabular-nums">{Number(qty).toLocaleString('it-IT')}</span>
+                    </div>
+                  );
+                })}
             </div>
           </div>
-        </div>
       </CollapsibleSection>
     </div>
 
@@ -307,16 +313,43 @@ export default function StatePage({ user }: StatePageProps) {
         isEmpty={s.migrationAgreements.length === 0}
         emptyMessage="Nessun accordo migratorio."
       >
-        <div>
-          {s.migrationAgreements.map((a, i) => (
-            <AgreementListItem
-              key={i}
-              type="bilateral"
-              partnerName={a.partnerName}
-              partnerFlag={a.partnerFlag}
-              status={a.status}
-            />
-          ))}
+        <div className="space-y-3">
+          {(() => {
+            const outgoing = s.migrationAgreements.filter((a: any) => a.type === 'outgoing');
+            const incoming = s.migrationAgreements.filter((a: any) => a.type === 'incoming');
+            return (
+              <>
+                {outgoing.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">In uscita</p>
+                    {outgoing.map((a: any, i: number) => (
+                      <AgreementListItem
+                        key={`out-${i}`}
+                        type={a.agreementType === 'BILATERAL' ? 'bilateral' : 'unilateral'}
+                        partnerName={a.partnerName}
+                        partnerFlag={a.partnerFlag}
+                        status={a.status}
+                      />
+                    ))}
+                  </div>
+                )}
+                {incoming.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">In entrata</p>
+                    {incoming.map((a: any, i: number) => (
+                      <AgreementListItem
+                        key={`in-${i}`}
+                        type={a.agreementType === 'BILATERAL' ? 'bilateral' : 'unilateral'}
+                        partnerName={a.partnerName}
+                        partnerFlag={a.partnerFlag}
+                        status={a.status}
+                      />
+                    ))}
+                  </div>
+                )}
+              </>
+            );
+          })()}
         </div>
       </CollapsibleSection>
 

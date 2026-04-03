@@ -1072,6 +1072,16 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     
     const { data: sanctions } = await (sanctionsQuery as any);
 
+    // 5b. Migration Agreements — all active agreements where any region of this nation is involved
+    const migrationAgreementsQuery = regionIds.length > 0
+      ? supabase.from('migration_agreements')
+          .select('*, rf:regions!fromStateId(id, name, nation:nations(id, name, logo)), rt:regions!toStateId(id, name, nation:nations(id, name, logo))')
+          .or(`fromStateId.in.(${regionIds.join(',')}),toStateId.in.(${regionIds.join(',')})`)
+          .eq('status', 'ACTIVE')
+      : { data: [] };
+
+    const { data: rawMigrationAgreements } = await (migrationAgreementsQuery as any);
+
     // 6. Fetch National Budget/Inventory from 'budgets' table
     const { data: budgetData } = await supabase
       .from('budgets')
@@ -1173,7 +1183,17 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
         status: a.status,
         expiresAt: a.expires_at ? new Date(a.expires_at).toLocaleDateString('it-IT') : undefined
       })),
-      migrationAgreements: [], // TBD if separate table exists
+      migrationAgreements: (rawMigrationAgreements || []).map((a: any) => {
+        const isOutgoing = regionIds.includes(a.fromStateId);
+        const partnerRegion = isOutgoing ? a.rt : a.rf;
+        return {
+          type: isOutgoing ? 'outgoing' : 'incoming',
+          partnerName: partnerRegion?.nation?.name || partnerRegion?.name || 'Sconosciuto',
+          partnerFlag: partnerRegion?.nation?.logo || undefined,
+          status: a.status,
+          agreementType: a.type || 'UNILATERAL',
+        };
+      }),
       sanctions: (sanctions || []).map(s => ({
         type: regionIds.includes(s.targetStateId) ? 'sanction_received' : 'sanction_imposed',
         partnerName: regionIds.includes(s.targetStateId) ? s.sourceNation?.nation?.name : s.targetNation?.nation?.name,
@@ -1592,7 +1612,7 @@ app.get("/api/regions", authenticate, async (req, res) => {
       .select(`
         *,
         owner:users!ownerUserId(username),
-        leader:users!leaderUserId(username, level)
+        leader:users!leaderUserId(username, level, avatarData)
       `);
 
     if (error) throw error;
@@ -1634,7 +1654,7 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
       .select(`
         *,
         owner:users!ownerUserId(username),
-        leader:users!leaderUserId(username, level),
+        leader:users!leaderUserId(username, level, avatarData),
         governor:users!governorPlayerId(username),
         economicAdviser:users!economicAdviserId(username),
         nation:nations(*),
@@ -1668,6 +1688,7 @@ app.get("/api/regions/:id", authenticate, async (req, res) => {
       ownerName: region.owner?.username,
       leaderName: region.leader?.username,
       leaderLevel: region.leader?.level,
+      leaderAvatarData: region.leader?.avatarData || null,
       governorName: region.governor?.username || null,
       economicAdviserName: region.economicAdviser?.username || null,
       citizenCount: memberPlayerCounts[regionId] || 0,
@@ -1694,7 +1715,7 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       .select(`
         *,
         owner:users!ownerUserId(username),
-        leader:users!leaderUserId(username, level),
+        leader:users!leaderUserId(username, level, avatarData),
         governor:users!governorPlayerId(username),
         nation:nations(*)
       `)
@@ -1735,6 +1756,11 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       .from('users')
       .select('id', { count: 'exact', head: true })
       .eq('regionId', isoId);
+    // Count residents (users with residenceId matching this region)
+    const { count: residentCount } = await supabase
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .eq('residenceId', isoId);
     // Count players in sibling regions
     const regionIds = (memberRegions || []).map(mr => mr.id);
     const { data: memberUserStats } = await supabase
@@ -1755,8 +1781,10 @@ app.get("/api/countries/:iso2", authenticate, async (req: any, res) => {
       ownerName: region.owner?.username,
       leaderName: region.leader?.username,
       leaderLevel: region.leader?.level,
+      leaderAvatarData: region.leader?.avatarData || null,
       governorName: region.governor?.username || null,
       citizenCount: citizenCount || 0,
+      residentCount: residentCount || 0,
       memberRegions: (memberRegions || []).map(mr => ({
         ...mr,
         playerCount: memberPlayerCounts[mr.id] || 0
@@ -12290,7 +12318,7 @@ async function checkAndResolveWars() {
 
             if (attackerRegion) {
               const conquestLeader = attackerRegion.leaderUserId || attackerRegion.ownerUserId;
-              const conquestNationId = attackerRegion.nation_id || war.attackerCountryIso2;
+              const conquestNationId = attackerRegion.nation_id || war.attackerCountryIso2 || war.attackerRegionId;
               const nowIso = new Date().toISOString();
               await supabase.from('regions').update({
                 ownerUserId: conquestLeader,

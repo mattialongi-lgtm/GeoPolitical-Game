@@ -293,8 +293,6 @@ const ResourceStrip = ({ user }: { user: any }) => (
         { id: "uranium", emoji: "☢️", label: "Uranio", val: user.uranium || 0, color: "text-cyan-600" },
         { id: "diamonds", emoji: "💎", label: "Diamanti", val: user.diamonds || 0, color: "text-purple-600" },
         { id: "energy_drink", emoji: "🥤", label: "Drink", val: user.energyDrinks || 0, color: "text-sky-600" },
-        { id: "liquid_oxygen", emoji: "🧊", label: "O₂ Liq.", val: user.liquidOxygen || 0, color: "text-blue-600" },
-        { id: "helium3", emoji: "⚛️", label: "He-3", val: user.helium3 || 0, color: "text-teal-600" },
       ].map(r => (
         <Link key={r.id} to={`/inventory/history/${r.id}`} className="flex flex-col items-center gap-1 min-w-[56px] hover:scale-110 transition-transform cursor-pointer group">
           <span className="text-xl group-hover:drop-shadow-md transition-all">{r.emoji}</span>
@@ -3638,6 +3636,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   const [apps, setApps] = useState<any[]>([]);
   const [agreements, setAgreements] = useState<{ outgoing: any[]; incoming: any[] }>({ outgoing: [], incoming: [] });
   const [agreementTargetId, setAgreementTargetId] = useState("");
+  const [allRegions, setAllRegions] = useState<{ id: string; name: string }[]>([]);
   const [sanctions, setSanctions] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'info' | 'government' | 'leader' | 'resources' | 'autonomy'>('info');
   const [regionFactories, setRegionFactories] = useState<any[]>([]);
@@ -3713,6 +3712,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     fetchSanctions();
     fetchRegionFactories();
     fetchAutonomyData();
+    fetch('/api/regions')
+      .then(r => r.json())
+      .then((data: any[]) => setAllRegions(data.map((r: any) => ({ id: r.id, name: r.name }))));
   }, [iso2]);
 
   if (loading) return (
@@ -3729,6 +3731,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       <button onClick={() => navigate("/")} className="mt-6 text-indigo-600 font-black uppercase text-xs">← Torna alla Mappa</button>
     </div>
   );
+
+  const leaderAvatar = region.leaderAvatarData || region.leader?.avatarData || null;
+  const leaderInitial = (region.leaderName || 'L').trim().charAt(0).toUpperCase();
 
   const handleActionWithRefresh = async (action: string, body: any) => {
     await handleAction(action, body);
@@ -3854,16 +3859,8 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 <p className="text-xl font-black">{region.citizenCount ?? 0}</p>
               </div>
               <div className="bg-slate-50 p-4 rounded-3xl text-center">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stabilità</p>
-                <p className="text-xl font-black">{region.stability || 5}/10</p>
-              </div>
-              <div className="bg-emerald-50 p-4 rounded-3xl text-center">
-                <p className="text-[10px] font-black text-emerald-500 uppercase tracking-widest mb-1">Tesoro</p>
-                <p className="text-xl font-black text-emerald-700">${(region.treasury || 0).toLocaleString()}</p>
-              </div>
-              <div className="bg-amber-50 p-4 rounded-3xl text-center">
-                <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Economia</p>
-                <p className="text-xl font-black text-amber-700">{region.economyLevel || 1}/10</p>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Residenti</p>
+                <p className="text-xl font-black">{region.residentCount ?? 0}</p>
               </div>
 
               {/* Sanctions List */}
@@ -3896,12 +3893,15 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 </h3>
                 {region.leaderUserId ? (
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center">
-                      <UserIcon className="w-6 h-6 text-indigo-600" />
+                    <div className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center overflow-hidden">
+                      {leaderAvatar ? (
+                        <img src={leaderAvatar} alt={region.leaderName || 'Leader'} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-sm font-black text-indigo-700">{leaderInitial}</span>
+                      )}
                     </div>
                     <div>
                       <p className="text-sm font-black text-slate-900">{region.leaderName || 'Leader dello Stato'}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">ID: {region.leaderUserId}</p>
                     </div>
                   </div>
                 ) : (
@@ -4337,156 +4337,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
         </div>
       ) : (
         <>
-          {/* Region Production Bonuses */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-5">
-            <div className="flex justify-between items-end">
-              <h3 className="text-lg font-black uppercase tracking-tight">Bonus Produzione Regionale</h3>
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Moltiplicatore di Fabbrica</span>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { id: 'oil', label: 'Petrolio', icon: '🛢️', val: region.oilBonus || 1.0, color: 'text-slate-800', bg: 'bg-slate-50' },
-                { id: 'minerals', label: 'Minerali', icon: '🪨', val: region.mineralsBonus || 1.0, color: 'text-stone-700', bg: 'bg-stone-50' },
-                { id: 'uranium', label: 'Uranio', icon: '☢️', val: region.uraniumBonus || 1.0, color: 'text-emerald-700', bg: 'bg-emerald-50' },
-                { id: 'diamonds', label: 'Diamanti', icon: '💎', val: region.diamondsBonus || 1.0, color: 'text-sky-700', bg: 'bg-sky-50' },
-              ].map(res => {
-                const percentage = Math.round((res.val - 1) * 100);
-                return (
-                  <div key={res.id} className={`${res.bg} p-4 rounded-3xl flex flex-col items-center justify-center border border-white/50 text-center`}>
-                    <span className="text-2xl mb-2 drop-shadow-sm">{res.icon}</span>
-                    <span className={`text-[10px] font-black uppercase tracking-widest ${res.color}`}>{res.label}</span>
-                    <span className={`text-base font-black mt-1 ${percentage > 0 ? "text-emerald-600" : "text-slate-400"}`}>
-                      {percentage > 0 ? `+${percentage}%` : "Base"}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Ufficio Immigrazione */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
-            <h3 className="text-lg font-black uppercase tracking-tight text-indigo-900 border-b border-indigo-50 pb-2">Ufficio Immigrazione</h3>
-
-            {/* Accordi di Migrazione */}
-            <div className="space-y-3 mb-4">
-              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500">Accordi di migrazione in uscita</p>
-              {agreements.outgoing.length > 0 ? agreements.outgoing.map((ag: any) => (
-                <div key={ag.id} className="flex items-center justify-between p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100">
-                  <div>
-                    <p className="text-xs font-black text-indigo-900 uppercase">Verso {ag.partnerName}</p>
-                    <p className="text-[10px] font-bold text-indigo-500 uppercase">Attivato: {new Date(ag.activatedAt || ag.createdAt).toLocaleDateString()}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${ag.agreementType === 'BILATERAL' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{ag.agreementType === 'BILATERAL' ? 'Bilateral' : 'Unilateral'}</span>
-                    {canManageMigration && (
-                      <button onClick={() => handleProposeMigrationLaw('revoke_migration_agreement', ag.partnerId)} className="px-2 py-1 rounded-lg text-[10px] font-black bg-rose-100 text-rose-700">Revoca</button>
-                    )}
-                  </div>
-                </div>
-              )) : <div className="p-3 bg-slate-50 rounded-xl text-[11px] font-bold text-slate-400">Nessun accordo attivo in uscita.</div>}
-
-              <p className="text-[11px] font-black uppercase tracking-widest text-slate-500 pt-1">Accordi di migrazione in entrata</p>
-              {agreements.incoming.length > 0 ? agreements.incoming.map((ag: any) => (
-                <div key={ag.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <p className="text-xs font-black text-slate-700">{ag.partnerName} apre l'ingresso ai tuoi cittadini</p>
-                  <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${ag.agreementType === 'BILATERAL' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{ag.agreementType === 'BILATERAL' ? 'Bilateral' : 'Unilateral'}</span>
-                </div>
-              )) : <div className="p-3 bg-slate-50 rounded-xl text-[11px] font-bold text-slate-400">Nessun accordo in entrata.</div>}
-            </div>
-
-            {canManageMigration && (
-              <div className="flex gap-2 items-center">
-                <input value={agreementTargetId} onChange={(e) => setAgreementTargetId(e.target.value.toUpperCase())} placeholder="Stato target (ISO)" className="flex-1 bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs font-black uppercase" />
-                <button onClick={() => handleProposeMigrationLaw('migration_agreement')} className="px-3 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase">Proponi accordo</button>
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <button
-                disabled={user.regionId === region.id || !!(user.travelingUntil && Date.now() < user.travelingUntil)}
-                onClick={() => handleImmigrationAction("/api/actions/travel", { regionId: region.id })}
-                className="flex flex-col items-center justify-center p-4 bg-sky-50 rounded-2xl hover:bg-sky-100 transition-colors disabled:opacity-50 border border-sky-100"
-              >
-                <span className="text-2xl mb-2">✈️</span>
-                <span className="text-[11px] font-black uppercase tracking-widest text-sky-700">
-                  {user.travelingUntil && Date.now() < user.travelingUntil ? "In Viaggio..." : "Viaggia Qui"}
-                </span>
-                <span className="text-[9px] font-bold text-sky-500 mt-1">
-                  {user.travelingUntil && Date.now() < user.travelingUntil
-                    ? <span>Arrivo tra <TravelTimer endsAt={user.travelingUntil} onComplete={fetchData} /></span>
-                    : "Sposta la tua pedina fisica"}
-                </span>
-              </button>
-
-              <button
-                disabled={user.residenceId === region.id}
-                onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "residence" })}
-                className="flex flex-col items-center justify-center p-4 bg-emerald-50 rounded-2xl hover:bg-emerald-100 transition-colors disabled:opacity-50 border border-emerald-100"
-              >
-                <span className="text-2xl mb-2">🏠</span>
-                <span className="text-[11px] font-black uppercase tracking-widest text-emerald-700">Residenza</span>
-                <span className="text-[9px] font-bold text-emerald-500 mt-1">Diventa cittadino</span>
-              </button>
-
-              <button
-                disabled={user.workPermitId === region.id || user.residenceId === region.id}
-                onClick={() => handleImmigrationAction("/api/actions/apply", { regionId: region.id, type: "work_permit" })}
-                className="flex flex-col items-center justify-center p-4 bg-amber-50 rounded-2xl hover:bg-amber-100 transition-colors disabled:opacity-50 border border-amber-100"
-              >
-                <span className="text-2xl mb-2">📄</span>
-                <span className="text-[11px] font-black uppercase tracking-widest text-amber-700">Visto Lavorativo</span>
-                <span className="text-[9px] font-bold text-amber-500 mt-1">Permesso di lavoro estero</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Amministrazione (Solo per il Leader) */}
-          {region.ownerUserId === user.id && (
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
-              <h3 className="text-lg font-black uppercase tracking-tight text-rose-900 border-b border-rose-50 pb-2">Amministrazione Doganale</h3>
-
-              <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                <div>
-                  <p className="text-sm font-black text-slate-800">Protezionismo / Visti</p>
-                  <p className="text-[10px] font-bold text-slate-400 mt-0.5">Richiedi un permesso per lavorare in questa regione</p>
-                </div>
-                <button
-                  onClick={() => handleImmigrationAction("/api/actions/toggle-borders", { regionId: region.id, state: !region.workRestrictions })}
-                  className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${region.workRestrictions ? "bg-rose-500 text-white" : "bg-emerald-500 text-white"}`}
-                >
-                  {region.workRestrictions ? "Rimuovi Limitazioni" : "Attiva Limitazioni"}
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                <h4 className="text-sm font-black text-slate-700">Richieste in Sospeso ({apps.length})</h4>
-                {apps.length === 0 ? (
-                  <p className="text-xs text-slate-400 font-medium">Nessuna pratica da smaltire.</p>
-                ) : (
-                  <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-                    {apps.map(app => (
-                      <div key={app.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm">
-                        <div>
-                          <p className="text-xs font-black text-slate-800">{app.username}</p>
-                          <p className="text-[10px] uppercase font-bold text-indigo-500">{app.type === 'residence' ? 'Residenza' : 'Permesso Lavoro'}</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <button onClick={() => handleImmigrationAction("/api/actions/resolve-application", { applicationId: app.id, action: 'accept' })} className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100">
-                            <Check className="w-4 h-4" />
-                          </button>
-                          <button onClick={() => handleImmigrationAction("/api/actions/resolve-application", { applicationId: app.id, action: 'reject' })} className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center hover:bg-rose-100">
-                            <AlertCircle className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
           {/* Factories */}
           <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
             <h3 className="text-lg font-black uppercase tracking-tight">Strutture Presenti</h3>
@@ -4516,21 +4366,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               </div>
             )}
           </div>
-
-          {/* Resources (if any) */}
-          {resources.length > 0 && (
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-              <h3 className="text-lg font-black uppercase tracking-tight">Risorse Naturali</h3>
-              <div className="flex flex-wrap gap-2">
-                {resources.map((res: any) => (
-                  <div key={res.type} className="px-4 py-2 bg-slate-50 rounded-xl border border-slate-100 flex items-center gap-2">
-                    <span className="text-sm font-black text-slate-700">{res.type}</span>
-                    <span className="text-xs font-bold text-slate-400">{res.base || res.amount}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Budget e Finanze di Stato */}
           <BudgetView regionId={region.id} user={user} isLeader={region.ownerUserId === user?.id} />
@@ -7345,8 +7180,31 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
   const [paramsForm, setParamsForm] = useState<any>({});
   const [acting, setActing] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [allRegions, setAllRegions] = useState<{ id: string; name: string }[]>([]);
+  const [activeOutgoingAgreements, setActiveOutgoingAgreements] = useState<any[]>([]);
 
   useEffect(() => { setParamsForm({}); }, [selectedLaw]);
+
+  useEffect(() => {
+    fetch('/api/regions')
+      .then(r => r.ok ? r.json() : [])
+      .then((data: any[]) => {
+        const list = (data || [])
+          .filter((r: any) => r.id && r.id !== region?.id)
+          .map((r: any) => ({ id: r.id, name: r.name || r.id }))
+          .sort((a: any, b: any) => a.name.localeCompare(b.name));
+        setAllRegions(list);
+      })
+      .catch(() => {});
+  }, [region?.id]);
+
+  useEffect(() => {
+    if (!region?.id) return;
+    fetch(`/api/countries/${region.id}/agreements`)
+      .then(r => r.ok ? r.json() : { outgoing: [] })
+      .then((data: any) => setActiveOutgoingAgreements(data?.outgoing || []))
+      .catch(() => {});
+  }, [region?.id]);
 
   const activeLaws = (laws || []).filter((l: any) => l.status === 'pending');
   const historyLaws = (laws || []).filter((l: any) => l.status !== 'pending');
@@ -7535,10 +7393,52 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
                     <input type="number" min="3" max="30" placeholder="Es: 5" value={paramsForm.days || ''} onChange={e => setParamsForm({ ...paramsForm, days: e.target.value })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500" />
                   </div>
                 )}
-                {(selectedLaw === 'declare_war' || selectedLaw === 'peace_treaty' || selectedLaw === 'migration_agreement' || selectedLaw === 'revoke_migration_agreement' || selectedLaw === 'apply_sanctions' || selectedLaw === 'revoke_sanctions') && (
+                {(selectedLaw === 'declare_war' || selectedLaw === 'peace_treaty' || selectedLaw === 'apply_sanctions' || selectedLaw === 'revoke_sanctions') && (
                   <div>
                     <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">ID Nazione Bersaglio</label>
                     <input type="text" placeholder="Es: FR, DE, US..." value={paramsForm.targetRegionId || ''} onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value.toUpperCase() })} className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500 uppercase" />
+                  </div>
+                )}
+                {selectedLaw === 'migration_agreement' && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Nazione Bersaglio</label>
+                    {(() => {
+                      const existingTargets = new Set(activeOutgoingAgreements.map((a: any) => a.partnerId));
+                      const available = allRegions.filter(r => !existingTargets.has(r.id));
+                      return (
+                        <select
+                          value={paramsForm.targetRegionId || ''}
+                          onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value })}
+                          className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500"
+                        >
+                          <option value="">— Seleziona nazione —</option>
+                          {available.map(r => (
+                            <option key={r.id} value={r.id}>{r.name} ({r.id})</option>
+                          ))}
+                        </select>
+                      );
+                    })()}
+                  </div>
+                )}
+                {selectedLaw === 'revoke_migration_agreement' && (
+                  <div>
+                    <label className="block text-xs font-black text-slate-500 uppercase tracking-widest mb-2">Accordo da Annullare</label>
+                    {activeOutgoingAgreements.length === 0 ? (
+                      <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-sm font-bold text-slate-400">Nessun accordo attivo da revocare.</div>
+                    ) : (
+                      <select
+                        value={paramsForm.targetRegionId || ''}
+                        onChange={e => setParamsForm({ ...paramsForm, targetRegionId: e.target.value })}
+                        className="w-full bg-slate-50 border border-slate-200 p-4 rounded-2xl font-black text-slate-800 outline-none focus:border-indigo-500"
+                      >
+                        <option value="">— Seleziona accordo —</option>
+                        {activeOutgoingAgreements.map((a: any) => (
+                          <option key={a.partnerId} value={a.partnerId}>
+                            {a.partnerName || a.partnerId} ({a.partnerId}) — {a.agreementType === 'BILATERAL' ? 'Bilaterale' : 'Unilaterale'}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                 )}
                 {selectedLaw === 'transfer_budget' && (
@@ -7639,7 +7539,11 @@ const LawsTab = ({ laws, registry, user, reload, isMp, region }: any) => {
 
               <div className="flex gap-3 pt-4 border-t border-slate-100">
                 <button onClick={() => setShowPropose(false)} className="flex-1 py-4 bg-slate-100 text-slate-600 font-black rounded-xl text-xs uppercase tracking-widest hover:bg-slate-200 transition-colors">Annulla</button>
-                <button disabled={acting} onClick={handlePropose} className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-colors">
+                <button
+                  disabled={acting || ((selectedLaw === 'migration_agreement' || selectedLaw === 'revoke_migration_agreement') && !paramsForm.targetRegionId)}
+                  onClick={handlePropose}
+                  className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-xl text-xs uppercase tracking-widest shadow-lg shadow-indigo-200 hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
                   {region?.dictatorship ? "Emanala Ora" : "Deposita in Parlamento"}
                 </button>
               </div>

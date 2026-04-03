@@ -20,8 +20,6 @@ const resourceItems = [
   { key: 'uranium' as const, historyId: 'uranium', emoji: '☢️', label: 'Uranio', color: 'text-cyan-400' },
   { key: 'diamonds' as const, historyId: 'diamonds', emoji: '💎', label: 'Diamanti', color: 'text-purple-400' },
   { key: 'energyDrinks' as const, historyId: 'energy_drink', emoji: '🥤', label: 'Drink', color: 'text-sky-400' },
-  { key: 'liquidOxygen' as const, historyId: 'liquid_oxygen', emoji: '🧊', label: 'O₂ Liq.', color: 'text-blue-300' },
-  { key: 'helium3' as const, historyId: 'helium3', emoji: '⚛️', label: 'He-3', color: 'text-teal-400' },
 ];
 
 export default function PartySummaryCard({ party, resources, soldier }: PartySummaryCardProps) {

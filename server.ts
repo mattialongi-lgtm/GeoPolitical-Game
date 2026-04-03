@@ -1073,14 +1073,19 @@ app.get("/api/state/:id", authenticate, async (req, res) => {
     const { data: sanctions } = await (sanctionsQuery as any);
 
     // 5b. Migration Agreements — all active agreements where any region of this nation is involved
-    const migrationAgreementsQuery = regionIds.length > 0
-      ? supabase.from('migration_agreements')
-          .select('*, rf:regions!fromStateId(id, name, nation:nations(id, name, logo)), rt:regions!toStateId(id, name, nation:nations(id, name, logo))')
-          .or(`fromStateId.in.(${regionIds.join(',')}),toStateId.in.(${regionIds.join(',')})`)
-          .eq('status', 'ACTIVE')
-      : { data: [] };
-
-    const { data: rawMigrationAgreements } = await (migrationAgreementsQuery as any);
+    let rawMigrationAgreements: any[] = [];
+    if (regionIds.length > 0) {
+      const sel = '*, rf:regions!fromStateId(id, name, nation:nations(id, name, logo)), rt:regions!toStateId(id, name, nation:nations(id, name, logo))';
+      const [{ data: outgoingMig }, { data: incomingMig }] = await Promise.all([
+        supabase.from('migration_agreements').select(sel).in('fromStateId', regionIds).eq('status', 'ACTIVE'),
+        supabase.from('migration_agreements').select(sel).in('toStateId', regionIds).eq('status', 'ACTIVE'),
+      ]);
+      // Merge, deduplicate by id
+      const seen = new Set<string>();
+      for (const row of [...(outgoingMig || []), ...(incomingMig || [])]) {
+        if (!seen.has(row.id)) { seen.add(row.id); rawMigrationAgreements.push(row); }
+      }
+    }
 
     // 6. Fetch National Budget/Inventory from 'budgets' table
     const { data: budgetData } = await supabase

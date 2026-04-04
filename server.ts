@@ -10763,15 +10763,30 @@ async function executeExtractionWork(user: any, factoryId: string) {
   const actualMoney = breakdown.moneyGenerated * scaleFactor;
   const actualGold = resourceType === 'gold_ore' ? Math.max(0, Math.floor(Number(breakdown.goldGenerated) || 0)) : 0;
 
-  const { error: energyErr } = await supabase
-    .from('users')
-    .update({ energy: user.energy - actualEnergyCost })
-    .eq('id', user.id);
-  if (energyErr) throw energyErr;
-
+  // Validate before touching any balances
   const roundedPlayer = Math.round(actualPlayerAmount);
   if (roundedPlayer <= 0) {
     fail(400, "Produttività insufficiente per estrarre.", "insufficient_productivity");
+  }
+
+  // Atomically deduct energy and (for gold_ore) add gold+cash in a single RPC call.
+  // This prevents energy loss without reward if any intermediate step fails.
+  if (resourceType === 'gold_ore') {
+    const { data: deductData, error: deductErr } = await supabase.rpc('safe_deduct_currency', {
+      p_user_id: user.id,
+      p_money_cost: -Math.round(actualMoney),
+      p_gold_cost: -actualGold,
+      p_energy_cost: actualEnergyCost,
+    });
+    if (deductErr) throw deductErr;
+    const parsedDeduct = typeof deductData === 'string' ? JSON.parse(deductData) : deductData;
+    if (parsedDeduct?.error) fail(400, parsedDeduct.error);
+  } else {
+    const { error: energyErr } = await supabase
+      .from('users')
+      .update({ energy: user.energy - actualEnergyCost })
+      .eq('id', user.id);
+    if (energyErr) throw energyErr;
   }
 
   if (regionRes) {
@@ -10809,14 +10824,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
       .insert({ userId: user.id, itemId: resourceType, quantity: roundedPlayer });
   }
 
-  if (resourceType === 'gold_ore' && (actualMoney > 0 || actualGold > 0)) {
-    await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: -Math.round(actualMoney),
-      p_gold_cost: -actualGold,
-      p_energy_cost: 0,
-    });
-  }
+  // Gold+cash already handled atomically above together with energy deduction.
 
   if (Math.round(actualOwner) > 0) {
     await supabase.rpc('increment_factory_storage', {

@@ -24,5 +24,6 @@
     "allowImportingTsExtensions": true,
     "types": ["vite/client"],
     "noEmit": true
-  }
+  },
+  "exclude": ["backend/__tests__"]
 }

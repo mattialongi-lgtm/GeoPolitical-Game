@@ -34,6 +34,7 @@ import { ProductionRepository } from "./backend/repositories/production.reposito
 import { ProductionService } from "./backend/services/production.service";
 import { isDailyBonusClaimSuccess, isDailyMissionClaimSuccess } from "./backend/observability/contract-guards";
 import { mapServiceResultToHttp } from "./backend/services/http-result.mapper";
+import { errorHandler } from "./backend/middleware/errorHandler.middleware";
 
 console.log("Starting server.ts...");
 
@@ -12894,6 +12895,9 @@ app.post("/api/daily/missions/claim-bonus", authenticate, async (req: any, res) 
 
 // Vite middleware for development
 async function startServer() {
+  // Centralized error handler — must be registered after all routes.
+  app.use(errorHandler);
+
   checkAndResolveElections();
   checkAndAdvanceIndependentRegions();
   checkAndResolveLeaderElections();

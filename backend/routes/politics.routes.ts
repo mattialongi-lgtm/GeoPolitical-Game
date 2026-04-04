@@ -8,6 +8,7 @@ interface RegisterPoliticsRoutesDeps {
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
   partyAssetsService: any;
   mapServiceResultToHttp: (result: any) => { statusCode: number; body: any };
+  LawRegistry: any;
   GAME_CONFIG: any;
 }
 

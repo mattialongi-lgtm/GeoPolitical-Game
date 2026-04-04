@@ -33,5 +33,4 @@ export function registerRegionsRoutes(deps: RegisterRegionsRoutesDeps) {
   app.delete('/api/regions/:id/governor', authenticate, h.removeGovernor);
   app.get('/api/regions/:id/parliament', authenticate, h.getRegionParliament);
   app.get('/api/regions/:id/laws', authenticate, h.getRegionLaws);
-  app.get('/api/nations/:nationId/energy', authenticate, h.getNationEnergy);
 }

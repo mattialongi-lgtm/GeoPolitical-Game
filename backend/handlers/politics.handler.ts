@@ -5,7 +5,7 @@
  * Covers: /api/parties/*, /api/elections/*, /api/parliament/*,
  *   /api/blocs/*
  */
-import { LawRegistry } from '../../server';
+// LawRegistry is passed as a dependency to avoid circular imports with server.ts
 
 export function createPoliticsHandlers(deps: {
   supabase: any;
@@ -13,9 +13,10 @@ export function createPoliticsHandlers(deps: {
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
   partyAssetsService: any;
   mapServiceResultToHttp: (result: any) => { statusCode: number; body: any };
+  LawRegistry: any;
   GAME_CONFIG: any;
 }) {
-  const { supabase, generateSecureId, getUserPerks, partyAssetsService, mapServiceResultToHttp, GAME_CONFIG } = deps;
+  const { supabase, generateSecureId, getUserPerks, partyAssetsService, mapServiceResultToHttp, LawRegistry, GAME_CONFIG } = deps;
 
   // Helper: primaries cycle
   const PRIMARIES_CYCLE_MS = 5 * 24 * 60 * 60 * 1000;

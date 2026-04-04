@@ -9,6 +9,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
+    "test": "node --experimental-vm-modules node_modules/.bin/jest --coverage",
+    "test:watch": "node --experimental-vm-modules node_modules/.bin/jest --watch",
     "test:security-hardening": "node scripts/security-hardening-regression-smoke.cjs",
     "test:security-db-integration": "node scripts/security-db-integration.mjs",
     "test:security-db-integration:ci": "node -e \"process.env.REQUIRE_DB_INTEGRATION='true'; process.env.RUN_DB_INTEGRATION_TESTS='true'; import('./scripts/security-db-integration.mjs')\"",
@@ -47,11 +49,14 @@
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
+    "jest": "^30.3.0",
     "tailwindcss": "^4.1.14",
+    "ts-jest": "^29.4.9",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"

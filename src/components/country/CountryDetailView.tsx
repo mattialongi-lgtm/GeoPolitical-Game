@@ -23,6 +23,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   const [activeTab, setActiveTab] = useState<'info' | 'government' | 'resources' | 'autonomy'>('info');
   const [regionFactories, setRegionFactories] = useState<any[]>([]);
   const [autonomyData, setAutonomyData] = useState<any>(null);
+  const [regionParties, setRegionParties] = useState<any[]>([]);
 
   const regionalBuildingsForDisplay = useMemo(() => {
     const base = (autonomyData?.buildings && typeof autonomyData.buildings === 'object')
@@ -89,6 +90,17 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     }
   };
 
+  const fetchRegionParties = async () => {
+    try {
+      const res = await fetch(`/api/parties?regionId=${iso2?.toUpperCase()}`);
+      if (res.ok) {
+        setRegionParties(await res.json());
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const fetchAutonomyData = async () => {
     if (!iso2) return;
     try {
@@ -126,6 +138,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     fetchAgreements();
     fetchSanctions();
     fetchRegionFactories();
+    fetchRegionParties();
     fetchAutonomyData();
     fetch('/api/regions')
       .then(r => r.json())
@@ -269,6 +282,31 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Residenti</p>
                 <p className="text-xl font-black">{region.residentCount ?? 0}</p>
               </div>
+
+              <div className="bg-slate-50 p-4 rounded-3xl text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Partiti</p>
+                <p className="text-xl font-black">{regionParties.length}</p>
+              </div>
+              <div className="bg-slate-50 p-4 rounded-3xl text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Fabbriche</p>
+                <p className="text-xl font-black">{regionFactories.length}</p>
+              </div>
+
+              {regionParties.length > 0 && (
+                <div className="col-span-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Lista Partiti</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {regionParties.map((p: any) => (
+                      <span
+                        key={p.id}
+                        className="text-[10px] font-black px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg"
+                      >
+                        {p.tag ? `[${p.tag}] ` : ''}{p.name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Sanctions List */}
               {sanctions.length > 0 && (

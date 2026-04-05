@@ -145,10 +145,10 @@ export function createPoliticsHandlers(deps: {
 
   // GET /api/parties
   async function getParties(req: any, res: any) {
-    const { data: parties, error } = await supabase
-      .from('parties')
-      .select('*')
-      .order('createdAt', { ascending: false });
+    const regionId = req.query.regionId as string | undefined;
+    let query = supabase.from('parties').select('*').order('createdAt', { ascending: false });
+    if (regionId) query = query.eq('regionId', regionId.toUpperCase());
+    const { data: parties, error } = await query;
 
     if (error) {
       console.error("Error fetching parties:", error);

@@ -3,6 +3,12 @@ import { executeWarDeployUseCase } from '../backend/services/war-deploy.usecase'
 
 function createDeps(overrides?: Partial<any>) {
   return {
+    validateWarCreation: () => ({ valid: true }),
+    calculateInitialAttackDamage: () => 100,
+    calculateInitialDefensePoints: () => 100,
+    calculateDistancePenalty: () => 0,
+    getWarDuration: () => 60 * 60 * 1000,
+    generateWarId: () => 'war_test_1',
     validateTroopDeployment: () => ({ valid: true, energyCost: 10, moneyCost: 50 }),
     getUserPerks: async () => ({}),
     getMaxDeployableTroops: () => 100,

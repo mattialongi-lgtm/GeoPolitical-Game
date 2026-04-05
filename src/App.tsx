@@ -4418,8 +4418,28 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
             <h3 className="text-lg font-black uppercase tracking-tight">Strutture Presenti</h3>
             {regionFactories.length > 0 ? (
               <div className="space-y-3">
-                {regionFactories.map((f) => (
-                  <div key={f.id} className="flex items-center gap-3 p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                {regionFactories.map((f) => {
+                  const factoryIdentifier = f.id || f.slug || f.factoryId;
+                  const openFactoryDetail = () => {
+                    if (!factoryIdentifier) return;
+                    navigate(`/factory/${factoryIdentifier}`);
+                  };
+                  return (
+                  <div
+                    key={factoryIdentifier || f.name}
+                    role="button"
+                    tabIndex={factoryIdentifier ? 0 : -1}
+                    onClick={openFactoryDetail}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        openFactoryDetail();
+                      }
+                    }}
+                    className="flex items-center gap-3 p-4 bg-indigo-50 rounded-2xl border border-indigo-100 cursor-pointer"
+                    aria-label={factoryIdentifier ? `Apri fabbrica ${f.name}` : undefined}
+                    title={factoryIdentifier ? "Apri dettagli fabbrica" : undefined}
+                  >
                     <div className="p-3 bg-white rounded-xl text-xl">
                       {RESOURCE_ICONS[f.type] || "🏭"}
                     </div>
@@ -4434,7 +4454,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       <p className="text-xs font-bold text-slate-700">{f.ownerName || 'Unknown'}</p>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
             ) : (
               <div className="p-8 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">

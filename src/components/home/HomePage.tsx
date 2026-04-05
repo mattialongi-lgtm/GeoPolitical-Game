@@ -116,6 +116,7 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
 
   // Build resources from user data
   const playerResources = {
+    money: user.money || 0,
     gold: user.gold || 0,
     oil: user.oil || 0,
     minerals: user.minerals || 0,

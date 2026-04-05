@@ -84,6 +84,7 @@ export interface PartyInfo {
 }
 
 export interface PlayerResources {
+  money: number;
   gold: number;
   oil: number;
   minerals: number;
@@ -159,6 +160,7 @@ export const EMPTY_ACTIVE_WARS: ActiveWar[] = [];
 export const EMPTY_PARTY: PartyInfo | null = null;
 
 export const DEFAULT_RESOURCES: PlayerResources = {
+  money: 0,
   gold: 0,
   oil: 0,
   minerals: 0,

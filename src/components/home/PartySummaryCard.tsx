@@ -14,6 +14,7 @@ interface PartySummaryCardProps {
 }
 
 const resourceItems = [
+  { key: 'money' as const, historyId: 'money', emoji: '💵', label: 'Cash', color: 'text-emerald-400' },
   { key: 'gold' as const, historyId: 'gold_ore', emoji: '🪙', label: 'Oro', color: 'text-amber-400' },
   { key: 'oil' as const, historyId: 'oil', emoji: '🛢️', label: 'Petrolio', color: 'text-orange-400' },
   { key: 'minerals' as const, historyId: 'minerals', emoji: '🪨', label: 'Minerali', color: 'text-gray-300' },

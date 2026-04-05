@@ -286,6 +286,7 @@ const ResourceStrip = ({ user }: { user: any }) => (
     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Magazzino Risorse (Clicca per cronologia)</p>
     <div className="flex justify-between items-center gap-2 overflow-x-auto">
       {[
+        { id: "money", emoji: "💵", label: "Cash", val: user.money || 0, color: "text-emerald-600" },
         { id: "gold_ore", emoji: "🪙", label: "Oro", val: user.gold || 0, color: "text-amber-600" },
         { id: "oil", emoji: "🛢️", label: "Petrolio", val: user.oil || 0, color: "text-orange-600" },
         { id: "minerals", emoji: "🪨", label: "Minerali", val: user.minerals || 0, color: "text-slate-600" },

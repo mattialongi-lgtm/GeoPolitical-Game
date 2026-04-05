@@ -10,6 +10,7 @@ import {
   Loader2,
   Box,
   Plus,
+  Minus,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { ResourceIcon } from "./ResourceIcon";
@@ -42,6 +43,9 @@ const ResourceHistoryView = ({ fetchData }: { fetchData: () => void }) => {
       case 'scavo': return <Pickaxe className="w-5 h-5 text-emerald-400" />;
       case 'acquisto': return <ShoppingCart className="w-5 h-5 text-indigo-400" />;
       case 'ritiro': return <Package className="w-5 h-5 text-amber-400" />;
+      case 'entrata': return <Plus className="w-5 h-5 text-emerald-400" />;
+      case 'spesa': return <ShoppingCart className="w-5 h-5 text-rose-400" />;
+      case 'vendita': return <Package className="w-5 h-5 text-emerald-400" />;
       default: return <History className="w-5 h-5 text-slate-400" />;
     }
   };
@@ -51,6 +55,9 @@ const ResourceHistoryView = ({ fetchData }: { fetchData: () => void }) => {
       case 'scavo': return 'Lavoro / Estrazione';
       case 'acquisto': return 'Acquisto Mercato';
       case 'ritiro': return 'Prelievo Fabbrica';
+      case 'entrata': return 'Entrata';
+      case 'spesa': return 'Spesa';
+      case 'vendita': return 'Vendita Mercato';
       default: return 'Transazione';
     }
   };
@@ -155,9 +162,9 @@ const ResourceHistoryView = ({ fetchData }: { fetchData: () => void }) => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="flex items-center gap-1 justify-end text-[#76ff03]">
-                      <Plus className="w-3 h-3" />
-                      <span className="text-xl font-black military-font tracking-tighter">{event.amount.toLocaleString()}</span>
+                    <div className={`flex items-center gap-1 justify-end ${event.amount < 0 ? 'text-rose-400' : 'text-[#76ff03]'}`}>
+                      {event.amount < 0 ? <Minus className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
+                      <span className="text-xl font-black military-font tracking-tighter">{Math.abs(event.amount || 0).toLocaleString()}</span>
                     </div>
                     <p className="text-[8px] font-black text-gray-700 uppercase tracking-widest leading-none">Aggregato</p>
                   </div>

@@ -3,7 +3,6 @@ import "dotenv/config";
 (BigInt.prototype as any).toJSON = function() { return this.toString(); };
 
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import { createClient } from "@supabase/supabase-js";
 import cookieParser from "cookie-parser";
 import { randomBytes } from "crypto";
@@ -5169,13 +5168,7 @@ export async function startServer() {
   // Centralized error handler — must be registered after all routes.
   app.use(errorHandler);
 
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
+  if (process.env.NODE_ENV === "production") {
     app.use(express.static("dist"));
   }
 
@@ -5236,5 +5229,7 @@ export function startBackgroundJobs() {
     }
   }, 5 * 60 * 1000);
 }
+
+startServer();
 
 

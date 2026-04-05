@@ -274,6 +274,7 @@ export function createMarketHandlers(deps: {
     const user = req.user;
     const { itemId } = req.params;
     const isGold = itemId === 'gold_ore' || itemId === 'gold';
+    const isMoney = itemId === 'money' || itemId === 'cash';
 
     const normalizeTimestamp = (value: unknown): string => {
       if (value instanceof Date) return value.toISOString();
@@ -292,7 +293,10 @@ export function createMarketHandlers(deps: {
     try {
       // 1. Get current balance
       let currentBalance = 0;
-      if (isGold) {
+      if (isMoney) {
+        const { data: userData } = await supabase.from('users').select('money').eq('id', user.id).single();
+        currentBalance = userData?.money || 0;
+      } else if (isGold) {
         const { data: userData } = await supabase.from('users').select('gold').eq('id', user.id).single();
         currentBalance = userData?.gold || 0;
       } else {
@@ -306,7 +310,40 @@ export function createMarketHandlers(deps: {
 
       // 2. Fetch Extractions (Work)
       let extractions: any[] = [];
-      if (isGold) {
+      if (isMoney) {
+        const { data: workerCash } = await supabase.from('factory_worker_logs')
+          .select('earningsMoney, workedAt, factoryId')
+          .eq('workerId', user.id)
+          .gt('earningsMoney', 0)
+          .order('workedAt', { ascending: false })
+          .limit(20);
+
+        extractions = [
+          ...(workerCash || []).map((l: any) => ({
+            resourceAmount: Number(l.earningsMoney || 0),
+            workedAt: l.workedAt,
+            factoryId: l.factoryId,
+            source: 'Lavoro in Fabbrica',
+          })),
+        ];
+
+        const { data: extractionCashLogs } = await supabase
+          .from('extraction_detailed_logs')
+          .select('moneyGenerated, createdAt, regionId, resourceType')
+          .eq('playerId', user.id)
+          .gt('moneyGenerated', 0)
+          .order('createdAt', { ascending: false })
+          .limit(20);
+
+        extractions.push(
+          ...(extractionCashLogs || []).map((l: any) => ({
+            resourceAmount: Number(l.moneyGenerated || 0),
+            workedAt: l.createdAt,
+            regionId: l.regionId,
+            source: 'Estrazione Avanzata',
+          }))
+        );
+      } else if (isGold) {
         const { data: goldLogs } = await supabase.from('factory_worker_logs')
           .select('earningsGold, workedAt, factoryId')
           .eq('workerId', user.id)
@@ -361,27 +398,43 @@ export function createMarketHandlers(deps: {
       }
 
       // 3. Fetch Market Purchases
-      const { data: purchases } = await supabase.from('market_transactions_log')
-        .select('quantity, timestamp, sellerId')
-        .eq('buyerId', user.id)
-        .eq('itemId', itemId)
-        .order('timestamp', { ascending: false })
-        .limit(20);
+      const { data: purchases } = isMoney
+        ? await supabase.from('market_transactions_log')
+          .select('quantity, price, taxPaid, timestamp, itemId')
+          .eq('buyerId', user.id)
+          .order('timestamp', { ascending: false })
+          .limit(20)
+        : await supabase.from('market_transactions_log')
+          .select('quantity, timestamp, sellerId')
+          .eq('buyerId', user.id)
+          .eq('itemId', itemId)
+          .order('timestamp', { ascending: false })
+          .limit(20);
+
+      const { data: sales } = isMoney
+        ? await supabase.from('market_transactions_log')
+          .select('quantity, price, taxPaid, timestamp, itemId')
+          .eq('sellerId', user.id)
+          .order('timestamp', { ascending: false })
+          .limit(20)
+        : { data: null };
 
       // 4. Fetch Withdrawals from Action Logs
-      const { data: actions } = await supabase.from('action_logs')
-        .select('details, timestamp')
-        .eq('userId', user.id)
-        .eq('action', 'FACTORY_WITHDRAW')
-        .order('timestamp', { ascending: false })
-        .limit(50);
+      const { data: actions } = isMoney
+        ? { data: null }
+        : await supabase.from('action_logs')
+          .select('details, timestamp')
+          .eq('userId', user.id)
+          .eq('action', 'FACTORY_WITHDRAW')
+          .order('timestamp', { ascending: false })
+          .limit(50);
 
       // 5. Consolidate
       const history: any[] = [];
 
       for (const ex of extractions) {
         history.push({
-          type: 'scavo',
+          type: isMoney ? 'entrata' : 'scavo',
           amount: ex.resourceAmount,
           timestamp: normalizeTimestamp(ex.workedAt),
           source: ex.source || 'Lavoro in Fabbrica'
@@ -390,11 +443,34 @@ export function createMarketHandlers(deps: {
 
       if (purchases) {
         for (const p of purchases) {
+          if (isMoney) {
+            const total = Number(p.price || 0) * Number(p.quantity || 0);
+            history.push({
+              type: 'spesa',
+              amount: -total,
+              timestamp: normalizeTimestamp(p.timestamp),
+              source: `Acquisto Mercato${p.itemId ? ` (${p.itemId})` : ''}`
+            });
+          } else {
+            history.push({
+              type: 'acquisto',
+              amount: p.quantity,
+              timestamp: normalizeTimestamp(p.timestamp),
+              source: 'Acquisto Mercato'
+            });
+          }
+        }
+      }
+
+      if (sales) {
+        for (const s of sales) {
+          const gross = Number(s.price || 0) * Number(s.quantity || 0);
+          const net = Math.max(0, gross - Number(s.taxPaid || 0));
           history.push({
-            type: 'acquisto',
-            amount: p.quantity,
-            timestamp: normalizeTimestamp(p.timestamp),
-            source: 'Acquisto Mercato'
+            type: 'vendita',
+            amount: net,
+            timestamp: normalizeTimestamp(s.timestamp),
+            source: `Vendita Mercato${s.itemId ? ` (${s.itemId})` : ''}`
           });
         }
       }

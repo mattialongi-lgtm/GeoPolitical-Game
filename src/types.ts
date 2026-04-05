@@ -952,6 +952,7 @@ export type ResourceType = 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_o
 export const RESOURCE_TYPES: ResourceType[] = ['oil', 'minerals', 'uranium', 'diamonds', 'gold_ore', 'liquid_oxygen', 'helium3', 'energy', 'food', 'steel', 'gas', 'energy_drink'];
 
 export const RESOURCE_LABELS: Record<string, string> = {
+  money: 'Cash',
   oil: 'Petrolio',
   minerals: 'Minerali',
   uranium: 'Uranio',
@@ -967,6 +968,7 @@ export const RESOURCE_LABELS: Record<string, string> = {
 };
 
 export const RESOURCE_ICONS_MAP: Record<string, string> = {
+  money: '💵',
   oil: '🛢️',
   minerals: '🪨',
   uranium: '☢️',

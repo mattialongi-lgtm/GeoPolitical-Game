@@ -1,4 +1,0 @@
-Loaded 1 nations.
-Sample nationIds: IT
-Loaded 242 regions.
-Found 0 regions needing repair.

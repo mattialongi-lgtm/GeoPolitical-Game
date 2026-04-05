@@ -34,6 +34,14 @@ const db = new Database("game.db");
 // SQLite does NOT enforce foreign keys by default — enable per connection
 db.pragma("foreign_keys = ON");
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS _migrations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT UNIQUE NOT NULL,
+    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+  )
+`);
+
 // One-time bcrypt migration for existing plaintext passwords
 const usersWithPlaintext = db.prepare(
   "SELECT id, password FROM users WHERE password IS NOT NULL AND password NOT LIKE '$2b$%'"

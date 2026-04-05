@@ -1,4 +1,5 @@
 import { createFactoriesHandlers } from '../handlers/factories.handler';
+import { writeLimiter } from '../middleware/rateLimiter.middleware';
 
 interface RegisterFactoriesRoutesDeps {
   app: any;
@@ -24,12 +25,12 @@ export function registerFactoriesRoutes(deps: RegisterFactoriesRoutesDeps) {
   const h = createFactoriesHandlers(deps);
 
   app.get('/api/factories', authenticate, h.getFactories);
-  app.post('/api/factories/create', authenticate, h.createFactory);
-  app.post('/api/factories/deposit', authenticate, h.depositFactory);
-  app.post('/api/factories/paymode', authenticate, h.setPayMode);
+  app.post('/api/factories/create', writeLimiter, authenticate, h.createFactory);
+  app.post('/api/factories/deposit', writeLimiter, authenticate, h.depositFactory);
+  app.post('/api/factories/paymode', writeLimiter, authenticate, h.setPayMode);
   app.get('/api/factories/upgrade-cost', authenticate, h.getUpgradeCost);
-  app.post('/api/factories/upgrade', authenticate, h.upgradeFactory);
+  app.post('/api/factories/upgrade', writeLimiter, authenticate, h.upgradeFactory);
   app.get('/api/factories/all', authenticate, h.getAllFactories);
   app.get('/api/factories/:id', authenticate, h.getFactoryById);
-  app.post('/api/factories/:id/withdraw', authenticate, h.withdrawFactory);
+  app.post('/api/factories/:id/withdraw', writeLimiter, authenticate, h.withdrawFactory);
 }

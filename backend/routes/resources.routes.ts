@@ -1,4 +1,5 @@
 import { createResourcesHandlers } from '../handlers/resources.handler';
+import { writeLimiter, strictLimiter } from '../middleware/rateLimiter.middleware';
 
 interface RegisterResourcesRoutesDeps {
   app: any;
@@ -40,18 +41,18 @@ export function registerResourcesRoutes(deps: RegisterResourcesRoutesDeps) {
 
   // Resources
   app.get('/api/resources/player-state', authenticate, h.getPlayerState);
-  app.post('/api/resources/work-extract', authenticate, h.workExtract);
-  app.post('/api/resources/recharge', authenticate, h.recharge);
+  app.post('/api/resources/work-extract', strictLimiter, authenticate, h.workExtract);
+  app.post('/api/resources/recharge', writeLimiter, authenticate, h.recharge);
   app.get('/api/resources/recharge-info', authenticate, h.getRechargeInfo);
-  app.post('/api/resources/deep-exploration/cost', authenticate, h.getDeepExplorationCost);
-  app.post('/api/resources/deep-exploration/activate', authenticate, h.activateDeepExploration);
+  app.post('/api/resources/deep-exploration/cost', writeLimiter, authenticate, h.getDeepExplorationCost);
+  app.post('/api/resources/deep-exploration/activate', strictLimiter, authenticate, h.activateDeepExploration);
   app.get('/api/resources/deep-exploration/status', authenticate, h.getDeepExplorationStatus);
 
   // Extraction
-  app.post('/api/extraction/work', authenticate, h.extractionWork);
+  app.post('/api/extraction/work', writeLimiter, authenticate, h.extractionWork);
   app.get('/api/extraction/breakdown', authenticate, h.getExtractionBreakdown);
   app.get('/api/extraction/player-experience', authenticate, h.getPlayerExperience);
-  app.post('/api/extraction/transfer-work-exp', authenticate, h.transferWorkExp);
+  app.post('/api/extraction/transfer-work-exp', writeLimiter, authenticate, h.transferWorkExp);
   app.get('/api/extraction/region-dashboard/:id', authenticate, h.getRegionDashboard);
   app.get('/api/extraction/leaderboard', authenticate, h.getExtractionLeaderboard);
 }

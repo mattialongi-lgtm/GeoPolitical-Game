@@ -1,4 +1,5 @@
 import { createMarketHandlers } from '../handlers/market.handler';
+import { writeLimiter } from '../middleware/rateLimiter.middleware';
 
 interface RegisterMarketRoutesDeps {
   app: any;
@@ -31,14 +32,14 @@ export function registerMarketRoutes(deps: RegisterMarketRoutesDeps) {
   const h = createMarketHandlers(deps);
 
   app.get('/api/market/listings', authenticate, h.getListings);
-  app.post('/api/market/listings', authenticate, h.createListing);
+  app.post('/api/market/listings', writeLimiter, authenticate, h.createListing);
   app.get('/api/market/state-inventory', authenticate, h.getStateInventory);
   app.get('/api/market/offers', authenticate, h.getOffers);
-  app.post('/api/market/offer', authenticate, h.createOffer);
-  app.post('/api/market/buy', authenticate, h.buyOffer);
+  app.post('/api/market/offer', writeLimiter, authenticate, h.createOffer);
+  app.post('/api/market/buy', writeLimiter, authenticate, h.buyOffer);
   app.get('/api/inventory/history/:itemId', authenticate, h.getInventoryHistory);
-  app.post('/api/market/energy-drinks/buy', authenticate, h.buyEnergyDrinks);
-  app.post('/api/produce', authenticate, h.produce);
+  app.post('/api/market/energy-drinks/buy', writeLimiter, authenticate, h.buyEnergyDrinks);
+  app.post('/api/produce', writeLimiter, authenticate, h.produce);
   app.get('/api/produce/list', authenticate, h.produceList);
-  app.post('/api/produce/claim', authenticate, h.produceClaim);
+  app.post('/api/produce/claim', writeLimiter, authenticate, h.produceClaim);
 }

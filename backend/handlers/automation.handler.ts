@@ -24,7 +24,7 @@ const isAutomationExpired = (activatedAt?: string | null, expiresAt?: string | n
 
 const isAutoAttackCompatibleWithAutoWork = (autoType: any): boolean => autoType === 'hourly';
 
-const autoWorkIncompatibleMessage = "Auto-Work e compatibile solo con il Danno Orario, non con l'Auto-War standard.";
+const autoWorkIncompatibleMessage = "Auto-Work è compatibile solo con il Danno Orario, non con l'Auto-War standard.";
 
 /* ------------------------------------------------------------------ */
 /*  Factory                                                            */
@@ -71,7 +71,8 @@ export function createAutomationHandlers(deps: {
       if (enabled === false) {
         const { error: disableError } = await supabase.from('work_auto_actions')
           .update({ isActive: false })
-          .eq('userId', req.user.id);
+          .eq('userId', req.user.id)
+          .eq('isActive', true);
         if (disableError) throw disableError;
         return res.json({ success: true, message: "Auto-lavoro disattivato." });
       }

@@ -521,6 +521,7 @@ export function createWarsLegacyHandlers(deps: {
       }
 
       const minPlayers = GAME_CONFIG.WAR_COUP_MIN_PLAYERS;
+      const goldCost = GAME_CONFIG.WAR_COUP_GOLD_COST;
 
       // Check development level must be 1
       const { data: region } = await supabase.from('regions').select('*').eq('id', regionId).single();
@@ -544,6 +545,12 @@ export function createWarsLegacyHandlers(deps: {
         .select('id').eq('regionId', regionId).eq('status', 'active').maybeSingle();
       if (activeCoup) return res.status(400).json({ error: "Colpo di stato già in corso." });
 
+      // Check user has enough gold
+      const { data: freshUser } = await supabase.from('users').select('gold').eq('id', user.id).single();
+      if (!freshUser || (freshUser.gold || 0) < goldCost) {
+        return res.status(400).json({ error: `Gold insufficiente. Servono ${goldCost} Gold.` });
+      }
+
       // Check for existing pending lobby
       const { data: existingLobby } = await supabase.from('revolution_lobbies')
         .select('*')
@@ -559,6 +566,9 @@ export function createWarsLegacyHandlers(deps: {
         }
 
         const newParticipants = [...(existingLobby.participantIds || []), user.id];
+
+        // Deduct gold from joining player
+        await supabase.from('users').update({ gold: (freshUser.gold || 0) - goldCost }).eq('id', user.id);
 
         if (newParticipants.length >= minPlayers) {
           // Lobby is full - start the coup!
@@ -619,6 +629,9 @@ export function createWarsLegacyHandlers(deps: {
         }
       } else {
         // Create new lobby
+        // Deduct gold from creator
+        await supabase.from('users').update({ gold: (freshUser.gold || 0) - goldCost }).eq('id', user.id);
+
         const { data: lobby, error: lobbyError } = await supabase.from('revolution_lobbies').insert({
           regionId,
           lobbyType: 'coup',
@@ -626,7 +639,7 @@ export function createWarsLegacyHandlers(deps: {
           participantIds: [user.id],
           requiredPlayers: minPlayers,
           status: 'pending',
-          goldCostPerPlayer: 0,
+          goldCostPerPlayer: goldCost,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
@@ -905,3 +918,4 @@ export function createWarsLegacyHandlers(deps: {
     getCoups,
   };
 }
+

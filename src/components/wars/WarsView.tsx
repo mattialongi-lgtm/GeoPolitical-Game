@@ -185,10 +185,19 @@ const WarsView = ({
         body: JSON.stringify({ regionId }),
       });
       const data = await res.json();
-      if (data.error) alert(data.error);
-      else { alert(data.message || "Rivoluzione iniziata!"); fetchData(); }
+      if (data.error) {
+        const errorMessage = String(data.error || '');
+        const normalizedError = errorMessage.toLowerCase();
+        const isAlreadyJoined = normalizedError.includes('gia') && normalizedError.includes('lobby');
+        if (!isAlreadyJoined) alert(errorMessage);
+        return { ok: false, error: errorMessage };
+      }
+      alert(data.message || "Rivoluzione iniziata!");
+      fetchData();
+      return { ok: true };
     } catch { alert("Errore nell'avvio della rivoluzione."); }
     finally { setRevLoading(false); }
+    return { ok: false, error: "Errore nell'avvio della rivoluzione." };
   };
 
   const handleStartCoup = async (regionId: string) => {
@@ -200,10 +209,19 @@ const WarsView = ({
         body: JSON.stringify({ regionId }),
       });
       const data = await res.json();
-      if (data.error) alert(data.error);
-      else { alert(data.message || "Colpo di stato iniziato!"); fetchData(); }
+      if (data.error) {
+        const errorMessage = String(data.error || '');
+        const normalizedError = errorMessage.toLowerCase();
+        const isAlreadyJoined = normalizedError.includes('gia') && normalizedError.includes('lobby');
+        if (!isAlreadyJoined) alert(errorMessage);
+        return { ok: false, error: errorMessage };
+      }
+      alert(data.message || "Colpo di stato iniziato!");
+      fetchData();
+      return { ok: true };
     } catch { alert("Errore nell'avvio del colpo di stato."); }
     finally { setRevLoading(false); }
+    return { ok: false, error: "Errore nell'avvio del colpo di stato." };
   };
 
   return (

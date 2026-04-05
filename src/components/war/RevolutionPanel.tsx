@@ -19,8 +19,8 @@ interface RevolutionPanelProps {
   userId: string;
   userGold: number;
   regionDevelopment: number;
-  onStartRevolution: (regionId: string) => Promise<void>;
-  onStartCoup: (regionId: string) => Promise<void>;
+  onStartRevolution: (regionId: string) => Promise<{ ok: boolean; error?: string }>;
+  onStartCoup: (regionId: string) => Promise<{ ok: boolean; error?: string }>;
   loading: boolean;
 }
 
@@ -35,9 +35,11 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
 }) => {
   const [lobbies, setLobbies] = useState<LobbyInfo[]>([]);
   const [loadingLobbies, setLoadingLobbies] = useState(false);
+  const [joinedOverride, setJoinedOverride] = useState<{ revolution?: boolean; coup?: boolean }>({});
 
   const canRevolution = userGold >= GAME_CONFIG.WAR_REVOLUTION_GOLD_COST;
-  const canCoup = regionDevelopment === GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT;
+  const canCoup = regionDevelopment === GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT
+    && userGold >= GAME_CONFIG.WAR_COUP_GOLD_COST;
 
   const fetchLobbies = async () => {
     if (!regionId) return;
@@ -57,18 +59,34 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
     const iv = setInterval(fetchLobbies, 30000); // Refresh every 30s
     return () => clearInterval(iv);
   }, [regionId]);
+  useEffect(() => {
+    setJoinedOverride({});
+  }, [regionId]);
 
   const handleJoinOrCreate = async (type: 'revolution' | 'coup') => {
-    if (type === 'revolution') {
-      await onStartRevolution(regionId);
-    } else {
-      await onStartCoup(regionId);
+    try {
+      const result = type === 'revolution'
+        ? await onStartRevolution(regionId)
+        : await onStartCoup(regionId);
+      const normalizedError = result?.error?.toLowerCase() ?? '';
+      if (normalizedError.includes('gia')) {
+        setJoinedOverride(prev => ({ ...prev, [type]: true }));
+      }
+    } finally {
+      fetchLobbies();
     }
-    fetchLobbies();
   };
 
   const revLobby = lobbies.find(l => l.lobbyType === 'revolution');
   const coupLobby = lobbies.find(l => l.lobbyType === 'coup');
+  const revJoined = revLobby ? revLobby.isJoined : !!joinedOverride.revolution;
+  const coupJoined = coupLobby ? coupLobby.isJoined : !!joinedOverride.coup;
+  const revCurrent = revLobby?.current ?? 1;
+  const revRequired = revLobby?.required ?? GAME_CONFIG.WAR_REVOLUTION_MIN_PLAYERS;
+  const coupCurrent = coupLobby?.current ?? 1;
+  const coupRequired = coupLobby?.required ?? GAME_CONFIG.WAR_COUP_MIN_PLAYERS;
+  const showRevLobby = !!revLobby || revJoined;
+  const showCoupLobby = !!coupLobby || coupJoined;
 
   return (
     <div className="bg-gradient-to-br from-rose-600 to-rose-700 p-6 rounded-[2.5rem] shadow-lg shadow-rose-200 text-white space-y-4">
@@ -99,21 +117,23 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
             )}
           </div>
 
-          {revLobby ? (
+          {showRevLobby ? (
             <div className="space-y-2">
-              <div className="flex flex-wrap gap-2">
-                {revLobby.participants.map((p, i) => (
-                  <span key={p.id} className="bg-white/20 px-2 py-1 rounded-lg text-[10px] font-black">
-                    {i + 1}. {p.username || p.id.slice(0, 8)}
-                  </span>
-                ))}
-                {Array.from({ length: revLobby.required - revLobby.current }).map((_, i) => (
-                  <span key={`empty-${i}`} className="bg-white/10 px-2 py-1 rounded-lg text-[10px] font-bold text-rose-300 border border-dashed border-white/20">
-                    ? In attesa...
-                  </span>
-                ))}
-              </div>
-              {!revLobby.isJoined ? (
+              {!revJoined && revLobby && (
+                <div className="flex flex-wrap gap-2">
+                  {revLobby.participants.map((p, i) => (
+                    <span key={p.id} className="bg-white/20 px-2 py-1 rounded-lg text-[10px] font-black">
+                      {i + 1}. {p.username || p.id.slice(0, 8)}
+                    </span>
+                  ))}
+                  {Array.from({ length: revLobby.required - revLobby.current }).map((_, i) => (
+                    <span key={`empty-${i}`} className="bg-white/10 px-2 py-1 rounded-lg text-[10px] font-bold text-rose-300 border border-dashed border-white/20">
+                      ? In attesa...
+                    </span>
+                  ))}
+                </div>
+              )}
+              {!revJoined ? (
                 <button
                   onClick={() => handleJoinOrCreate('revolution')}
                   disabled={loading || !canRevolution}
@@ -123,9 +143,12 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
                   Unisciti alla Rivoluzione ({GAME_CONFIG.WAR_REVOLUTION_GOLD_COST} 🪙)
                 </button>
               ) : (
-                <div className="bg-emerald-500/30 rounded-xl p-2 text-center">
-                  <span className="text-[10px] font-black text-emerald-100">✓ Ti sei unito! In attesa di altri giocatori...</span>
-                </div>
+                <button
+                  disabled
+                  className="w-full py-3 bg-white/10 rounded-2xl font-black uppercase text-[10px] tracking-widest border border-white/20 opacity-60 cursor-not-allowed"
+                >
+                  Rivoluzionari {revCurrent}/{revRequired}, ti sei gia' unito a questa rivoluzione
+                </button>
               )}
             </div>
           ) : (
@@ -153,7 +176,7 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
             <div>
               <p className="font-black text-sm uppercase">⚡ Colpo di Stato</p>
               <p className="text-[9px] font-medium text-rose-200">
-                Solo se sviluppo = {GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT} • Min. {GAME_CONFIG.WAR_COUP_MIN_PLAYERS} giocatori
+                Costo: {GAME_CONFIG.WAR_COUP_GOLD_COST} Gold per giocatore • Solo se sviluppo = {GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT} • Min. {GAME_CONFIG.WAR_COUP_MIN_PLAYERS} giocatori
               </p>
             </div>
             {coupLobby && (
@@ -163,33 +186,38 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
             )}
           </div>
 
-          {coupLobby ? (
+          {showCoupLobby ? (
             <div className="space-y-2">
-              <div className="flex flex-wrap gap-2">
-                {coupLobby.participants.map((p, i) => (
-                  <span key={p.id} className="bg-white/20 px-2 py-1 rounded-lg text-[10px] font-black">
-                    {i + 1}. {p.username || p.id.slice(0, 8)}
-                  </span>
-                ))}
-                {Array.from({ length: coupLobby.required - coupLobby.current }).map((_, i) => (
-                  <span key={`empty-${i}`} className="bg-white/10 px-2 py-1 rounded-lg text-[10px] font-bold text-rose-300 border border-dashed border-white/20">
-                    ? In attesa...
-                  </span>
-                ))}
-              </div>
-              {!coupLobby.isJoined ? (
+              {!coupJoined && coupLobby && (
+                <div className="flex flex-wrap gap-2">
+                  {coupLobby.participants.map((p, i) => (
+                    <span key={p.id} className="bg-white/20 px-2 py-1 rounded-lg text-[10px] font-black">
+                      {i + 1}. {p.username || p.id.slice(0, 8)}
+                    </span>
+                  ))}
+                  {Array.from({ length: coupLobby.required - coupLobby.current }).map((_, i) => (
+                    <span key={`empty-${i}`} className="bg-white/10 px-2 py-1 rounded-lg text-[10px] font-bold text-rose-300 border border-dashed border-white/20">
+                      ? In attesa...
+                    </span>
+                  ))}
+                </div>
+              )}
+              {!coupJoined ? (
                 <button
                   onClick={() => handleJoinOrCreate('coup')}
                   disabled={loading || !canCoup}
                   className="w-full py-3 bg-white/30 hover:bg-white/40 rounded-2xl font-black uppercase text-xs tracking-widest transition-all border border-white/30 flex items-center justify-center gap-2 disabled:opacity-40"
                 >
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
-                  Unisciti al Golpe
+                  Unisciti al Golpe ({GAME_CONFIG.WAR_COUP_GOLD_COST} 🪙)
                 </button>
               ) : (
-                <div className="bg-emerald-500/30 rounded-xl p-2 text-center">
-                  <span className="text-[10px] font-black text-emerald-100">✓ Ti sei unito! In attesa di altri giocatori...</span>
-                </div>
+                <button
+                  disabled
+                  className="w-full py-3 bg-white/10 rounded-2xl font-black uppercase text-[10px] tracking-widest border border-white/20 opacity-60 cursor-not-allowed"
+                >
+                  Golpisti {coupCurrent}/{coupRequired}, ti sei gia' unito a questo colpo di stato
+                </button>
               )}
             </div>
           ) : (
@@ -199,7 +227,7 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
               className="w-full py-3 bg-white/20 hover:bg-white/30 rounded-2xl font-black uppercase text-xs tracking-widest transition-all border border-white/20 flex items-center justify-center gap-2 disabled:opacity-40"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-              ⚡ Crea Lobby Golpe
+              ⚡ Crea Lobby Golpe ({GAME_CONFIG.WAR_COUP_GOLD_COST} 🪙)
             </button>
           )}
 
@@ -214,3 +242,9 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
     </div>
   );
 };
+
+
+
+
+
+

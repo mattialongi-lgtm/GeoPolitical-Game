@@ -11,6 +11,17 @@ coverage/
 *.db
 *.sqlite
 game.db
-dist/
-node_modules/
 .hardening-dist/
+
+# Debug/diagnostic scripts (development artifacts)
+check_*.ts
+check_*.js
+diag_*.ts
+diag_*.js
+debug_*.ts
+fix_*.cjs
+test_*.ts
+*.txt
+!server.txt
+!server_utf8.txt
+tmp/

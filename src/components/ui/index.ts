@@ -12,3 +12,4 @@ export { TravelTimer } from "./TravelTimer";
 export { PerkTimer } from "./PerkTimer";
 export { PerkProgressBar } from "./PerkProgressBar";
 export { UsernameEditor } from "./UsernameEditor";
+export { AppHeader } from "./AppHeader";

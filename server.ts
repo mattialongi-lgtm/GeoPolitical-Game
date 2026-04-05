@@ -10,6 +10,8 @@ import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import bcrypt from "bcrypt";
 import * as admin from "firebase-admin";
+import fs from "fs";
+import path from "path";
 import { GAME_CONFIG, PERKS_DEFS } from "./src/types";
 
 const BCRYPT_ROUNDS = 12;
@@ -41,6 +43,18 @@ db.exec(`
     applied_at TEXT NOT NULL DEFAULT (datetime('now'))
   )
 `);
+
+// Apply indexes (idempotent — safe to run on every startup)
+try {
+  const indexSQL = fs.readFileSync(
+    path.join(__dirname, 'sql/indexes.sql'), 'utf8'
+  );
+  db.exec(indexSQL);
+  console.log('[startup] Indexes applied');
+} catch (err) {
+  console.error('[startup] Failed to apply indexes:', err);
+  // Non-fatal — log and continue, indexes are a perf optimization not a hard requirement
+}
 
 // One-time bcrypt migration for existing plaintext passwords
 const usersWithPlaintext = db.prepare(

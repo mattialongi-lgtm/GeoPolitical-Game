@@ -5414,6 +5414,7 @@ export default function App() {
                   <h3 className="text-sm font-black uppercase tracking-widest text-slate-500">Esperienza Lavorativa</h3>
                   <div className="grid grid-cols-2 gap-3">
                     {[
+                      { emoji: "🪙", label: "Oro", exp: user.goldOreExp || 0 },
                       { emoji: "🛢️", label: "Petrolio", exp: user.oilExp || 0 },
                       { emoji: "🪨", label: "Minerali", exp: user.mineralsExp || 0 },
                       { emoji: "☢️", label: "Uranio", exp: user.uraniumExp || 0 },
@@ -5452,6 +5453,7 @@ export default function App() {
                       minerals: Math.max(0, Math.floor(Number(user?.mineralsExp) || 0)),
                       uranium: Math.max(0, Math.floor(Number(user?.uraniumExp) || 0)),
                       diamonds: Math.max(0, Math.floor(Number(user?.diamondsExp) || 0)),
+                      gold_ore: Math.max(0, Math.floor(Number(user?.goldOreExp) || 0)),
                     };
                     const goldAvailable = Math.max(0, Math.floor(Number(user?.gold) || 0));
                     const xp = Math.max(0, Math.floor(Number(workExpTransferXp) || 0));
@@ -5486,6 +5488,7 @@ export default function App() {
                               <option value="minerals">Minerali ({expByResource.minerals.toLocaleString()} XP)</option>
                               <option value="uranium">Uranio ({expByResource.uranium.toLocaleString()} XP)</option>
                               <option value="diamonds">Diamanti ({expByResource.diamonds.toLocaleString()} XP)</option>
+                              <option value="gold_ore">Oro ({expByResource.gold_ore.toLocaleString()} XP)</option>
                             </select>
                           </div>
                           <div>
@@ -5499,6 +5502,7 @@ export default function App() {
                               <option value="minerals">Minerali ({expByResource.minerals.toLocaleString()} XP)</option>
                               <option value="uranium">Uranio ({expByResource.uranium.toLocaleString()} XP)</option>
                               <option value="diamonds">Diamanti ({expByResource.diamonds.toLocaleString()} XP)</option>
+                              <option value="gold_ore">Oro ({expByResource.gold_ore.toLocaleString()} XP)</option>
                             </select>
                           </div>
                         </div>

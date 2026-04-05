@@ -15,6 +15,7 @@ import {
 import { motion } from "motion/react";
 import { ResourceIcon } from "./ResourceIcon";
 import { RESOURCE_LABELS } from "../types";
+import { fetchInventoryHistory } from "../api/inventoryClient";
 
 const ResourceHistoryView = ({ fetchData }: { fetchData: () => void }) => {
   const { itemId } = useParams();
@@ -26,15 +27,21 @@ const ResourceHistoryView = ({ fetchData }: { fetchData: () => void }) => {
   useEffect(() => {
     if (!itemId) return;
     setLoading(true);
-    fetch(`/api/inventory/history/${itemId}`)
-      .then(r => r.json())
+    fetchInventoryHistory(itemId)
       .then(data => {
         if (data.success) {
           setHistory(data.history);
           setCurrentBalance(data.currentBalance);
+        } else {
+          setHistory([]);
+          setCurrentBalance(0);
         }
       })
-      .catch(console.error)
+      .catch(err => {
+        console.error(err);
+        setHistory([]);
+        setCurrentBalance(0);
+      })
       .finally(() => setLoading(false));
   }, [itemId]);
 

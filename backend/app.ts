@@ -1001,7 +1001,11 @@ let missingAutomationTablesWarned = {
   training: false,
 } as { work: boolean; training: boolean };
 
+let automationTickRunning = false;
+
 async function processAutomationTick() {
+  if (automationTickRunning) return;
+  automationTickRunning = true;
   try {
     // 1. Process auto-work
     const { data: activeAutoWork, error: autoWorkErr } = await supabase
@@ -1165,6 +1169,8 @@ async function processAutomationTick() {
     }
   } catch (error) {
     console.error('[AUTOMATION] processAutomationTick error:', error);
+  } finally {
+    automationTickRunning = false;
   }
 }
 
@@ -5174,6 +5180,7 @@ export async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    startBackgroundJobs();
   }).on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
       console.error(`FATAL ERROR: Port ${PORT} is already in use.`);
@@ -5231,5 +5238,4 @@ export function startBackgroundJobs() {
 }
 
 startServer();
-
 

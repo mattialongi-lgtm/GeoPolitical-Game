@@ -103,7 +103,7 @@ export function createAutomationHandlers(deps: {
         mode: 'standard',
         isActive: true,
         activatedAt: new Date().toISOString(),
-        lastFiredAt: null,
+        lastFiredAt: new Date().toISOString(),
         expiresAt,
       }, { onConflict: 'userId' });
       if (upsertError) throw upsertError;
@@ -185,7 +185,7 @@ export function createAutomationHandlers(deps: {
         mode,
         isActive: true,
         activatedAt: new Date().toISOString(),
-        lastFiredAt: null,
+        lastFiredAt: new Date().toISOString(),
         expiresAt,
       }, { onConflict: 'userId' });
 

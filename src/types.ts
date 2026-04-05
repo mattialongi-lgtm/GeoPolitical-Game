@@ -38,6 +38,7 @@ export interface User {
   mineralsExp?: number;
   uraniumExp?: number;
   diamondsExp?: number;
+  goldOreExp?: number;
 }
 
 export interface Perk {

@@ -272,7 +272,8 @@ export function createMarketHandlers(deps: {
   // GET /api/inventory/history/:itemId
   async function getInventoryHistory(req: any, res: any) {
     const user = req.user;
-    const { itemId } = req.params;
+    const rawItemId = String(req.params?.itemId || '').trim();
+    const itemId = rawItemId.toLowerCase();
     const isGold = itemId === 'gold_ore' || itemId === 'gold';
     const isMoney = itemId === 'money' || itemId === 'cash';
 
@@ -311,12 +312,16 @@ export function createMarketHandlers(deps: {
       // 2. Fetch Extractions (Work)
       let extractions: any[] = [];
       if (isMoney) {
-        const { data: workerCash } = await supabase.from('factory_worker_logs')
+        const { data: workerCash, error: workerCashError } = await supabase.from('factory_worker_logs')
           .select('earningsMoney, workedAt, factoryId')
           .eq('workerId', user.id)
           .gt('earningsMoney', 0)
           .order('workedAt', { ascending: false })
           .limit(20);
+
+        if (workerCashError) {
+          console.warn('[InventoryHistory] factory_worker_logs money unavailable:', workerCashError.message);
+        }
 
         extractions = [
           ...(workerCash || []).map((l: any) => ({
@@ -327,13 +332,17 @@ export function createMarketHandlers(deps: {
           })),
         ];
 
-        const { data: extractionCashLogs } = await supabase
+        const { data: extractionCashLogs, error: extractionCashLogsError } = await supabase
           .from('extraction_detailed_logs')
           .select('moneyGenerated, createdAt, regionId, resourceType')
           .eq('playerId', user.id)
           .gt('moneyGenerated', 0)
           .order('createdAt', { ascending: false })
           .limit(20);
+
+        if (extractionCashLogsError) {
+          console.warn('[InventoryHistory] extraction_detailed_logs money unavailable:', extractionCashLogsError.message);
+        }
 
         extractions.push(
           ...(extractionCashLogs || []).map((l: any) => ({
@@ -344,12 +353,16 @@ export function createMarketHandlers(deps: {
           }))
         );
       } else if (isGold) {
-        const { data: goldLogs } = await supabase.from('factory_worker_logs')
+        const { data: goldLogs, error: goldLogsError } = await supabase.from('factory_worker_logs')
           .select('earningsGold, workedAt, factoryId')
           .eq('workerId', user.id)
           .gt('earningsGold', 0)
           .order('workedAt', { ascending: false })
           .limit(20);
+
+        if (goldLogsError) {
+          console.warn('[InventoryHistory] factory_worker_logs gold unavailable:', goldLogsError.message);
+        }
 
         extractions = [
           ...(goldLogs || []).map((l: any) => ({
@@ -370,6 +383,28 @@ export function createMarketHandlers(deps: {
 
         if (extractionGoldLogsError) {
           console.warn('[InventoryHistory] resource_extraction_logs goldGenerated unavailable:', extractionGoldLogsError.message);
+          const { data: legacyGoldLogs, error: legacyGoldLogsError } = await supabase
+            .from('resource_extraction_logs')
+            .select('amount, createdAt, regionId, resourceType')
+            .eq('playerId', user.id)
+            .eq('resourceType', 'gold_ore')
+            .order('createdAt', { ascending: false })
+            .limit(20);
+
+          if (legacyGoldLogsError) {
+            console.warn('[InventoryHistory] resource_extraction_logs legacy amount unavailable:', legacyGoldLogsError.message);
+          } else {
+            extractions.push(
+              ...(legacyGoldLogs || [])
+                .filter((l: any) => Number(l.amount || 0) > 0)
+                .map((l: any) => ({
+                  resourceAmount: Number(l.amount || 0),
+                  workedAt: l.createdAt,
+                  regionId: l.regionId,
+                  source: 'Estrazione Avanzata',
+                }))
+            );
+          }
         } else {
           extractions.push(
             ...(extractionGoldLogs || [])
@@ -383,12 +418,15 @@ export function createMarketHandlers(deps: {
           );
         }
       } else {
-        const { data: resLogs } = await supabase.from('factory_worker_logs')
+        const { data: resLogs, error: resLogsError } = await supabase.from('factory_worker_logs')
           .select('resourceAmount, workedAt, factoryId')
           .eq('workerId', user.id)
           .eq('resourceType', itemId)
           .order('workedAt', { ascending: false })
           .limit(20);
+        if (resLogsError) {
+          console.warn('[InventoryHistory] factory_worker_logs resource unavailable:', resLogsError.message);
+        }
         extractions = (resLogs || []).map((l: any) => ({
           resourceAmount: Number(l.resourceAmount || 0),
           workedAt: l.workedAt,
@@ -398,7 +436,7 @@ export function createMarketHandlers(deps: {
       }
 
       // 3. Fetch Market Purchases
-      const { data: purchases } = isMoney
+      const { data: purchases, error: purchasesError } = isMoney
         ? await supabase.from('market_transactions_log')
           .select('quantity, price, taxPaid, timestamp, itemId')
           .eq('buyerId', user.id)
@@ -411,13 +449,21 @@ export function createMarketHandlers(deps: {
           .order('timestamp', { ascending: false })
           .limit(20);
 
-      const { data: sales } = isMoney
+      if (purchasesError) {
+        console.warn('[InventoryHistory] market_transactions_log purchases unavailable:', purchasesError.message);
+      }
+
+      const { data: sales, error: salesError } = isMoney
         ? await supabase.from('market_transactions_log')
           .select('quantity, price, taxPaid, timestamp, itemId')
           .eq('sellerId', user.id)
           .order('timestamp', { ascending: false })
           .limit(20)
-        : { data: null };
+        : { data: null, error: null };
+
+      if (salesError) {
+        console.warn('[InventoryHistory] market_transactions_log sales unavailable:', salesError.message);
+      }
 
       // 4. Fetch Withdrawals from Action Logs
       const { data: actions } = isMoney

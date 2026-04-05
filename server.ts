@@ -8,8 +8,11 @@ import { createServer as createViteServer } from "vite";
 import Database from "better-sqlite3";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
+import bcrypt from "bcrypt";
 import * as admin from "firebase-admin";
 import { GAME_CONFIG, PERKS_DEFS } from "./src/types";
+
+const BCRYPT_ROUNDS = 12;
 
 const app = express();
 const PORT = 3000;
@@ -30,6 +33,19 @@ if (process.env.FIREBASE_PROJECT_ID) {
 const db = new Database("game.db");
 // SQLite does NOT enforce foreign keys by default — enable per connection
 db.pragma("foreign_keys = ON");
+
+// One-time bcrypt migration for existing plaintext passwords
+const usersWithPlaintext = db.prepare(
+  "SELECT id, password FROM users WHERE password IS NOT NULL AND password NOT LIKE '$2b$%'"
+).all() as { id: string; password: string }[];
+
+for (const user of usersWithPlaintext) {
+  const hashed = bcrypt.hashSync(user.password, BCRYPT_ROUNDS);
+  db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashed, user.id);
+}
+if (usersWithPlaintext.length > 0) {
+  console.log(`[bcrypt migration] Hashed ${usersWithPlaintext.length} plaintext passwords`);
+}
 
 // Migration: Add email and firebase_uid if they don't exist
 try {
@@ -253,12 +269,13 @@ const authenticate = (req: any, res: any, next: any) => {
 };
 
 // Auth Routes
-app.post("/api/register", (req, res) => {
+app.post("/api/register", async (req, res) => {
   const { username, password } = req.body;
   const id = Math.random().toString(36).substring(2, 9);
   try {
+    const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
     db.prepare("INSERT INTO users (id, username, password, lastEnergyUpdate) VALUES (?, ?, ?, ?)")
-      .run(id, username, password, Date.now());
+      .run(id, username, hashedPassword, Date.now());
     const token = jwt.sign({ id }, SECRET_KEY);
     res.cookie("token", token, { httpOnly: true, secure: true, sameSite: "none" });
     res.json({ success: true });
@@ -267,10 +284,11 @@ app.post("/api/register", (req, res) => {
   }
 });
 
-app.post("/api/login", (req, res) => {
+app.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
-  const user = db.prepare("SELECT * FROM users WHERE username = ? AND password = ?").get(username, password) as any;
-  if (!user) return res.status(401).json({ error: "Invalid credentials" });
+  const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as any;
+  const valid = user && await bcrypt.compare(password, user.password);
+  if (!valid) return res.status(401).json({ error: "Invalid credentials" });
 
   const token = jwt.sign({ id: user.id }, SECRET_KEY);
   res.cookie("token", token, { httpOnly: true, secure: true, sameSite: "none" });

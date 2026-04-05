@@ -9,11 +9,11 @@ import Database from "better-sqlite3";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import * as admin from "firebase-admin";
-import { GAME_CONFIG } from "./src/types";
+import { GAME_CONFIG, PERKS_DEFS } from "./src/types";
 
 const app = express();
 const PORT = 3000;
-const SECRET_KEY = "territorial-secret-key"; 
+const SECRET_KEY = process.env.JWT_SECRET || "territorial-secret-key";
 
 // Initialize Firebase Admin
 if (process.env.FIREBASE_PROJECT_ID) {
@@ -28,6 +28,8 @@ if (process.env.FIREBASE_PROJECT_ID) {
 
 // Database initialization
 const db = new Database("game.db");
+// SQLite does NOT enforce foreign keys by default — enable per connection
+db.pragma("foreign_keys = ON");
 
 // Migration: Add email and firebase_uid if they don't exist
 try {
@@ -320,7 +322,9 @@ app.post("/api/auth/firebase", async (req, res) => {
 
 // Game Routes
 app.get("/api/me", authenticate, (req: any, res) => {
-  res.json(req.user);
+  // Strip sensitive fields before sending to client
+  const { password, firebase_uid, ...safeUser } = req.user;
+  res.json(safeUser);
 });
 
 app.get("/api/regions", authenticate, (req, res) => {
@@ -432,8 +436,12 @@ app.post("/api/actions/invest", authenticate, (req: any, res) => {
   const { regionId } = req.body;
   const perks = user.perks;
 
+  // Validate region exists before deducting resources
+  const region = db.prepare("SELECT id FROM regions WHERE id = ?").get(regionId) as any;
+  if (!region) return res.status(404).json({ error: "Region not found" });
+
   const moneyCost = GAME_CONFIG.INVEST_MONEY_COST;
-  
+
   const energyEfficiency = (perks['energy_efficiency'] || 0) * 0.05;
   const energyCost = Math.ceil(GAME_CONFIG.INVEST_ENERGY_COST * (1 - energyEfficiency));
 
@@ -559,6 +567,10 @@ app.post("/api/profile/upgrade-perk", authenticate, (req: any, res) => {
   const user = req.user;
   const { perkId } = req.body;
 
+  // Validate perkId against known perk definitions
+  const validPerk = PERKS_DEFS.find(p => p.id === perkId);
+  if (!validPerk) return res.status(400).json({ error: "Invalid perk ID" });
+
   const currentLevel = user.perks[perkId] || 0;
   // Progressive cost: 1 + currentLevel
   const cost = 1 + currentLevel;
@@ -599,13 +611,16 @@ async function startServer() {
 
   // Global Economy Tick (every 10 minutes)
   setInterval(() => {
-    console.log("Running economy tick...");
-    db.prepare(`
-      UPDATE regions 
-      SET population = population + CAST(population * 0.001 AS INTEGER),
-          stability = MIN(100, stability + 1)
-      WHERE stability < 100
-    `).run();
+    try {
+      db.prepare(`
+        UPDATE regions
+        SET population = population + CAST(population * 0.001 AS INTEGER),
+            stability = MIN(100, stability + 1)
+        WHERE stability < 100
+      `).run();
+    } catch (err) {
+      console.error("Economy tick failed:", err);
+    }
   }, 10 * 60 * 1000);
 }
 

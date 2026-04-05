@@ -1,0 +1,42 @@
+[
+  {
+    "regionId": "FR",
+    "resourceType": "oil",
+    "dailyAvailable": 5000,
+    "dailyExtracted": 0,
+    "baseCapPerRecharge": 200,
+    "updatedAt": "2026-03-13T05:12:16.152+00:00"
+  },
+  {
+    "regionId": "FR",
+    "resourceType": "minerals",
+    "dailyAvailable": 5000,
+    "dailyExtracted": 0,
+    "baseCapPerRecharge": 200,
+    "updatedAt": "2026-03-13T05:12:16.299+00:00"
+  },
+  {
+    "regionId": "FR",
+    "resourceType": "uranium",
+    "dailyAvailable": 2000,
+    "dailyExtracted": 0,
+    "baseCapPerRecharge": 100,
+    "updatedAt": "2026-03-13T05:12:16.469+00:00"
+  },
+  {
+    "regionId": "FR",
+    "resourceType": "diamonds",
+    "dailyAvailable": 1000,
+    "dailyExtracted": 0,
+    "baseCapPerRecharge": 50,
+    "updatedAt": "2026-03-13T05:12:16.61+00:00"
+  },
+  {
+    "regionId": "FR",
+    "resourceType": "gold_ore",
+    "dailyAvailable": 3000,
+    "dailyExtracted": 0,
+    "baseCapPerRecharge": 150,
+    "updatedAt": "2026-03-13T05:12:16.761+00:00"
+  }
+]

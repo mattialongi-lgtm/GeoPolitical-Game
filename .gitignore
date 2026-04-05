@@ -6,3 +6,11 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Database files
+*.db
+*.sqlite
+game.db
+dist/
+node_modules/
+.hardening-dist/

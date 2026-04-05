@@ -1,0 +1,27 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": ".hardening-dist",
+    "rootDir": ".",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "types": [],
+    "sourceMap": false,
+    "declaration": false,
+    "allowImportingTsExtensions": false,
+    "noCheck": true
+  },
+  "include": [
+    "scripts/hardening-contract-smoke.ts",
+    "scripts/factory-deposit-hardening-smoke.ts",
+    "scripts/factory-upgrade-hardening-smoke.ts",
+    "scripts/factory-create-hardening-smoke.ts",
+    "scripts/party-assets-hardening-smoke.ts",
+    "scripts/production-hardening-smoke.ts",
+    "scripts/production-repository-hardening-smoke.ts",
+    "scripts/daily-reward-hardening-smoke.ts",
+    "scripts/war-deploy-hardening-smoke.ts",
+    "backend/**/*.ts"
+  ]
+}

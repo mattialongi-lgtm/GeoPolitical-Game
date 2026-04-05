@@ -1,0 +1,92 @@
+name: security-db-integration
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      force_db_integration:
+        description: "Force DB integration tests even if path-based detector does not match"
+        required: false
+        default: "false"
+
+jobs:
+  detect-sensitive-changes:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    outputs:
+      db_sensitive: ${{ steps.filter.outputs.db_sensitive }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            db_sensitive:
+              - "server.ts"
+              - "supabase/**/*.sql"
+              - "scripts/security-db-integration.mjs"
+              - "scripts/security-hardening-regression-smoke.cjs"
+              - "package.json"
+              - "docs/security-db-integration.md"
+
+  integration-db:
+    needs: [detect-sensitive-changes]
+    if: >-
+      ${{
+        secrets.VITE_SUPABASE_URL != '' &&
+        secrets.SUPABASE_SERVICE_ROLE_KEY != '' &&
+        (
+          github.event_name == 'workflow_dispatch' && inputs.force_db_integration == 'true' ||
+          github.event_name == 'pull_request' &&
+          (
+            needs.detect-sensitive-changes.outputs.db_sensitive == 'true' ||
+            contains(github.event.pull_request.labels.*.name, 'needs-db-integration')
+          )
+        )
+      }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - name: Run security DB integration tests (strict)
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run test:security-db-integration:ci
+
+  integration-db-forced-missing-secrets:
+    needs: [detect-sensitive-changes]
+    if: >-
+      ${{
+        (
+          github.event_name == 'workflow_dispatch' && inputs.force_db_integration == 'true' ||
+          github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'needs-db-integration')
+        ) &&
+        (
+          secrets.VITE_SUPABASE_URL == '' || secrets.SUPABASE_SERVICE_ROLE_KEY == ''
+        )
+      }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "DB integration tests were explicitly forced but required secrets are missing."
+          echo "Configure VITE_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY."
+          exit 1
+
+  integration-db-skipped:
+    needs: [detect-sensitive-changes]
+    if: >-
+      ${{
+        github.event_name == 'pull_request' &&
+        !contains(github.event.pull_request.labels.*.name, 'needs-db-integration') &&
+        needs.detect-sensitive-changes.outputs.db_sensitive != 'true'
+      }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          echo "Skipping security DB integration tests: no sensitive-path match and no 'needs-db-integration' label."

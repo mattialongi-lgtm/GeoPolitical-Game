@@ -1,0 +1,157 @@
+{
+  "sanctions": [
+    {
+      "id": "w09y9dvek",
+      "fromStateId": "IT",
+      "targetStateId": "RU",
+      "status": "ACTIVE",
+      "createdAt": 1773147153669,
+      "createdByUserId": "wiwr8ax",
+      "revokedAt": null,
+      "revokedByUserId": null
+    },
+    {
+      "id": "4qkyi9n8s",
+      "fromStateId": "IT",
+      "targetStateId": "FR",
+      "status": "ACTIVE",
+      "createdAt": 1773147174716,
+      "createdByUserId": "wiwr8ax",
+      "revokedAt": null,
+      "revokedByUserId": null
+    }
+  ],
+  "regions": [
+    {
+      "id": "IT",
+      "name": "Italy",
+      "nationId": "nation_IT"
+    },
+    {
+      "id": "FR",
+      "name": "France",
+      "nationId": "nation_FR"
+    },
+    {
+      "id": "DE",
+      "name": "Germany",
+      "nationId": "nation_DE"
+    },
+    {
+      "id": "ES",
+      "name": "Spain",
+      "nationId": "nation_ES"
+    },
+    {
+      "id": "UK",
+      "name": "United Kingdom",
+      "nationId": "nation_UK"
+    },
+    {
+      "id": "US",
+      "name": "United States",
+      "nationId": "nation_US"
+    },
+    {
+      "id": "CA",
+      "name": "Canada",
+      "nationId": "nation_CA"
+    },
+    {
+      "id": "BR",
+      "name": "Brazil",
+      "nationId": "nation_BR"
+    },
+    {
+      "id": "JP",
+      "name": "Japan",
+      "nationId": "nation_JP"
+    },
+    {
+      "id": "CN",
+      "name": "China",
+      "nationId": "nation_CN"
+    },
+    {
+      "id": "IN",
+      "name": "India",
+      "nationId": "nation_IN"
+    },
+    {
+      "id": "RU",
+      "name": "Russia",
+      "nationId": "nation_RU"
+    },
+    {
+      "id": "AU",
+      "name": "Australia",
+      "nationId": "nation_AU"
+    },
+    {
+      "id": "ZA",
+      "name": "South Africa",
+      "nationId": "nation_ZA"
+    },
+    {
+      "id": "MX",
+      "name": "Mexico",
+      "nationId": "nation_MX"
+    },
+    {
+      "id": "AR",
+      "name": "Argentina",
+      "nationId": "nation_AR"
+    },
+    {
+      "id": "EG",
+      "name": "Egypt",
+      "nationId": "nation_EG"
+    },
+    {
+      "id": "NG",
+      "name": "Nigeria",
+      "nationId": "nation_NG"
+    },
+    {
+      "id": "TR",
+      "name": "Turkey",
+      "nationId": "nation_TR"
+    },
+    {
+      "id": "KR",
+      "name": "South Korea",
+      "nationId": "nation_KR"
+    },
+    {
+      "id": "076",
+      "name": "076",
+      "nationId": "nation_076"
+    },
+    {
+      "id": "MA",
+      "name": "MA",
+      "nationId": "nation_MA"
+    },
+    {
+      "id": "NZ",
+      "name": "NZ",
+      "nationId": "nation_NZ"
+    },
+    {
+      "id": "AF",
+      "name": "AF",
+      "nationId": "nation_AF"
+    },
+    {
+      "id": "CH",
+      "name": "CH",
+      "nationId": "nation_CH"
+    }
+  ],
+  "nations": [
+    {
+      "id": "nation_IT",
+      "name": "ODT"
+    }
+  ]
+}

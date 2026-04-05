@@ -101,51 +101,10 @@ import territorialBrand from "./assets/branding/territorial-brand.svg";
 import ResourceHistoryView from "./components/ResourceHistoryView";
 import TotalDamageView from "./components/TotalDamageView";
 import { fetchMyPlayerDamageSummary, type PlayerDamageSummary } from "./api/profileClient";
+import { COUNTRY_FLAGS, getFlag, isoToFlag, PERK_ICONS, RESOURCE_ICONS, RESOURCE_NAMES, WEAPONS_CATALOG, LEGACY_MILITARY_UNITS } from "./constants";
+import { getTs, formatDuration, formatRemaining, formatTime } from "./utils";
 
 // --- Utilities ---
-const getTs = (val: any) => {
-  if (!val) return 0;
-  if (typeof val === "number") return val;
-  if (typeof val === "string") {
-    const d = new Date(val);
-    return isNaN(d.getTime()) ? (Number(val) || 0) : d.getTime();
-  }
-  if (val._seconds) return val._seconds * 1000;
-  if (val.seconds) return val.seconds * 1000;
-  if (val.toDate) return val.toDate().getTime();
-  if (val instanceof Date) return val.getTime();
-  return Number(val) || 0;
-};
-
-const formatDuration = (sec: number) => {
-  if (sec < 60) return `${sec}s`;
-  if (sec < 3600) return `${Math.floor(sec / 60)}m`;
-  const h = Math.floor(sec / 3600);
-  const m = Math.round((sec % 3600) / 60);
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-};
-
-const formatRemaining = (ms: number): string => {
-  if (ms <= 0) return "00:00";
-  const totalSec = Math.ceil(ms / 1000);
-  const h = Math.floor(totalSec / 3600);
-  const m = Math.floor((totalSec % 3600) / 60);
-  const s = totalSec % 60;
-  if (h > 0) return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
-};
-
-// Compute flag emoji from ISO2 code using Unicode Regional Indicator Symbols
-const isoToFlag = (iso2: string): string => {
-  if (!iso2 || iso2.length < 2) return "🌍";
-  const code = iso2.toUpperCase();
-  const offset = 127397; // Regional Indicator Symbol offset
-  try {
-    return String.fromCodePoint(code.charCodeAt(0) + offset, code.charCodeAt(1) + offset);
-  } catch {
-    return "🌍";
-  }
-};
 
 const NationalFlag = ({ iso2, className = "w-[1.2em] h-[0.9em]", style }: { iso2: string; className?: string; style?: React.CSSProperties }) => {
   const [error, setError] = useState(false);
@@ -175,26 +134,6 @@ const NationLogo = ({ iso2, logo, className = "w-10 h-6", style }: { iso2?: stri
     return <span className={`flex items-center justify-center text-xl ${className}`} style={style}>{logo}</span>;
   }
   return <NationalFlag iso2={iso2 || "it"} className={className} style={style} />;
-};
-
-const COUNTRY_FLAGS: Record<string, string> = {
-  IT: "🇮🇹", FR: "🇫🇷", DE: "🇩🇪", ES: "🇪🇸", GB: "🇬🇧", US: "🇺🇸", CA: "🇨🇦",
-  BR: "🇧🇷", JP: "🇯🇵", CN: "🇨🇳", IN: "🇮🇳", RU: "🇷🇺", AU: "🇦🇺", ZA: "🇿🇦",
-  MX: "🇲🇽", AR: "🇦🇷", EG: "🇪🇬", NG: "🇳🇬", TR: "🇹🇷", KR: "🇰🇷", SA: "🇸🇦",
-  ID: "🇮🇩", PK: "🇵🇰", PL: "🇵🇱", UA: "🇺🇦", SE: "🇸🇪", NO: "🇳🇴", NL: "🇳🇱",
-  BE: "🇧🇪", CH: "🇨🇭", PT: "🇵🇹", GR: "🇬🇷", AT: "🇦🇹", HU: "🇭🇺", CZ: "🇨🇿",
-  RO: "🇷🇴", FI: "🇫🇮", DK: "🇩🇰", IE: "🇮🇪", TH: "🇹🇭", VN: "🇻🇳", PH: "🇵🇭",
-  MY: "🇲🇾", SG: "🇸🇬", IR: "🇮🇷", IQ: "🇮🇶", IL: "🇮🇱", CO: "🇨🇴", CL: "🇨🇱",
-  PE: "🇵🇪", ET: "🇪🇹", KE: "🇰🇪", GH: "🇬🇭", TZ: "🇹🇿", MA: "🇲🇦", DZ: "🇩🇿",
-  NZ: "🇳🇿", AF: "🇦🇫",
-};
-
-// Get flag: try static map first, then compute from ISO2 code
-const getFlag = (iso2: string): string => {
-  const upper = (iso2 || '').toUpperCase();
-  // Handle sub-region codes (e.g., "IT-RM" → "IT")
-  const countryCode = upper.includes('-') ? upper.split('-')[0] : upper;
-  return COUNTRY_FLAGS[countryCode] || isoToFlag(countryCode);
 };
 
 const WarTimer = ({ endsAt }: { endsAt: number | any }) => {
@@ -2423,23 +2362,6 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
   );
 };
 
-const PERK_ICONS: Record<string, string> = {
-  FORZA: "⚔️",
-  EDUCAZIONE: "📚",
-  INDUSTRIA: "🏭",
-  LOGISTICA: "🔋"
-};
-
-const formatTime = (ms: number) => {
-  if (ms <= 0) return "Pronto!";
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const h = Math.floor(m / 60);
-  if (h > 0) return `${h}h ${String(m % 60).padStart(2, '0')}m ${String(s % 60).padStart(2, '0')}s`;
-  if (m > 0) return `${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-  return `00:${String(s).padStart(2, '0')}`;
-};
-
 // Helper for live perk countdowns (mm:ss or hh:mm:ss)
 const TravelTimer = ({ endsAt, onComplete }: { endsAt: number | any; onComplete?: () => void }) => {
   const ts = getTs(endsAt);
@@ -2555,26 +2477,6 @@ const UsernameEditor = ({ username, fetchData }: { username: string; fetchData: 
 };
 
 // Player Factories View (New Resource System)
-const RESOURCE_ICONS: Record<string, string> = {
-  gold: "🪙",
-  oil: "🛢️",
-  minerals: "🪨",
-  uranium: "☢️",
-  diamonds: "💎",
-  liquid_oxygen: "🧊",
-  helium3: "⚗️",
-};
-
-const RESOURCE_NAMES: Record<string, string> = {
-  gold: "Oro",
-  oil: "Petrolio",
-  minerals: "Minerali",
-  uranium: "Uranio",
-  diamonds: "Diamanti",
-  liquid_oxygen: "Ossigeno Liquido",
-  helium3: "Elio-3",
-};
-
 const FACTORY_CREATE_COST = FACTORY_CONFIG.CREATE_COST;
 
 const PlayerFactoriesView = ({
@@ -5623,24 +5525,6 @@ export default function App() {
     </div>
   );
 }
-
-const WEAPONS_CATALOG = [
-  { id: "tank", name: "Carri armati", emoji: "🛡️", timeMin: 8, costCash: 1800, reqOil: 35, reqMinerals: 60, reqUranium: 0, reqDiamonds: 0, power: 45 },
-  { id: "aircraft", name: "Aerei", emoji: "✈️", timeMin: 16, costCash: 4200, reqOil: 70, reqMinerals: 110, reqUranium: 0, reqDiamonds: 0, power: 110 },
-  { id: "battleship", name: "Corazzate navali", emoji: "🚢", timeMin: 36, costCash: 12000, reqOil: 180, reqMinerals: 260, reqUranium: 0, reqDiamonds: 0, power: 220 },
-];
-
-const LEGACY_MILITARY_UNITS = new Set([
-  "rifle",
-  "drone",
-  "artillery",
-  "infantry",
-  "airstrike",
-  "missile",
-  "bomber",
-  "lunar_tank",
-  "space_station",
-]);
 
 const ProduceView = ({ user }: { user: any }) => {
   const [queue, setQueue] = useState<any[]>([]);

@@ -1,4 +1,5 @@
 import { createGovernanceHandlers } from '../handlers/governance.handler';
+import { strictLimiter } from '../middleware/rateLimiter.middleware';
 
 interface RegisterGovernanceRoutesDeps {
   app: any;
@@ -34,7 +35,7 @@ export function registerGovernanceRoutes(deps: RegisterGovernanceRoutesDeps) {
   app.delete('/api/ministers/market-offer/:id', authenticate, h.ministersDeleteMarketOffer);
 
   // Applications & Actions
-  app.post('/api/actions/apply', authenticate, h.actionsApply);
+  app.post('/api/actions/apply', strictLimiter, authenticate, h.actionsApply);
   app.get('/api/applications/:regionId', authenticate, h.getApplications);
   app.get('/api/leader/orders/:regionId', authenticate, h.getLeaderOrders);
   app.post('/api/actions/resolve-application', authenticate, h.resolveApplication);

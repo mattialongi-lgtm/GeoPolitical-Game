@@ -75,6 +75,7 @@ import { ProductionService } from "./services/production.service";
 import { isDailyBonusClaimSuccess, isDailyMissionClaimSuccess } from "./observability/contract-guards";
 import { mapServiceResultToHttp } from "./services/http-result.mapper";
 import { errorHandler } from "./middleware/errorHandler.middleware";
+import { globalLimiter } from "./middleware/rateLimiter.middleware";
 
 console.log("Starting backend/app.ts...");
 
@@ -219,6 +220,7 @@ function calculateStateSalaries(governmentForm: string | null, regionCount: numb
   };
 }
 app.use(cookieParser());
+app.use('/api', globalLimiter);
 
 // Helper to get user perks, including active boosters
 const getUserPerks = async (userId: string, boosterInfo?: Record<string, any>) => {

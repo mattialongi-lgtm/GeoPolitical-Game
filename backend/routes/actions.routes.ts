@@ -1,4 +1,5 @@
 import { createActionsHandlers } from '../handlers/actions.handler';
+import { writeLimiter } from '../middleware/rateLimiter.middleware';
 
 interface RegisterActionsRoutesDeps {
   app: any;
@@ -32,15 +33,15 @@ export function registerActionsRoutes(deps: RegisterActionsRoutesDeps) {
   const { app, authenticate } = deps;
   const h = createActionsHandlers(deps);
 
-  app.post('/api/actions/work', authenticate, h.actionsWork);
-  app.post('/api/actions/propaganda', authenticate, h.actionsPropaganda);
-  app.post('/api/actions/invest', authenticate, h.actionsInvest);
-  app.post('/api/actions/craft-drink', authenticate, h.actionsCraftDrink);
-  app.post('/api/actions/use-drink', authenticate, h.actionsUseDrink);
-  app.post('/api/actions/travel', authenticate, h.actionsTravel);
-  app.post('/api/actions/attack', authenticate, h.actionsAttack);
-  app.post('/api/actions/train', authenticate, h.actionsTrain);
-  app.post('/api/work', authenticate, h.work);
-  app.post('/api/perks/upgrade', authenticate, h.perksUpgrade);
-  app.post('/api/perks/booster', authenticate, h.perksBooster);
+  app.post('/api/actions/work', writeLimiter, authenticate, h.actionsWork);
+  app.post('/api/actions/propaganda', writeLimiter, authenticate, h.actionsPropaganda);
+  app.post('/api/actions/invest', writeLimiter, authenticate, h.actionsInvest);
+  app.post('/api/actions/craft-drink', writeLimiter, authenticate, h.actionsCraftDrink);
+  app.post('/api/actions/use-drink', writeLimiter, authenticate, h.actionsUseDrink);
+  app.post('/api/actions/travel', writeLimiter, authenticate, h.actionsTravel);
+  app.post('/api/actions/attack', writeLimiter, authenticate, h.actionsAttack);
+  app.post('/api/actions/train', writeLimiter, authenticate, h.actionsTrain);
+  app.post('/api/work', writeLimiter, authenticate, h.work);
+  app.post('/api/perks/upgrade', writeLimiter, authenticate, h.perksUpgrade);
+  app.post('/api/perks/booster', writeLimiter, authenticate, h.perksBooster);
 }

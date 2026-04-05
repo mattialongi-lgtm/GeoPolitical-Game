@@ -179,6 +179,15 @@ Data-access layer — thin wrappers around Supabase `.from()` and
 
 - `validation.middleware.ts` — `validateBody(schema)` and
   `validateQuery(schema)` middleware factories using Zod.
+- `rateLimiter.middleware.ts` — centralised rate limiting
+  (via `express-rate-limit`). Exports three pre-configured instances:
+  - `globalLimiter` — 200 req / 15 min per IP, applied to all `/api/*`.
+  - `writeLimiter`  — 30 req / 1 min per IP, applied to POST/PUT/PATCH
+    on sensitive domains (`resources`, `actions`, `war`, `factories`,
+    `market`).
+  - `strictLimiter` — 10 req / 1 min per IP, applied to the most
+    abuse-prone endpoints (`work-extract`, `deep-exploration/activate`,
+    `actions/apply`).
 - `errorHandler.middleware.ts` — global error handler (registered
   last).
 

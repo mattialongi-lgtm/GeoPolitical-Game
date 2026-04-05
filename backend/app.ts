@@ -3949,9 +3949,29 @@ async function executeExtractionWork(user: any, factoryId: string) {
     finalProductivity: breakdown.finalProductivity,
   });
 
-  await supabase.from('resource_extraction_logs').insert({
-    playerId: user.id, regionId, resourceType, amount: roundedPlayer,
-  });
+  const extractionLogPayload = {
+    playerId: user.id,
+    regionId,
+    resourceType,
+    amount: roundedPlayer,
+    goldGenerated: actualGold,
+  };
+  const { error: extractionLogError } = await supabase.from('resource_extraction_logs').insert(extractionLogPayload);
+  if (extractionLogError) {
+    if (/goldGenerated/i.test(String(extractionLogError.message || ''))) {
+      const { error: legacyExtractionLogError } = await supabase.from('resource_extraction_logs').insert({
+        playerId: user.id,
+        regionId,
+        resourceType,
+        amount: roundedPlayer,
+      });
+      if (legacyExtractionLogError) {
+        throw legacyExtractionLogError;
+      }
+    } else {
+      throw extractionLogError;
+    }
+  }
 
   await supabase.from('factories').update({
     totalWorkerCount: (factory.totalWorkerCount || 0) + 1,

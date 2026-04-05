@@ -275,6 +275,20 @@ export function createMarketHandlers(deps: {
     const { itemId } = req.params;
     const isGold = itemId === 'gold_ore' || itemId === 'gold';
 
+    const normalizeTimestamp = (value: unknown): string => {
+      if (value instanceof Date) return value.toISOString();
+      if (typeof value === 'number') return new Date(value).toISOString();
+      if (typeof value === 'string') {
+        const numericValue = Number(value);
+        if (!Number.isNaN(numericValue) && value.trim() !== '') {
+          return new Date(numericValue).toISOString();
+        }
+        const parsed = new Date(value);
+        if (!Number.isNaN(parsed.getTime())) return parsed.toISOString();
+      }
+      return new Date().toISOString();
+    };
+
     try {
       // 1. Get current balance
       let currentBalance = 0;
@@ -299,11 +313,38 @@ export function createMarketHandlers(deps: {
           .gt('earningsGold', 0)
           .order('workedAt', { ascending: false })
           .limit(20);
-        extractions = (goldLogs || []).map((l: any) => ({
-          resourceAmount: l.earningsGold,
-          workedAt: l.workedAt,
-          factoryId: l.factoryId
-        }));
+
+        extractions = [
+          ...(goldLogs || []).map((l: any) => ({
+            resourceAmount: Number(l.earningsGold || 0),
+            workedAt: l.workedAt,
+            factoryId: l.factoryId,
+            source: 'Lavoro in Fabbrica',
+          })),
+        ];
+
+        const { data: extractionGoldLogs, error: extractionGoldLogsError } = await supabase
+          .from('resource_extraction_logs')
+          .select('goldGenerated, createdAt, regionId, resourceType')
+          .eq('playerId', user.id)
+          .eq('resourceType', 'gold_ore')
+          .order('createdAt', { ascending: false })
+          .limit(20);
+
+        if (extractionGoldLogsError) {
+          console.warn('[InventoryHistory] resource_extraction_logs goldGenerated unavailable:', extractionGoldLogsError.message);
+        } else {
+          extractions.push(
+            ...(extractionGoldLogs || [])
+              .filter((l: any) => Number(l.goldGenerated || 0) > 0)
+              .map((l: any) => ({
+                resourceAmount: Number(l.goldGenerated || 0),
+                workedAt: l.createdAt,
+                regionId: l.regionId,
+                source: 'Estrazione Avanzata',
+              }))
+          );
+        }
       } else {
         const { data: resLogs } = await supabase.from('factory_worker_logs')
           .select('resourceAmount, workedAt, factoryId')
@@ -311,7 +352,12 @@ export function createMarketHandlers(deps: {
           .eq('resourceType', itemId)
           .order('workedAt', { ascending: false })
           .limit(20);
-        extractions = resLogs || [];
+        extractions = (resLogs || []).map((l: any) => ({
+          resourceAmount: Number(l.resourceAmount || 0),
+          workedAt: l.workedAt,
+          factoryId: l.factoryId,
+          source: 'Lavoro in Fabbrica',
+        }));
       }
 
       // 3. Fetch Market Purchases
@@ -337,8 +383,8 @@ export function createMarketHandlers(deps: {
         history.push({
           type: 'scavo',
           amount: ex.resourceAmount,
-          timestamp: ex.workedAt,
-          source: 'Lavoro in Fabbrica'
+          timestamp: normalizeTimestamp(ex.workedAt),
+          source: ex.source || 'Lavoro in Fabbrica'
         });
       }
 
@@ -347,7 +393,7 @@ export function createMarketHandlers(deps: {
           history.push({
             type: 'acquisto',
             amount: p.quantity,
-            timestamp: new Date(Number(p.timestamp)).toISOString(),
+            timestamp: normalizeTimestamp(p.timestamp),
             source: 'Acquisto Mercato'
           });
         }
@@ -361,7 +407,7 @@ export function createMarketHandlers(deps: {
               history.push({
                 type: 'ritiro',
                 amount: details.amount,
-                timestamp: new Date(Number(a.timestamp)).toISOString(),
+                timestamp: normalizeTimestamp(a.timestamp),
                 source: 'Prelievo Magazzino'
               });
             }

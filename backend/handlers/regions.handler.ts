@@ -9,7 +9,10 @@
  *   /api/regions/:id/governor, /api/regions/:id/parliament,
  *   /api/regions/:id/laws, /api/nations/:nationId/energy
  */
-import type { BuildingType } from '../../src/types';
+import {
+  REGIONAL_EXTRACTION_CAPS,
+  type BuildingType,
+} from '../../src/types';
 import { logger } from '../utils/logger';
 
 export function createRegionsHandlers(deps: {
@@ -361,11 +364,11 @@ export function createRegionsHandlers(deps: {
         pollutionMalus,
         energyDeficitMalus,
         extraction: {
-          gold: { limit: region.dailyExtractionLimitGold ?? 2500, extracted: region.dailyExtractedGold ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitGold ?? 2500) - (region.dailyExtractedGold ?? 0)) },
-          oil: { limit: region.dailyExtractionLimitOil ?? 600, extracted: region.dailyExtractedOil ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitOil ?? 600) - (region.dailyExtractedOil ?? 0)) },
-          minerals: { limit: region.dailyExtractionLimitMinerals ?? 500, extracted: region.dailyExtractedMinerals ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitMinerals ?? 500) - (region.dailyExtractedMinerals ?? 0)) },
-          uranium: { limit: region.dailyExtractionLimitUranium ?? 60, extracted: region.dailyExtractedUranium ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitUranium ?? 60) - (region.dailyExtractedUranium ?? 0)) },
-          diamonds: { limit: region.dailyExtractionLimitDiamonds ?? 75, extracted: region.dailyExtractedDiamonds ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitDiamonds ?? 75) - (region.dailyExtractedDiamonds ?? 0)) },
+          gold: { limit: region.dailyExtractionLimitGold ?? REGIONAL_EXTRACTION_CAPS.gold, extracted: region.dailyExtractedGold ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitGold ?? REGIONAL_EXTRACTION_CAPS.gold) - (region.dailyExtractedGold ?? 0)) },
+          oil: { limit: region.dailyExtractionLimitOil ?? REGIONAL_EXTRACTION_CAPS.oil, extracted: region.dailyExtractedOil ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitOil ?? REGIONAL_EXTRACTION_CAPS.oil) - (region.dailyExtractedOil ?? 0)) },
+          minerals: { limit: region.dailyExtractionLimitMinerals ?? REGIONAL_EXTRACTION_CAPS.minerals, extracted: region.dailyExtractedMinerals ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitMinerals ?? REGIONAL_EXTRACTION_CAPS.minerals) - (region.dailyExtractedMinerals ?? 0)) },
+          uranium: { limit: region.dailyExtractionLimitUranium ?? REGIONAL_EXTRACTION_CAPS.uranium, extracted: region.dailyExtractedUranium ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitUranium ?? REGIONAL_EXTRACTION_CAPS.uranium) - (region.dailyExtractedUranium ?? 0)) },
+          diamonds: { limit: region.dailyExtractionLimitDiamonds ?? REGIONAL_EXTRACTION_CAPS.diamonds, extracted: region.dailyExtractedDiamonds ?? 0, remaining: Math.max(0, (region.dailyExtractionLimitDiamonds ?? REGIONAL_EXTRACTION_CAPS.diamonds) - (region.dailyExtractedDiamonds ?? 0)) },
           nextResetAt: region.nextExtractionResetAt,
         },
         transactions: transactions || [],

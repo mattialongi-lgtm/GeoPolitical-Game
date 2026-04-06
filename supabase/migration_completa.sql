@@ -989,8 +989,8 @@ INSERT INTO game_settings (key, value, description) VALUES
   ('deep_cost_per_region_gold', '0',                                         'Gold cost per region included in Deep'),
   ('deep_duration_days',        '7',                                         'Duration of Deep Exploration in days'),
   ('deep_cost_cap_discount_strength','0',                                    'Discount factor 0..1 based on avg base cap (0 = disabled)'),
-  ('daily_available_base',      '{"oil":5000,"minerals":5000,"uranium":2000,"diamonds":1000,"gold_ore":3000}', 'Base daily available per resource type'),
-  ('base_cap_defaults',         '{"oil":200,"minerals":200,"uranium":100,"diamonds":50,"gold_ore":150}',       'Default base cap per recharge per resource type'),
+  ('daily_available_base',      '{"oil":300,"minerals":300,"uranium":45,"diamonds":60,"gold_ore":1250}', 'Base daily available per resource type'),
+  ('base_cap_defaults',         '{"oil":300,"minerals":300,"uranium":45,"diamonds":60,"gold_ore":1250}', 'Default base cap per recharge per resource type'),
   ('work_energy_cost_extract',  '10',                                        'Energy cost per extraction work action')
 ON CONFLICT (key) DO NOTHING;
 
@@ -2045,11 +2045,11 @@ ALTER TABLE regions ADD COLUMN IF NOT EXISTS "pollution" INT DEFAULT 0;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS "energyGeneration" FLOAT DEFAULT 0;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS "energyConsumption" FLOAT DEFAULT 0;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS "energyEfficiency" FLOAT DEFAULT 0;
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitGold" INT DEFAULT 2500;
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitOil" INT DEFAULT 600;
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitMinerals" INT DEFAULT 500;
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitUranium" INT DEFAULT 60;
-ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitDiamonds" INT DEFAULT 75;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitGold" INT DEFAULT 1250;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitOil" INT DEFAULT 300;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitMinerals" INT DEFAULT 300;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitUranium" INT DEFAULT 45;
+ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractionLimitDiamonds" INT DEFAULT 60;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractedGold" INT DEFAULT 0;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractedOil" INT DEFAULT 0;
 ALTER TABLE regions ADD COLUMN IF NOT EXISTS "dailyExtractedMinerals" INT DEFAULT 0;

@@ -15,6 +15,7 @@ import {
   BUILDING_LABELS,
   FACTORY_CONFIG,
   EXTRACTION_CONFIG,
+  REGION_RESOURCE_CAPS_BY_TYPE,
   factoryYieldMultiplier,
   factoryStorageLimit,
   estimateFactoryValue,
@@ -3707,7 +3708,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
   const nationId = await getNationForRegion(regionId);
   const capMaxGlobal = parseInt(await getSetting('cap_max_global')) || 2000;
   const deep = nationId ? await getActiveDeep(nationId, resourceType) : null;
-  const baseCap = regionRes?.baseCapPerRecharge ?? 200;
+  const baseCap = regionRes?.baseCapPerRecharge ?? REGION_RESOURCE_CAPS_BY_TYPE[resourceType as ResourceType] ?? 200;
   const effectiveCap = computeEffectiveCap(baseCap, deep, capMaxGlobal);
   const deepBonus = deep ? Math.max(0, (deep.targetCap || 0) - baseCap) : 0;
 

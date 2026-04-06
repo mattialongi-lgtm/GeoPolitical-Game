@@ -955,6 +955,22 @@ export type ResourceType = 'oil' | 'minerals' | 'uranium' | 'diamonds' | 'gold_o
 
 export const RESOURCE_TYPES: ResourceType[] = ['oil', 'minerals', 'uranium', 'diamonds', 'gold_ore', 'liquid_oxygen', 'helium3', 'energy', 'food', 'steel', 'gas', 'energy_drink'];
 
+export const REGIONAL_EXTRACTION_CAPS = {
+  gold: 1250,
+  oil: 300,
+  minerals: 300,
+  uranium: 45,
+  diamonds: 60,
+} as const;
+
+export const REGION_RESOURCE_CAPS_BY_TYPE: Partial<Record<ResourceType, number>> = {
+  gold_ore: REGIONAL_EXTRACTION_CAPS.gold,
+  oil: REGIONAL_EXTRACTION_CAPS.oil,
+  minerals: REGIONAL_EXTRACTION_CAPS.minerals,
+  uranium: REGIONAL_EXTRACTION_CAPS.uranium,
+  diamonds: REGIONAL_EXTRACTION_CAPS.diamonds,
+};
+
 export const RESOURCE_LABELS: Record<string, string> = {
   money: 'Cash',
   oil: 'Petrolio',

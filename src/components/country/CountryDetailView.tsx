@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { Globe, Loader2, AlertCircle, Info, Crown, Briefcase, Pickaxe, RefreshCcw } from "lucide-react";
+import { Globe, Loader2, AlertCircle, Info, Crown, Briefcase, Pickaxe, RefreshCcw, Zap, Users, UserCheck, Flag, Factory } from "lucide-react";
+import CollapsibleSection from '../state/CollapsibleSection';
 import { NationalFlag } from "../ui";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../../constants";
 import { RegionResourcesTab } from "../resources/RegionResourcesTab";
@@ -145,17 +146,20 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   }, [iso2]);
 
   if (loading) return (
-    <div className="min-h-[400px] flex items-center justify-center bg-white rounded-[2.5rem] border border-slate-100">
-      <Loader2 className="w-10 h-10 text-indigo-600 animate-spin" />
+    <div className="min-h-[400px] flex items-center justify-center bg-gray-900/60 border border-gray-800 rounded-2xl">
+      <div className="text-center space-y-3">
+        <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
+        <p className="text-xs text-gray-500 font-semibold">Caricamento regione...</p>
+      </div>
     </div>
   );
 
   if (!region) return (
-    <div className="bg-white p-12 rounded-[2.5rem] text-center border border-slate-100">
-      <Globe className="w-16 h-16 text-slate-200 mx-auto mb-4" />
-      <h2 className="text-2xl font-black text-slate-900">Paese non trovato</h2>
-      <p className="text-slate-400 mt-2">"{iso2}" non corrisponde a nessuna regione.</p>
-      <button onClick={() => navigate("/")} className="mt-6 text-indigo-600 font-black uppercase text-xs">← Torna alla Mappa</button>
+    <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-12 text-center">
+      <Globe className="w-16 h-16 text-gray-700 mx-auto mb-4" />
+      <h2 className="text-2xl font-black text-gray-200">Paese non trovato</h2>
+      <p className="text-gray-500 mt-2">"{iso2}" non corrisponde a nessuna regione.</p>
+      <button onClick={() => navigate("/")} className="mt-6 text-indigo-400 font-black uppercase text-xs hover:text-indigo-300 transition-colors">← Torna alla Mappa</button>
     </div>
   );
 
@@ -343,23 +347,23 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       </button>
 
       {/* Header Card */}
-      <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
-        <div className={`h-3 w-full ${region.ownerUserId ? "bg-indigo-500" : "bg-emerald-400"}`} />
-        <div className="p-8">
-          <div className="flex items-center gap-5 mb-6">
-            <NationalFlag iso2={iso2 || ""} className="w-16 h-12 shadow-md rounded-lg" />
+      <div className="bg-gray-900/60 border border-gray-800 rounded-2xl overflow-hidden">
+        <div className={`h-1.5 w-full ${region.ownerUserId ? "bg-indigo-500" : "bg-emerald-500"}`} />
+        <div className="p-6">
+          <div className="flex items-center gap-4 mb-5">
+            <NationalFlag iso2={iso2 || ""} className="w-14 h-10 shadow-md rounded-lg" />
             <div className="flex-1">
-              <h2 className="text-3xl font-black text-slate-900 tracking-tight leading-tight">{region.name || iso2}</h2>
+              <h2 className="text-2xl font-black text-white tracking-tight leading-tight">{region.name || iso2}</h2>
               <div className="flex flex-wrap items-center gap-2 mt-2">
-                <span className="text-[10px] font-black uppercase bg-slate-100 text-slate-400 px-2 py-1 rounded-lg">ISO: {region.id || iso2}</span>
-                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg ${region.ownerUserId ? "bg-indigo-50 text-indigo-600" : "bg-emerald-50 text-emerald-600"}`}>
+                <span className="text-[10px] font-black uppercase bg-gray-800 text-gray-400 px-2 py-1 rounded-lg">ISO: {region.id || iso2}</span>
+                <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg ${region.ownerUserId ? "bg-indigo-600/20 text-indigo-400" : "bg-emerald-600/20 text-emerald-400"}`}>
                   {region.ownerName ? `🟣 ${region.ownerName}` : "🟢 Territorio Neutrale"}
                 </span>
-                {region.isCapital && <span className="text-[10px] font-black uppercase bg-yellow-50 text-yellow-700 px-2 py-1 rounded-lg">👑 Capitale</span>}
-                {region.isAutonomous && <span className="text-[10px] font-black uppercase bg-purple-50 text-purple-700 px-2 py-1 rounded-lg">🏛️ Autonomia</span>}
-                {region.isBorderRegion && <span className="text-[10px] font-black uppercase bg-red-50 text-red-600 px-2 py-1 rounded-lg">⚔️ Frontaliera</span>}
-                {region.governorName && <span className="text-[10px] font-black uppercase bg-blue-50 text-blue-600 px-2 py-1 rounded-lg">👤 Gov: {region.governorName}</span>}
-                <span className="text-[10px] font-black uppercase bg-amber-50 text-amber-600 px-2 py-1 rounded-lg ml-auto">
+                {region.isCapital && <span className="text-[10px] font-black uppercase bg-yellow-600/20 text-yellow-400 px-2 py-1 rounded-lg">👑 Capitale</span>}
+                {region.isAutonomous && <span className="text-[10px] font-black uppercase bg-purple-600/20 text-purple-400 px-2 py-1 rounded-lg">🏛️ Autonomia</span>}
+                {region.isBorderRegion && <span className="text-[10px] font-black uppercase bg-red-600/20 text-red-400 px-2 py-1 rounded-lg">⚔️ Frontaliera</span>}
+                {region.governorName && <span className="text-[10px] font-black uppercase bg-blue-600/20 text-blue-400 px-2 py-1 rounded-lg">👤 Gov: {region.governorName}</span>}
+                <span className="text-[10px] font-black uppercase bg-amber-600/20 text-amber-400 px-2 py-1 rounded-lg ml-auto">
                   Tassa Mercato: {region.marketTaxRate || 10}%
                 </span>
               </div>
@@ -367,61 +371,65 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
           </div>
 
           {/* Navigation Tabs */}
-          <div className="flex gap-2 overflow-x-auto hide-scrollbar mb-6 pb-2">
+          <div className="flex gap-2 overflow-x-auto hide-scrollbar mb-5 pb-1">
             <button
               onClick={() => setActiveTab('info')}
-              className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'info' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
+              className={`flex-1 min-w-[100px] py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'info' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30" : "bg-gray-800/50 text-gray-400 hover:text-gray-200"}`}
             >
               Info & Economia
             </button>
             <button
               onClick={() => setActiveTab('government')}
-              className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'government' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
+              className={`flex-1 min-w-[100px] py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'government' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30" : "bg-gray-800/50 text-gray-400 hover:text-gray-200"}`}
             >
               Governo
             </button>
             <button
               onClick={() => setActiveTab('resources')}
-              className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'resources' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
+              className={`flex-1 min-w-[100px] py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'resources' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30" : "bg-gray-800/50 text-gray-400 hover:text-gray-200"}`}
             >
               ⛏️ Risorse
             </button>
             <button
               onClick={() => setActiveTab('autonomy')}
-              className={`flex-1 min-w-[120px] py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'autonomy' ? "bg-purple-600 text-white shadow-lg shadow-purple-200" : "bg-slate-50 text-slate-400 hover:text-slate-600"}`}
+              className={`flex-1 min-w-[100px] py-2.5 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === 'autonomy' ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30" : "bg-gray-800/50 text-gray-400 hover:text-gray-200"}`}
             >
               🏛️ Autonomia
             </button>
           </div>
 
           {activeTab === 'info' && (
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-slate-50 p-4 rounded-3xl text-center">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cittadini</p>
-                <p className="text-xl font-black">{region.citizenCount ?? 0}</p>
-              </div>
-              <div className="bg-slate-50 p-4 rounded-3xl text-center">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Residenti</p>
-                <p className="text-xl font-black">{region.residentCount ?? 0}</p>
-              </div>
-
-              <div className="bg-slate-50 p-4 rounded-3xl text-center">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Partiti</p>
-                <p className="text-xl font-black">{regionParties.length}</p>
-              </div>
-              <div className="bg-slate-50 p-4 rounded-3xl text-center">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Fabbriche</p>
-                <p className="text-xl font-black">{regionFactories.length}</p>
+            <div className="space-y-3">
+              {/* Stats Grid */}
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { icon: Users, value: region.citizenCount ?? 0, label: 'Cittadini', color: 'bg-sky-600', accent: 'text-sky-400', to: `/players?search=${iso2}` },
+                  { icon: UserCheck, value: region.residentCount ?? 0, label: 'Residenti', color: 'bg-emerald-600', accent: 'text-emerald-400', to: `/players?search=${iso2}` },
+                  { icon: Flag, value: regionParties.length, label: 'Partiti', color: 'bg-purple-600', accent: 'text-purple-400', to: `/parties?search=${iso2}` },
+                  { icon: Factory, value: regionFactories.length, label: 'Fabbriche', color: 'bg-amber-600', accent: 'text-amber-400', to: `/world-factories?search=${iso2}` },
+                ].map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => navigate(s.to)}
+                    className="flex flex-col items-center gap-1 p-3 rounded-xl bg-gray-800/50 border border-gray-700/40 hover:border-indigo-500/50 hover:bg-gray-800/80 transition-all group"
+                  >
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-transform group-hover:scale-110 ${s.color}`}>
+                      <s.icon className="w-4 h-4 text-white" />
+                    </div>
+                    <span className={`text-lg font-black ${s.accent} tabular-nums`}>{s.value.toLocaleString('it-IT')}</span>
+                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider text-center group-hover:text-gray-300">{s.label}</span>
+                  </button>
+                ))}
               </div>
 
               {regionParties.length > 0 && (
-                <div className="col-span-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Lista Partiti</p>
+                <div>
+                  <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-2">Lista Partiti</p>
                   <div className="flex flex-wrap gap-1.5">
                     {regionParties.map((p: any) => (
                       <span
                         key={p.id}
-                        className="text-[10px] font-black px-2 py-1 bg-indigo-50 text-indigo-700 border border-indigo-100 rounded-lg"
+                        className="text-[10px] font-black px-2 py-1 bg-indigo-600/20 text-indigo-300 border border-indigo-700/30 rounded-lg"
                       >
                         {p.tag ? `[${p.tag}] ` : ''}{p.name}
                       </span>
@@ -432,16 +440,16 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
 
               {/* Sanctions List */}
               {sanctions.length > 0 && (
-                <div className="col-span-2 mt-4 text-left">
-                  <h4 className="text-[10px] font-black text-rose-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                <div className="text-left">
+                  <h4 className="text-[10px] font-black text-rose-400 uppercase tracking-widest mb-3 flex items-center gap-2">
                     <AlertCircle className="w-3 h-3" /> Stati sanzionati da {region.name}
                   </h4>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {sanctions.map((s: any) => (
-                      <div key={s.id} className="flex items-center gap-2 p-3 bg-rose-50 rounded-2xl border border-rose-100">
+                      <div key={s.id} className="flex items-center gap-2 p-3 bg-rose-500/10 rounded-2xl border border-rose-500/20">
                         <NationalFlag iso2={s.targetStateId || ""} className="w-8 h-6 shadow-sm rounded-sm" />
                         <div className="flex-1">
-                          <p className="text-xs font-black text-rose-900 leading-none">{s.targetStateName || s.targetStateId}</p>
+                          <p className="text-xs font-black text-rose-200 leading-none">{s.targetStateName || s.targetStateId}</p>
                           <p className="text-[9px] font-bold text-rose-400 uppercase mt-0.5">Sanzioni Commerciali Attive</p>
                         </div>
                       </div>
@@ -456,10 +464,10 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       </div>
 
       {activeTab === 'government' ? (
-        <div className="space-y-4 px-4">
-          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100">
-              <h3 className="text-lg font-black uppercase text-indigo-900 mb-4 flex items-center gap-2">
-                <Crown className="w-5 h-5 text-indigo-600" /> Capo di Stato
+        <div className="space-y-4">
+          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-5">
+              <h3 className="text-sm font-bold text-gray-300 mb-4 flex items-center gap-2">
+                <Crown className="w-4 h-4 text-gray-400" /> Capo di Stato
               </h3>
               {region.leaderUserId ? (
                 <div className="flex items-center gap-4">
@@ -470,14 +478,14 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") navigate(`/profile/${region.leaderUserId}`);
                     }}
-                    className="w-12 h-12 bg-indigo-100 rounded-2xl flex items-center justify-center overflow-hidden cursor-pointer"
+                    className="w-12 h-12 bg-indigo-600/20 rounded-2xl flex items-center justify-center overflow-hidden cursor-pointer"
                     title="Apri profilo"
                     aria-label="Apri profilo"
                   >
                     {leaderAvatar ? (
                       <img src={leaderAvatar} alt={region.leaderName || 'Leader'} className="w-full h-full object-cover" />
                     ) : (
-                      <span className="text-sm font-black text-indigo-700">{leaderInitial}</span>
+                      <span className="text-sm font-black text-indigo-400">{leaderInitial}</span>
                     )}
                   </div>
                   <div>
@@ -488,7 +496,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") navigate(`/profile/${region.leaderUserId}`);
                       }}
-                      className="text-sm font-black text-slate-900 cursor-pointer"
+                      className="text-sm font-black text-gray-200 cursor-pointer hover:text-indigo-300 transition-colors"
                       title="Apri profilo"
                       aria-label="Apri profilo"
                     >
@@ -497,21 +505,21 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                   </div>
                 </div>
               ) : (
-                <p className="text-sm font-bold text-slate-400">Nessun leader attivo in questo Stato.</p>
+                <p className="text-sm font-bold text-gray-500">Nessun leader attivo in questo Stato.</p>
               )}
 
-              <div className="mt-6 flex flex-col gap-2">
+              <div className="mt-5 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => navigate(`/leader/${(iso2 || '').toUpperCase()}`)}
-                  className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-100 flex items-center justify-center gap-2"
+                  className="py-3 bg-indigo-600 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-900/20 flex items-center justify-center gap-2"
                 >
-                  <Crown className="w-4 h-4" /> Pagina Leader & Elezioni
+                  <Crown className="w-4 h-4" /> Leader & Elezioni
                 </button>
                 <button
                   onClick={() => navigate(`/ministers/${(iso2 || '').toUpperCase()}`)}
-                  className="w-full py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                  className="py-3 bg-gray-800/50 border border-gray-700/40 text-gray-300 rounded-xl font-black text-xs uppercase tracking-widest hover:border-indigo-500/40 transition-colors flex items-center justify-center gap-2"
                 >
-                  <Briefcase className="w-4 h-4" /> Ministri & Incarichi
+                  <Briefcase className="w-4 h-4" /> Ministri
                 </button>
               </div>
             </div>
@@ -816,46 +824,49 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
         <>
           {/* Azioni */}
           {user && (
-            <div className="bg-slate-900 p-6 rounded-[2.5rem] shadow-sm border border-slate-700">
-              <h3 className="text-lg font-black uppercase tracking-tight text-slate-100 mb-4">Azioni</h3>
-              <div className="flex flex-col gap-3">
+            <CollapsibleSection title="Azioni" icon={<Zap className="w-4 h-4" />} defaultOpen>
+              <div className="p-4 grid grid-cols-2 gap-2">
                 {user.regionId === region.id ? (
-                  <div className="w-full py-3 bg-slate-800 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 border border-slate-700 cursor-default">
-                    ✈️ Sei già in questa regione
+                  <div className="flex items-center gap-2 p-3 rounded-xl border border-gray-700/40 bg-gray-800/30 cursor-default col-span-1">
+                    <span className="text-base">✈️</span>
+                    <span className="text-[11px] font-bold text-gray-500">Sei già qui</span>
                   </div>
                 ) : (
                   <button
                     onClick={() => handleImmigrationAction('/api/actions/travel', { regionId: region.id })}
                     disabled={actionLoading}
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 p-3 rounded-xl border border-gray-700/40 bg-gray-800/50 hover:border-indigo-500/40 hover:bg-gray-800/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    ✈️ Spostati in questa regione
+                    <span className="text-base">✈️</span>
+                    <span className="text-[11px] font-bold text-gray-300">Spostati qui</span>
                   </button>
                 )}
                 {user.residenceId === region.id ? (
-                  <div className="w-full py-3 bg-slate-800 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 border border-slate-700 cursor-default">
-                    🏠 Sei già residente in questa regione
+                  <div className="flex items-center gap-2 p-3 rounded-xl border border-gray-700/40 bg-gray-800/30 cursor-default col-span-1">
+                    <span className="text-base">🏠</span>
+                    <span className="text-[11px] font-bold text-gray-500">Già residente</span>
                   </div>
                 ) : (
                   <button
                     onClick={() => handleImmigrationAction('/api/actions/apply', { regionId: region.id, type: 'residence' })}
                     disabled={actionLoading}
-                    className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex items-center gap-2 p-3 rounded-xl border border-gray-700/40 bg-gray-800/50 hover:border-indigo-500/40 hover:bg-gray-800/80 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    🏠 Richiedi la residenza in questa regione
+                    <span className="text-base">🏠</span>
+                    <span className="text-[11px] font-bold text-gray-300">Richiedi residenza</span>
                   </button>
                 )}
               </div>
-            </div>
+            </CollapsibleSection>
           )}
 
           {regionalIndicesCard}
 
           {/* Factories */}
-          <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-            <h3 className="text-lg font-black uppercase tracking-tight">Strutture Presenti</h3>
+          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-5 space-y-4">
+            <h3 className="text-sm font-bold text-gray-300 uppercase tracking-tight">Strutture Presenti</h3>
             {regionFactories.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {regionFactories.map((f) => {
                   const factoryIdentifier = f.id || f.slug || f.factoryId;
                   const openFactoryDetail = () => {
@@ -874,29 +885,29 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                         openFactoryDetail();
                       }
                     }}
-                    className="flex items-center gap-3 p-4 bg-indigo-50 rounded-2xl border border-indigo-100 cursor-pointer"
+                    className="flex items-center gap-3 p-3 bg-gray-800/50 border border-gray-700/40 rounded-xl cursor-pointer hover:border-indigo-500/40 transition-colors"
                     aria-label={factoryIdentifier ? `Apri fabbrica ${f.name}` : undefined}
                     title={factoryIdentifier ? "Apri dettagli fabbrica" : undefined}
                   >
-                    <div className="p-3 bg-white rounded-xl text-xl">
+                    <div className="p-2.5 bg-gray-700/50 rounded-lg text-xl">
                       {RESOURCE_ICONS[f.type] || "🏭"}
                     </div>
                     <div className="flex-1">
-                      <p className="font-black text-indigo-900 leading-tight">{f.name}</p>
+                      <p className="font-black text-gray-200 leading-tight text-sm">{f.name}</p>
                       <p className="text-[10px] font-bold text-indigo-400 uppercase">
                         {RESOURCE_NAMES[f.type] || f.type} • Livello {f.level}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="text-[10px] font-black text-slate-400 uppercase">Proprietario</p>
-                      <p className="text-xs font-bold text-slate-700">{f.ownerName || 'Unknown'}</p>
+                      <p className="text-[10px] font-black text-gray-500 uppercase">Proprietario</p>
+                      <p className="text-xs font-bold text-gray-300">{f.ownerName || 'Unknown'}</p>
                     </div>
                   </div>
                 )})}
               </div>
             ) : (
-              <div className="p-8 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                <p className="text-slate-400 font-bold italic">Nessuna fabbrica costruita</p>
+              <div className="p-8 text-center bg-gray-800/40 rounded-xl border border-dashed border-gray-700/40">
+                <p className="text-gray-500 font-bold italic">Nessuna fabbrica costruita</p>
               </div>
             )}
           </div>

@@ -25,6 +25,8 @@ export interface User {
   lastMedalClaim: number;
   travelingTo: string | null; // ISO code of destination while traveling
   travelingUntil: number | null; // Timestamp when travel completes
+  travelingFrom?: string | null; // ISO code of the origin region for the active trip
+  travelDurationMs?: number | null; // Total duration of the active trip in milliseconds
   partyId?: string;
   partyName?: string;
   partyLogo?: string;

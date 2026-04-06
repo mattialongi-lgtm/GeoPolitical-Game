@@ -684,12 +684,16 @@ const authenticate = async (req: any, res: any, next: any) => {
       const { error: travelErr } = await supabase.from('users').update({
         regionId: user.travelingTo,
         travelingUntil: null,
-        travelingTo: null
+        travelingTo: null,
+        travelingFrom: null,
+        travelDurationMs: null
       }).eq('id', user.id);
       if (!travelErr) {
         req.user.regionId = user.travelingTo;
         req.user.travelingUntil = null;
         req.user.travelingTo = null;
+        req.user.travelingFrom = null;
+        req.user.travelDurationMs = null;
       }
     }
 
@@ -742,6 +746,34 @@ const authenticate = async (req: any, res: any, next: any) => {
     } catch (workExpErr) {
       // Non-critical: legacy UI will fall back to 0 if experience table is unavailable.
       console.error("Error loading player work experience:", workExpErr);
+    }
+
+    // Energy regeneration — mirrors the old server.ts authenticate middleware logic.
+    // Without this, energy never regens for users who don't use autowork.
+    try {
+      const energyMax = GAME_CONFIG.ENERGY_MAX;
+      if ((req.user.energy || 0) < energyMax) {
+        const regenBonus = (req.user.perks?.['regen_boost'] || 0) * 5;
+        const regenRate = GAME_CONFIG.ENERGY_REGEN_RATE + regenBonus;
+        const nowTs = Date.now();
+        const rawLastUpdate = req.user.lastEnergyUpdate;
+        const lastUpdate = rawLastUpdate
+          ? (typeof rawLastUpdate === 'number' ? rawLastUpdate : Number(rawLastUpdate) || new Date(rawLastUpdate).getTime())
+          : nowTs;
+        const hoursPassed = (nowTs - lastUpdate) / (1000 * 60 * 60);
+        const regen = Math.floor(hoursPassed * regenRate);
+        if (regen > 0) {
+          const newEnergy = Math.min(energyMax, (req.user.energy || 0) + regen);
+          await supabase.from('users')
+            .update({ energy: newEnergy, lastEnergyUpdate: nowTs })
+            .eq('id', req.user.id);
+          req.user.energy = newEnergy;
+          req.user.lastEnergyUpdate = nowTs;
+        }
+      }
+    } catch (regenErr) {
+      // Non-critical: log and continue
+      console.error("[Auth] Energy regen error:", regenErr);
     }
 
     next();

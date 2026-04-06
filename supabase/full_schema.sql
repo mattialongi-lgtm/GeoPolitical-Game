@@ -85,6 +85,8 @@ CREATE TABLE users (
     "boostersJson" TEXT DEFAULT '{}',
     "travelingTo" TEXT DEFAULT NULL,
     "travelingUntil" BIGINT DEFAULT NULL,
+    "travelingFrom" TEXT DEFAULT NULL,
+    "travelDurationMs" BIGINT DEFAULT NULL,
     "militaryExp" INT DEFAULT 0,
     "createdAt" TIMESTAMPTZ DEFAULT NOW(),
     "updatedAt" BIGINT

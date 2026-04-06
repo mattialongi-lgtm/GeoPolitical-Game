@@ -68,6 +68,7 @@ const MIGRATIONS: string[] = [
   'migration_upgrade_factory_search_path_only.sql',
   'migration_party_assets_hardening.sql',
   'migration_next.sql',
+  'migration_travel_cancel.sql',
 ];
 
 const __filename = fileURLToPath(import.meta.url);

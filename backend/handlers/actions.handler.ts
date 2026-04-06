@@ -757,7 +757,12 @@ export function createActionsHandlers(deps: {
     const travelMinutes = Math.round(travelTimeMs / 60000);
 
     // 6. Start travel (set travelingTo and travelingUntil instead of instant move)
-    const updateData: any = { travelingTo: normalizedRegionId, travelingUntil };
+    const updateData: any = {
+      travelingFrom: user.regionId,
+      travelingTo: normalizedRegionId,
+      travelingUntil,
+      travelDurationMs: travelTimeMs,
+    };
     if (isRestricted && travelFee > 0) {
       updateData.money = user.money - travelFee;
     }
@@ -778,10 +783,57 @@ export function createActionsHandlers(deps: {
       });
     }
 
-    res.json({ success: true, regionId: normalizedRegionId, travelMinutes, travelingUntil });
+    res.json({
+      success: true,
+      regionId: normalizedRegionId,
+      travelMinutes,
+      travelingUntil,
+      travelingFrom: user.regionId,
+      travelDurationMs: travelTimeMs,
+    });
   } catch (err: any) {
     console.error("Travel error:", err);
     res.status(500).json({ error: "Errore durante il viaggio" });
+  }
+  }
+
+  async function actionsCancelTravel(req: any, res: any) {
+  const user = req.user;
+
+  if (!user.travelingUntil || !user.travelingTo || Date.now() >= user.travelingUntil) {
+    return res.status(400).json({ error: "Non sei attualmente in viaggio." });
+  }
+
+  const originRegionId = String(user.travelingFrom || user.regionId || '').trim().toUpperCase();
+  if (!originRegionId || !isValidIso2(originRegionId)) {
+    return res.status(400).json({ error: "Origine del viaggio non disponibile." });
+  }
+
+  const totalDurationMs = Math.max(1000, Number(user.travelDurationMs) || (user.travelingUntil - Date.now()));
+  const remainingDurationMs = Math.max(0, user.travelingUntil - Date.now());
+  const elapsedDurationMs = Math.max(0, totalDurationMs - remainingDurationMs);
+  const returnDurationMs = Math.max(1000, elapsedDurationMs);
+  const travelingUntil = Date.now() + returnDurationMs;
+
+  try {
+    await supabase.from('users').update({
+      travelingFrom: user.travelingTo,
+      travelingTo: originRegionId,
+      travelingUntil,
+      travelDurationMs: returnDurationMs,
+    }).eq('id', user.id);
+
+    res.json({
+      success: true,
+      returningTo: originRegionId,
+      travelingFrom: user.travelingTo,
+      travelingUntil,
+      travelDurationMs: returnDurationMs,
+      travelMinutes: Math.round(returnDurationMs / 60000),
+    });
+  } catch (err: any) {
+    console.error("Cancel travel error:", err);
+    res.status(500).json({ error: "Errore durante il ritorno" });
   }
   }
 
@@ -1069,6 +1121,7 @@ export function createActionsHandlers(deps: {
     actionsCraftDrink,
     actionsUseDrink,
     actionsTravel,
+    actionsCancelTravel,
     actionsAttack,
     actionsTrain,
     work,

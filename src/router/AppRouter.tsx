@@ -56,7 +56,7 @@ export function AppRouter(props: any) {
 
   return (
     <Routes>
-      <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} worldStats={worldStats} navigateToCountry={navigateToCountry} />} />
+      <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} worldStats={worldStats} navigateToCountry={navigateToCountry} handleAction={handleAction} />} />
       <Route path="/daily" element={<DailyTasksPage user={user} regions={regions} />} />
       <Route path="/map" element={<WorldMap onRegionClick={navigateToCountry} regions={regions} />} />
       <Route path="/market" element={<MarketView user={user} fetchData={fetchData} />} />

@@ -88,7 +88,46 @@ export function useAppActions(
       });
       const data = await res.json();
       if (data.error) alert(data.error);
-      else fetchData();
+      else {
+        const isTravelMutation = action === "travel" || action === "cancel-travel";
+
+        if (action === "travel" && user) {
+          const nextTravelingTo = typeof data.returningTo === "string" ? data.returningTo : data.regionId;
+          const nextTravelingFrom = typeof data.travelingFrom === "string"
+            ? data.travelingFrom
+            : (action === "travel" ? user.regionId : user.travelingFrom);
+          const nextTravelDurationMs =
+            typeof data.travelDurationMs === "number"
+              ? data.travelDurationMs
+              : (typeof data.travelMinutes === "number" ? data.travelMinutes * 60 * 1000 : user.travelDurationMs);
+
+          setUser({
+            ...user,
+            travelingTo: nextTravelingTo || null,
+            travelingUntil: data.travelingUntil ?? user.travelingUntil,
+            travelingFrom: nextTravelingFrom || null,
+            travelDurationMs: nextTravelDurationMs ?? null,
+          });
+        } else if (action === "cancel-travel" && user) {
+          setUser({
+            ...user,
+            travelingTo: data.returningTo ?? user.travelingFrom ?? user.regionId,
+            travelingUntil: data.travelingUntil ?? user.travelingUntil,
+            travelingFrom: data.travelingFrom ?? user.travelingTo ?? null,
+            travelDurationMs: data.travelDurationMs ?? user.travelDurationMs ?? null,
+          });
+          const returnTarget = data.returningTo ?? user.travelingFrom ?? user.regionId;
+          alert(`Ritorno iniziato verso ${returnTarget}.`);
+        }
+
+        if (isTravelMutation) {
+          window.setTimeout(() => {
+            fetchData();
+          }, 800);
+        } else {
+          fetchData();
+        }
+      }
     } catch (err) {
       alert("Action failed");
     } finally {

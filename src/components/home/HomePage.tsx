@@ -46,6 +46,7 @@ interface HomePageProps {
   wars: { active: War[]; ended: War[] };
   worldStats?: WorldStats;
   navigateToCountry: (id: string) => void;
+  handleAction: (action: string, body?: any) => void;
 }
 
 /** Divider between dashboard sections */
@@ -53,7 +54,7 @@ const SectionDivider = () => (
   <div className="h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
 );
 
-export default function HomePage({ user, regions, wars, worldStats, navigateToCountry }: HomePageProps) {
+export default function HomePage({ user, regions, wars, worldStats, navigateToCountry, handleAction }: HomePageProps) {
   const navigate = useNavigate();
 
   const [dashboardStats, setDashboardStats] = React.useState<any>(null);
@@ -181,6 +182,13 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
             {user.travelingTo && (
               <p className="text-[10px] font-bold text-indigo-400 mt-0.5">Destinazione: {user.travelingTo}</p>
             )}
+            <button
+              type="button"
+              onClick={() => handleAction("cancel-travel")}
+              className="mt-1 text-[10px] font-black text-red-400 uppercase tracking-widest hover:text-red-300 transition-colors"
+            >
+              Cancella Viaggio
+            </button>
           </div>
           <div className="text-right">
             <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Arrivo tra</p>

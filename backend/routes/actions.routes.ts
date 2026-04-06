@@ -39,6 +39,7 @@ export function registerActionsRoutes(deps: RegisterActionsRoutesDeps) {
   app.post('/api/actions/craft-drink', writeLimiter, authenticate, h.actionsCraftDrink);
   app.post('/api/actions/use-drink', writeLimiter, authenticate, h.actionsUseDrink);
   app.post('/api/actions/travel', writeLimiter, authenticate, h.actionsTravel);
+  app.post('/api/actions/cancel-travel', writeLimiter, authenticate, h.actionsCancelTravel);
   app.post('/api/actions/attack', writeLimiter, authenticate, h.actionsAttack);
   app.post('/api/actions/train', writeLimiter, authenticate, h.actionsTrain);
   app.post('/api/work', writeLimiter, authenticate, h.work);

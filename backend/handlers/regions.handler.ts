@@ -210,7 +210,7 @@ export function createRegionsHandlers(deps: {
       res.json(formatted);
     } catch (err: any) {
       console.error("Error fetching regions:", err);
-      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      logger.error('operation_failed', { error: err?.message });
       res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }

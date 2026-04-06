@@ -22,6 +22,7 @@
     "test:security-db-rls-validation:backend:ci": "node -e \"process.env.REQUIRE_DB_RLS_VALIDATION='true'; process.env.RUN_DB_RLS_VALIDATION_TESTS='true'; process.env.REQUIRE_BACKEND_FLOW_VALIDATION='true'; process.env.RUN_BACKEND_FLOW_VALIDATION='true'; import('./scripts/security-db-rls-validation.mjs')\"",
     "check:hardening": "tsc -p tsconfig.hardening.json && node scripts/write-hardening-package-json.cjs && node .hardening-dist/scripts/hardening-contract-smoke.js && node .hardening-dist/scripts/factory-deposit-hardening-smoke.js && node .hardening-dist/scripts/factory-upgrade-hardening-smoke.js && node .hardening-dist/scripts/factory-create-hardening-smoke.js && node .hardening-dist/scripts/party-assets-hardening-smoke.js && node .hardening-dist/scripts/production-hardening-smoke.js && node .hardening-dist/scripts/production-repository-hardening-smoke.js && node .hardening-dist/scripts/daily-reward-hardening-smoke.js && node .hardening-dist/scripts/war-deploy-hardening-smoke.js",
     "test:security-economic-cooldown-surface": "node scripts/security-economic-cooldown-surface.cjs",
+    "verify:war-rls": "node scripts/verify-war-tables-rls.mjs",
     "migrate": "tsx scripts/migrate.ts"
   },
   "dependencies": {

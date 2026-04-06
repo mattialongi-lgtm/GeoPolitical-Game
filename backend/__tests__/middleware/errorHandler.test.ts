@@ -61,7 +61,7 @@ describe('errorHandler middleware', () => {
 
     expect(res.statusCode).toBe(500);
     expect(res._body.error.code).toBe('INTERNAL_ERROR');
-    expect(res._body.error.message).toBe('something unexpected');
+    expect(res._body.error.message).toBe('An unexpected error occurred. Please try again.');
   });
 
   it('should handle non-Error objects gracefully', () => {

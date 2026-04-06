@@ -75,7 +75,7 @@ export const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData:
   const remainingCycle = Math.max(0, effectiveCap - extractedCycle);
   const remainingDaily = selectedRes ? Math.max(0, selectedRes.dailyAvailable - selectedRes.dailyExtracted) : 0;
   const canWork = remainingCycle > 0 && remainingDaily > 0 && (user?.energy || 0) >= 10;
-  const blockReason = remainingCycle <= 0 ? "Cap del ciclo raggiunto. Serve una ricarica!" : remainingDaily <= 0 ? "Risorsa giornaliera esaurita!" : (user?.energy || 0) < 10 ? "Energia insufficiente!" : null;
+  const blockReason = remainingCycle <= 0 ? "Cap di estrazione raggiunto. Attendi il reset automatico delle 19:00 (ora di Londra)." : remainingDaily <= 0 ? "Risorsa giornaliera esaurita!" : (user?.energy || 0) < 10 ? "Energia insufficiente!" : null;
 
   return (
     <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">

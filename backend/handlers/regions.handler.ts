@@ -289,6 +289,10 @@ export function createRegionsHandlers(deps: {
   }
 
   async function refillExtraction(req: any, res: any) {
+    return res.status(403).json({
+      error: "Il limite di estrazione non puo essere ripristinato manualmente. Si resetta solo ogni giorno alle 19:00 ora di Londra.",
+    });
+
     try {
       const regionId = (req.params.id || '').toUpperCase();
       const { resourceType } = req.body;

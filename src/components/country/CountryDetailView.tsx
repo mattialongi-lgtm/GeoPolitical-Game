@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "motion/react";
-import { Globe, Loader2, AlertCircle, Info, Crown, Briefcase, Pickaxe, RefreshCcw, Zap, Users, UserCheck, Flag, Factory } from "lucide-react";
+import { Globe, Loader2, AlertCircle, Info, Crown, Briefcase, Pickaxe, Zap, Users, UserCheck, Flag, Factory } from "lucide-react";
 import CollapsibleSection from '../state/CollapsibleSection';
 import { NationalFlag } from "../ui";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../../constants";
 import { RegionResourcesTab } from "../resources/RegionResourcesTab";
-import { RechargeResourcePanel } from "../resources/RechargeResourcePanel";
 import { DeepExplorationPanel } from "../resources/DeepExplorationPanel";
 import { GovernmentView } from "../GovernmentView";
 
@@ -35,6 +34,14 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     }
     return base;
   }, [autonomyData, regionFactories.length]);
+
+  const isTraveling = Boolean(user?.travelingUntil && user.travelingUntil > Date.now());
+  const travelDestinationName = useMemo(() => {
+    const destinationId = typeof user?.travelingTo === "string" ? user.travelingTo.toUpperCase() : null;
+    if (!destinationId) return null;
+    if (destinationId === region?.id) return region?.name || destinationId;
+    return allRegions.find((entry) => entry.id === destinationId)?.name || destinationId;
+  }, [allRegions, region?.id, region?.name, user?.travelingTo]);
 
   const fetchCountryDetail = async () => {
     try {
@@ -110,29 +117,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       console.error(e);
     }
   };
-  const handleRefillExtraction = async (resourceType: string) => {
-    if (!iso2) return;
-    if (!confirm(`Vuoi ripristinare il limite di ${resourceType}? Costo: 100 Gold.`)) return;
-    try {
-      const res = await fetch(`/api/regions/${iso2.toUpperCase()}/refill-extraction`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resourceType }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        alert(data.error || "Errore durante il ripristino");
-      } else {
-        fetchAutonomyData();
-        fetchData();
-      }
-    } catch (e) {
-      console.error(e);
-      alert("Errore di connessione");
-    }
-  };
-
-
   useEffect(() => {
     fetchCountryDetail();
     fetchAgreements();
@@ -542,11 +526,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               </button>
             </div>
           </div>
-          <RegionResourcesTab regionId={region.id} user={user} />
-          {/* Show recharge panel for leader/economy minister */}
-          {(region.ownerUserId === user?.id || region.economicAdviserId === user?.id) && (
-            <RechargeResourcePanel regionId={region.id} user={user} />
-          )}
+          <RegionResourcesTab regionId={iso2?.toUpperCase() || ""} user={user} />
           {/* Show Deep Exploration panel for leader/economy minister */}
           {region.nation_id && (region.ownerUserId === user?.id || region.economicAdviserId === user?.id) && (
             <DeepExplorationPanel user={user} nationId={region.nation_id} />
@@ -556,7 +536,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
         <div className="space-y-4">
           {!autonomyData ? (
             <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 text-center">
-              <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+              <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
             </div>
           ) : (
             <>
@@ -696,35 +676,8 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 )}
               </div>
 
-              {/* Buildings */}
-              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black uppercase tracking-tight mb-4">🏗️ Edifici Regionali</h3>
-                <div className="space-y-2">
-                  {Object.entries(regionalBuildingsForDisplay).filter(([_, qty]) => (qty as number) > 0).length > 0 ? (
-                    Object.entries(regionalBuildingsForDisplay)
-                      .sort(([, a], [, b]) => (b as number) - (a as number))
-                      .map(([bt, qty]) => {
-                        const icons: Record<string, string> = { hospital: '🏥', military_base: '🏛️', school: '🏫', military_academy: '🎖️', missile_system: '🚀', airport: '✈️', naval_port: '⚓', space_port: '🛸', real_estate_fund: '🏘️', power_plant: '⚡', factory: '🏭' };
-                        const labels: Record<string, string> = { hospital: 'Ospedali', military_base: 'Basi Militari', school: 'Scuole', military_academy: 'Accademie Militari', missile_system: 'Sistemi Missilistici', airport: 'Aeroporti', naval_port: 'Porti Navali', space_port: 'Porti Spaziali', real_estate_fund: 'Fondi Immobiliari', power_plant: 'Centrali Elettriche', factory: 'Fabbriche' };
-                        if ((qty as number) === 0) return null;
-                        return (
-                          <div key={bt} className="flex items-center justify-between p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl">{icons[bt] || '🏢'}</span>
-                              <span className="text-xs font-black text-indigo-900">{labels[bt] || bt}</span>
-                            </div>
-                            <span className="text-lg font-black text-indigo-700">{qty as number}</span>
-                          </div>
-                        );
-                      })
-                  ) : (
-                    <div className="p-8 text-center bg-slate-50 rounded-3xl border border-dashed border-slate-200">
-                      <p className="text-slate-400 font-bold italic">Nessun edificio regionale costruito</p>
-                      <p className="text-[10px] font-bold text-slate-300 mt-1">Costruisci edifici tramite legge parlamentare</p>
-                    </div>
-                  )}
-                </div>
-              </div>
+
+              {/* Regional Buildings section removed by request */}
 
                             {/* Daily Extraction Limits - Premium Redesign */}
               <div className="bg-[#1e2a3a] p-8 rounded-[2.5rem] shadow-2xl border border-slate-700/50">
@@ -750,14 +703,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                           <span className="text-[11px] font-bold text-slate-400 tabular-nums">
                             {res.data.extracted.toLocaleString()} / {res.data.limit.toLocaleString()}
                           </span>
-                          <button
-                            onClick={() => handleRefillExtraction(res.key)}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-500/10 hover:bg-indigo-500/20 text-emerald-400 transition-all active:scale-95 group/btn"
-                            title="Ripristina limite (100 Gold)"
-                          >
-                            <span className="text-[11px] font-black tabular-nums">{res.data.remaining.toLocaleString()}</span>
-                            <RefreshCcw className="w-3 h-3 transition-transform group-hover/btn:rotate-180 duration-500" />
-                          </button>
+                          <span className="px-2.5 py-1.5 rounded-xl bg-indigo-500/10 text-emerald-400 text-[11px] font-black tabular-nums">
+                            {res.data.remaining.toLocaleString()}
+                          </span>
                         </div>
                       </div>
                       <div className="w-full bg-slate-800/50 h-3 rounded-full overflow-hidden border border-slate-700/30">
@@ -773,7 +721,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                     <div className="flex items-center justify-center gap-2 pt-4 border-t border-slate-800/50">
                       <span className="text-lg">⏰</span>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        Prossimo reset: {new Date(autonomyData.extraction.nextResetAt).toLocaleString('it-IT')}
+                        Prossimo reset automatico: {new Date(autonomyData.extraction.nextResetAt).toLocaleString('it-IT', { timeZone: 'Europe/London' })} ora di Londra
                       </p>
                     </div>
                   )}
@@ -826,7 +774,14 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
           {user && (
             <CollapsibleSection title="Azioni" icon={<Zap className="w-4 h-4" />} defaultOpen>
               <div className="p-4 grid grid-cols-2 gap-2">
-                {user.regionId === region.id ? (
+                {isTraveling ? (
+                  <div className="flex items-center gap-2 p-3 rounded-xl border border-indigo-500/30 bg-indigo-950/30 cursor-default col-span-1">
+                    <span className="text-base">✈️</span>
+                    <span className="text-[11px] font-bold text-indigo-200">
+                      In viaggio verso {travelDestinationName || user.travelingTo}
+                    </span>
+                  </div>
+                ) : user.regionId === region.id ? (
                   <div className="flex items-center gap-2 p-3 rounded-xl border border-gray-700/40 bg-gray-800/30 cursor-default col-span-1">
                     <span className="text-base">✈️</span>
                     <span className="text-[11px] font-bold text-gray-500">Sei già qui</span>
@@ -861,56 +816,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
           )}
 
           {regionalIndicesCard}
-
-          {/* Factories */}
-          <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-5 space-y-4">
-            <h3 className="text-sm font-bold text-gray-300 uppercase tracking-tight">Strutture Presenti</h3>
-            {regionFactories.length > 0 ? (
-              <div className="space-y-2">
-                {regionFactories.map((f) => {
-                  const factoryIdentifier = f.id || f.slug || f.factoryId;
-                  const openFactoryDetail = () => {
-                    if (!factoryIdentifier) return;
-                    navigate(`/factory/${factoryIdentifier}`);
-                  };
-                  return (
-                  <div
-                    key={factoryIdentifier || f.name}
-                    role="button"
-                    tabIndex={factoryIdentifier ? 0 : -1}
-                    onClick={openFactoryDetail}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        openFactoryDetail();
-                      }
-                    }}
-                    className="flex items-center gap-3 p-3 bg-gray-800/50 border border-gray-700/40 rounded-xl cursor-pointer hover:border-indigo-500/40 transition-colors"
-                    aria-label={factoryIdentifier ? `Apri fabbrica ${f.name}` : undefined}
-                    title={factoryIdentifier ? "Apri dettagli fabbrica" : undefined}
-                  >
-                    <div className="p-2.5 bg-gray-700/50 rounded-lg text-xl">
-                      {RESOURCE_ICONS[f.type] || "🏭"}
-                    </div>
-                    <div className="flex-1">
-                      <p className="font-black text-gray-200 leading-tight text-sm">{f.name}</p>
-                      <p className="text-[10px] font-bold text-indigo-400 uppercase">
-                        {RESOURCE_NAMES[f.type] || f.type} • Livello {f.level}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-black text-gray-500 uppercase">Proprietario</p>
-                      <p className="text-xs font-bold text-gray-300">{f.ownerName || 'Unknown'}</p>
-                    </div>
-                  </div>
-                )})}
-              </div>
-            ) : (
-              <div className="p-8 text-center bg-gray-800/40 rounded-xl border border-dashed border-gray-700/40">
-                <p className="text-gray-500 font-bold italic">Nessuna fabbrica costruita</p>
-              </div>
-            )}
-          </div>
 
           {/* Actions removed by request */}
         </>

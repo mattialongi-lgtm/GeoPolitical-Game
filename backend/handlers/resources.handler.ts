@@ -141,6 +141,10 @@ export function createResourcesHandlers(deps: {
 
   // POST /api/resources/recharge
   async function recharge(req: any, res: any) {
+    return res.status(403).json({
+      error: "La ricarica manuale dei limiti estrazione e disabilitata. Il reset avviene solo ogni giorno alle 19:00 ora di Londra.",
+    });
+
     const user = req.user;
     const { regionId, resourceType } = req.body;
 
@@ -237,6 +241,10 @@ export function createResourcesHandlers(deps: {
 
   // GET /api/resources/recharge-info
   async function getRechargeInfo(req: any, res: any) {
+    return res.status(403).json({
+      error: "La ricarica manuale dei limiti estrazione e disabilitata. Il reset avviene solo ogni giorno alle 19:00 ora di Londra.",
+    });
+
     const regionId = req.query.regionId as string;
     const resourceType = req.query.resourceType as string;
     if (!regionId || !resourceType) return res.status(400).json({ error: "regionId e resourceType obbligatori" });

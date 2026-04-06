@@ -9,14 +9,50 @@ export const RegionResourcesTab = ({ regionId, user }: { regionId: string; user:
   const [error, setError] = useState<string | null>(null);
 
   const fetchResources = useCallback(async () => {
+    if (!regionId) return;
     try {
       setLoading(true);
+      setError(null);
       const res = await fetch(`/api/regions/${regionId}/resources`, { credentials: 'include' });
+      
+      const contentType = res.headers.get("content-type");
+      if (!res.ok) {
+        let errorMsg = `Errore HTTP ${res.status}`;
+        try {
+          const errorData = await res.json();
+          errorMsg = errorData.error || errorMsg;
+        } catch {
+          const text = await res.text();
+          errorMsg = `HTTP ${res.status}: ${text.substring(0, 50)}...`;
+        }
+        throw new Error(errorMsg);
+      }
+
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await res.text();
+        throw new Error(`Risposta non valida dal server (${contentType}). Body: ${text.substring(0, 50)}...`);
+      }
+
       const data = await res.json();
-      if (data.error) throw new Error(data.error);
-      setResources(data.resources || []);
+      
+      // Sort resources: gold_ore first, then others
+      const sorted = (data.resources || []).sort((a: any, b: any) => {
+        const order: Record<string, number> = {
+          gold_ore: 1,
+          oil: 2,
+          minerals: 3,
+          uranium: 4,
+          diamonds: 5,
+          liquid_oxygen: 6,
+          helium3: 7
+        };
+        return (order[a.resourceType] || 99) - (order[b.resourceType] || 99);
+      });
+      
+      setResources(sorted);
     } catch (err: any) {
-      setError(err.message);
+      console.error("Resource fetch error:", err);
+      setError(err.message || "Errore durante il caricamento delle risorse.");
     } finally {
       setLoading(false);
     }

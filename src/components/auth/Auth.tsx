@@ -5,7 +5,7 @@ import { motion } from "motion/react";
 import { supabase } from "../../lib/supabase";
 import { setBackendAuthCookie } from "../../api/authClient";
 import { TerritorialBrandLogo } from "../ui";
-import territorialBrand from "../../assets/branding/territorial-brand.svg";
+import territorialBrand from "../../assets/branding/territorial-logo.png";
 
 const Auth = ({ onLogin }: { onLogin: () => void }) => {
   const [isLogin, setIsLogin] = useState(true);

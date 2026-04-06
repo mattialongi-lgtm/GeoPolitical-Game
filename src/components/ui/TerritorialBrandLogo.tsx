@@ -1,6 +1,6 @@
 import React from "react";
-import territorialBrand from "../../assets/branding/territorial-brand.svg";
+import territorialLogo from "../../assets/branding/territorial-logo.png";
 
-export const TerritorialBrandLogo = ({ className = "", alt = "Territorial" }: { className?: string; alt?: string }) => (
-  <img src={territorialBrand} alt={alt} className={className} />
+export const TerritorialBrandLogo = ({ className = "", alt = "Territorial: Geopolitical Domination" }: { className?: string; alt?: string }) => (
+  <img src={territorialLogo} alt={alt} className={className} />
 );

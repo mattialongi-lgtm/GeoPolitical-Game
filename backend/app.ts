@@ -518,8 +518,40 @@ const authenticate = async (req: any, res: any, next: any) => {
          console.error("Error fetching user from table:", userError);
       }
 
+      const pickDefaultRegionId = async (): Promise<string | null> => {
+        const preferredRegionIds = ['IT-RM', 'IT'];
+        for (const regionId of preferredRegionIds) {
+          const { data: preferred, error: preferredErr } = await supabase
+            .from('regions')
+            .select('id')
+            .eq('id', regionId)
+            .maybeSingle();
+          if (preferredErr && preferredErr.code !== 'PGRST116') {
+            console.error(`[JIT] Error checking preferred region ${regionId}:`, preferredErr);
+          }
+          if (preferred?.id) return preferred.id;
+        }
+
+        const { data: anyRegion, error: anyRegionErr } = await supabase
+          .from('regions')
+          .select('id')
+          .limit(1);
+
+        if (anyRegionErr) {
+          console.error("[JIT] Error selecting fallback region:", anyRegionErr);
+          return null;
+        }
+
+        return anyRegion?.[0]?.id ?? null;
+      };
+
       // Just-in-time provisioning: create user if they exist in Auth but not in public.users
       console.log(`[JIT] Provisioning new user: ${authUser.email} (${authUser.id})`);
+      const defaultRegionId = await pickDefaultRegionId();
+      if (!defaultRegionId) {
+        return res.status(500).json({ error: "Failed to create user profile: no region available in database." });
+      }
+
       const { data: newUser, error: createError } = await supabase
         .from('users')
         .insert({
@@ -530,8 +562,8 @@ const authenticate = async (req: any, res: any, next: any) => {
           energy: 100,
           xp: 0,
           level: 1,
-          regionId: 'IT-RM', // Default region (Ensure this exists in your regions table)
-          residenceId: 'IT-RM',
+          regionId: defaultRegionId,
+          residenceId: defaultRegionId,
           lastEnergyUpdate: Date.now(),
           lastLogin: Date.now()
         })
@@ -617,6 +649,10 @@ const authenticate = async (req: any, res: any, next: any) => {
     // Auto-finalize completed perk upgrades
     const nowTs = Date.now();
     let upgradesChanged = false;
+    if (!req.user.perkUpgrades || typeof req.user.perkUpgrades !== 'object' || Array.isArray(req.user.perkUpgrades)) {
+      req.user.perkUpgrades = {};
+    }
+
     for (const [perkId, upg] of Object.entries(req.user.perkUpgrades as Record<string, any>)) {
       if (upg.willCompleteAt && upg.willCompleteAt <= nowTs) {
         // Upgrade completed → increment perk level
@@ -711,6 +747,9 @@ const authenticate = async (req: any, res: any, next: any) => {
     next();
   } catch (err) {
     console.error("Auth Middleware Critical Error:", err);
+    if (isTransientSupabaseNetworkError(err)) {
+      return res.status(503).json({ error: "Service temporarily unavailable. Please retry in a few seconds." });
+    }
     res.status(500).json({ error: "Internal Server Error" });
   }
 };

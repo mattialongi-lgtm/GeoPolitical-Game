@@ -24,6 +24,7 @@ export function useAppBootstrapData({
   setLoading,
 }: UseAppBootstrapDataParams) {
   const fetchData = useCallback(async () => {
+    if (!document.cookie.includes('sb-access-token')) return;
     try {
       const data = await fetchAppBootstrapData();
 

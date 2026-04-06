@@ -5,6 +5,8 @@
  * Covers: /api/world-stats, /api/dashboard-stats, /api/nations,
  *   /api/nations/:id, /api/leaderboard
  */
+import { logger } from '../utils/logger';
+
 export function createWorldHandlers(deps: {
   supabase: any;
 }) {
@@ -188,7 +190,8 @@ export function createWorldHandlers(deps: {
       res.json(enriched);
     } catch (err: any) {
       console.error("Error fetching nations:", err);
-      res.status(500).json({ error: "Errore nel caricamento degli stati: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: _req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -214,7 +217,10 @@ export function createWorldHandlers(deps: {
       .order('level', { ascending: false })
       .limit(10);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     res.json(leaders);
   }
 

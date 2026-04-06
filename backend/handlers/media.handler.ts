@@ -1,3 +1,5 @@
+import { logger } from '../utils/logger';
+
 /**
  * Media Handlers (Articles & Newspapers)
  *
@@ -198,7 +200,10 @@ export function createMediaHandlers(deps: {
       authorName: req.user.username,
       content: content.trim(),
     }).select().single();
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     res.json(data);
   }
 
@@ -316,7 +321,8 @@ export function createMediaHandlers(deps: {
 
       res.json({ success: true, id });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -347,7 +353,8 @@ export function createMediaHandlers(deps: {
       if (error) throw error;
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -376,7 +383,8 @@ export function createMediaHandlers(deps: {
 
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -494,7 +502,8 @@ export function createMediaHandlers(deps: {
       if (err?.code === '23505') {
         return res.status(409).json({ error: "L'utente è già membro di questo giornale." });
       }
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

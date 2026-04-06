@@ -6,6 +6,8 @@
  *   /api/factories/paymode, /api/factories/upgrade-cost, /api/factories/upgrade,
  *   /api/factories/all, /api/factories/:id, /api/factories/:id/withdraw
  */
+import { logger } from '../utils/logger';
+
 export function createFactoriesHandlers(deps: {
   supabase: any;
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
@@ -54,7 +56,8 @@ export function createFactoriesHandlers(deps: {
 
     if (error) {
       console.error("Error fetching factories:", error);
-      return res.status(500).json({ error: "Errore nel caricamento delle fabbriche." });
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
 
     const { data: cooldowns } = await supabase.from('user_factory_cooldowns').select('factoryId, lastUsed').eq('userId', req.user.id);
@@ -89,7 +92,8 @@ export function createFactoriesHandlers(deps: {
       const http = mapServiceResultToHttp(result);
       return res.status(http.statusCode).json(http.body);
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nella creazione: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -115,7 +119,8 @@ export function createFactoriesHandlers(deps: {
       const http = mapServiceResultToHttp(result);
       return res.status(http.statusCode).json(http.body);
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nel deposito: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -136,7 +141,8 @@ export function createFactoriesHandlers(deps: {
       await supabase.from('factories').update({ payMode }).eq('id', factoryId);
       res.json({ success: true, payMode });
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nel cambio modalità: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -169,7 +175,8 @@ export function createFactoriesHandlers(deps: {
 
       res.json({ currentLevel, targetLevel, goldCost, currency: 'GOLD' });
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nel calcolo costo: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -192,7 +199,8 @@ export function createFactoriesHandlers(deps: {
 
       return res.status(http.statusCode).json(http.body);
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nell'upgrade: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -228,7 +236,8 @@ export function createFactoriesHandlers(deps: {
       res.json(enriched);
     } catch (error: any) {
       console.error("[/api/factories/all] Error:", error);
-      res.status(500).json({ error: error.message });
+      logger.error('operation_failed', { error: error?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -299,7 +308,8 @@ export function createFactoriesHandlers(deps: {
         nextLevelStorage: factoryStorageLimit(factory.type, level + 1),
       });
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nel caricamento dettaglio: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -358,7 +368,8 @@ export function createFactoriesHandlers(deps: {
       res.json({ success: true, amount, item: factory.type });
     } catch (err: any) {
       console.error("Withdrawal error:", err);
-      res.status(500).json({ error: "Errore durante il ritiro: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

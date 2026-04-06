@@ -10,6 +10,7 @@
  *   /api/regions/:id/laws, /api/nations/:nationId/energy
  */
 import type { BuildingType } from '../../src/types';
+import { logger } from '../utils/logger';
 
 export function createRegionsHandlers(deps: {
   supabase: any;
@@ -209,7 +210,8 @@ export function createRegionsHandlers(deps: {
       res.json(formatted);
     } catch (err: any) {
       console.error("Error fetching regions:", err);
-      res.status(500).json({ error: "Errore nel caricamento delle regioni: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -248,7 +250,8 @@ export function createRegionsHandlers(deps: {
         }))
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -277,7 +280,8 @@ export function createRegionsHandlers(deps: {
       res.json({ resources: enriched });
     } catch (err: any) {
       console.error("Error fetching region resources:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -307,7 +311,8 @@ export function createRegionsHandlers(deps: {
       res.json({ success: true, message: `Limite ${resourceType} ripristinato! (-${REFILL_COST} Gold)` });
     } catch (err: any) {
       console.error("[RefillExtraction] Error:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -368,7 +373,8 @@ export function createRegionsHandlers(deps: {
       });
     } catch (err: any) {
       console.error("Error fetching region autonomy:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -385,7 +391,8 @@ export function createRegionsHandlers(deps: {
       }));
       res.json({ buildings: buildingDetails });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -413,7 +420,8 @@ export function createRegionsHandlers(deps: {
         },
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -440,7 +448,8 @@ export function createRegionsHandlers(deps: {
         transactions: transactions || [],
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -512,7 +521,8 @@ export function createRegionsHandlers(deps: {
       });
     } catch (err: any) {
       console.error("Error fetching region indexes:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -533,7 +543,8 @@ export function createRegionsHandlers(deps: {
       await supabase.from('regions').update({ governorPlayerId: governorUserId }).eq('id', regionId);
       res.json({ success: true, governorName: user.username });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -550,7 +561,8 @@ export function createRegionsHandlers(deps: {
       await supabase.from('regions').update({ governorPlayerId: null }).eq('id', regionId);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -571,7 +583,8 @@ export function createRegionsHandlers(deps: {
         })),
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -588,7 +601,8 @@ export function createRegionsHandlers(deps: {
       }));
       res.json({ laws: lawsWithVotes });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -610,7 +624,8 @@ export function createRegionsHandlers(deps: {
       });
       res.json({ totalGeneration, totalConsumption, totalEfficiency: totalGeneration - totalConsumption, regions: regionDetails });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

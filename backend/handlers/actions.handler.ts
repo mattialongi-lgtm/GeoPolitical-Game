@@ -7,6 +7,7 @@
  *   /api/actions/attack, /api/actions/train, /api/work,
  *   /api/perks/upgrade, /api/perks/booster
  */
+import { logger } from '../utils/logger';
 
 // ── Travel helpers (module-level, no deps needed) ──
 
@@ -514,7 +515,8 @@ export function createActionsHandlers(deps: {
     } catch { /* non-critical */ }
   } catch (err: any) {
     console.error("Work execution failed:", err);
-    res.status(500).json({ error: "Errore durante il lavoro: " + err.message });
+    logger.error('operation_failed', { error: err?.message, path: req?.path });
+    res.status(500).json({ error: "An unexpected error occurred. Please try again." });
   }
   }
 
@@ -564,7 +566,8 @@ export function createActionsHandlers(deps: {
 
     res.json({ success: true, influenceGain });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error('operation_failed', { error: err?.message, path: req?.path });
+    res.status(500).json({ error: "An unexpected error occurred. Please try again." });
   }
   }
 
@@ -604,7 +607,8 @@ export function createActionsHandlers(deps: {
 
     res.json({ success: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error('operation_failed', { error: err?.message, path: req?.path });
+    res.status(500).json({ error: "An unexpected error occurred. Please try again." });
   }
   }
 
@@ -677,7 +681,8 @@ export function createActionsHandlers(deps: {
 
     res.json({ success: true, newEnergy: GAME_CONFIG.ENERGY_MAX });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    logger.error('operation_failed', { error: err?.message, path: req?.path });
+    res.status(500).json({ error: "An unexpected error occurred. Please try again." });
   }
   }
 
@@ -881,7 +886,8 @@ export function createActionsHandlers(deps: {
     return res.json(result);
   } catch (error: any) {
     if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
-    res.status(500).json({ error: error.message });
+    logger.error('operation_failed', { error: error?.message, path: req?.path });
+    res.status(500).json({ error: "An unexpected error occurred. Please try again." });
   }
   }
 

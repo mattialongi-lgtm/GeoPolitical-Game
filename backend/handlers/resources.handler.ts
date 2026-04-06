@@ -11,6 +11,8 @@
  *   /api/extraction/region-dashboard/:id, /api/extraction/leaderboard
  */
 
+import { logger } from '../utils/logger';
+
 export function createResourcesHandlers(deps: {
   supabase: any;
   getUserPerks: any;
@@ -73,7 +75,8 @@ export function createResourcesHandlers(deps: {
       res.json({ states: states || [] });
     } catch (err: any) {
       console.error("Error fetching player extraction state:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -130,7 +133,8 @@ export function createResourcesHandlers(deps: {
         });
       }
       console.error("Error in work-extract:", err);
-      return res.status(500).json({ error: "Errore durante l'estrazione: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -225,7 +229,8 @@ export function createResourcesHandlers(deps: {
       });
     } catch (err: any) {
       console.error("Error in resource recharge:", err);
-      res.status(500).json({ error: "Errore durante la ricarica: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -263,7 +268,8 @@ export function createResourcesHandlers(deps: {
         canAfford: (budget?.moneyEUR || 0) >= costEur,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -279,7 +285,8 @@ export function createResourcesHandlers(deps: {
       res.json(preview);
     } catch (err: any) {
       console.error("Error computing deep cost:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -432,7 +439,8 @@ export function createResourcesHandlers(deps: {
       });
     } catch (err: any) {
       console.error("Error activating deep exploration:", err);
-      res.status(500).json({ error: "Errore nell'attivazione: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -460,7 +468,8 @@ export function createResourcesHandlers(deps: {
         levels: levels || [],
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -484,7 +493,8 @@ export function createResourcesHandlers(deps: {
         });
       }
       console.error("Error in extraction/work:", err);
-      return res.status(500).json({ error: "Errore durante l'estrazione: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -572,7 +582,8 @@ export function createResourcesHandlers(deps: {
       });
     } catch (err: any) {
       console.error("Error in extraction/breakdown:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -599,7 +610,8 @@ export function createResourcesHandlers(deps: {
         maxExperience,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -639,7 +651,8 @@ export function createResourcesHandlers(deps: {
       res.set('Cache-Control', 'no-store');
       return res.json({ success: true, transfer: data });
     } catch (err: any) {
-      return res.status(500).json({ error: err?.message || 'Errore trasferimento work experience' });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -720,7 +733,8 @@ export function createResourcesHandlers(deps: {
       });
     } catch (err: any) {
       console.error("Error in region dashboard:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -767,7 +781,8 @@ export function createResourcesHandlers(deps: {
 
       res.json({ leaderboard });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

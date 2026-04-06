@@ -6,6 +6,7 @@
  *   /api/state/:id/departments, /api/state/:id/departments/contribute,
  *   /api/leader/nation/branding, /api/nations/:nationId/energy
  */
+import { logger } from '../utils/logger';
 
 // ── Dipartimenti di Stato ──────────────────────────────────
 // Lista centralizzata dei dipartimenti validi (risorse + militari)
@@ -475,7 +476,8 @@ export function createStateHandlers(deps: {
       res.json({ success: true, message: "Donazione effettuata con successo!", transactionId: txId });
     } catch (err: any) {
       console.error("Donation error:", err);
-      res.status(500).json({ error: "Errore durante la donazione: " + (err.message || "Errore interno") });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -745,7 +747,8 @@ export function createStateHandlers(deps: {
         regions: regionDetails,
       });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

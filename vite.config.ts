@@ -30,6 +30,13 @@ export default defineConfig(({ mode }) => {
         '/api': {
           target: 'http://localhost:3000',
           changeOrigin: true,
+          onError(err: any, _req: any, res: any) {
+            // Backend is restarting — return 503 instead of logging a noisy proxy error
+            if (err.code === 'ECONNREFUSED') {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Backend restarting, please retry' }));
+            }
+          },
         },
       },
     },

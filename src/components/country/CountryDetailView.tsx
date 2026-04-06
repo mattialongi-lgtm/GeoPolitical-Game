@@ -4,7 +4,6 @@ import { motion } from "motion/react";
 import { Globe, Loader2, AlertCircle, Info, Crown, Briefcase, Pickaxe, RefreshCcw } from "lucide-react";
 import { NationalFlag } from "../ui";
 import { RESOURCE_ICONS, RESOURCE_NAMES } from "../../constants";
-import { BudgetView } from "../budget/BudgetView";
 import { RegionResourcesTab } from "../resources/RegionResourcesTab";
 import { RechargeResourcePanel } from "../resources/RechargeResourcePanel";
 import { DeepExplorationPanel } from "../resources/DeepExplorationPanel";
@@ -815,6 +814,41 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
         </div>
       ) : (
         <>
+          {/* Azioni */}
+          {user && (
+            <div className="bg-slate-900 p-6 rounded-[2.5rem] shadow-sm border border-slate-700">
+              <h3 className="text-lg font-black uppercase tracking-tight text-slate-100 mb-4">Azioni</h3>
+              <div className="flex flex-col gap-3">
+                {user.regionId === region.id ? (
+                  <div className="w-full py-3 bg-slate-800 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 border border-slate-700 cursor-default">
+                    ✈️ Sei già in questa regione
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleImmigrationAction('/api/actions/travel', { regionId: region.id })}
+                    disabled={actionLoading}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ✈️ Spostati in questa regione
+                  </button>
+                )}
+                {user.residenceId === region.id ? (
+                  <div className="w-full py-3 bg-slate-800 text-slate-500 rounded-2xl font-black text-xs uppercase tracking-widest flex items-center justify-center gap-2 border border-slate-700 cursor-default">
+                    🏠 Sei già residente in questa regione
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => handleImmigrationAction('/api/actions/apply', { regionId: region.id, type: 'residence' })}
+                    disabled={actionLoading}
+                    className="w-full py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    🏠 Richiedi la residenza in questa regione
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {regionalIndicesCard}
 
           {/* Factories */}
@@ -866,9 +900,6 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               </div>
             )}
           </div>
-
-          {/* Budget e Finanze di Stato */}
-          <BudgetView regionId={region.id} user={user} isLeader={region.ownerUserId === user?.id} />
 
           {/* Actions removed by request */}
         </>

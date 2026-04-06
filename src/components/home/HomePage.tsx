@@ -18,6 +18,7 @@ import React from "react";
 import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
 import { Region, War, User } from "../../types";
+import { TravelTimer } from "../ui";
 
 import QuickAccessMenu from "./QuickAccessMenu";
 import WorldStatsCarousel from "./WorldStatsCarousel";
@@ -170,6 +171,25 @@ export default function HomePage({ user, regions, wars, worldStats, navigateToCo
     >
       {/* Quick Access Toolbar */}
       <QuickAccessMenu />
+
+      {/* Travel Banner */}
+      {user.travelingUntil && user.travelingUntil > Date.now() && (
+        <div className="flex items-center gap-3 bg-indigo-950 border border-indigo-700/60 rounded-2xl px-4 py-3">
+          <span className="text-xl">✈️</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-black text-indigo-200 uppercase tracking-widest">Sei in viaggio</p>
+            {user.travelingTo && (
+              <p className="text-[10px] font-bold text-indigo-400 mt-0.5">Destinazione: {user.travelingTo}</p>
+            )}
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-0.5">Arrivo tra</p>
+            <p className="text-sm font-black text-indigo-100 tabular-nums">
+              <TravelTimer endsAt={user.travelingUntil} />
+            </p>
+          </div>
+        </div>
+      )}
 
       <SectionDivider />
 

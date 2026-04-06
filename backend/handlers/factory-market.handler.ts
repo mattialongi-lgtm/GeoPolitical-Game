@@ -5,6 +5,8 @@
  * Covers: /api/factory-market, /api/factory-market/list,
  *   /api/factory-market/buy, /api/factory-market/cancel
  */
+import { logger } from '../utils/logger';
+
 export function createFactoryMarketHandlers(deps: {
   supabase: any;
   generateSecureId: (len: number) => string;
@@ -65,7 +67,8 @@ export function createFactoryMarketHandlers(deps: {
 
       res.json(enriched);
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nel caricamento mercato: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -98,7 +101,8 @@ export function createFactoryMarketHandlers(deps: {
 
       res.json({ success: true, listing });
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nella creazione annuncio: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -130,7 +134,8 @@ export function createFactoryMarketHandlers(deps: {
 
       res.json({ success: true, ...parsed });
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nell'acquisto: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -153,7 +158,8 @@ export function createFactoryMarketHandlers(deps: {
 
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nell'annullamento: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

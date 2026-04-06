@@ -8,6 +8,8 @@
  *   /api/government/*, /api/users/me/managed-regions,
  *   /api/sanctions/*
  */
+import { logger } from '../utils/logger';
+
 export function createGovernanceHandlers(deps: {
   supabase: any;
   generateSecureId: (len: number) => string;
@@ -335,7 +337,10 @@ export function createGovernanceHandlers(deps: {
       .or(`stateId.eq.${iso2},stateId.eq.nation_${iso2}`)
       .eq('status', 'ACTIVE');
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
 
     const wageEconomics = await calculateMinisterWage(iso2, 'economics');
     const wageForeign = await calculateMinisterWage(iso2, 'foreign');
@@ -380,7 +385,8 @@ export function createGovernanceHandlers(deps: {
       if (error) throw error;
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: "Errore durante l'aggiornamento delle sanzioni: " + err.message });
+      logger.error('operation_failed', { error: err?.message });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -416,7 +422,8 @@ export function createGovernanceHandlers(deps: {
       if (dError) throw dError;
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ error: "Errore durante la rimozione dell'offerta: " + err.message });
+      logger.error('operation_failed', { error: err?.message });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -479,7 +486,10 @@ export function createGovernanceHandlers(deps: {
       .eq('status', 'pending')
       .order('createdAt', { ascending: false });
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     res.json(apps);
   }
 

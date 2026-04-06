@@ -133,15 +133,10 @@ export async function executeWarDeployUseCase(
       warId,
       userId: user.id,
       side,
-      troopType,
-      quantity: qty,
+      weaponId: troopType,
       energyCost: troopValidation.energyCost,
       moneyCost: troopValidation.moneyCost,
-      baseDamage: damageResult.baseDamage,
-      finalDamage: damageResult.finalDamage,
-      bonuses: damageResult,
-      updateField,
-      actionDetails,
+      damage: damageResult.finalDamage,
     });
 
     if (!error && data) {
@@ -152,22 +147,28 @@ export async function executeWarDeployUseCase(
     } else if (error) {
       throw error;
     }
-  } catch (rpcErr: any) {
+  } catch (rpcErr: unknown) {
+    // RPC_FALLBACK — remove after confirming rpc_war_deploy is deployed on all envs
+    const rpcErrMsg = rpcErr instanceof Error ? rpcErr.message : String(rpcErr);
     console.warn('[war-deploy] rpc_war_deploy failed, using legacy fallback', {
       warId,
       userId: user.id,
       side,
       troopType,
       quantity: qty,
-      error: rpcErr?.message,
+      error: rpcErrMsg,
     });
 
-    // Legacy fallback (temporary): sequential and non-atomic.
-    await warRepository.updateUserEnergyAndMoney(
+    // Legacy fallback (temporary): use safe_deduct_currency + sequential updates.
+    const { error: deductError } = await warRepository.safeDeductCurrency(
       user.id,
-      user.energy - troopValidation.energyCost,
-      user.money, // Keep money unchanged
+      troopValidation.moneyCost,
+      0,
+      troopValidation.energyCost,
     );
+    if (deductError) {
+      return { type: 'validation_error' as const, statusCode: 400, message: deductError.message || 'Risorse insufficienti.' };
+    }
 
     await warRepository.updateWarScore(warId, {
       [updateField]: (war[updateField] || 0) + damageResult.finalDamage,

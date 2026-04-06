@@ -39,11 +39,16 @@ export function errorHandler(
     timestamp: new Date().toISOString(),
   });
 
+  const clientMessage =
+    error.statusCode >= 500
+      ? 'An unexpected error occurred. Please try again.'
+      : error.message;
+
   res.status(error.statusCode).json({
     error: {
       code: error.code,
-      message: error.message,
-      ...(error.context ? { context: error.context } : {}),
+      message: clientMessage,
+      ...(error.statusCode < 500 && error.context ? { context: error.context } : {}),
       timestamp: new Date().toISOString(),
       path: req.path,
     },

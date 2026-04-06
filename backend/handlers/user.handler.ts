@@ -7,6 +7,8 @@
  *   /api/actions/change-displayed-nation, /api/actions/change-original-nation,
  *   /api/dev/add-currency
  */
+import { logger } from '../utils/logger';
+
 export function createUserHandlers(deps: {
   supabase: any;
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
@@ -51,7 +53,8 @@ export function createUserHandlers(deps: {
       });
     } catch (err: any) {
       console.error("Error fetching players:", err);
-      res.status(500).json({ error: "Errore nel caricamento dei giocatori: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

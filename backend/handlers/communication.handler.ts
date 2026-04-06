@@ -4,6 +4,8 @@
  * Extracted from server.ts — no logic changes.
  * Covers: /api/chat, /api/messages/*
  */
+import { logger } from '../utils/logger';
+
 export function createCommunicationHandlers(deps: {
   supabase: any;
 }) {
@@ -74,7 +76,8 @@ export function createCommunicationHandlers(deps: {
 
     if (insertError) {
       console.error("Chat insert error:", insertError);
-      return res.status(500).json({ error: "Errore nell'invio del messaggio." });
+      logger.error('operation_failed', { error: insertError.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
 
     res.json({ success: true });
@@ -94,7 +97,10 @@ export function createCommunicationHandlers(deps: {
     query = query.order('createdAt', { ascending: false }).limit(50);
 
     const { data, error } = await query;
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     res.json(data || []);
   }
 
@@ -104,7 +110,10 @@ export function createCommunicationHandlers(deps: {
       .select('*', { count: 'exact', head: true })
       .eq('receiverId', req.user.id)
       .eq('read', false);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     res.json({ count: count || 0 });
   }
 
@@ -142,7 +151,10 @@ export function createCommunicationHandlers(deps: {
       read: false,
       createdAt: new Date().toISOString()
     });
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     res.json({ success: true });
   }
 
@@ -153,7 +165,10 @@ export function createCommunicationHandlers(deps: {
       .update({ read: true })
       .eq('id', id)
       .eq('receiverId', req.user.id);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     res.json({ success: true });
   }
 
@@ -165,7 +180,10 @@ export function createCommunicationHandlers(deps: {
       .eq('id', id)
       .maybeSingle();
 
-    if (messageError) return res.status(500).json({ error: messageError.message });
+    if (messageError) {
+      logger.error('operation_failed', { error: messageError.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     if (!message) return res.status(404).json({ error: "Messaggio non trovato." });
     if (message.senderId !== req.user.id && message.receiverId !== req.user.id) {
       return res.status(403).json({ error: "Non autorizzato a eliminare questo messaggio." });
@@ -174,7 +192,10 @@ export function createCommunicationHandlers(deps: {
     const { error } = await supabase.from('messages')
       .delete()
       .eq('id', id);
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     res.json({ success: true });
   }
 

@@ -1,190 +1,120 @@
--- Atomic war deploy RPC (source of truth for deploy writes)
-CREATE OR REPLACE FUNCTION public.rpc_war_deploy(
-  p_war_id TEXT,
-  p_user_id UUID,
-  p_side TEXT,
-  p_troop_type TEXT,
-  p_quantity INTEGER,
-  p_energy_cost INTEGER,
-  p_money_cost BIGINT,
-  p_base_damage BIGINT,
-  p_final_damage BIGINT,
-  p_bonuses JSONB DEFAULT '{}'::JSONB,
-  p_update_field TEXT DEFAULT 'attackerScore',
-  p_action_details JSONB DEFAULT '{}'::JSONB
+-- ============================================================
+-- Migration: rpc_war_deploy — Atomic war deploy function
+-- Scope: Replaces 4 independent DB writes (users, wars,
+--        war_participants, action_logs) with a single
+--        atomic transaction.
+-- Idempotent: CREATE OR REPLACE, IF NOT EXISTS throughout.
+-- ============================================================
+
+-- 1. Index for war_participants lookups (idempotent)
+CREATE INDEX IF NOT EXISTS idx_war_participants_war_user
+  ON war_participants("warId", "userId");
+
+-- 2. Atomic war deploy function
+CREATE OR REPLACE FUNCTION rpc_war_deploy(
+  p_user_id     UUID,
+  p_war_id      UUID,
+  p_side        TEXT,        -- 'attacker' | 'defender'
+  p_weapon_id   TEXT,        -- 'infantry' | 'tank' | 'airstrike' | 'battleship'
+  p_energy_cost INT,
+  p_money_cost  NUMERIC,
+  p_damage      INT
 )
-RETURNS JSONB
+RETURNS JSON
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
+SET search_path = public, pg_temp
 AS $$
 DECLARE
-  v_now TIMESTAMPTZ := NOW();
-  v_user users%ROWTYPE;
-  v_war wars%ROWTYPE;
-  v_participant war_participants%ROWTYPE;
-  v_existing_troops JSONB;
-  v_new_troop_qty INTEGER;
-  v_updated_score BIGINT;
+  v_user       RECORD;
+  v_war        RECORD;
+  v_new_score  INT;
 BEGIN
-  IF p_war_id IS NULL OR p_user_id IS NULL OR p_side IS NULL OR p_troop_type IS NULL THEN
-    RETURN jsonb_build_object('error', 'Dati mancanti.');
-  END IF;
-
-  IF p_side NOT IN ('attacker', 'defender') THEN
-    RETURN jsonb_build_object('error', 'Lato di guerra non valido.');
-  END IF;
-
-  IF p_quantity IS NULL OR p_quantity <= 0 THEN
-    RETURN jsonb_build_object('error', 'Quantità non valida.');
-  END IF;
-
-  IF p_energy_cost < 0 OR p_money_cost < 0 THEN
-    RETURN jsonb_build_object('error', 'Costi non validi.');
-  END IF;
-
-  IF p_update_field NOT IN ('attackerScore', 'defenderScore', 'phase1AttackerScore', 'phase1DefenderScore') THEN
-    RETURN jsonb_build_object('error', 'Campo score non valido.');
-  END IF;
-
-  SELECT * INTO v_user
+  -- 1. Lock user row + verify balance
+  SELECT id, energy, money INTO v_user
   FROM users
   WHERE id = p_user_id
   FOR UPDATE;
 
   IF NOT FOUND THEN
-    RETURN jsonb_build_object('error', 'Utente non trovato.');
+    RETURN json_build_object('error', 'Utente non trovato.');
   END IF;
 
-  SELECT * INTO v_war
+  IF v_user.energy < p_energy_cost THEN
+    RETURN json_build_object('error',
+      format('Energia insufficiente. Servono %s, hai %s.', p_energy_cost, v_user.energy));
+  END IF;
+
+  IF v_user.money < p_money_cost THEN
+    RETURN json_build_object('error',
+      format('Fondi insufficienti. Servono $%s, hai $%s.', p_money_cost, v_user.money));
+  END IF;
+
+  -- 2. Lock war row + verify active
+  SELECT id, status, "attackerScore", "defenderScore"
+  INTO v_war
   FROM wars
   WHERE id = p_war_id
   FOR UPDATE;
 
-  IF NOT FOUND THEN
-    RETURN jsonb_build_object('error', 'Guerra inesistente.');
+  IF NOT FOUND OR v_war.status != 'active' THEN
+    RETURN json_build_object('error', 'Guerra non trovata o non attiva.');
   END IF;
 
-  IF v_war.status <> 'active' THEN
-    RETURN jsonb_build_object('error', 'Questa guerra è già terminata.');
-  END IF;
-
-  IF COALESCE(v_user.energy, 0) < p_energy_cost THEN
-    RETURN jsonb_build_object('error', 'Energia insufficiente.');
-  END IF;
-
-  IF COALESCE(v_user.money, 0) < p_money_cost THEN
-    RETURN jsonb_build_object('error', 'Fondi insufficienti.');
-  END IF;
-
+  -- 3. Atomic deduct energy + money
   UPDATE users
-  SET
-    energy = energy - p_energy_cost,
-    money = money - p_money_cost
+  SET energy = energy - p_energy_cost,
+      money  = money  - p_money_cost
   WHERE id = p_user_id;
 
-  IF p_update_field = 'attackerScore' THEN
+  -- 4. Atomic increment war score
+  IF p_side = 'attacker' THEN
     UPDATE wars
-    SET "attackerScore" = COALESCE("attackerScore", 0) + p_final_damage,
-        "updatedAt" = v_now
-    WHERE id = p_war_id
-    RETURNING "attackerScore" INTO v_updated_score;
-  ELSIF p_update_field = 'defenderScore' THEN
-    UPDATE wars
-    SET "defenderScore" = COALESCE("defenderScore", 0) + p_final_damage,
-        "updatedAt" = v_now
-    WHERE id = p_war_id
-    RETURNING "defenderScore" INTO v_updated_score;
-  ELSIF p_update_field = 'phase1AttackerScore' THEN
-    UPDATE wars
-    SET "phase1AttackerScore" = COALESCE("phase1AttackerScore", 0) + p_final_damage,
-        "updatedAt" = v_now
-    WHERE id = p_war_id
-    RETURNING "phase1AttackerScore" INTO v_updated_score;
+    SET "attackerScore" = "attackerScore" + p_damage,
+        "updatedAt"     = NOW()
+    WHERE id = p_war_id;
+    v_new_score := v_war."attackerScore" + p_damage;
   ELSE
     UPDATE wars
-    SET "phase1DefenderScore" = COALESCE("phase1DefenderScore", 0) + p_final_damage,
-        "updatedAt" = v_now
-    WHERE id = p_war_id
-    RETURNING "phase1DefenderScore" INTO v_updated_score;
+    SET "defenderScore" = "defenderScore" + p_damage,
+        "updatedAt"     = NOW()
+    WHERE id = p_war_id;
+    v_new_score := v_war."defenderScore" + p_damage;
   END IF;
 
-  SELECT * INTO v_participant
-  FROM war_participants
-  WHERE "warId" = p_war_id
-    AND "userId" = p_user_id
-  FOR UPDATE;
+  -- 5. Upsert war_participants (damage tracking)
+  INSERT INTO war_participants ("warId", "userId", side, "totalDamage")
+  VALUES (p_war_id, p_user_id, p_side, p_damage)
+  ON CONFLICT ("warId", "userId")
+  DO UPDATE SET
+    "totalDamage" = war_participants."totalDamage" + p_damage;
 
-  IF FOUND THEN
-    v_existing_troops := COALESCE(v_participant."troopsDeployed", '{}'::JSONB);
-    v_new_troop_qty := COALESCE((v_existing_troops ->> p_troop_type)::INTEGER, 0) + p_quantity;
-
-    UPDATE war_participants
-    SET
-      "totalDamage" = COALESCE("totalDamage", 0) + p_final_damage,
-      "troopsDeployed" = jsonb_set(v_existing_troops, ARRAY[p_troop_type], to_jsonb(v_new_troop_qty), true)
-    WHERE id = v_participant.id;
-  ELSE
-    INSERT INTO war_participants ("warId", "userId", side, "totalDamage", "troopsDeployed")
-    VALUES (p_war_id, p_user_id, p_side, p_final_damage, jsonb_build_object(p_troop_type, p_quantity));
-  END IF;
-
-  INSERT INTO war_deployments (
-    "warId",
-    "userId",
-    side,
-    "troopType",
-    quantity,
-    "baseDamage",
-    "finalDamage",
-    bonuses,
-    "deployedAt"
-  )
-  VALUES (
-    p_war_id,
-    p_user_id,
-    p_side,
-    p_troop_type,
-    p_quantity,
-    p_base_damage,
-    p_final_damage,
-    COALESCE(p_bonuses, '{}'::JSONB),
-    v_now
-  );
-
-  INSERT INTO action_logs ("userId", action, details, "timestamp")
+  -- 6. Insert action log
+  INSERT INTO action_logs ("userId", action, details, "createdAt")
   VALUES (
     p_user_id,
     'WAR_DEPLOY',
-    COALESCE(p_action_details, '{}'::JSONB),
-    (EXTRACT(EPOCH FROM v_now) * 1000)::BIGINT
+    json_build_object(
+      'warId',    p_war_id,
+      'side',     p_side,
+      'weaponId', p_weapon_id,
+      'damage',   p_damage,
+      'cost',     json_build_object('energy', p_energy_cost, 'money', p_money_cost)
+    ),
+    NOW()
   );
 
-  RETURN jsonb_build_object(
-    'success', true,
-    'warId', p_war_id,
-    'userId', p_user_id,
-    'side', p_side,
-    'troopType', p_troop_type,
-    'quantity', p_quantity,
-    'damageDealt', p_final_damage,
-    'scoreField', p_update_field,
-    'updatedScore', COALESCE(v_updated_score, 0)
+  -- 7. Return success with updated balances
+  RETURN json_build_object(
+    'success',   true,
+    'damage',    p_damage,
+    'newScore',  v_new_score,
+    'energy',    v_user.energy - p_energy_cost,
+    'money',     v_user.money  - p_money_cost
   );
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.rpc_war_deploy(
-  TEXT,
-  UUID,
-  TEXT,
-  TEXT,
-  INTEGER,
-  INTEGER,
-  BIGINT,
-  BIGINT,
-  BIGINT,
-  JSONB,
-  TEXT,
-  JSONB
-) TO anon, authenticated, service_role;
+-- 3. Security: restrict execution to service_role only
+REVOKE EXECUTE ON FUNCTION rpc_war_deploy FROM PUBLIC, anon, authenticated;
+GRANT  EXECUTE ON FUNCTION rpc_war_deploy TO service_role;

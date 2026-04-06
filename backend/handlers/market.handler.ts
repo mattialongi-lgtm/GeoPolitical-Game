@@ -7,6 +7,8 @@
  *   /api/inventory/history/:itemId, /api/market/energy-drinks/buy,
  *   /api/produce, /api/produce/list, /api/produce/claim
  */
+import { logger } from '../utils/logger';
+
 export function createMarketHandlers(deps: {
   supabase: any;
   generateSecureId: (len: number) => string;
@@ -60,7 +62,10 @@ export function createMarketHandlers(deps: {
       .order('createdAt', { ascending: false })
       .limit(50);
 
-    if (error) return res.status(500).json({ error: error.message });
+    if (error) {
+      logger.error('operation_failed', { error: error.message });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
+    }
     res.json(listings || []);
   }
 
@@ -596,7 +601,8 @@ export function createMarketHandlers(deps: {
       return res.status(http.statusCode).json(http.body);
     } catch (err: any) {
       console.error('Produce error:', err);
-      return res.status(500).json({ error: 'Errore nella produzione: ' + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

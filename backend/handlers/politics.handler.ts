@@ -6,6 +6,7 @@
  *   /api/blocs/*
  */
 // LawRegistry is passed as a dependency to avoid circular imports with server.ts
+import { logger } from '../utils/logger';
 
 export function createPoliticsHandlers(deps: {
   supabase: any;
@@ -117,7 +118,8 @@ export function createPoliticsHandlers(deps: {
 
       res.json({ success: true, partyId });
     } catch (err: any) {
-      res.status(500).json({ error: "Errore nella creazione del partito: " + err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -1014,7 +1016,8 @@ export function createPoliticsHandlers(deps: {
       res.json({ laws: lawsWithVotes, registry: registryForFrontend });
     } catch (err: any) {
       console.error("Error fetching laws:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -1100,7 +1103,8 @@ export function createPoliticsHandlers(deps: {
       res.json({ success: true, lawId, immediate: false });
     } catch (err: any) {
       console.error("Error proposing law:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -1169,7 +1173,8 @@ export function createPoliticsHandlers(deps: {
       res.json({ success: true });
     } catch (err: any) {
       console.error("Error voting on law:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -1236,7 +1241,8 @@ export function createPoliticsHandlers(deps: {
       res.json({ success: true, message: "Legge approvata via Fast-Pass ministeriale." });
     } catch (err: any) {
       console.error("Error in fast-pass:", err);
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

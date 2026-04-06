@@ -15,6 +15,7 @@
  */
 
 import type { WarType, TroopType } from '../../src/types';
+import { logger } from '../utils/logger';
 
 /* ------------------------------------------------------------------ */
 /*  Automation / weapon constants & helpers (server.ts lines 4316-4370) */
@@ -148,7 +149,8 @@ export function createWarsLegacyHandlers(deps: {
       return res.json(result);
     } catch (error: any) {
       if (error?.statusCode) return res.status(error.statusCode).json({ error: error.message });
-      return res.status(500).json({ error: error?.message || "Errore durante lo schieramento." });
+      logger.error('operation_failed', { error: error?.message, path: req?.path });
+      return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 
@@ -708,7 +710,8 @@ export function createWarsLegacyHandlers(deps: {
 
       res.json({ lobbies: result });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }
 

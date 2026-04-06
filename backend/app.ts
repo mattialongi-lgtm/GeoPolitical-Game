@@ -2014,52 +2014,87 @@ async function performWarDeployAction(params: {
     } catch { /* non-critical */ }
   }
 
-  if (!params.ignoreEnergyCost) {
-    await supabase.from('users').update({ energy: user.energy - energyCost }).eq('id', user.id);
-  }
+  // RPC-first: single atomic DB call for energy, money, score, participants, logs
+  const rpcEnergyCost = params.ignoreEnergyCost ? 0 : energyCost;
+  try {
+    const { data: rpcData, error: rpcError } = await supabase.rpc('rpc_war_deploy', {
+      p_user_id: user.id,
+      p_war_id: params.warId,
+      p_side: params.side,
+      p_weapon_id: normalizedWeaponId,
+      p_energy_cost: rpcEnergyCost,
+      p_money_cost: 0,
+      p_damage: totalDamage,
+    });
 
-  const scoreField = params.side === 'attacker' ? 'attackerScore' : 'defenderScore';
-  await supabase.from('wars').update({
-    [scoreField]: (war[scoreField] || 0) + totalDamage,
-    updatedAt: new Date().toISOString(),
-  }).eq('id', params.warId);
+    if (!rpcError && rpcData) {
+      const result = typeof rpcData === 'string' ? JSON.parse(rpcData) : rpcData;
+      if (result?.error) throw createAutomationError(400, result.error);
+      // RPC succeeded — skip legacy path
+    } else if (rpcError) {
+      throw rpcError;
+    }
+  } catch (rpcErr: any) {
+    // RPC_FALLBACK — remove after confirming rpc_war_deploy is deployed on all envs
+    if (rpcErr?.statusCode) throw rpcErr; // re-throw domain errors from the RPC result
 
-  const { data: existingParticipant } = await supabase.from('war_participants')
-    .select('id, totalDamage, troopsDeployed')
-    .eq('warId', params.warId)
-    .eq('userId', user.id)
-    .maybeSingle();
+    console.warn('[war-deploy] rpc_war_deploy failed, using legacy fallback', {
+      warId: params.warId, userId: user.id, error: rpcErr?.message,
+    });
 
-  if (existingParticipant) {
-    const deployed = existingParticipant.troopsDeployed || {};
-    deployed[normalizedWeaponId] = (deployed[normalizedWeaponId] || 0) + 1;
-    await supabase.from('war_participants').update({
-      totalDamage: (existingParticipant.totalDamage || 0) + totalDamage,
-      troopsDeployed: deployed,
-    }).eq('id', existingParticipant.id);
-  } else {
-    await supabase.from('war_participants').insert({
-      warId: params.warId,
+    if (!params.ignoreEnergyCost) {
+      const { error: deductError } = await supabase.rpc('safe_deduct_currency', {
+        p_user_id: user.id,
+        p_money_cost: 0,
+        p_gold_cost: 0,
+        p_energy_cost: energyCost,
+      });
+      if (deductError) throw createAutomationError(400, deductError.message || 'Energia insufficiente.');
+    }
+
+    const scoreField = params.side === 'attacker' ? 'attackerScore' : 'defenderScore';
+    await supabase.from('wars').update({
+      [scoreField]: (war[scoreField] || 0) + totalDamage,
+      updatedAt: new Date().toISOString(),
+    }).eq('id', params.warId);
+
+    const { data: existingParticipant } = await supabase.from('war_participants')
+      .select('id, totalDamage, troopsDeployed')
+      .eq('warId', params.warId)
+      .eq('userId', user.id)
+      .maybeSingle();
+
+    if (existingParticipant) {
+      const deployed = existingParticipant.troopsDeployed || {};
+      deployed[normalizedWeaponId] = (deployed[normalizedWeaponId] || 0) + 1;
+      await supabase.from('war_participants').update({
+        totalDamage: (existingParticipant.totalDamage || 0) + totalDamage,
+        troopsDeployed: deployed,
+      }).eq('id', existingParticipant.id);
+    } else {
+      await supabase.from('war_participants').insert({
+        warId: params.warId,
+        userId: user.id,
+        side: params.side,
+        totalDamage,
+        troopsDeployed: { [normalizedWeaponId]: 1 },
+      });
+    }
+
+    await supabase.from('action_logs').insert({
       userId: user.id,
-      side: params.side,
-      totalDamage,
-      troopsDeployed: { [normalizedWeaponId]: 1 },
+      action: 'WAR_DEPLOY',
+      details: JSON.stringify({
+        warId: params.warId,
+        side: params.side,
+        weaponId: normalizedWeaponId,
+        damage: totalDamage,
+        username: user.username,
+        isPatriot
+      }),
+      timestamp: Date.now()
     });
   }
-
-  await supabase.from('action_logs').insert({
-    userId: user.id,
-    action: 'WAR_DEPLOY',
-    details: JSON.stringify({
-      warId: params.warId,
-      side: params.side,
-      weaponId: normalizedWeaponId,
-      damage: totalDamage,
-      username: user.username,
-      isPatriot
-    }),
-    timestamp: Date.now()
-  });
 
   try {
     await updateMissionProgress(user.id, 'WAR_DEPLOY', {

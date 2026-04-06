@@ -265,29 +265,33 @@ export class WarRepository {
     warId: string;
     userId: string;
     side: 'attacker' | 'defender';
-    troopType: string;
-    quantity: number;
+    weaponId: string;
     energyCost: number;
     moneyCost: number;
-    baseDamage: number;
-    finalDamage: number;
-    bonuses: Record<string, any>;
-    updateField: 'attackerScore' | 'defenderScore' | 'phase1AttackerScore' | 'phase1DefenderScore';
-    actionDetails: Record<string, any>;
+    damage: number;
   }) {
     return this.supabase.rpc('rpc_war_deploy', {
-      p_war_id: payload.warId,
       p_user_id: payload.userId,
+      p_war_id: payload.warId,
       p_side: payload.side,
-      p_troop_type: payload.troopType,
-      p_quantity: payload.quantity,
+      p_weapon_id: payload.weaponId,
       p_energy_cost: payload.energyCost,
       p_money_cost: payload.moneyCost,
-      p_base_damage: payload.baseDamage,
-      p_final_damage: payload.finalDamage,
-      p_bonuses: payload.bonuses,
-      p_update_field: payload.updateField,
-      p_action_details: payload.actionDetails,
+      p_damage: payload.damage,
+    });
+  }
+
+  async safeDeductCurrency(
+    userId: string,
+    moneyCost: number,
+    goldCost: number,
+    energyCost: number,
+  ) {
+    return this.supabase.rpc('safe_deduct_currency', {
+      p_user_id: userId,
+      p_money_cost: moneyCost,
+      p_gold_cost: goldCost,
+      p_energy_cost: energyCost,
     });
   }
 }

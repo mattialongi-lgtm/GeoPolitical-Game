@@ -1131,12 +1131,28 @@ CREATE TABLE IF NOT EXISTS deep_levels (
 CREATE TABLE IF NOT EXISTS region_resources (
     "regionId" TEXT REFERENCES regions(id) ON DELETE CASCADE,
     "resourceType" TEXT NOT NULL,
-    "dailyAvailable" INT NOT NULL DEFAULT 5000,
-    "dailyExtracted" INT NOT NULL DEFAULT 0,
-    "baseCapPerRecharge" INT NOT NULL DEFAULT 200,
+    "dailyAvailable" INT NOT NULL DEFAULT 5000,        -- legacy, kept for backward compat
+    "dailyExtracted" INT NOT NULL DEFAULT 0,           -- total extracted today
+    "baseCapPerRecharge" INT NOT NULL DEFAULT 200,     -- per-player cycle cap
+    "dailyMaxCap" INT NOT NULL DEFAULT 5000,           -- absolute max extractable in 24h
+    "initialAvailableCap" INT NOT NULL DEFAULT 200,    -- cap value after daily reset
+    "currentAvailableCap" INT NOT NULL DEFAULT 200,    -- currently available to players
+    "totalUnlockedToday" INT NOT NULL DEFAULT 0,       -- initial + minister recharges today
     "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
     PRIMARY KEY ("regionId", "resourceType")
 );
+
+-- Function for efficient daily reset using column references
+CREATE OR REPLACE FUNCTION reset_daily_resource_caps()
+RETURNS void
+LANGUAGE sql
+AS $$
+  UPDATE region_resources SET
+    "dailyExtracted" = 0,
+    "currentAvailableCap" = "initialAvailableCap",
+    "totalUnlockedToday" = "initialAvailableCap",
+    "updatedAt" = NOW();
+$$;
 
 CREATE TABLE IF NOT EXISTS player_extraction_state (
     "playerId" UUID REFERENCES users(id) ON DELETE CASCADE,

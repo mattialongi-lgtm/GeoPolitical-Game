@@ -140,13 +140,11 @@ export function createResourcesHandlers(deps: {
   }
 
   // POST /api/resources/recharge
+  // Ricarica il cap disponibile corrente. Solo il Ministro dell'Economia o il Leader possono farlo.
+  // Il totale sbloccato oggi (totalUnlockedToday) non può mai superare dailyMaxCap.
   async function recharge(req: any, res: any) {
-    return res.status(403).json({
-      error: "La ricarica manuale dei limiti estrazione e disabilitata. Il reset avviene solo ogni giorno alle 19:00 ora di Londra.",
-    });
-
     const user = req.user;
-    const { regionId, resourceType } = req.body;
+    const { regionId, resourceType, rechargeAmount } = req.body;
 
     if (!regionId || !resourceType) {
       return res.status(400).json({ error: "regionId e resourceType sono obbligatori." });
@@ -167,7 +165,36 @@ export function createResourcesHandlers(deps: {
         return res.status(403).json({ error: "Solo il Dittatore/Leader o il Ministro dell'Economia possono ricaricare." });
       }
 
-      const cooldownSec = parseInt(await getSetting('recharge_cooldown_seconds')) || 7200;
+      const { data: regionRes, error: rrErr } = await supabase
+        .from('region_resources')
+        .select('dailyMaxCap, currentAvailableCap, totalUnlockedToday, initialAvailableCap')
+        .eq('regionId', regionId)
+        .eq('resourceType', resourceType)
+        .maybeSingle();
+
+      if (rrErr) throw rrErr;
+      if (!regionRes) {
+        return res.status(404).json({ error: "Risorsa non configurata per questa regione." });
+      }
+
+      const dailyMaxCap: number = regionRes.dailyMaxCap ?? 999999;
+      const currentAvailableCap: number = regionRes.currentAvailableCap ?? 0;
+      const totalUnlockedToday: number = regionRes.totalUnlockedToday ?? 0;
+      const initialAvailableCap: number = regionRes.initialAvailableCap ?? 200;
+
+      // How much can still be unlocked today
+      const canUnlockMore = Math.max(0, dailyMaxCap - totalUnlockedToday);
+      if (canUnlockMore <= 0) {
+        return res.status(400).json({
+          error: "Massimo giornaliero già raggiunto. Non è possibile sbloccare ulteriore disponibilità oggi.",
+          reason: "daily_max_reached",
+          dailyMaxCap,
+          totalUnlockedToday,
+        });
+      }
+
+      // Cooldown check
+      const cooldownSec = parseInt(await getSetting('recharge_cooldown_seconds')) || 1800;
       const { data: rechargeData } = await supabase
         .from('resource_recharges')
         .select('*')
@@ -186,10 +213,14 @@ export function createResourcesHandlers(deps: {
         }
       }
 
-      const costEur = parseInt(await getSetting('recharge_cost_eur')) || 50000;
-      const costGold = parseInt(await getSetting('recharge_cost_gold')) || 0;
-      const costDiamonds = parseInt(await getSetting('recharge_cost_diamonds')) || 0;
+      // Determine amount to add: requested or default to initialAvailableCap, capped at canUnlockMore
+      const requested = typeof rechargeAmount === 'number' && rechargeAmount > 0
+        ? rechargeAmount
+        : initialAvailableCap;
+      const actualRecharge = Math.min(requested, canUnlockMore);
 
+      // Optional treasury cost
+      const costEur = parseInt(await getSetting('recharge_cost_eur')) || 0;
       if (costEur > 0) {
         try {
           await supabase.rpc('add_budget_transaction', {
@@ -199,20 +230,26 @@ export function createResourcesHandlers(deps: {
             p_subtype: 'RESOURCE_RECHARGE',
             p_money_delta: -costEur,
             p_created_by: user.id,
-            p_metadata: { resourceType, costEur, costGold, costDiamonds },
+            p_metadata: { resourceType, rechargeAmount: actualRecharge, costEur },
           });
-        } catch (budgetErr: any) {
-          return res.status(400).json({ error: "Fondi del tesoro insufficienti per la ricarica. Servono €" + costEur.toLocaleString() });
+        } catch {
+          return res.status(400).json({ error: "Fondi del tesoro insufficienti. Servono €" + costEur.toLocaleString() });
         }
       }
 
-      const { error: resetErr } = await supabase
-        .from('player_extraction_state')
-        .update({ extractedSinceLastRecharge: 0, updatedAt: new Date().toISOString() })
+      // Apply the recharge
+      const { error: updateErr } = await supabase
+        .from('region_resources')
+        .update({
+          currentAvailableCap: currentAvailableCap + actualRecharge,
+          totalUnlockedToday: totalUnlockedToday + actualRecharge,
+          updatedAt: new Date().toISOString(),
+        })
         .eq('regionId', regionId)
         .eq('resourceType', resourceType);
-      if (resetErr) throw resetErr;
+      if (updateErr) throw updateErr;
 
+      // Log recharge
       const nowIso = new Date().toISOString();
       if (rechargeData) {
         await supabase
@@ -228,8 +265,12 @@ export function createResourcesHandlers(deps: {
 
       res.json({
         success: true,
-        message: `Ricarica completata per ${resourceType} nella regione ${regionId}.`,
-        costEur,
+        message: `Disponibilità ricaricata di ${actualRecharge} unità per ${resourceType}.`,
+        rechargedAmount: actualRecharge,
+        newCurrentAvailableCap: currentAvailableCap + actualRecharge,
+        newTotalUnlockedToday: totalUnlockedToday + actualRecharge,
+        dailyMaxCap,
+        canUnlockMoreAfter: Math.max(0, dailyMaxCap - (totalUnlockedToday + actualRecharge)),
         cooldownSeconds: cooldownSec,
       });
     } catch (err: any) {
@@ -241,24 +282,19 @@ export function createResourcesHandlers(deps: {
 
   // GET /api/resources/recharge-info
   async function getRechargeInfo(req: any, res: any) {
-    return res.status(403).json({
-      error: "La ricarica manuale dei limiti estrazione e disabilitata. Il reset avviene solo ogni giorno alle 19:00 ora di Londra.",
-    });
-
     const regionId = req.query.regionId as string;
     const resourceType = req.query.resourceType as string;
     if (!regionId || !resourceType) return res.status(400).json({ error: "regionId e resourceType obbligatori" });
 
     try {
-      const cooldownSec = parseInt(await getSetting('recharge_cooldown_seconds')) || 7200;
-      const costEur = parseInt(await getSetting('recharge_cost_eur')) || 50000;
+      const cooldownSec = parseInt(await getSetting('recharge_cooldown_seconds')) || 1800;
+      const costEur = parseInt(await getSetting('recharge_cost_eur')) || 0;
 
-      const { data: rechargeData } = await supabase
-        .from('resource_recharges')
-        .select('*')
-        .eq('regionId', regionId)
-        .eq('resourceType', resourceType)
-        .maybeSingle();
+      const [rechargeData, regionRes, budget] = await Promise.all([
+        supabase.from('resource_recharges').select('*').eq('regionId', regionId).eq('resourceType', resourceType).maybeSingle().then(r => r.data),
+        supabase.from('region_resources').select('dailyMaxCap, currentAvailableCap, totalUnlockedToday, initialAvailableCap').eq('regionId', regionId).eq('resourceType', resourceType).maybeSingle().then(r => r.data),
+        supabase.from('budgets').select('moneyEUR').eq('ownerType', 'REGION').eq('ownerId', regionId).maybeSingle().then(r => r.data),
+      ]);
 
       let cooldownRemaining = 0;
       if (rechargeData?.lastRechargeAt) {
@@ -266,7 +302,9 @@ export function createResourcesHandlers(deps: {
         cooldownRemaining = Math.max(0, cooldownSec - elapsed);
       }
 
-      const { data: budget } = await supabase.from('budgets').select('moneyEUR').eq('ownerType', 'REGION').eq('ownerId', regionId).maybeSingle();
+      const dailyMaxCap = regionRes?.dailyMaxCap ?? 0;
+      const totalUnlockedToday = regionRes?.totalUnlockedToday ?? 0;
+      const canUnlockMore = Math.max(0, dailyMaxCap - totalUnlockedToday);
 
       res.json({
         cooldownRemaining: Math.ceil(cooldownRemaining),
@@ -274,7 +312,12 @@ export function createResourcesHandlers(deps: {
         costEur,
         lastRechargeAt: rechargeData?.lastRechargeAt || null,
         treasuryEur: budget?.moneyEUR || 0,
-        canAfford: (budget?.moneyEUR || 0) >= costEur,
+        canAfford: costEur === 0 || (budget?.moneyEUR || 0) >= costEur,
+        dailyMaxCap,
+        currentAvailableCap: regionRes?.currentAvailableCap ?? 0,
+        totalUnlockedToday,
+        canUnlockMore,
+        initialAvailableCap: regionRes?.initialAvailableCap ?? 0,
       });
     } catch (err: any) {
       logger.error('operation_failed', { error: err?.message, path: req?.path });
@@ -540,9 +583,7 @@ export function createResourcesHandlers(deps: {
       const baseCap = regionRes?.baseCapPerRecharge ?? REGION_RESOURCE_CAPS_BY_TYPE[resourceType] ?? 200;
       const effectiveCap = computeEffectiveCap(baseCap, deep, capMaxGlobal);
       const deepBonus = deep ? Math.max(0, (deep.targetCap || 0) - baseCap) : 0;
-      const dailyAvailable = regionRes?.dailyAvailable ?? 999999;
-      const dailyExtracted = regionRes?.dailyExtracted ?? 0;
-      const remainingDaily = Math.max(0, dailyAvailable - dailyExtracted);
+      const currentAvailableCap = regionRes?.currentAvailableCap ?? 999999;
 
       const perks = user.perks || {};
       const maxWorkExperience = getMaxWorkXpPerResource(perks['ISTRUZIONE'] || 0);
@@ -571,7 +612,7 @@ export function createResourcesHandlers(deps: {
         regionCapMax: baseCap,
         regionDeepBonus: deepBonus,
         regionCapTotal: effectiveCap,
-        regionResidualToday: remainingDaily,
+        regionResidualToday: currentAvailableCap,
         regionHealthIndex: regionRel.healthIndex || 1,
       });
 
@@ -587,7 +628,7 @@ export function createResourcesHandlers(deps: {
         factoryLevel: factory.level,
         resourceLabel: (FACTORY_CONFIG.TYPES[factoryType] as any)?.label || factoryType,
         workExperience: workExp,
-        canWork: remainingDaily > 0 && user.energy >= actualEnergyCost,
+        canWork: currentAvailableCap > 0 && user.energy >= actualEnergyCost,
       });
     } catch (err: any) {
       console.error("Error in extraction/breakdown:", err);
@@ -684,15 +725,20 @@ export function createResourcesHandlers(deps: {
         const deep = nationId ? await getActiveDeep(nationId, r.resourceType) : null;
         const effectiveCap = computeEffectiveCap(r.baseCapPerRecharge, deep, capMaxGlobal);
         const deepBonus = deep ? Math.max(0, (deep.targetCap || 0) - r.baseCapPerRecharge) : 0;
-        const remainingDaily = Math.max(0, r.dailyAvailable - r.dailyExtracted);
+        const dailyMaxCap = r.dailyMaxCap ?? r.dailyAvailable ?? 5000;
+        const currentAvailableCap = r.currentAvailableCap ?? 0;
+        const totalUnlockedToday = r.totalUnlockedToday ?? 0;
         return {
           resourceType: r.resourceType,
           baseCap: r.baseCapPerRecharge,
           deepBonus,
           effectiveCap,
-          dailyAvailable: r.dailyAvailable,
+          dailyMaxCap,
+          currentAvailableCap,
           dailyExtracted: r.dailyExtracted,
-          remainingDaily,
+          totalUnlockedToday,
+          canUnlockMore: Math.max(0, dailyMaxCap - totalUnlockedToday),
+          remainingDaily: currentAvailableCap,
           deepActive: !!deep,
           deepEndsAt: deep?.endsAt || null,
         };

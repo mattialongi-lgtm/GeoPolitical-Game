@@ -271,13 +271,20 @@ export function createRegionsHandlers(deps: {
       const enriched = await Promise.all(resources.map(async (r: any) => {
         const deep = nationId ? await getActiveDeep(nationId, r.resourceType) : null;
         const effectiveCap = computeEffectiveCap(r.baseCapPerRecharge, deep, capMaxGlobal);
+        const dailyMaxCap = r.dailyMaxCap ?? r.dailyAvailable ?? 5000;
+        const currentAvailableCap = r.currentAvailableCap ?? 0;
+        const totalUnlockedToday = r.totalUnlockedToday ?? 0;
         return {
           ...r,
+          dailyMaxCap,
+          currentAvailableCap,
+          totalUnlockedToday,
+          canUnlockMore: Math.max(0, dailyMaxCap - totalUnlockedToday),
           effectiveCapPerRecharge: effectiveCap,
           deepActive: !!deep,
           deepTargetCap: deep?.targetCap || null,
           deepEndsAt: deep?.endsAt || null,
-          remainingDaily: Math.max(0, r.dailyAvailable - r.dailyExtracted),
+          remainingDaily: currentAvailableCap, // backward compat: remainingDaily = currentAvailableCap
         };
       }));
       res.json({ resources: enriched });

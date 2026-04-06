@@ -198,7 +198,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   const canManageMigration = user?.id === region.ownerUserId || user?.id === region.foreignMinisterId;
 
   const regionalIndicesCard = autonomyData?.indices ? (
-    <div className="bg-slate-900 p-6 rounded-[2.5rem] shadow-sm border border-slate-700">
+    <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-black uppercase tracking-tight text-slate-100">Indici Regionali</h3>
         {(() => {
@@ -512,11 +512,11 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       ) : activeTab === 'resources' ? (
         <div className="space-y-4">
           {/* Link to Advanced Extraction Dashboard */}
-          <div className="bg-emerald-50 p-4 rounded-[2rem] border border-emerald-100">
+          <div className="bg-gray-900/60 p-4 rounded-2xl border border-emerald-800/40">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="text-sm font-black text-emerald-800">⛏️ Dashboard Estrazione Avanzata</h4>
-                <p className="text-[10px] font-bold text-emerald-600 mt-1">Visualizza cap, analytics 24h, leaderboard, esperienza lavorativa e distribuzione risorse.</p>
+                <h4 className="text-sm font-black text-emerald-300">⛏️ Dashboard Estrazione Avanzata</h4>
+                <p className="text-[10px] font-bold text-emerald-400 mt-1">Visualizza cap, analytics 24h, leaderboard, esperienza lavorativa e distribuzione risorse.</p>
               </div>
               <button
                 onClick={() => navigate(`/extraction/${region.id}`)}
@@ -535,143 +535,143 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       ) : activeTab === 'autonomy' ? (
         <div className="space-y-4">
           {!autonomyData ? (
-            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 text-center">
+            <div className="bg-gray-900/60 p-8 rounded-2xl border border-gray-800 text-center">
               <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto" />
             </div>
           ) : (
             <>
               {/* Autonomy Status */}
-              <div className={`bg-white p-6 rounded-[2.5rem] shadow-sm border ${autonomyData.region.isAutonomous ? 'border-purple-200' : 'border-slate-100'}`}>
+              <div className={`bg-gray-900/60 p-6 rounded-2xl border ${autonomyData.region.isAutonomous ? 'border-purple-700/40' : 'border-gray-800'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-black uppercase tracking-tight">🏛️ Stato Autonomia</h3>
-                  <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${autonomyData.region.isAutonomous ? 'bg-purple-100 text-purple-800' : 'bg-slate-100 text-slate-500'}`}>
+                  <h3 className="text-lg font-black uppercase tracking-tight text-white">🏛️ Stato Autonomia</h3>
+                  <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${autonomyData.region.isAutonomous ? 'bg-purple-900/40 text-purple-300' : 'bg-gray-800/50 text-gray-400'}`}>
                     {autonomyData.region.isAutonomous ? '✅ Attiva' : '❌ Non Attiva'}
                   </span>
                 </div>
                 {autonomyData.region.isAutonomous && (
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-purple-50 p-4 rounded-3xl text-center">
+                    <div className="bg-purple-900/20 border border-purple-700/30 p-4 rounded-xl text-center">
                       <p className="text-[9px] font-black text-purple-400 uppercase">Governatore</p>
-                      <p className="text-sm font-black text-purple-700">{autonomyData.region.governorName || '— Vacante —'}</p>
+                      <p className="text-sm font-black text-purple-300">{autonomyData.region.governorName || '— Vacante —'}</p>
                     </div>
-                    <div className="bg-emerald-50 p-4 rounded-3xl text-center">
+                    <div className="bg-emerald-900/20 border border-emerald-700/30 p-4 rounded-xl text-center">
                       <p className="text-[9px] font-black text-emerald-400 uppercase">Budget Regionale</p>
-                      <p className="text-sm font-black text-emerald-700">€{(autonomyData.region.regionalBudget || 0).toLocaleString()}</p>
+                      <p className="text-sm font-black text-emerald-300">€{(autonomyData.region.regionalBudget || 0).toLocaleString()}</p>
                     </div>
-                    <div className="bg-blue-50 p-4 rounded-3xl text-center">
+                    <div className="bg-blue-900/20 border border-blue-700/30 p-4 rounded-xl text-center">
                       <p className="text-[9px] font-black text-blue-400 uppercase">Quota Regionale</p>
-                      <p className="text-lg font-black text-blue-700">{autonomyData.region.regionalProfitSharePercent}%</p>
+                      <p className="text-lg font-black text-blue-300">{autonomyData.region.regionalProfitSharePercent}%</p>
                     </div>
-                    <div className="bg-indigo-50 p-4 rounded-3xl text-center">
+                    <div className="bg-indigo-900/20 border border-indigo-700/30 p-4 rounded-xl text-center">
                       <p className="text-[9px] font-black text-indigo-400 uppercase">Quota Stato</p>
-                      <p className="text-lg font-black text-indigo-700">{autonomyData.region.nationalProfitSharePercent}%</p>
+                      <p className="text-lg font-black text-indigo-300">{autonomyData.region.nationalProfitSharePercent}%</p>
                     </div>
-                    <div className="bg-slate-50 p-4 rounded-3xl text-center">
-                      <p className="text-[9px] font-black text-slate-400 uppercase">Parlamento</p>
-                      <p className="text-sm font-black">{autonomyData.region.regionalParliamentEnabled ? '✅ Attivo' : '❌ Disattivo'}</p>
+                    <div className="bg-gray-800/50 border border-gray-700/40 p-4 rounded-xl text-center">
+                      <p className="text-[9px] font-black text-gray-400 uppercase">Parlamento</p>
+                      <p className="text-sm font-black text-gray-200">{autonomyData.region.regionalParliamentEnabled ? '✅ Attivo' : '❌ Disattivo'}</p>
                     </div>
                     {autonomyData.region.autonomyGrantedAt && (
-                      <div className="bg-slate-50 p-4 rounded-3xl text-center">
-                        <p className="text-[9px] font-black text-slate-400 uppercase">Istituita il</p>
-                        <p className="text-xs font-black text-slate-600">{new Date(autonomyData.region.autonomyGrantedAt).toLocaleDateString()}</p>
+                      <div className="bg-gray-800/50 border border-gray-700/40 p-4 rounded-xl text-center">
+                        <p className="text-[9px] font-black text-gray-400 uppercase">Istituita il</p>
+                        <p className="text-xs font-black text-gray-300">{new Date(autonomyData.region.autonomyGrantedAt).toLocaleDateString()}</p>
                       </div>
                     )}
                   </div>
                 )}
                 {!autonomyData.region.isAutonomous && !autonomyData.region.isCapital && (
-                  <p className="text-xs font-bold text-slate-400 mt-2">Questa regione può essere resa autonoma tramite legge parlamentare.</p>
+                  <p className="text-xs font-bold text-gray-500 mt-2">Questa regione può essere resa autonoma tramite legge parlamentare.</p>
                 )}
                 {autonomyData.region.isCapital && (
-                  <p className="text-xs font-bold text-amber-600 mt-2">👑 La capitale non può diventare un'autonomia.</p>
+                  <p className="text-xs font-bold text-amber-400 mt-2">👑 La capitale non può diventare un'autonomia.</p>
                 )}
               </div>
 
               {/* Taxes */}
-              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black uppercase tracking-tight mb-4">💰 Tasse Regionali</h3>
+              <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
+                <h3 className="text-lg font-black uppercase tracking-tight mb-4 text-white">💰 Tasse Regionali</h3>
                 <div className="grid grid-cols-3 gap-3">
-                  <div className="bg-amber-50 p-4 rounded-3xl text-center">
-                    <p className="text-[9px] font-black text-amber-500 uppercase">Lavoratori</p>
-                    <p className="text-2xl font-black text-amber-700">{autonomyData.region.workerTaxPercent}%</p>
+                  <div className="bg-amber-900/20 border border-amber-700/30 p-4 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-amber-400 uppercase">Lavoratori</p>
+                    <p className="text-2xl font-black text-amber-300">{autonomyData.region.workerTaxPercent}%</p>
                   </div>
-                  <div className="bg-orange-50 p-4 rounded-3xl text-center">
-                    <p className="text-[9px] font-black text-orange-500 uppercase">Mercato</p>
-                    <p className="text-2xl font-black text-orange-700">{autonomyData.region.marketTaxRate}%</p>
+                  <div className="bg-orange-900/20 border border-orange-700/30 p-4 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-orange-400 uppercase">Mercato</p>
+                    <p className="text-2xl font-black text-orange-300">{autonomyData.region.marketTaxRate}%</p>
                   </div>
-                  <div className="bg-rose-50 p-4 rounded-3xl text-center">
-                    <p className="text-[9px] font-black text-rose-500 uppercase">Industria</p>
-                    <p className="text-2xl font-black text-rose-700">{autonomyData.region.industryTaxPercent}%</p>
+                  <div className="bg-rose-900/20 border border-rose-700/30 p-4 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-rose-400 uppercase">Industria</p>
+                    <p className="text-2xl font-black text-rose-300">{autonomyData.region.industryTaxPercent}%</p>
                   </div>
                 </div>
               </div>
 
               {/* Energy Dashboard */}
-              <div className={`bg-white p-6 rounded-[2.5rem] shadow-sm border ${autonomyData.energy.isDeficit ? 'border-red-200' : 'border-emerald-200'}`}>
+              <div className={`bg-gray-900/60 p-6 rounded-2xl border ${autonomyData.energy.isDeficit ? 'border-red-700/40' : 'border-emerald-700/40'}`}>
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-black uppercase tracking-tight">⚡ Energia Regionale</h3>
-                  <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${autonomyData.energy.isDeficit ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  <h3 className="text-lg font-black uppercase tracking-tight text-white">⚡ Energia Regionale</h3>
+                  <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${autonomyData.energy.isDeficit ? 'bg-red-900/40 text-red-300' : 'bg-emerald-900/40 text-emerald-300'}`}>
                     {autonomyData.energy.isDeficit ? '🔴 Deficit' : '🟢 Surplus'}
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-3 mb-4">
-                  <div className="bg-emerald-50 p-4 rounded-3xl text-center">
-                    <p className="text-[9px] font-black text-emerald-500 uppercase">Generazione</p>
-                    <p className="text-xl font-black text-emerald-700">{autonomyData.energy.generation}</p>
+                  <div className="bg-emerald-900/20 border border-emerald-700/30 p-4 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-emerald-400 uppercase">Generazione</p>
+                    <p className="text-xl font-black text-emerald-300">{autonomyData.energy.generation}</p>
                     <p className="text-[9px] font-bold text-emerald-400">mW</p>
                   </div>
-                  <div className="bg-orange-50 p-4 rounded-3xl text-center">
-                    <p className="text-[9px] font-black text-orange-500 uppercase">Consumo</p>
-                    <p className="text-xl font-black text-orange-700">{autonomyData.energy.consumption}</p>
+                  <div className="bg-orange-900/20 border border-orange-700/30 p-4 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-orange-400 uppercase">Consumo</p>
+                    <p className="text-xl font-black text-orange-300">{autonomyData.energy.consumption}</p>
                     <p className="text-[9px] font-bold text-orange-400">mW</p>
                   </div>
-                  <div className={`p-4 rounded-3xl text-center ${autonomyData.energy.efficiency >= 0 ? 'bg-emerald-50' : 'bg-red-50'}`}>
-                    <p className="text-[9px] font-black uppercase" style={{ color: autonomyData.energy.efficiency >= 0 ? '#059669' : '#dc2626' }}>Efficienza</p>
-                    <p className="text-xl font-black" style={{ color: autonomyData.energy.efficiency >= 0 ? '#059669' : '#dc2626' }}>
+                  <div className={`p-4 rounded-xl border text-center ${autonomyData.energy.efficiency >= 0 ? 'bg-emerald-900/20 border-emerald-700/30' : 'bg-red-900/20 border-red-700/30'}`}>
+                    <p className="text-[9px] font-black uppercase" style={{ color: autonomyData.energy.efficiency >= 0 ? '#34d399' : '#f87171' }}>Efficienza</p>
+                    <p className="text-xl font-black" style={{ color: autonomyData.energy.efficiency >= 0 ? '#34d399' : '#f87171' }}>
                       {autonomyData.energy.efficiency >= 0 ? '+' : ''}{autonomyData.energy.efficiency}
                     </p>
-                    <p className="text-[9px] font-bold" style={{ color: autonomyData.energy.efficiency >= 0 ? '#10b981' : '#ef4444' }}>mW</p>
+                    <p className="text-[9px] font-bold" style={{ color: autonomyData.energy.efficiency >= 0 ? '#34d399' : '#f87171' }}>mW</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-50 p-3 rounded-2xl text-center">
-                    <p className="text-[9px] font-black text-slate-400 uppercase">Centrali {autonomyData.energy.surplusPowerPlants >= 0 ? 'in eccesso' : 'mancanti'}</p>
-                    <p className="text-lg font-black" style={{ color: autonomyData.energy.surplusPowerPlants >= 0 ? '#059669' : '#dc2626' }}>{Math.abs(autonomyData.energy.surplusPowerPlants)}</p>
+                  <div className="bg-gray-800/50 border border-gray-700/40 p-3 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-gray-400 uppercase">Centrali {autonomyData.energy.surplusPowerPlants >= 0 ? 'in eccesso' : 'mancanti'}</p>
+                    <p className="text-lg font-black" style={{ color: autonomyData.energy.surplusPowerPlants >= 0 ? '#34d399' : '#f87171' }}>{Math.abs(autonomyData.energy.surplusPowerPlants)}</p>
                   </div>
-                  <div className="bg-slate-50 p-3 rounded-2xl text-center">
-                    <p className="text-[9px] font-black text-slate-400 uppercase">{autonomyData.energy.isDeficit ? 'Edifici in eccesso' : 'Edifici supportabili'}</p>
-                    <p className="text-lg font-black text-slate-700">{autonomyData.energy.isDeficit ? autonomyData.energy.excessBuildings : autonomyData.energy.supportableBuildings}</p>
+                  <div className="bg-gray-800/50 border border-gray-700/40 p-3 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-gray-400 uppercase">{autonomyData.energy.isDeficit ? 'Edifici in eccesso' : 'Edifici supportabili'}</p>
+                    <p className="text-lg font-black text-gray-200">{autonomyData.energy.isDeficit ? autonomyData.energy.excessBuildings : autonomyData.energy.supportableBuildings}</p>
                   </div>
                 </div>
                 {autonomyData.energy.stateCompensation > 0 && (
-                  <div className="mt-3 p-3 bg-blue-50 rounded-2xl border border-blue-200">
-                    <p className="text-xs font-black text-blue-700">🔄 Compensazione statale: +{autonomyData.energy.stateCompensation} mW</p>
-                    <p className="text-[10px] font-bold text-blue-600">Efficienza netta (dopo compensazione): {autonomyData.energy.netEfficiency} mW</p>
+                  <div className="mt-3 p-3 bg-blue-900/20 rounded-xl border border-blue-700/40">
+                    <p className="text-xs font-black text-blue-300">🔄 Compensazione statale: +{autonomyData.energy.stateCompensation} mW</p>
+                    <p className="text-[10px] font-bold text-blue-400">Efficienza netta (dopo compensazione): {autonomyData.energy.netEfficiency} mW</p>
                   </div>
                 )}
                 {autonomyData.energyDeficitMalus > 0 && (
-                  <div className="mt-3 p-3 bg-red-50 rounded-2xl border border-red-200">
-                    <p className="text-xs font-black text-red-700">⚠️ Deficit energetico attivo!</p>
-                    <p className="text-[10px] font-bold text-red-600">Malus efficienza economica: -{autonomyData.energyDeficitMalus.toFixed(1)}%</p>
+                  <div className="mt-3 p-3 bg-red-900/20 rounded-xl border border-red-700/40">
+                    <p className="text-xs font-black text-red-300">⚠️ Deficit energetico attivo!</p>
+                    <p className="text-[10px] font-bold text-red-400">Malus efficienza economica: -{autonomyData.energyDeficitMalus.toFixed(1)}%</p>
                   </div>
                 )}
               </div>
 
               {/* Military Stats */}
-              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                <h3 className="text-lg font-black uppercase tracking-tight mb-4">⚔️ Capacità Militare Regionale</h3>
+              <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
+                <h3 className="text-lg font-black uppercase tracking-tight mb-4 text-white">⚔️ Capacità Militare Regionale</h3>
                 <div className="grid grid-cols-2 gap-3 mb-4">
-                  <div className="bg-red-50 p-4 rounded-3xl text-center">
-                    <p className="text-[9px] font-black text-red-500 uppercase">Danno Iniziale Attacco</p>
-                    <p className="text-xl font-black text-red-700">{(autonomyData.militaryStats.initialAttackDamage || 0).toLocaleString()}</p>
+                  <div className="bg-red-900/20 border border-red-700/30 p-4 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-red-400 uppercase">Danno Iniziale Attacco</p>
+                    <p className="text-xl font-black text-red-300">{(autonomyData.militaryStats.initialAttackDamage || 0).toLocaleString()}</p>
                   </div>
-                  <div className="bg-blue-50 p-4 rounded-3xl text-center">
-                    <p className="text-[9px] font-black text-blue-500 uppercase">Punti Difesa Iniziali</p>
-                    <p className="text-xl font-black text-blue-700">{(autonomyData.militaryStats.initialDefensePoints || 0).toLocaleString()}</p>
+                  <div className="bg-blue-900/20 border border-blue-700/30 p-4 rounded-xl text-center">
+                    <p className="text-[9px] font-black text-blue-400 uppercase">Punti Difesa Iniziali</p>
+                    <p className="text-xl font-black text-blue-300">{(autonomyData.militaryStats.initialDefensePoints || 0).toLocaleString()}</p>
                   </div>
                 </div>
                 {autonomyData.region.isBorderRegion && (
-                  <div className="p-3 bg-red-50 rounded-2xl border border-red-200">
-                    <p className="text-[10px] font-black text-red-700">⚔️ Regione Frontaliera — le strutture militari sono particolarmente rilevanti!</p>
+                  <div className="p-3 bg-red-900/20 rounded-xl border border-red-700/40">
+                    <p className="text-[10px] font-black text-red-300">⚔️ Regione Frontaliera — le strutture militari sono particolarmente rilevanti!</p>
                   </div>
                 )}
               </div>
@@ -730,16 +730,16 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
 
               {/* Budget Transactions (for autonomous regions) */}
               {autonomyData.region.isAutonomous && autonomyData.transactions.length > 0 && (
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                  <h3 className="text-lg font-black uppercase tracking-tight mb-4">📜 Storico Budget Regionale</h3>
+                <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
+                  <h3 className="text-lg font-black uppercase tracking-tight mb-4 text-white">📜 Storico Budget Regionale</h3>
                   <div className="space-y-2 max-h-72 overflow-y-auto">
                     {autonomyData.transactions.slice(0, 30).map((tx: any) => (
-                      <div key={tx.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl">
+                      <div key={tx.id} className="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700/40 rounded-xl">
                         <div>
-                          <p className="text-[10px] font-black text-slate-700">{tx.description || tx.subtype || tx.type}</p>
-                          <p className="text-[9px] font-bold text-slate-400">{new Date(tx.createdAt).toLocaleString()}</p>
+                          <p className="text-[10px] font-black text-gray-200">{tx.description || tx.subtype || tx.type}</p>
+                          <p className="text-[9px] font-bold text-gray-500">{new Date(tx.createdAt).toLocaleString()}</p>
                         </div>
-                        <span className={`text-sm font-black ${(tx.moneyDelta || 0) >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        <span className={`text-sm font-black ${(tx.moneyDelta || 0) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                           {(tx.moneyDelta || 0) >= 0 ? '+' : ''}€{Math.abs(tx.moneyDelta || 0).toLocaleString()}
                         </span>
                       </div>
@@ -750,15 +750,15 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
 
               {/* Autonomy History */}
               {autonomyData.history.length > 0 && (
-                <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-                  <h3 className="text-lg font-black uppercase tracking-tight mb-4">📋 Storico Decisioni Autonomia</h3>
+                <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
+                  <h3 className="text-lg font-black uppercase tracking-tight mb-4 text-white">📋 Storico Decisioni Autonomia</h3>
                   <div className="space-y-2">
                     {autonomyData.history.map((h: any) => (
-                      <div key={h.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-2xl">
+                      <div key={h.id} className="flex items-center gap-3 p-3 bg-gray-800/50 border border-gray-700/40 rounded-xl">
                         <span className="text-2xl">{h.action === 'granted' ? '✅' : '❌'}</span>
                         <div>
-                          <p className="text-xs font-black text-slate-700">{h.action === 'granted' ? 'Autonomia istituita' : 'Autonomia revocata'}</p>
-                          <p className="text-[9px] font-bold text-slate-400">{new Date(h.createdAt).toLocaleString()}</p>
+                          <p className="text-xs font-black text-gray-200">{h.action === 'granted' ? 'Autonomia istituita' : 'Autonomia revocata'}</p>
+                          <p className="text-[9px] font-bold text-gray-500">{new Date(h.createdAt).toLocaleString()}</p>
                         </div>
                       </div>
                     ))}

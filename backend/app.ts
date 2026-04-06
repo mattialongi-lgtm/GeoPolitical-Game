@@ -3698,11 +3698,11 @@ async function executeExtractionWork(user: any, factoryId: string) {
     .eq('resourceType', resourceType)
     .maybeSingle();
 
-  const dailyAvailable = regionRes?.dailyAvailable ?? 999999;
+  const dailyMaxCap = regionRes?.dailyMaxCap ?? 999999;
+  const currentAvailableCap = regionRes?.currentAvailableCap ?? 999999;
   const dailyExtracted = regionRes?.dailyExtracted ?? 0;
-  const remainingDaily = Math.max(0, dailyAvailable - dailyExtracted);
-  if (remainingDaily <= 0 && regionRes) {
-    fail(400, "Risorsa giornaliera esaurita per questa regione.", "daily_exhausted");
+  if (currentAvailableCap <= 0 && regionRes) {
+    fail(400, "Cap disponibile esaurito. Attendere la ricarica del Ministro dell'Economia.", "daily_exhausted");
   }
 
   const nationId = await getNationForRegion(regionId);
@@ -3739,7 +3739,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
     regionCapMax: baseCap,
     regionDeepBonus: deepBonus,
     regionCapTotal: effectiveCap,
-    regionResidualToday: remainingDaily,
+    regionResidualToday: currentAvailableCap,
     regionHealthIndex: regionRel.healthIndex || 1,
   });
 
@@ -3754,7 +3754,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
   const extractedSoFar = playerState?.extractedSinceLastRecharge || 0;
   const remainingCycle = Math.max(0, effectiveCap - extractedSoFar);
 
-  const actualPlayerAmount = Math.min(breakdown.playerAmount, remainingCycle, remainingDaily);
+  const actualPlayerAmount = Math.min(breakdown.playerAmount, remainingCycle, currentAvailableCap);
   if (actualPlayerAmount < EXTRACTION_CONFIG.MIN_EXTRACTION_THRESHOLD) {
     const reason = remainingCycle <= 0 ? "cycle_cap_reached" : "daily_exhausted";
     fail(
@@ -3803,9 +3803,10 @@ async function executeExtractionWork(user: any, factoryId: string) {
   }
 
   if (regionRes) {
-    const newDailyExtracted = Math.min(dailyAvailable, dailyExtracted + roundedPlayer);
+    const newDailyExtracted = Math.min(dailyMaxCap, dailyExtracted + roundedPlayer);
     await supabase.from('region_resources').update({
       dailyExtracted: newDailyExtracted,
+      currentAvailableCap: Math.max(0, currentAvailableCap - roundedPlayer),
       updatedAt: new Date().toISOString(),
     }).eq('regionId', regionId).eq('resourceType', resourceType);
   }
@@ -3926,7 +3927,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
     moneyGenerated: Math.round(actualMoney),
     goldGenerated: actualGold,
     remainingCycle: Math.max(0, remainingCycle - roundedPlayer),
-    remainingDaily: Math.max(0, remainingDaily - Math.round(actualWithdrawn)),
+    remainingDaily: Math.max(0, currentAvailableCap - roundedPlayer),
     xpGain,
     energyCost: actualEnergyCost,
     workExperience: workExp + workExpUpdate.appliedGain,
@@ -4068,17 +4069,14 @@ async function payoutStateSalaries() {
 async function dailyResourceReset() {
   try {
     console.log("[ResourceReset] Running daily resource extraction reset...");
-    // Reset daily_extracted to 0 for all region_resources
+    // Reset dailyExtracted=0, currentAvailableCap=initialAvailableCap, totalUnlockedToday=initialAvailableCap
     const { error } = await retrySupabaseOperation(
-      "reset daily extracted resources",
-      async () => await supabase
-        .from('region_resources')
-        .update({ dailyExtracted: 0, updatedAt: new Date().toISOString() })
-        .gte('dailyExtracted', 0)
-    ); // matches all rows
+      "reset daily resource caps",
+      async () => await supabase.rpc('reset_daily_resource_caps')
+    );
 
-    if (error) console.error("[ResourceReset] Error resetting daily extracted:", error);
-    else console.log("[ResourceReset] Daily extracted reset complete.");
+    if (error) console.error("[ResourceReset] Error resetting daily caps:", error);
+    else console.log("[ResourceReset] Daily caps reset complete.");
 
     // Expire old deep explorations
     const nowStr = new Date().toISOString();

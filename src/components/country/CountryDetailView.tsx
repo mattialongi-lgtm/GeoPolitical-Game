@@ -496,14 +496,14 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
               </div>
 
               {/* Regional Indices */}
-              <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
+              <div className="bg-slate-900 p-6 rounded-[2.5rem] shadow-sm border border-slate-700">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-black uppercase tracking-tight">📊 Indici Regionali</h3>
+                  <h3 className="text-lg font-black uppercase tracking-tight text-slate-100">📊 Indici Regionali</h3>
                   {/* Regional Classification Badge */}
                   {(() => {
                     const cls = autonomyData.indices.regionalClassification;
                     const clsLabel = cls === 'developed' ? '🟢 Sviluppata' : cls === 'developing' ? '🟡 In Via di Sviluppo' : '🔴 Arretrata';
-                    const clsColor = cls === 'developed' ? 'bg-emerald-100 text-emerald-800' : cls === 'developing' ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800';
+                    const clsColor = cls === 'developed' ? 'bg-emerald-500/20 text-emerald-100 border border-emerald-400/40' : cls === 'developing' ? 'bg-amber-500/20 text-amber-100 border border-amber-400/40' : 'bg-rose-500/20 text-rose-100 border border-rose-400/40';
                     return (
                       <span className={`px-3 py-1 rounded-xl text-[10px] font-black ${clsColor}`}>{clsLabel}</span>
                     );
@@ -511,9 +511,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                 </div>
                 {/* Crisis risk warning for underdeveloped regions */}
                 {autonomyData.indices.regionalClassification === 'underdeveloped' && (
-                  <div className="mb-4 p-3 bg-red-50 rounded-2xl border border-red-200">
-                    <p className="text-xs font-black text-red-700">⚠️ Regione Arretrata — rischio di instabilità politica attivo</p>
-                    <p className="text-[10px] font-bold text-red-600">Aumenta lo Sviluppo costruendo Fondi Immobiliari per stabilizzare la regione.</p>
+                  <div className="mb-4 p-3 bg-rose-500/15 rounded-2xl border border-rose-400/40">
+                    <p className="text-xs font-black text-rose-100">⚠️ Regione Arretrata — rischio di instabilità politica attivo</p>
+                    <p className="text-[10px] font-bold text-rose-200">Aumenta lo Sviluppo costruendo Fondi Immobiliari per stabilizzare la regione.</p>
                   </div>
                 )}
                 <div className="space-y-5">
@@ -525,7 +525,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       progress: autonomyData.indices.healthProgress,
                       icon: "❤️",
                       color: "#ef4444",
-                      colorClass: "bg-red-50",
+                      colorClass: "bg-slate-800",
                       source: "Ospedali 🏥",
                       buildingKey: "hospital",
                       effect: `Riduce costo energetico delle azioni (-${((autonomyData.indices.healthIndex || 0) * 1).toFixed(0)}% attuale)`,
@@ -538,7 +538,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       progress: autonomyData.indices.militaryProgress,
                       icon: "🛡️",
                       color: "#f97316",
-                      colorClass: "bg-orange-50",
+                      colorClass: "bg-slate-800",
                       source: "Basi Militari 🏛️ (+ Accademie, Missili, Aeroporti, Porti)",
                       buildingKey: "military_base",
                       effect: `Bonus danno guerra (+${((autonomyData.indices.militaryIndex || 0) * 3).toFixed(0)}% attacco, +${((autonomyData.indices.militaryIndex || 0) * 2).toFixed(0)}% difesa)`,
@@ -552,7 +552,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       progress: autonomyData.indices.educationProgress,
                       icon: "📚",
                       color: "#6366f1",
-                      colorClass: "bg-indigo-50",
+                      colorClass: "bg-slate-800",
                       source: "Scuole 🏫",
                       buildingKey: "school",
                       effect: `Aumenta XP guadagnata (+${((autonomyData.indices.educationIndex || 0) * 2).toFixed(0)}% per azione)`,
@@ -565,7 +565,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                       progress: autonomyData.indices.developmentProgress,
                       icon: "🏘️",
                       color: "#10b981",
-                      colorClass: "bg-emerald-50",
+                      colorClass: "bg-slate-800",
                       source: "Fondi Immobiliari 🏘️",
                       buildingKey: "real_estate_fund",
                       effect: `Stabilità politica e stipendi (+${((autonomyData.indices.developmentIndex || 0) * 5).toFixed(0)}% stipendi, -${((autonomyData.indices.developmentIndex || 0) * 8).toFixed(0)}% rischio crisi)`,
@@ -578,26 +578,26 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                     const progressVal = typeof ind.progress === 'number' ? ind.progress : Math.min(100, (level / MAX_LEVEL) * 100);
                     const isMaxed = level >= MAX_LEVEL;
                     return (
-                      <div key={ind.label} className={`p-4 rounded-3xl border border-slate-100 ${ind.colorClass}`}>
+                      <div key={ind.label} className={`p-4 rounded-3xl border border-slate-700 ${ind.colorClass}`}>
                         {/* Header row */}
                         <div className="flex items-start justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span className="text-xl">{ind.icon}</span>
                             <div>
-                              <p className="text-sm font-black text-slate-800">{ind.label}</p>
-                              <p className="text-[9px] font-bold text-slate-500">Fonte: {ind.source}</p>
+                              <p className="text-sm font-black text-slate-100">{ind.label}</p>
+                              <p className="text-[9px] font-bold text-slate-300">Fonte: {ind.source}</p>
                             </div>
                           </div>
                           <div className="text-right">
-                            <span className="text-lg font-black text-slate-800">{level}</span>
-                            <span className="text-xs font-bold text-slate-400">/{MAX_LEVEL}</span>
+                            <span className="text-lg font-black text-slate-100">{level}</span>
+                            <span className="text-xs font-bold text-slate-300">/{MAX_LEVEL}</span>
                             {ind.effective !== undefined && ind.effective < level && (
-                              <p className="text-[9px] font-bold text-rose-500">eff: {typeof ind.effective === 'number' ? ind.effective.toFixed(1) : ind.effective}</p>
+                              <p className="text-[9px] font-bold text-rose-300">eff: {typeof ind.effective === 'number' ? ind.effective.toFixed(1) : ind.effective}</p>
                             )}
                           </div>
                         </div>
                         {/* Progress bar */}
-                        <div className="w-full bg-white/60 h-2 rounded-full overflow-hidden mb-2">
+                        <div className="w-full bg-slate-700 h-2 rounded-full overflow-hidden mb-2">
                           <div
                             className="h-full rounded-full transition-all duration-700"
                             style={{ width: `${isMaxed ? 100 : progressVal}%`, backgroundColor: ind.color }}
@@ -605,7 +605,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                         </div>
                         {/* Progress label */}
                         <div className="flex items-center justify-between mb-2">
-                          <p className="text-[9px] font-bold text-slate-500">
+                          <p className="text-[9px] font-bold text-slate-300">
                             {isMaxed
                               ? '✅ Livello massimo raggiunto'
                               : `Score: ${typeof ind.primaryCount === 'number' ? (Number.isInteger(ind.primaryCount) ? ind.primaryCount : ind.primaryCount.toFixed(1)) : '—'}${ind.nextThreshold != null ? ` / ${ind.nextThreshold} per lv.${level + 1}` : ''}`
@@ -614,15 +614,15 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
                           <p className="text-[9px] font-black" style={{ color: ind.color }}>{isMaxed ? '🏆' : `${Math.round(progressVal)}%`}</p>
                         </div>
                         {/* Effect description */}
-                        <p className="text-[9px] font-bold text-slate-600 italic">⚡ {ind.effect}</p>
+                        <p className="text-[9px] font-bold text-slate-200 italic">⚡ {ind.effect}</p>
                       </div>
                     );
                   })}
                 </div>
                 {autonomyData.region.pollution > 0 && (
-                  <div className="mt-4 p-3 bg-yellow-50 rounded-2xl border border-yellow-200">
-                    <p className="text-xs font-black text-yellow-700">⚠️ Inquinamento: livello {autonomyData.region.pollution}</p>
-                    <p className="text-[10px] font-bold text-yellow-600">Malus efficacia salute: -{autonomyData.pollutionMalus.toFixed(1)}%</p>
+                  <div className="mt-4 p-3 bg-amber-500/15 rounded-2xl border border-amber-400/40">
+                    <p className="text-xs font-black text-amber-100">⚠️ Inquinamento: livello {autonomyData.region.pollution}</p>
+                    <p className="text-[10px] font-bold text-amber-200">Malus efficacia salute: -{autonomyData.pollutionMalus.toFixed(1)}%</p>
                   </div>
                 )}
               </div>

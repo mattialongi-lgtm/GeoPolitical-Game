@@ -10,6 +10,9 @@ import rateLimit from 'express-rate-limit';
  *
  * When a limit is exceeded the response uses the project's standard error
  * envelope:  `{ error: { code, message } }`  with HTTP 429.
+ *
+ * In development (NODE_ENV !== 'production'), localhost is exempt so that
+ * the 10-second polling loop doesn't exhaust the quota during local work.
  */
 
 const rateLimitResponse = {
@@ -18,6 +21,15 @@ const rateLimitResponse = {
     message: 'Too many requests, please try again later.',
   },
 };
+
+const isLocalhost = (req: any): boolean => {
+  const ip = req.ip || req.connection?.remoteAddress || '';
+  return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
+};
+
+const skipInDev = process.env.NODE_ENV !== 'production'
+  ? (req: any) => isLocalhost(req)
+  : () => false;
 
 /**
  * 200 requests per 15-minute window, per IP.
@@ -29,6 +41,7 @@ export const globalLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: rateLimitResponse,
+  skip: skipInDev,
 });
 
 /**
@@ -42,6 +55,7 @@ export const writeLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: rateLimitResponse,
+  skip: skipInDev,
 });
 
 /**
@@ -57,4 +71,5 @@ export const strictLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: rateLimitResponse,
+  skip: skipInDev,
 });

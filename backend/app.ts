@@ -1077,6 +1077,25 @@ let missingAutomationTablesWarned = {
 
 let automationTickRunning = false;
 
+const parseAutomationTimestamp = (value: string | number | null | undefined, fallback: number): number => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const numericValue = Number(value);
+    if (Number.isFinite(numericValue)) return numericValue;
+    const parsed = new Date(value).getTime();
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+};
+
+const shouldTreatAutoWorkAsNeverFired = (lastFiredAt: string | null, activatedAt: string | null): boolean => {
+  if (!lastFiredAt || !activatedAt) return false;
+  const lastFiredMs = new Date(lastFiredAt).getTime();
+  const activatedMs = new Date(activatedAt).getTime();
+  if (!Number.isFinite(lastFiredMs) || !Number.isFinite(activatedMs)) return false;
+  return Math.abs(lastFiredMs - activatedMs) <= 1000;
+};
+
 async function processAutomationTick() {
   if (automationTickRunning) return;
   automationTickRunning = true;
@@ -1104,7 +1123,10 @@ async function processAutomationTick() {
         }
 
         const mode: 'standard' = 'standard';
-        if (!shouldRecurringAutomationFire(mode, aw.lastFiredAt, aw.activatedAt)) continue;
+        const effectiveLastFiredAt = shouldTreatAutoWorkAsNeverFired(aw.lastFiredAt, aw.activatedAt)
+          ? null
+          : aw.lastFiredAt;
+        if (!shouldRecurringAutomationFire(mode, effectiveLastFiredAt, aw.activatedAt)) continue;
 
         // Apply server-side energy regeneration before attempting work
         try {
@@ -1114,7 +1136,7 @@ async function processAutomationTick() {
             .single();
           if (userForRegen && (userForRegen.energy || 0) < GAME_CONFIG.ENERGY_MAX) {
             const nowMs = Date.now();
-            const lastUpdate = userForRegen.lastEnergyUpdate || nowMs;
+            const lastUpdate = parseAutomationTimestamp(userForRegen.lastEnergyUpdate, nowMs);
             const elapsedHours = (nowMs - lastUpdate) / (60 * 60 * 1000);
             const regenAmount = Math.floor(elapsedHours * GAME_CONFIG.ENERGY_REGEN_RATE);
             if (regenAmount > 0) {

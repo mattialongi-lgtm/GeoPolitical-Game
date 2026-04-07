@@ -104,7 +104,8 @@ export function createAutomationHandlers(deps: {
         mode: 'standard',
         isActive: true,
         activatedAt: new Date().toISOString(),
-        lastFiredAt: new Date().toISOString(),
+        // Keep the first execution eligible on the next scheduler pass.
+        lastFiredAt: null,
         expiresAt,
       }, { onConflict: 'userId' });
       if (upsertError) throw upsertError;

@@ -9,7 +9,6 @@ import Database from "better-sqlite3";
 import jwt from "jsonwebtoken";
 import cookieParser from "cookie-parser";
 import bcrypt from "bcrypt";
-import * as admin from "firebase-admin";
 import fs from "fs";
 import path from "path";
 import { GAME_CONFIG, PERKS_DEFS } from "./src/types";
@@ -20,10 +19,42 @@ const app = express();
 const PORT = 3000;
 const SECRET_KEY = process.env.JWT_SECRET || "territorial-secret-key";
 
+type FirebaseAdminModule = {
+  initializeApp: (options: { credential?: unknown }) => unknown;
+  auth: () => {
+    verifyIdToken: (idToken: string) => Promise<{
+      uid: string;
+      email?: string;
+      name?: string;
+    }>;
+  };
+  credential: {
+    cert: (serviceAccount: {
+      projectId?: string;
+      clientEmail?: string;
+      privateKey?: string;
+    }) => unknown;
+  };
+};
+
+const loadFirebaseAdmin = async (): Promise<FirebaseAdminModule | null> => {
+  const moduleName = "firebase-admin";
+  try {
+    return await import(moduleName) as FirebaseAdminModule;
+  } catch (error) {
+    console.warn("[startup] firebase-admin not installed; Firebase Admin features disabled.");
+    return null;
+  }
+};
+
+const firebaseAdmin = process.env.FIREBASE_PROJECT_ID
+  ? await loadFirebaseAdmin()
+  : null;
+
 // Initialize Firebase Admin
-if (process.env.FIREBASE_PROJECT_ID) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
+if (firebaseAdmin) {
+  firebaseAdmin.initializeApp({
+    credential: firebaseAdmin.credential.cert({
       projectId: process.env.FIREBASE_PROJECT_ID,
       clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
       privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
@@ -326,9 +357,10 @@ app.post("/api/logout", (req, res) => {
 app.post("/api/auth/firebase", async (req, res) => {
   const { idToken, username } = req.body;
   if (!idToken) return res.status(400).json({ error: "Missing ID token" });
+  if (!firebaseAdmin) return res.status(503).json({ error: "Firebase Admin non disponibile su questo server." });
 
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const decodedToken = await firebaseAdmin.auth().verifyIdToken(idToken);
     const { uid, email, name } = decodedToken;
 
     let user = db.prepare("SELECT * FROM users WHERE firebase_uid = ?").get(uid) as any;

@@ -6,7 +6,6 @@ import type { ResourceType } from "../../types";
 export const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData: () => void }) => {
   const [regionId, setRegionId] = useState(user?.regionId || '');
   const [resources, setResources] = useState<any[]>([]);
-  const [playerStates, setPlayerStates] = useState<any[]>([]);
   const [selectedResource, setSelectedResource] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [working, setWorking] = useState(false);
@@ -16,12 +15,8 @@ export const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData:
     if (!regionId) return;
     setLoading(true);
     try {
-      const [resRes, stateRes] = await Promise.all([
-        fetch(`/api/regions/${regionId}/resources`, { credentials: 'include' }).then(r => r.json()),
-        fetch(`/api/resources/player-state?regionId=${regionId}`, { credentials: 'include' }).then(r => r.json()),
-      ]);
+      const resRes = await fetch(`/api/regions/${regionId}/resources`, { credentials: 'include' }).then(r => r.json());
       setResources(resRes.resources || []);
-      setPlayerStates(stateRes.states || []);
       if (!selectedResource && resRes.resources?.length > 0) {
         setSelectedResource(resRes.resources[0].resourceType);
       }
@@ -69,13 +64,15 @@ export const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData:
   };
 
   const selectedRes = resources.find((r: any) => r.resourceType === selectedResource);
-  const playerState = playerStates.find((s: any) => s.resourceType === selectedResource);
-  const extractedCycle = playerState?.extractedSinceLastRecharge || 0;
-  const effectiveCap = selectedRes?.effectiveCapPerRecharge || 0;
-  const remainingCycle = Math.max(0, effectiveCap - extractedCycle);
-  const remainingDaily = selectedRes ? Math.max(0, selectedRes.dailyAvailable - selectedRes.dailyExtracted) : 0;
-  const canWork = remainingCycle > 0 && remainingDaily > 0 && (user?.energy || 0) >= 10;
-  const blockReason = remainingCycle <= 0 ? "Cap di estrazione raggiunto. Attendi il reset automatico delle 19:00 (ora di Londra)." : remainingDaily <= 0 ? "Risorsa giornaliera esaurita!" : (user?.energy || 0) < 10 ? "Energia insufficiente!" : null;
+  const dailyMaxCap: number = selectedRes?.dailyMaxCap ?? selectedRes?.dailyAvailable ?? 0;
+  const currentAvailableCap: number = selectedRes?.currentAvailableCap ?? selectedRes?.remainingDaily ?? 0;
+  const dailyExtracted: number = selectedRes?.dailyExtracted ?? 0;
+  const totalUnlockedToday: number = selectedRes?.totalUnlockedToday ?? 0;
+  const canUnlockMore: number = selectedRes?.canUnlockMore ?? Math.max(0, dailyMaxCap - totalUnlockedToday);
+  const pctExtracted = dailyMaxCap > 0 ? Math.min(100, (dailyExtracted / dailyMaxCap) * 100) : 0;
+  const pctUnlocked = dailyMaxCap > 0 ? Math.min(100, (totalUnlockedToday / dailyMaxCap) * 100) : 0;
+  const canWork = currentAvailableCap > 0 && (user?.energy || 0) >= 10;
+  const blockReason = currentAvailableCap <= 0 ? "Risorsa giornaliera esaurita!" : (user?.energy || 0) < 10 ? "Energia insufficiente!" : null;
 
   return (
     <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
@@ -111,20 +108,42 @@ export const ResourceExtractView = ({ user, fetchData }: { user: any; fetchData:
       {/* Selected resource details */}
       {selectedRes && (
         <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-blue-50 p-3 rounded-xl">
-              <p className="text-[9px] font-bold text-blue-400 uppercase">Ciclo personale</p>
-              <p className="text-sm font-black text-blue-700">{extractedCycle} / {effectiveCap}</p>
-              <div className="w-full bg-blue-100 h-1 rounded-full mt-1 overflow-hidden">
-                <div className="bg-blue-500 h-full rounded-full" style={{ width: `${effectiveCap > 0 ? (extractedCycle / effectiveCap) * 100 : 0}%` }} />
-              </div>
+          <div className="grid grid-cols-2 gap-2 text-center">
+            <div className={`p-2 rounded-lg ${currentAvailableCap <= 0 ? 'bg-red-50' : 'bg-emerald-50'}`}>
+              <p className="text-[9px] font-bold uppercase text-slate-500">Disponibile ora</p>
+              <p className={`text-sm font-black ${currentAvailableCap <= 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                {currentAvailableCap.toLocaleString()}
+              </p>
             </div>
-            <div className="bg-emerald-50 p-3 rounded-xl">
-              <p className="text-[9px] font-bold text-emerald-400 uppercase">Giornaliero regione</p>
-              <p className="text-sm font-black text-emerald-700">{selectedRes.dailyExtracted} / {selectedRes.dailyAvailable}</p>
-              <div className="w-full bg-emerald-100 h-1 rounded-full mt-1 overflow-hidden">
-                <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${selectedRes.dailyAvailable > 0 ? (selectedRes.dailyExtracted / selectedRes.dailyAvailable) * 100 : 0}%` }} />
+            <div className="bg-slate-50 p-2 rounded-lg">
+              <p className="text-[9px] font-bold uppercase text-slate-400">Max giornaliero</p>
+              <p className="text-sm font-black text-slate-700">{dailyMaxCap.toLocaleString()}</p>
+            </div>
+            <div className="bg-amber-50 p-2 rounded-lg">
+              <p className="text-[9px] font-bold uppercase text-amber-500">Estratto oggi</p>
+              <p className="text-sm font-black text-amber-700">{dailyExtracted.toLocaleString()}</p>
+            </div>
+            <div className={`p-2 rounded-lg ${canUnlockMore > 0 ? 'bg-blue-50' : 'bg-slate-100'}`}>
+              <p className="text-[9px] font-bold uppercase text-slate-500">Residuo sbloccabile</p>
+              <p className={`text-sm font-black ${canUnlockMore > 0 ? 'text-blue-700' : 'text-slate-400'}`}>
+                {canUnlockMore.toLocaleString()}
+              </p>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-1">
+              <span className="text-[8px] text-slate-400 w-16 shrink-0">Sbloccato</span>
+              <div className="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-blue-400 h-full rounded-full transition-all" style={{ width: `${pctUnlocked}%` }} />
               </div>
+              <span className="text-[8px] text-slate-400 w-8 text-right">{Math.round(pctUnlocked)}%</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[8px] text-slate-400 w-16 shrink-0">Estratto</span>
+              <div className="flex-1 bg-slate-100 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-amber-400 h-full rounded-full transition-all" style={{ width: `${pctExtracted}%` }} />
+              </div>
+              <span className="text-[8px] text-slate-400 w-8 text-right">{Math.round(pctExtracted)}%</span>
             </div>
           </div>
           {selectedResource === 'gold_ore' ? (

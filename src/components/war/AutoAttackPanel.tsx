@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Zap, Timer } from 'lucide-react';
 import type { TroopType, WarSide, AutoAttackType } from '../../types';
 
@@ -29,13 +29,13 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
 
   if (currentAutoAttack) {
     return (
-      <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+      <div className="bg-amber-500/15 border border-amber-400/30 rounded-2xl p-4 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="animate-pulse text-lg">⚔️</span>
             <div>
-              <p className="font-black text-amber-800 text-sm uppercase">Auto-attacco Attivo</p>
-              <p className="text-[10px] font-bold text-amber-600">
+              <p className="font-black text-amber-300 text-sm uppercase">Auto-attacco Attivo</p>
+              <p className="text-[10px] font-bold text-amber-400">
                 {currentAutoAttack.side === 'attacker' ? 'Attaccante' : 'Difensore'} •{' '}
                 {TROOP_LABELS[currentAutoAttack.troopType] || currentAutoAttack.troopType} •{' '}
                 {currentAutoAttack.autoType === 'hourly' ? 'Danno Orario (1h, senza energia o bibite)' : 'Auto-War standard (ogni 10 min)'}
@@ -50,7 +50,7 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
           </button>
         </div>
         {currentAutoAttack.expiresAt && (
-          <div className="text-[10px] font-bold text-amber-500 flex items-center gap-1">
+          <div className="text-[10px] font-bold text-amber-400 flex items-center gap-1">
             <Timer className="w-3 h-3" />
             Scade: {new Date(currentAutoAttack.expiresAt).toLocaleString()}
           </div>
@@ -60,25 +60,25 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
   }
 
   return (
-    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+    <div className="bg-amber-500/15 border border-amber-400/30 rounded-2xl p-4 space-y-3">
       <div className="flex items-center gap-2">
-        <Zap className="w-5 h-5 text-amber-600" />
+        <Zap className="w-5 h-5 text-amber-400" />
         <div>
-          <p className="font-black text-amber-800 text-sm uppercase">Attacco Automatico</p>
-          <p className="text-[10px] font-bold text-amber-600">Configura attacchi automatici. Solo il Danno Orario è compatibile con Auto-Work.</p>
+          <p className="font-black text-amber-300 text-sm uppercase">Attacco Automatico</p>
+          <p className="text-[10px] font-bold text-amber-400">Configura attacchi automatici. Solo il Danno Orario è compatibile con Auto-Work.</p>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[9px] font-black text-amber-700 uppercase mb-1 block">Schieramento</label>
+          <label className="text-[9px] font-black text-amber-400 uppercase mb-1 block">Schieramento</label>
           <div className="flex gap-1">
             {(['attacker', 'defender'] as WarSide[]).map(s => (
               <button
                 key={s}
                 onClick={() => setSelectedSide(s)}
                 className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
-                  selectedSide === s ? 'bg-amber-500 text-white' : 'bg-white border border-amber-200 text-amber-700 hover:bg-amber-100'
+                  selectedSide === s ? 'bg-amber-500 text-white' : 'bg-gray-800/60 border border-gray-700/40 text-amber-400 hover:bg-gray-700/50'
                 }`}
               >
                 {s === 'attacker' ? 'ATK' : 'DEF'}
@@ -87,7 +87,7 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
           </div>
         </div>
         <div>
-          <label className="text-[9px] font-black text-amber-700 uppercase mb-1 block">Modalità</label>
+          <label className="text-[9px] font-black text-amber-400 uppercase mb-1 block">Modalità</label>
           <div className="flex gap-1">
             {([
               { type: 'hourly' as AutoAttackType, label: 'Danno Orario' },
@@ -97,7 +97,7 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
                 key={m.type}
                 onClick={() => setSelectedMode(m.type)}
                 className={`flex-1 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all ${
-                  selectedMode === m.type ? 'bg-amber-500 text-white' : 'bg-white border border-amber-200 text-amber-700 hover:bg-amber-100'
+                  selectedMode === m.type ? 'bg-amber-500 text-white' : 'bg-gray-800/60 border border-gray-700/40 text-amber-400 hover:bg-gray-700/50'
                 }`}
               >
                 {m.label}
@@ -108,14 +108,14 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
       </div>
 
       <div>
-        <label className="text-[9px] font-black text-amber-700 uppercase mb-1 block">Truppe</label>
+        <label className="text-[9px] font-black text-amber-400 uppercase mb-1 block">Truppe</label>
         <div className="grid grid-cols-3 gap-1">
           {availableTroops.map(t => (
             <button
               key={t}
               onClick={() => setSelectedTroop(t)}
               className={`py-1.5 px-2 rounded-lg text-[9px] font-black transition-all ${
-                selectedTroop === t ? 'bg-amber-500 text-white' : 'bg-white border border-amber-200 text-amber-800 hover:bg-amber-100'
+                selectedTroop === t ? 'bg-amber-500 text-white' : 'bg-gray-800/60 border border-gray-700/40 text-amber-300 hover:bg-gray-700/50'
               }`}
             >
               {TROOP_LABELS[t] || t}
@@ -126,12 +126,12 @@ export const AutoAttackPanel: React.FC<AutoAttackPanelProps> = ({
 
       <button
         onClick={() => onSetAutoAttack(selectedSide, selectedTroop, selectedMode)}
-        className="w-full py-2.5 bg-amber-500 text-white rounded-xl font-black uppercase text-xs shadow-lg shadow-amber-100 hover:bg-amber-600 transition-all flex items-center justify-center gap-1"
+        className="w-full py-2.5 bg-amber-500 text-white rounded-xl font-black uppercase text-xs shadow-lg shadow-amber-900/30 hover:bg-amber-600 transition-all flex items-center justify-center gap-1"
       >
         <Zap className="w-3.5 h-3.5" /> Attiva Auto-attacco
       </button>
 
-      <div className="text-[9px] font-medium text-amber-500">
+      <div className="text-[9px] font-medium text-amber-400">
         ⏰ Danno Orario: ogni 1h, senza energia o bibite • Auto-War standard: ogni 10 min, incompatibile con Auto-Work
       </div>
     </div>

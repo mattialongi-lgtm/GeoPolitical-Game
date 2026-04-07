@@ -37,33 +37,33 @@ export const ArticleEditor: React.FC<Props> = ({ blocks, setBlocks }) => {
   return (
     <div className="space-y-4">
       {blocks.map((block, index) => (
-        <div key={block.id} className="relative group bg-slate-50 border border-slate-100 rounded-3xl p-6 transition-all focus-within:ring-2 focus-within:ring-indigo-100 focus-within:bg-white">
+        <div key={block.id} className="relative group bg-gray-800/50 border border-gray-700/40 rounded-2xl p-6 transition-all focus-within:ring-2 focus-within:ring-indigo-500/30 focus-within:bg-gray-800/70">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
-              <div className={`p-2 rounded-xl ${block.type === 'text' ? 'bg-indigo-100 text-indigo-600' : block.type === 'image' ? 'bg-orange-100 text-orange-600' : block.type === 'video' ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600'}`}>
+              <div className={`p-2 rounded-xl ${block.type === 'text' ? 'bg-indigo-500/15 text-indigo-400' : block.type === 'image' ? 'bg-orange-500/15 text-orange-400' : block.type === 'video' ? 'bg-red-500/15 text-red-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
                 {block.type === 'text' && <Type className="w-4 h-4" />}
                 {block.type === 'image' && <ImageIcon className="w-4 h-4" />}
                 {block.type === 'video' && <Video className="w-4 h-4" />}
                 {block.type === 'link' && <LinkIcon className="w-4 h-4" />}
               </div>
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">{block.type}</span>
+              <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">{block.type}</span>
             </div>
             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button 
-                onClick={() => moveBlock(index, 'up')} 
+              <button
+                onClick={() => moveBlock(index, 'up')}
                 disabled={index === 0}
-                className="p-1.5 hover:bg-slate-200 rounded-lg disabled:opacity-30"
+                className="p-1.5 hover:bg-gray-700/50 rounded-lg disabled:opacity-30"
               >
-                <ChevronUp className="w-4 h-4 text-slate-500" />
+                <ChevronUp className="w-4 h-4 text-gray-400" />
               </button>
-              <button 
-                onClick={() => moveBlock(index, 'down')} 
+              <button
+                onClick={() => moveBlock(index, 'down')}
                 disabled={index === blocks.length - 1}
-                className="p-1.5 hover:bg-slate-200 rounded-lg disabled:opacity-30"
+                className="p-1.5 hover:bg-gray-700/50 rounded-lg disabled:opacity-30"
               >
-                <ChevronDown className="w-4 h-4 text-slate-500" />
+                <ChevronDown className="w-4 h-4 text-gray-400" />
               </button>
-              <button onClick={() => removeBlock(block.id)} className="p-1.5 hover:bg-rose-100 text-rose-500 rounded-lg">
+              <button onClick={() => removeBlock(block.id)} className="p-1.5 hover:bg-rose-500/15 text-rose-400 rounded-lg">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
@@ -75,7 +75,7 @@ export const ArticleEditor: React.FC<Props> = ({ blocks, setBlocks }) => {
               onChange={e => updateBlock(block.id, { content: e.target.value })}
               placeholder="Scrivi qui il tuo testo..."
               rows={4}
-              className="w-full bg-transparent border-none focus:ring-0 text-slate-700 font-medium placeholder:text-slate-300 resize-none p-0"
+              className="w-full bg-transparent border-none focus:ring-0 text-gray-300 font-medium placeholder:text-gray-600 resize-none p-0"
             />
           )}
 
@@ -85,13 +85,13 @@ export const ArticleEditor: React.FC<Props> = ({ blocks, setBlocks }) => {
                 value={block.content}
                 onChange={e => updateBlock(block.id, { content: e.target.value })}
                 placeholder="URL Immagine (https://...)"
-                className="w-full px-4 py-3 rounded-xl bg-white border border-slate-100 text-sm font-bold text-slate-600"
+                className="w-full px-4 py-3 rounded-xl bg-gray-800/60 border border-gray-700/40 text-sm font-bold text-gray-200 outline-none focus:ring-2 focus:ring-indigo-500/30 placeholder:text-gray-500"
               />
               <input
                 value={block.metadata?.caption || ''}
                 onChange={e => updateBlock(block.id, { metadata: { ...block.metadata, caption: e.target.value } })}
                 placeholder="Didascalia (opzionale)"
-                className="w-full px-4 py-2 rounded-xl bg-transparent border-slate-100 text-xs font-medium text-slate-400"
+                className="w-full px-4 py-2 rounded-xl bg-transparent border border-gray-700/40 text-xs font-medium text-gray-400 outline-none focus:ring-2 focus:ring-indigo-500/20 placeholder:text-gray-600"
               />
             </div>
           )}
@@ -102,9 +102,9 @@ export const ArticleEditor: React.FC<Props> = ({ blocks, setBlocks }) => {
                 value={block.content}
                 onChange={e => updateBlock(block.id, { content: e.target.value })}
                 placeholder="URL YouTube (https://www.youtube.com/watch?v=...)"
-                className="w-full px-4 py-3 rounded-xl bg-white border border-slate-100 text-sm font-bold text-slate-600"
+                className="w-full px-4 py-3 rounded-xl bg-gray-800/60 border border-gray-700/40 text-sm font-bold text-gray-200 outline-none focus:ring-2 focus:ring-indigo-500/30 placeholder:text-gray-500"
               />
-              <p className="text-[10px] text-slate-400 font-bold italic ml-2">I video verranno mostrati come player embedded responsive nell'articolo.</p>
+              <p className="text-[10px] text-gray-400 font-bold italic ml-2">I video verranno mostrati come player embedded responsive nell'articolo.</p>
             </div>
           )}
 
@@ -114,13 +114,13 @@ export const ArticleEditor: React.FC<Props> = ({ blocks, setBlocks }) => {
                 value={block.metadata?.title || ''}
                 onChange={e => updateBlock(block.id, { metadata: { ...block.metadata, title: e.target.value } })}
                 placeholder="Titolo del Link (es. Leggi anche questo)"
-                className="w-full px-4 py-3 rounded-xl bg-white border border-slate-100 text-sm font-bold text-slate-900"
+                className="w-full px-4 py-3 rounded-xl bg-gray-800/60 border border-gray-700/40 text-sm font-bold text-gray-100 outline-none focus:ring-2 focus:ring-indigo-500/30 placeholder:text-gray-500"
               />
               <input
                 value={block.content}
                 onChange={e => updateBlock(block.id, { content: e.target.value })}
                 placeholder="URL (https://...)"
-                className="w-full px-4 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs font-medium text-slate-600"
+                className="w-full px-4 py-2 rounded-xl bg-gray-800/50 border border-gray-700/40 text-xs font-medium text-gray-300 outline-none focus:ring-2 focus:ring-indigo-500/20 placeholder:text-gray-600"
               />
             </div>
           )}
@@ -137,7 +137,7 @@ export const ArticleEditor: React.FC<Props> = ({ blocks, setBlocks }) => {
           <button
             key={btn.type}
             onClick={() => addBlock(btn.type)}
-            className="flex items-center justify-center gap-2 py-3 rounded-2xl bg-white border border-slate-100 shadow-sm hover:border-indigo-400 hover:bg-indigo-50 transition-all font-black text-[10px] uppercase tracking-widest text-slate-400 hover:text-indigo-600"
+            className="flex items-center justify-center gap-2 py-3 rounded-xl bg-gray-800/50 border border-gray-700/40 hover:border-indigo-500/40 hover:bg-indigo-500/10 transition-all font-black text-[10px] uppercase tracking-widest text-gray-400 hover:text-indigo-400"
           >
             {btn.icon} {btn.label}
           </button>

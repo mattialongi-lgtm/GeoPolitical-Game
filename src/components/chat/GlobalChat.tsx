@@ -74,25 +74,25 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
   };
 
   return (
-    <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+    <div className="bg-gray-900/60 rounded-2xl border border-gray-800 overflow-hidden">
       {/* Header with channel toggle */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-50">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-800">
         <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
         <div className="flex gap-2">
           <button
             onClick={() => setChannel('global')}
-            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all ${channel === 'global' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all ${channel === 'global' ? 'bg-indigo-600 text-white' : 'bg-gray-800/50 text-gray-400 border border-gray-700/40 hover:bg-gray-700/50'}`}
           >
             🌍 Globale
           </button>
           <button
             onClick={() => setChannel('local')}
-            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all ${channel === 'local' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'}`}
+            className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tight transition-all ${channel === 'local' ? 'bg-emerald-600 text-white' : 'bg-gray-800/50 text-gray-400 border border-gray-700/40 hover:bg-gray-700/50'}`}
           >
             🏠 {currentUser.originalNation || 'IT'}
           </button>
         </div>
-        <span className="ml-auto text-[10px] font-black text-slate-300 uppercase">{messages.length} messaggi</span>
+        <span className="ml-auto text-[10px] font-black text-gray-500 uppercase">{messages.length} messaggi</span>
       </div>
 
       {/* Messages */}
@@ -103,7 +103,7 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
       >
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full">
-            <p className="text-slate-300 text-sm font-bold">Nessun messaggio ancora. Sii il primo!</p>
+            <p className="text-gray-500 text-sm font-bold">Nessun messaggio ancora. Sii il primo!</p>
           </div>
         )}
         {messages.map((msg) => {
@@ -112,26 +112,26 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
             <div key={msg.id} className={`flex gap-2 ${isOwn ? "flex-row-reverse" : "flex-row"} items-end`}>
               {/* Avatar */}
               {!isOwn && (
-                <div className="w-7 h-7 rounded-2xl bg-indigo-50 flex items-center justify-center shrink-0 text-[10px] font-black text-indigo-600">
+                <div className="w-7 h-7 rounded-xl bg-indigo-500/15 flex items-center justify-center shrink-0 text-[10px] font-black text-indigo-400 border border-indigo-500/20">
                   {msg.username.slice(0, 2).toUpperCase()}
                 </div>
               )}
               <div className={`max-w-[75%] ${isOwn ? "items-end" : "items-start"} flex flex-col gap-0.5`}>
                 {!isOwn && (
                   <div className="flex items-center gap-1.5 px-1">
-                    <span className="text-[10px] font-black text-slate-600">{msg.username}</span>
-                    <span className="text-[9px] font-bold text-slate-300 bg-slate-50 px-1.5 py-0.5 rounded-md">{msg.regionId}</span>
+                    <span className="text-[10px] font-black text-gray-300">{msg.username}</span>
+                    <span className="text-[9px] font-bold text-gray-500 bg-gray-800/50 px-1.5 py-0.5 rounded-md border border-gray-700/40">{msg.regionId}</span>
                   </div>
                 )}
                 <div
                   className={`px-4 py-2.5 rounded-2xl text-sm font-medium leading-relaxed ${isOwn
                     ? "bg-indigo-600 text-white rounded-br-md"
-                    : "bg-slate-50 text-slate-700 rounded-bl-md"
+                    : "bg-gray-800/70 text-gray-200 rounded-bl-md border border-gray-700/40"
                     }`}
                 >
                   {msg.message}
                 </div>
-                <span className="text-[9px] text-slate-300 font-bold px-1">{formatTime(msg.createdAt)}</span>
+                <span className="text-[9px] text-gray-500 font-bold px-1">{formatTime(msg.createdAt)}</span>
               </div>
             </div>
           );
@@ -140,9 +140,9 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
       </div>
 
       {/* Input */}
-      <div className="px-4 pb-4 pt-2 border-t border-slate-50">
+      <div className="px-4 pb-4 pt-2 border-t border-gray-800">
         {error && (
-          <p className="text-[10px] font-bold text-rose-500 mb-2 px-1">{error}</p>
+          <p className="text-[10px] font-bold text-rose-400 mb-2 px-1">{error}</p>
         )}
         <form onSubmit={handleSend} className="flex gap-2">
           <input
@@ -151,12 +151,12 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
             onChange={(e) => { setInput(e.target.value); setError(null); }}
             placeholder="Scrivi un messaggio..."
             maxLength={280}
-            className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 text-sm font-medium text-slate-700 placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
+            className="flex-1 bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3 text-sm font-medium text-gray-200 placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 transition-all"
           />
           <button
             type="submit"
             disabled={sending || !input.trim()}
-            className="w-12 h-12 bg-indigo-600 text-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none shrink-0"
+            className="w-12 h-12 bg-indigo-600 text-white rounded-xl flex items-center justify-center hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-40 disabled:pointer-events-none shrink-0"
           >
             {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
           </button>

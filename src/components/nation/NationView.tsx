@@ -52,47 +52,47 @@ export const NationView = ({ user, fetchData }: { user: any, fetchData: () => vo
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
       <div className="flex items-center gap-3 mb-8">
-        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
-          <Shield className="w-6 h-6 text-indigo-600" />
+        <div className="w-12 h-12 bg-gray-800/60 rounded-2xl flex items-center justify-center border border-gray-700/40">
+          <Shield className="w-6 h-6 text-indigo-400" />
         </div>
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">Gestione Nazione</h2>
-          <p className="text-sm font-bold text-slate-400">Personalizza la tua identità e i tuoi bonus di guerra</p>
+          <h2 className="text-2xl font-black text-white tracking-tight uppercase">Gestione Nazione</h2>
+          <p className="text-sm font-bold text-gray-400">Personalizza la tua identità e i tuoi bonus di guerra</p>
         </div>
       </div>
 
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col gap-6">
+      <div className="bg-gray-900/60 p-8 rounded-2xl border border-gray-800 flex flex-col gap-6">
         <div>
-          <h3 className="text-lg font-black text-slate-900 uppercase">Nazione Mostrata (Estetica)</h3>
-          <p className="text-xs text-slate-400 font-bold mb-4">Questa nazione viene mostrata nel tuo profilo per scopi di Roleplay. Puoi cambiarla in qualsiasi momento senza limiti.</p>
+          <h3 className="text-lg font-black text-white uppercase">Nazione Mostrata (Estetica)</h3>
+          <p className="text-xs text-gray-400 font-bold mb-4">Questa nazione viene mostrata nel tuo profilo per scopi di Roleplay. Puoi cambiarla in qualsiasi momento senza limiti.</p>
           <div className="flex gap-4">
-            <select value={displayedNation} onChange={e => setDisplayedNation(e.target.value)} className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 font-bold focus:ring-2 focus:ring-indigo-500">
+            <select value={displayedNation} onChange={e => setDisplayedNation(e.target.value)} className="flex-1 bg-gray-800/60 border border-gray-700/40 text-gray-100 rounded-2xl px-4 py-3 font-bold focus:ring-2 focus:ring-indigo-500">
               {NATION_OPTS.map(n => <option key={n.id} value={n.id}>{n.id} - {n.name}</option>)}
             </select>
-            <button onClick={handleUpdateDisplayed} disabled={submitting || displayedNation === user.displayedNation} className="px-6 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-indigo-100 disabled:opacity-50">
+            <button onClick={handleUpdateDisplayed} disabled={submitting || displayedNation === user.displayedNation} className="px-6 py-3 bg-indigo-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-indigo-900/30 disabled:opacity-50">
               Aggiorna
             </button>
           </div>
         </div>
 
-        <div className="border-t border-slate-100 pt-6">
-          <h3 className="text-lg font-black text-rose-900 uppercase flex items-center gap-2">
+        <div className="border-t border-gray-700/40 pt-6">
+          <h3 className="text-lg font-black text-rose-400 uppercase flex items-center gap-2">
             <Swords className="w-5 h-5" /> Nazione Originale (Bonus +10% Danni)
           </h3>
-          <p className="text-xs text-rose-500 font-bold mb-4">La tua vera fedeltà. Riceverai un bonus del +10% ai danni se combatti a favore di questa nazione. Puoi cambiarla solo <b className="font-black">una volta ogni 30 giorni</b>.</p>
+          <p className="text-xs text-rose-400 font-bold mb-4">La tua vera fedeltà. Riceverai un bonus del +10% ai danni se combatti a favore di questa nazione. Puoi cambiarla solo <b className="font-black">una volta ogni 30 giorni</b>.</p>
 
-          <div className="bg-rose-50 border border-rose-100 p-4 rounded-2xl mb-4 flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
-            <p className="text-xs font-bold text-rose-900">
+          <div className="bg-rose-500/15 border border-rose-400/30 p-4 rounded-2xl mb-4 flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+            <p className="text-xs font-bold text-rose-300">
               {canChangeOriginal ? "Puoi cambiare la tua Nazione Originale ora." : `Hai già cambiato nazione di recente. Prossimo cambio disponibile il: ${nextAvailDate}`}
             </p>
           </div>
 
           <div className="flex gap-4">
-            <select disabled={!canChangeOriginal} value={originalNation} onChange={e => setOriginalNation(e.target.value)} className="flex-1 bg-slate-50 border border-slate-100 rounded-2xl px-4 py-3 font-bold focus:ring-2 focus:ring-rose-500 disabled:opacity-50">
+            <select disabled={!canChangeOriginal} value={originalNation} onChange={e => setOriginalNation(e.target.value)} className="flex-1 bg-gray-800/60 border border-gray-700/40 text-gray-100 rounded-2xl px-4 py-3 font-bold focus:ring-2 focus:ring-rose-500 disabled:opacity-50">
               {NATION_OPTS.map(n => <option key={n.id} value={n.id}>{n.id} - {n.name}</option>)}
             </select>
-            <button onClick={handleUpdateOriginal} disabled={submitting || !canChangeOriginal || originalNation === user.originalNation} className="px-6 py-3 bg-rose-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-rose-100 disabled:opacity-50">
+            <button onClick={handleUpdateOriginal} disabled={submitting || !canChangeOriginal || originalNation === user.originalNation} className="px-6 py-3 bg-rose-600 text-white font-black uppercase tracking-widest text-xs rounded-2xl shadow-lg shadow-rose-900/30 disabled:opacity-50">
               Giura Fedeltà
             </button>
           </div>

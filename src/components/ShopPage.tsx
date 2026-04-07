@@ -37,19 +37,19 @@ export default function ShopPage({ user }: ShopPageProps) {
   return (
     <div className="space-y-5 max-w-2xl mx-auto pb-24">
       {/* Back button */}
-      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors">
+      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-indigo-400 transition-colors">
         <ArrowLeft className="w-4 h-4" /> Indietro
       </button>
 
       {/* Header */}
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
+      <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
         <div className="flex items-center gap-4">
-          <div className="w-14 h-14 bg-gradient-to-br from-amber-400 to-amber-600 rounded-3xl flex items-center justify-center shadow-lg shadow-amber-100">
+          <div className="w-14 h-14 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl flex items-center justify-center shadow-lg shadow-amber-100">
             <Crown className="w-7 h-7 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-black text-slate-900 uppercase tracking-tight">Negozio</h1>
-            <p className="text-xs font-bold text-slate-400">Potenzia il tuo account e domina il gioco</p>
+            <h1 className="text-xl font-black text-white uppercase tracking-tight">Negozio</h1>
+            <p className="text-xs font-bold text-gray-400">Potenzia il tuo account e domina il gioco</p>
           </div>
         </div>
       </div>
@@ -61,7 +61,7 @@ export default function ShopPage({ user }: ShopPageProps) {
           className={`flex-1 py-3 font-black uppercase tracking-wider text-xs rounded-2xl transition-all flex items-center justify-center gap-2 ${
             activeTab === "premium"
               ? "bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-lg shadow-amber-100"
-              : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-100"
+              : "bg-gray-800/50 text-gray-400 hover:bg-gray-700/50 border border-gray-700/40"
           }`}
         >
           <Crown className="w-4 h-4" /> Premium
@@ -71,7 +71,7 @@ export default function ShopPage({ user }: ShopPageProps) {
           className={`flex-1 py-3 font-black uppercase tracking-wider text-xs rounded-2xl transition-all flex items-center justify-center gap-2 ${
             activeTab === "gold"
               ? "bg-gradient-to-r from-yellow-400 to-yellow-500 text-white shadow-lg shadow-yellow-100"
-              : "bg-white text-slate-500 hover:bg-slate-50 border border-slate-100"
+              : "bg-gray-800/50 text-gray-400 hover:bg-gray-700/50 border border-gray-700/40"
           }`}
         >
           <Gem className="w-4 h-4" /> Compra Gold
@@ -82,42 +82,42 @@ export default function ShopPage({ user }: ShopPageProps) {
       {activeTab === "premium" && (
         <div className="space-y-4">
           {/* Premium Card */}
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100/50 p-6 rounded-[2.5rem] border-2 border-amber-200 shadow-sm relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-200/20 rounded-full -mr-10 -mt-10" />
+          <div className="bg-gradient-to-br from-amber-500/15 to-amber-400/10 p-6 rounded-2xl border-2 border-amber-400/30 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-amber-400/10 rounded-full -mr-10 -mt-10" />
             <div className="relative">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 bg-gradient-to-br from-amber-400 to-amber-600 rounded-2xl flex items-center justify-center shadow-md">
                   <Crown className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-black text-amber-900 uppercase tracking-tight">Account Premium</h2>
-                  <p className="text-xs font-bold text-amber-600">Vantaggi esclusivi per i veri leader</p>
+                  <h2 className="text-lg font-black text-amber-300 uppercase tracking-tight">Account Premium</h2>
+                  <p className="text-xs font-bold text-amber-400">Vantaggi esclusivi per i veri leader</p>
                 </div>
               </div>
 
               <div className="space-y-3 mb-6">
                 {PREMIUM_BENEFITS.map((benefit, i) => (
-                  <div key={i} className="flex items-center gap-3 p-2 bg-white/60 rounded-xl">
-                    <div className="w-8 h-8 bg-amber-100 rounded-lg flex items-center justify-center text-amber-600">
+                  <div key={i} className="flex items-center gap-3 p-2 bg-white/5 rounded-xl">
+                    <div className="w-8 h-8 bg-amber-500/15 border border-amber-400/30 rounded-lg flex items-center justify-center text-amber-400">
                       {benefit.icon}
                     </div>
-                    <span className="text-sm font-bold text-amber-900">{benefit.text}</span>
+                    <span className="text-sm font-bold text-amber-200">{benefit.text}</span>
                   </div>
                 ))}
               </div>
 
               {/* Price Options */}
               <div className="grid grid-cols-2 gap-3 mb-4">
-                <div className="bg-white p-4 rounded-2xl border border-amber-200 text-center">
-                  <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Mensile</p>
-                  <p className="text-2xl font-black text-amber-900">€4,99</p>
-                  <p className="text-[10px] font-bold text-amber-400">/mese</p>
+                <div className="bg-gray-800/60 p-4 rounded-2xl border border-amber-400/30 text-center">
+                  <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">Mensile</p>
+                  <p className="text-2xl font-black text-amber-300">€4,99</p>
+                  <p className="text-[10px] font-bold text-amber-500">/mese</p>
                 </div>
-                <div className="bg-white p-4 rounded-2xl border-2 border-amber-400 text-center relative">
+                <div className="bg-gray-800/60 p-4 rounded-2xl border-2 border-amber-500 text-center relative">
                   <div className="absolute -top-2 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-[8px] font-black px-2 py-0.5 rounded-full uppercase">Risparmia 40%</div>
-                  <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Annuale</p>
-                  <p className="text-2xl font-black text-amber-900">€2,99</p>
-                  <p className="text-[10px] font-bold text-amber-400">/mese</p>
+                  <p className="text-[10px] font-black text-amber-400 uppercase tracking-widest mb-1">Annuale</p>
+                  <p className="text-2xl font-black text-amber-300">€2,99</p>
+                  <p className="text-[10px] font-bold text-amber-500">/mese</p>
                 </div>
               </div>
 
@@ -128,7 +128,7 @@ export default function ShopPage({ user }: ShopPageProps) {
                 <Crown className="w-5 h-5" /> Diventa Premium
                 <ChevronRight className="w-4 h-4" />
               </button>
-              <p className="text-center text-[9px] font-bold text-amber-400 mt-2">Pagamento sicuro • Cancella quando vuoi</p>
+              <p className="text-center text-[9px] font-bold text-amber-500 mt-2">Pagamento sicuro • Cancella quando vuoi</p>
             </div>
           </div>
         </div>
@@ -138,21 +138,21 @@ export default function ShopPage({ user }: ShopPageProps) {
       {activeTab === "gold" && (
         <div className="space-y-4">
           {/* Current Gold Balance */}
-          <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 flex items-center justify-between">
+          <div className="bg-gray-900/60 p-5 rounded-2xl border border-gray-800 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-yellow-50 rounded-xl flex items-center justify-center">
+              <div className="w-10 h-10 bg-amber-500/15 border border-amber-400/30 rounded-xl flex items-center justify-center">
                 <span className="text-xl">🪙</span>
               </div>
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Il tuo Gold</p>
-                <p className="text-xl font-black text-slate-900">{(user?.gold || 0).toLocaleString()}</p>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Il tuo Gold</p>
+                <p className="text-xl font-black text-white">{(user?.gold || 0).toLocaleString()}</p>
               </div>
             </div>
           </div>
 
           {/* Gold Description */}
-          <div className="bg-yellow-50/50 p-4 rounded-2xl border border-yellow-100">
-            <p className="text-xs font-bold text-yellow-800">
+          <div className="bg-amber-500/15 border border-amber-400/30 p-4 rounded-2xl">
+            <p className="text-xs font-bold text-amber-300">
               Il Gold è la valuta premium del gioco. Usalo per potenziare i perk più velocemente, acquistare energy drink e sbloccare vantaggi esclusivi.
             </p>
           </div>
@@ -165,31 +165,31 @@ export default function ShopPage({ user }: ShopPageProps) {
                 onClick={() => alert(COMING_SOON_MSG)}
                 className={`w-full p-4 rounded-2xl border-2 transition-all active:scale-[0.98] flex items-center justify-between ${
                   pkg.highlight
-                    ? "bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-400 shadow-lg shadow-yellow-100"
-                    : "bg-white border-slate-100 hover:border-yellow-200 hover:shadow-md"
+                    ? "bg-gradient-to-r from-yellow-500/15 to-amber-500/15 border-yellow-400/50 shadow-lg shadow-yellow-500/10"
+                    : "bg-gray-900/60 border-gray-700/40 hover:border-amber-400/30 hover:shadow-md"
                 }`}
               >
                 <div className="flex items-center gap-3">
                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
-                    pkg.highlight ? "bg-gradient-to-br from-yellow-400 to-amber-500" : "bg-yellow-50"
+                    pkg.highlight ? "bg-gradient-to-br from-yellow-400 to-amber-500" : "bg-amber-500/15 border border-amber-400/30"
                   }`}>
-                    <span className={`text-lg font-black ${pkg.highlight ? "text-white" : "text-yellow-600"}`}>🪙</span>
+                    <span className={`text-lg font-black ${pkg.highlight ? "text-white" : "text-yellow-500"}`}>🪙</span>
                   </div>
                   <div className="text-left">
-                    <p className="font-black text-slate-900">{pkg.amount.toLocaleString()} Gold</p>
+                    <p className="font-black text-white">{pkg.amount.toLocaleString()} Gold</p>
                     {pkg.bonus && (
-                      <p className="text-[10px] font-black text-emerald-500 uppercase">{pkg.bonus}</p>
+                      <p className="text-[10px] font-black text-emerald-400 uppercase">{pkg.bonus}</p>
                     )}
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className={`font-black text-lg ${pkg.highlight ? "text-amber-600" : "text-slate-700"}`}>{pkg.price}</p>
+                  <p className={`font-black text-lg ${pkg.highlight ? "text-amber-400" : "text-gray-200"}`}>{pkg.price}</p>
                 </div>
               </button>
             ))}
           </div>
 
-          <p className="text-center text-[9px] font-bold text-slate-400 mt-2">I prezzi includono IVA dove applicabile</p>
+          <p className="text-center text-[9px] font-bold text-gray-400 mt-2">I prezzi includono IVA dove applicabile</p>
         </div>
       )}
     </div>

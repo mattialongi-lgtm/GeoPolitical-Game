@@ -14,6 +14,7 @@ interface RegisterRegionsRoutesDeps {
   AUTONOMY_CONFIG: any;
   BUILDING_LABELS: any;
   GAME_CONFIG: any;
+  FACTORY_CONFIG: any;
 }
 
 export function registerRegionsRoutes(deps: RegisterRegionsRoutesDeps) {

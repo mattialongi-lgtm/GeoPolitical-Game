@@ -8,7 +8,6 @@ export function useAppActions(
 ) {
   const [actionLoading, setActionLoading] = useState(false);
 
-  // Work experience transfer states
   const [workExpTransferSource, setWorkExpTransferSource] = useState<string>('oil');
   const [workExpTransferTarget, setWorkExpTransferTarget] = useState<string>('minerals');
   const [workExpTransferXp, setWorkExpTransferXp] = useState<number>(0);
@@ -16,8 +15,9 @@ export function useAppActions(
   const [workExpTransferError, setWorkExpTransferError] = useState<string | null>(null);
   const [workExpTransferOk, setWorkExpTransferOk] = useState<string | null>(null);
 
-  // Auto-work state
   const [autoWorkFactoryId, setAutoWorkFactoryIdState] = useState<string | null>(null);
+  const [autoWorkResourceType, setAutoWorkResourceType] = useState<string | null>(null);
+  const [autoWorkRegionId, setAutoWorkRegionId] = useState<string | null>(null);
   const [autoWorkExpiresAt, setAutoWorkExpiresAt] = useState<string | null>(null);
 
   const refreshAutoWorkStatus = useCallback(async () => {
@@ -25,9 +25,13 @@ export function useAppActions(
       const res = await fetch("/api/automation/work");
       const data = await res.json();
       setAutoWorkFactoryIdState(data.autoWork?.factoryId || null);
+      setAutoWorkResourceType(data.autoWork?.resourceType || null);
+      setAutoWorkRegionId(data.autoWork?.regionId || null);
       setAutoWorkExpiresAt(data.autoWork?.expiresAt || null);
     } catch {
       setAutoWorkFactoryIdState(null);
+      setAutoWorkResourceType(null);
+      setAutoWorkRegionId(null);
       setAutoWorkExpiresAt(null);
     }
   }, []);
@@ -39,7 +43,7 @@ export function useAppActions(
         const warData = await warRes.json();
         const hasIncompatibleAutoAttack = (warData.autoAttacks || []).some((entry: any) => entry?.autoType !== 'hourly');
         if (hasIncompatibleAutoAttack) {
-          alert("Auto-Work è compatibile solo con il Danno Orario, non con l'Auto-War standard.");
+          alert("Auto-Work e compatibile solo con il Danno Orario, non con l'Auto-War standard.");
           return;
         }
       }
@@ -52,6 +56,7 @@ export function useAppActions(
       const data = await res.json();
       if (data.error) {
         alert(data.error);
+        throw new Error(data.error);
       }
     } finally {
       await refreshAutoWorkStatus();
@@ -59,7 +64,35 @@ export function useAppActions(
     }
   }, [fetchData, refreshAutoWorkStatus]);
 
-  // Auto-work polling
+  const setAutoWorkResource = useCallback(async (resourceType: string | null, regionId?: string | null) => {
+    try {
+      if (resourceType) {
+        const warRes = await fetch("/api/automation/war-attacks");
+        const warData = await warRes.json();
+        const hasIncompatibleAutoAttack = (warData.autoAttacks || []).some((entry: any) => entry?.autoType !== 'hourly');
+        if (hasIncompatibleAutoAttack) {
+          const message = "Auto-Work e compatibile solo con il Danno Orario, non con l'Auto-War standard.";
+          alert(message);
+          throw new Error(message);
+        }
+      }
+
+      const res = await fetch("/api/automation/work", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(resourceType ? { resourceType, regionId } : { enabled: false }),
+      });
+      const data = await res.json();
+      if (data.error) {
+        alert(data.error);
+        throw new Error(data.error);
+      }
+    } finally {
+      await refreshAutoWorkStatus();
+      fetchData();
+    }
+  }, [fetchData, refreshAutoWorkStatus]);
+
   useEffect(() => {
     if (!user) return;
     refreshAutoWorkStatus();
@@ -74,8 +107,11 @@ export function useAppActions(
       const data = await res.json();
       if (data.error) alert(data.error);
       else fetchData();
-    } catch { alert("Errore nell'uso del drink"); }
-    finally { setActionLoading(false); }
+    } catch {
+      alert("Errore nell'uso del drink");
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const handleAction = async (action: string, body: any = {}) => {
@@ -128,7 +164,7 @@ export function useAppActions(
           fetchData();
         }
       }
-    } catch (err) {
+    } catch {
       alert("Action failed");
     } finally {
       setActionLoading(false);
@@ -146,7 +182,6 @@ export function useAppActions(
       const data = await res.json();
       if (data.error) alert(data.error);
       else {
-        // Optimistic update — show the timer immediately
         if (data.queued && user) {
           setUser({
             ...user,
@@ -162,7 +197,7 @@ export function useAppActions(
         }
         fetchData();
       }
-    } catch (err) {
+    } catch {
       alert("Upgrade failed");
     } finally {
       setActionLoading(false);
@@ -182,7 +217,7 @@ export function useAppActions(
       else {
         fetchData();
       }
-    } catch (err) {
+    } catch {
       alert("Booster activation failed");
     } finally {
       setActionLoading(false);
@@ -192,7 +227,10 @@ export function useAppActions(
   return {
     actionLoading,
     autoWorkFactoryId,
+    autoWorkResourceType,
+    autoWorkRegionId,
     setAutoWorkFactoryId,
+    setAutoWorkResource,
     autoWorkExpiresAt,
     workExpTransferSource, setWorkExpTransferSource,
     workExpTransferTarget, setWorkExpTransferTarget,

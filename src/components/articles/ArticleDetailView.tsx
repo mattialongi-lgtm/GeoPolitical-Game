@@ -91,9 +91,9 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
   };
 
   if (!article) return (
-    <div className="bg-white p-12 rounded-[2.5rem] text-center border border-slate-100">
-      <p className="text-slate-400 font-bold">Articolo non trovato</p>
-      <button onClick={() => navigate("/articles")} className="mt-4 text-indigo-600 font-black text-sm">← Torna al Feed</button>
+    <div className="bg-gray-900/60 p-12 rounded-2xl text-center border border-gray-800">
+      <p className="text-gray-400 font-bold">Articolo non trovato</p>
+      <button onClick={() => navigate("/articles")} className="mt-4 text-indigo-400 font-black text-sm">← Torna al Feed</button>
     </div>
   );
 
@@ -105,29 +105,29 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
     >
       <button
         onClick={() => navigate("/articles")}
-        className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1"
+        className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1"
       >
         ← Torna al Feed
       </button>
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+      <div className="bg-gray-900/60 p-8 rounded-2xl border border-gray-800 space-y-6">
         <div>
-          <h2 className="text-3xl font-black text-slate-900 leading-tight">{article.title}</h2>
+          <h2 className="text-3xl font-black text-gray-100 leading-tight">{article.title}</h2>
           <div className="flex items-center gap-4 mt-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-indigo-50 rounded-2xl flex items-center justify-center shadow-sm">
-                <UserIcon className="w-5 h-5 text-indigo-600" />
+              <div className="w-10 h-10 bg-indigo-500/10 rounded-xl flex items-center justify-center">
+                <UserIcon className="w-5 h-5 text-indigo-400" />
               </div>
               <div>
-                <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Autore</p>
-                <p className="text-sm font-black text-slate-900">{article.authorName}</p>
+                <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Autore</p>
+                <p className="text-sm font-black text-gray-100">{article.authorName}</p>
               </div>
             </div>
             {article.newspaperId && (
-              <button 
+              <button
                 onClick={() => navigate(`/newspapers/${article.newspaperId}`)}
-                className="flex items-center gap-3 pl-4 border-l border-slate-100 hover:opacity-80 transition-opacity"
+                className="flex items-center gap-3 pl-4 border-l border-gray-700/50 hover:opacity-80 transition-opacity"
               >
-                <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100 overflow-hidden">
+                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center overflow-hidden">
                   {article.newspaperLogo ? (
                     <img src={article.newspaperLogo} alt="Logo" className="w-full h-full object-cover" />
                   ) : (
@@ -135,14 +135,14 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
                   )}
                 </div>
                 <div className="text-left">
-                  <p className="text-xs font-black text-indigo-500 uppercase tracking-widest">Giornale</p>
-                  <p className="text-sm font-black text-slate-900">{article.newspaperName || 'Giornale'}</p>
+                  <p className="text-xs font-black text-indigo-400 uppercase tracking-widest">Giornale</p>
+                  <p className="text-sm font-black text-gray-100">{article.newspaperName || 'Giornale'}</p>
                 </div>
               </button>
             )}
           </div>
         </div>
-        <div className="text-slate-700 leading-loose font-medium whitespace-pre-wrap">
+        <div className="text-gray-300 leading-loose font-medium whitespace-pre-wrap">
           {article.blocks && article.blocks.length > 0 ? (
             <ArticleBlockRenderer blocks={article.blocks} />
           ) : (
@@ -151,18 +151,18 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
         </div>
 
         {/* Vote section */}
-        <div className="flex items-center gap-4 pt-4 border-t border-slate-50">
+        <div className="flex items-center gap-4 pt-4 border-t border-gray-800/50">
           <button
             onClick={() => handleVote('up')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border transition-all ${userVote === 'up' ? 'bg-emerald-50 border-emerald-200 text-emerald-600' : 'bg-white border-slate-200 text-slate-400 hover:text-emerald-500 hover:border-emerald-200'}`}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border transition-all ${userVote === 'up' ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-gray-800/50 border-gray-700/40 text-gray-400 hover:text-emerald-400 hover:border-emerald-500/30'}`}
           >
             <ThumbsUp className="w-4 h-4" />
             <span className="text-xs font-black">Mi piace</span>
           </button>
-          <span className="text-lg font-black text-slate-900">{voteScore || article.likeCount || 0}</span>
+          <span className="text-lg font-black text-gray-100">{voteScore || article.likeCount || 0}</span>
           <button
             onClick={() => handleVote('down')}
-            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border transition-all ${userVote === 'down' ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-white border-slate-200 text-slate-400 hover:text-rose-500 hover:border-rose-200'}`}
+            className={`flex items-center gap-1.5 px-4 py-2 rounded-xl border transition-all ${userVote === 'down' ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-gray-800/50 border-gray-700/40 text-gray-400 hover:text-rose-400 hover:border-rose-500/30'}`}
           >
             <ThumbsDown className="w-4 h-4" />
             <span className="text-xs font-black">Non mi piace</span>
@@ -170,24 +170,24 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
         </div>
 
         {/* Prev/Next navigation */}
-        <div className="flex justify-between pt-4 border-t border-slate-50">
+        <div className="flex justify-between pt-4 border-t border-gray-800/50">
           {prevArticle ? (
-            <button onClick={() => navigate(`/articles/${prevArticle.id}`)} className="text-xs font-black text-indigo-600 flex items-center gap-1 hover:underline">
+            <button onClick={() => navigate(`/articles/${prevArticle.id}`)} className="text-xs font-black text-indigo-400 flex items-center gap-1 hover:underline">
               <ChevronLeft className="w-4 h-4" /> Articolo precedente
             </button>
           ) : <div />}
           {nextArticle ? (
-            <button onClick={() => navigate(`/articles/${nextArticle.id}`)} className="text-xs font-black text-indigo-600 flex items-center gap-1 hover:underline">
+            <button onClick={() => navigate(`/articles/${nextArticle.id}`)} className="text-xs font-black text-indigo-400 flex items-center gap-1 hover:underline">
               Prossimo articolo <ChevronRight className="w-4 h-4" />
             </button>
           ) : <div />}
         </div>
 
         {article.authorId === user.id && (
-          <div className="pt-6 border-t border-slate-50 flex gap-3">
+          <div className="pt-6 border-t border-gray-800/50 flex gap-3">
              <button
               onClick={() => navigate(`/articles/edit/${id}`)}
-              className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-indigo-50 text-indigo-600 font-black text-sm hover:bg-indigo-100 transition-all"
+              className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-indigo-500/10 text-indigo-400 font-black text-sm hover:bg-indigo-500/20 transition-all"
             >
               <Edit2 className="w-4 h-4" /> Modifica
             </button>
@@ -207,7 +207,7 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
                   setActionLoading(false);
                 }
               }}
-              className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-rose-50 text-rose-600 font-black text-sm hover:bg-rose-100 transition-all"
+              className="flex-1 flex items-center justify-center gap-2 py-4 rounded-2xl bg-rose-500/10 text-rose-400 font-black text-sm hover:bg-rose-500/20 transition-all"
             >
               {actionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Elimina
             </button>
@@ -216,26 +216,26 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
       </div>
 
       {/* Comments Section */}
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-        <h3 className="font-black text-slate-900 uppercase tracking-tight flex items-center gap-2">
-          <MessageSquare className="w-5 h-5 text-indigo-500" />
+      <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800 space-y-4">
+        <h3 className="font-black text-gray-100 uppercase tracking-tight flex items-center gap-2">
+          <MessageSquare className="w-5 h-5 text-indigo-400" />
           Commenti ({comments.length})
         </h3>
         <div className="space-y-3 max-h-96 overflow-y-auto">
           {comments.map((c: any, i: number) => (
-            <div key={c.id || i} className="bg-slate-50 p-4 rounded-2xl">
+            <div key={c.id || i} className="bg-gray-800/50 p-4 rounded-xl">
               <div className="flex items-center gap-2 mb-2">
-                <div className="w-6 h-6 bg-indigo-100 rounded-full flex items-center justify-center">
-                  <UserIcon className="w-3 h-3 text-indigo-600" />
+                <div className="w-6 h-6 bg-indigo-500/20 rounded-full flex items-center justify-center">
+                  <UserIcon className="w-3 h-3 text-indigo-400" />
                 </div>
-                <span className="text-xs font-black text-slate-700">{c.authorName || 'Utente'}</span>
-                <span className="text-[9px] font-bold text-slate-400">{c.createdAt ? new Date(c.createdAt).toLocaleString() : ''}</span>
+                <span className="text-xs font-black text-gray-200">{c.authorName || 'Utente'}</span>
+                <span className="text-[9px] font-bold text-gray-400">{c.createdAt ? new Date(c.createdAt).toLocaleString() : ''}</span>
               </div>
-              <p className="text-sm text-slate-600 font-medium">{c.content}</p>
+              <p className="text-sm text-gray-300 font-medium">{c.content}</p>
             </div>
           ))}
           {comments.length === 0 && (
-            <p className="text-center text-slate-400 text-sm font-medium py-4">Nessun commento. Sii il primo!</p>
+            <p className="text-center text-gray-400 text-sm font-medium py-4">Nessun commento. Sii il primo!</p>
           )}
         </div>
         <div className="flex gap-2">
@@ -244,7 +244,7 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
             onChange={e => setNewComment(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleComment(); }}
             placeholder="Lascia un commento…"
-            className="flex-1 px-4 py-3 rounded-xl bg-slate-50 border border-slate-100 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-100"
+            className="flex-1 px-4 py-3 rounded-xl bg-gray-800/60 border border-gray-700/40 text-gray-100 text-sm font-medium outline-none focus:ring-2 focus:ring-indigo-500/30 placeholder:text-gray-500"
           />
           <button
             onClick={handleComment}

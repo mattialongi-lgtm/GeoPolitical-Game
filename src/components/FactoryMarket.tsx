@@ -85,35 +85,35 @@ export default function FactoryMarket({ user, fetchData }: FactoryMarketProps) {
   return (
     <div className="space-y-5 max-w-2xl mx-auto pb-24">
       {/* Back button */}
-      <button onClick={() => navigate("/work")} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors">
+      <button onClick={() => navigate("/work")} className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-indigo-400 transition-colors">
         <ArrowLeft className="w-4 h-4" /> Torna alle Fabbriche
       </button>
 
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase">
-          <ShoppingCart className="w-6 h-6 inline mr-2 text-indigo-600" />
+        <h2 className="text-2xl font-black text-white tracking-tight uppercase">
+          <ShoppingCart className="w-6 h-6 inline mr-2 text-indigo-400" />
           Mercato Fabbriche
         </h2>
-        <span className="text-xs font-black text-slate-400 uppercase">{filteredListings.length} annunci</span>
+        <span className="text-xs font-black text-gray-400 uppercase">{filteredListings.length} annunci</span>
       </div>
 
       {/* Filters */}
-      <div className="bg-white p-4 rounded-[2rem] shadow-sm border border-slate-100 space-y-3">
+      <div className="bg-gray-900/60 p-4 rounded-2xl border border-gray-800 space-y-3">
         <div className="relative">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Cerca per nome, venditore, regione..."
-            className="w-full pl-11 pr-4 py-3 rounded-2xl bg-slate-50 border border-slate-100 focus:ring-4 focus:ring-indigo-50 outline-none text-sm font-bold text-slate-700"
+            className="w-full pl-11 pr-4 py-3 rounded-2xl bg-gray-800/60 border border-gray-700/40 text-gray-100 focus:ring-4 focus:ring-indigo-500/20 outline-none text-sm font-bold placeholder:text-gray-500"
           />
         </div>
         <div className="flex gap-2 flex-wrap">
           <select
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase text-slate-600 outline-none"
+            className="px-3 py-2 rounded-xl bg-gray-800/60 border border-gray-700/40 text-[10px] font-black uppercase text-gray-300 outline-none"
           >
             <option value="all">Tutti i tipi</option>
             {Object.entries(FACTORY_CONFIG.TYPES).map(([key, def]) => (
@@ -123,7 +123,7 @@ export default function FactoryMarket({ user, fetchData }: FactoryMarketProps) {
           <select
             value={sortBy}
             onChange={e => setSortBy(e.target.value)}
-            className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-[10px] font-black uppercase text-slate-600 outline-none"
+            className="px-3 py-2 rounded-xl bg-gray-800/60 border border-gray-700/40 text-[10px] font-black uppercase text-gray-300 outline-none"
           >
             <option value="price_asc">Prezzo ↑</option>
             <option value="price_desc">Prezzo ↓</option>
@@ -139,9 +139,9 @@ export default function FactoryMarket({ user, fetchData }: FactoryMarketProps) {
           <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
         </div>
       ) : filteredListings.length === 0 ? (
-        <div className="bg-white p-10 rounded-[2rem] text-center border border-slate-100">
-          <ShoppingCart className="w-12 h-12 text-slate-200 mx-auto mb-3" />
-          <p className="text-slate-400 font-bold text-sm">Nessuna fabbrica in vendita al momento.</p>
+        <div className="bg-gray-900/60 p-10 rounded-2xl text-center border border-dashed border-gray-700/50">
+          <ShoppingCart className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-400 font-bold text-sm">Nessuna fabbrica in vendita al momento.</p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -155,43 +155,43 @@ export default function FactoryMarket({ user, fetchData }: FactoryMarketProps) {
             return (
               <div
                 key={listing.id}
-                className={`bg-white p-5 rounded-[2.5rem] shadow-sm border transition-all ${isSelected ? 'border-indigo-300 ring-2 ring-indigo-100' : 'border-slate-100 hover:border-indigo-200'}`}
+                className={`bg-gray-900/60 p-5 rounded-2xl border transition-all ${isSelected ? 'border-indigo-500/50 ring-2 ring-indigo-500/20' : 'border-gray-800 hover:border-indigo-500/30'}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-slate-50 shadow-inner border border-slate-100/50">
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center bg-gray-800/60 border border-gray-700/40">
                       <ResourceIcon id={factory.type || 'minerals'} size={32} />
                     </div>
                     <div>
-                      <h4 className="font-black text-slate-900 text-base leading-tight">{factory.name || 'Fabbrica'}</h4>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase">
+                      <h4 className="font-black text-white text-base leading-tight">{factory.name || 'Fabbrica'}</h4>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase">
                         {typeDef.label} • {factory.regionId} • Lv {factory.level || 1}
                       </p>
-                      <p className="text-[10px] font-bold text-slate-500">
-                        Venditore: <span className="text-indigo-500">{listing.sellerName}</span>
+                      <p className="text-[10px] font-bold text-gray-400">
+                        Venditore: <span className="text-indigo-400">{listing.sellerName}</span>
                       </p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-black text-emerald-600">€{listing.askingPrice?.toLocaleString()}</p>
-                    <p className="text-[9px] font-bold text-slate-400">Valore: €{(factory.estimatedValue || 0).toLocaleString()}</p>
+                    <p className="text-xl font-black text-emerald-400">€{listing.askingPrice?.toLocaleString()}</p>
+                    <p className="text-[9px] font-bold text-gray-400">Valore: €{(factory.estimatedValue || 0).toLocaleString()}</p>
                   </div>
                 </div>
 
                 {/* Stats row */}
                 <div className="flex gap-2 mt-3 flex-wrap">
-                  <span className="text-[9px] font-black uppercase px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600">
+                  <span className="text-[9px] font-black uppercase px-2 py-1 rounded-lg bg-indigo-500/10 text-indigo-400">
                     Yield: x{factory.yieldMultiplier || 1}
                   </span>
                   {!isGoldMine && (
-                    <span className="text-[9px] font-black uppercase px-2 py-1 rounded-lg bg-blue-50 text-blue-600">
+                    <span className="text-[9px] font-black uppercase px-2 py-1 rounded-lg bg-blue-500/10 text-blue-400">
                       <Warehouse className="w-3 h-3 inline mr-0.5" /> {(factory.storageCapacity || 0).toLocaleString()}
                     </span>
                   )}
-                  <span className="text-[9px] font-black uppercase px-2 py-1 rounded-lg bg-purple-50 text-purple-600">
+                  <span className="text-[9px] font-black uppercase px-2 py-1 rounded-lg bg-purple-500/10 text-purple-400">
                     Rarità: {'⭐'.repeat(Math.min(typeDef.rarity || 1, 5))}
                   </span>
-                  <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg flex items-center gap-1.5 ${isGoldMine ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                  <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-lg flex items-center gap-1.5 ${isGoldMine ? 'bg-amber-500/15 border border-amber-400/30 text-amber-300' : 'bg-emerald-500/10 text-emerald-400'}`}>
                     <ResourceIcon id={isGoldMine ? 'gold_ore' : (factory.type || 'minerals')} size={12} />
                     {isGoldMine ? 'Oro (€+Gold)' : typeDef.label}
                   </span>
@@ -201,7 +201,7 @@ export default function FactoryMarket({ user, fetchData }: FactoryMarketProps) {
                 <div className="flex gap-2 mt-4">
                   <button
                     onClick={() => navigate(`/factory/${factory.id}`)}
-                    className="flex-1 py-2.5 bg-slate-100 text-slate-700 rounded-xl font-black text-[10px] uppercase hover:bg-slate-200 transition-all"
+                    className="flex-1 py-2.5 bg-gray-800/50 text-gray-300 rounded-xl font-black text-[10px] uppercase hover:bg-gray-700/50 transition-all"
                   >
                     📋 Dettagli
                   </button>
@@ -215,7 +215,7 @@ export default function FactoryMarket({ user, fetchData }: FactoryMarketProps) {
                     </button>
                   )}
                   {isSeller && (
-                    <span className="flex-1 py-2.5 bg-amber-100 text-amber-700 rounded-xl font-black text-[10px] uppercase text-center">
+                    <span className="flex-1 py-2.5 bg-amber-500/15 border border-amber-400/30 text-amber-300 rounded-xl font-black text-[10px] uppercase text-center">
                       📤 Il tuo annuncio
                     </span>
                   )}

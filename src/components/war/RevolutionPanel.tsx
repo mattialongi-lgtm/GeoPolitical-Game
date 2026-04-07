@@ -89,7 +89,7 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
   const showCoupLobby = !!coupLobby || coupJoined;
 
   return (
-    <div className="bg-gradient-to-br from-rose-600 to-rose-700 p-6 rounded-[2.5rem] shadow-lg shadow-rose-200 text-white space-y-4">
+    <div className="bg-gradient-to-br from-rose-600 to-rose-700 p-6 rounded-2xl shadow-lg shadow-rose-900/40 text-white space-y-4">
       <div className="flex items-center gap-3">
         <div className="p-3 rounded-2xl bg-white/20">
           <Flag className="w-6 h-6 text-white" />
@@ -242,9 +242,3 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
     </div>
   );
 };
-
-
-
-
-
-

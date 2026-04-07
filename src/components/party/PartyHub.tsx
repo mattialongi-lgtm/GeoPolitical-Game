@@ -60,7 +60,7 @@ export const PartyHub = ({ user, fetchData }: any) => {
     } catch { alert("Errore"); }
   };
 
-  if (loading) return <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>;
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-400" /></div>;
 
   if (partyData && partyData.party) {
     const { party, members, activeMembersCount, primariesVoteCounts, hasVotedPrimaries } = partyData;
@@ -70,24 +70,24 @@ export const PartyHub = ({ user, fetchData }: any) => {
 
   if (showCreate) {
     return (
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-gray-900/60 p-6 md:p-8 rounded-2xl border border-gray-800 space-y-6">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-black">Fonda un Partito</h2>
-          <button onClick={() => setShowCreate(false)} className="text-slate-400 font-bold hover:text-slate-600 transition-colors bg-slate-50 px-3 py-1.5 rounded-lg text-sm">Annulla</button>
+          <h2 className="text-2xl font-black text-gray-100">Fonda un Partito</h2>
+          <button onClick={() => setShowCreate(false)} className="text-gray-400 font-bold hover:text-gray-200 transition-colors bg-gray-800/50 border border-gray-700/40 px-3 py-1.5 rounded-lg text-sm">Annulla</button>
         </div>
-        <p className="text-sm font-bold text-amber-600 bg-amber-50 p-4 rounded-xl border border-amber-100 leading-tight">Costo fondazione: 100 Gold. Sede Ufficiale: <span className="font-black">{user.residenceId || 'IT'}</span></p>
+        <p className="text-sm font-bold text-amber-300 bg-amber-500/15 border border-amber-400/30 p-4 rounded-xl leading-tight">Costo fondazione: 100 Gold. Sede Ufficiale: <span className="font-black">{user.residenceId || 'IT'}</span></p>
 
         <div className="grid gap-3">
-          <input placeholder="Nome Partito *" value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all" />
+          <input placeholder="Nome Partito *" value={createForm.name} onChange={e => setCreateForm({ ...createForm, name: e.target.value })} className="w-full bg-gray-800/60 border border-gray-700/40 focus:border-indigo-500/50 focus:ring-2 ring-indigo-500/20 outline-none p-3 block rounded-xl font-bold text-gray-200 transition-all placeholder:text-gray-500" />
           <div className="grid grid-cols-2 gap-3">
-            <input placeholder="Tag (es. PLI)" value={createForm.tag} onChange={e => setCreateForm({ ...createForm, tag: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all" />
-            <input placeholder="Ideologia" value={createForm.ideology} onChange={e => setCreateForm({ ...createForm, ideology: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all" />
+            <input placeholder="Tag (es. PLI)" value={createForm.tag} onChange={e => setCreateForm({ ...createForm, tag: e.target.value })} className="w-full bg-gray-800/60 border border-gray-700/40 focus:border-indigo-500/50 focus:ring-2 ring-indigo-500/20 outline-none p-3 block rounded-xl font-bold text-gray-200 transition-all placeholder:text-gray-500" />
+            <input placeholder="Ideologia" value={createForm.ideology} onChange={e => setCreateForm({ ...createForm, ideology: e.target.value })} className="w-full bg-gray-800/60 border border-gray-700/40 focus:border-indigo-500/50 focus:ring-2 ring-indigo-500/20 outline-none p-3 block rounded-xl font-bold text-gray-200 transition-all placeholder:text-gray-500" />
           </div>
-          <textarea placeholder="Descrizione del partito..." value={createForm.description} onChange={e => setCreateForm({ ...createForm, description: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all h-24 resize-none" />
-          <input placeholder="URL Logo (Opzionale)" value={createForm.logo} onChange={e => setCreateForm({ ...createForm, logo: e.target.value })} className="w-full bg-slate-50 border border-slate-100 focus:border-indigo-300 focus:ring-4 shadow-sm ring-indigo-50 outline-none p-3 block rounded-xl font-bold transition-all" />
+          <textarea placeholder="Descrizione del partito..." value={createForm.description} onChange={e => setCreateForm({ ...createForm, description: e.target.value })} className="w-full bg-gray-800/60 border border-gray-700/40 focus:border-indigo-500/50 focus:ring-2 ring-indigo-500/20 outline-none p-3 block rounded-xl font-bold text-gray-200 transition-all h-24 resize-none placeholder:text-gray-500" />
+          <input placeholder="URL Logo (Opzionale)" value={createForm.logo} onChange={e => setCreateForm({ ...createForm, logo: e.target.value })} className="w-full bg-gray-800/60 border border-gray-700/40 focus:border-indigo-500/50 focus:ring-2 ring-indigo-500/20 outline-none p-3 block rounded-xl font-bold text-gray-200 transition-all placeholder:text-gray-500" />
         </div>
 
-        <button onClick={handleCreate} disabled={user.gold < 100} className="w-full py-4 text-white font-black tracking-widest uppercase rounded-2xl shadow-xl hover:scale-105 transition-all bg-indigo-600 shadow-indigo-200 disabled:opacity-50 disabled:hover:scale-100 mt-2">
+        <button onClick={handleCreate} disabled={user.gold < 100} className="w-full py-4 text-white font-black tracking-widest uppercase rounded-2xl transition-all bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 mt-2">
           Fonda il Partito
         </button>
       </motion.div>
@@ -96,55 +96,55 @@ export const PartyHub = ({ user, fetchData }: any) => {
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div className="bg-gradient-to-br from-indigo-500 to-purple-600 border border-indigo-400 p-8 rounded-[2.5rem] shadow-xl text-white flex flex-col md:flex-row justify-between items-start md:items-center gap-6 overflow-hidden relative">
-        <div className="absolute -right-8 -top-8 opacity-20 pointer-events-none"><Trophy className="w-48 h-48" /></div>
+      <div className="bg-gradient-to-br from-indigo-600/20 to-purple-600/20 border border-indigo-500/20 p-8 rounded-2xl text-white flex flex-col md:flex-row justify-between items-start md:items-center gap-6 overflow-hidden relative">
+        <div className="absolute -right-8 -top-8 opacity-10 pointer-events-none"><Trophy className="w-48 h-48" /></div>
         <div className="relative z-10">
-          <h2 className="text-3xl font-black tracking-tight leading-none mb-2">Politica Nazionale</h2>
-          <p className="text-white/80 font-bold text-sm max-w-sm">Unisciti a un partito per partecipare alle elezioni parlamentari o fondane uno nuovo per guidare il tuo paese.</p>
+          <h2 className="text-3xl font-black tracking-tight leading-none mb-2 text-gray-100">Politica Nazionale</h2>
+          <p className="text-gray-400 font-bold text-sm max-w-sm">Unisciti a un partito per partecipare alle elezioni parlamentari o fondane uno nuovo per guidare il tuo paese.</p>
         </div>
-        <button onClick={() => setShowCreate(true)} className="relative z-10 bg-white text-indigo-600 px-8 py-4 rounded-2xl font-black shadow-2xl hover:scale-105 transition-all w-full md:w-auto uppercase tracking-widest text-[10px] shrink-0">Fonda Partito</button>
+        <button onClick={() => setShowCreate(true)} className="relative z-10 bg-indigo-600 hover:bg-indigo-700 text-white px-8 py-4 rounded-2xl font-black transition-all w-full md:w-auto uppercase tracking-widest text-[10px] shrink-0">Fonda Partito</button>
       </div>
 
       {myInvites.length > 0 && (
-        <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4 relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-50 rounded-full blur-3xl pointer-events-none" />
-          <h3 className="text-xl font-black tracking-tight text-slate-800 relative z-10">Inviti Pendenti</h3>
+        <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800 space-y-4 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+          <h3 className="text-xl font-black tracking-tight text-gray-100 relative z-10">Inviti Pendenti</h3>
           <div className="grid gap-3 relative z-10">
             {myInvites.map(inv => (
-              <div key={inv.id} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <div key={inv.id} className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 p-4 bg-gray-800/50 border border-gray-700/40 rounded-xl">
                 <div>
-                  <p className="font-black text-slate-900 leading-tight">{inv.partyName}</p>
-                  <p className="text-xs font-bold text-slate-400 mt-0.5">Invitato da <span className="text-indigo-500">{inv.inviterName}</span></p>
+                  <p className="font-black text-gray-100 leading-tight">{inv.partyName}</p>
+                  <p className="text-xs font-bold text-gray-400 mt-0.5">Invitato da <span className="text-indigo-400">{inv.inviterName}</span></p>
                 </div>
-                <button onClick={() => handleAcceptInvite(inv.id)} className="w-full md:w-auto bg-emerald-500 text-white px-5 py-2.5 font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md hover:bg-emerald-600 hover:scale-105 transition-all shrink-0">Accetta</button>
+                <button onClick={() => handleAcceptInvite(inv.id)} className="w-full md:w-auto bg-emerald-600 text-white px-5 py-2.5 font-black text-[10px] uppercase tracking-widest rounded-xl hover:bg-emerald-700 transition-all shrink-0">Accetta</button>
               </div>
             ))}
           </div>
         </div>
       )}
 
-      <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
-        <h3 className="text-xl font-black tracking-tight text-slate-800">Partiti Esistenti ({globalParties.length})</h3>
+      <div className="bg-gray-900/60 p-6 md:p-8 rounded-2xl border border-gray-800 space-y-6">
+        <h3 className="text-xl font-black tracking-tight text-gray-100">Partiti Esistenti ({globalParties.length})</h3>
         <div className="grid gap-3">
           {globalParties.map((p, i) => (
-            <div key={p.id} className="flex flex-col md:flex-row md:items-center gap-4 p-4 border border-slate-100 hover:border-indigo-100 bg-white hover:bg-indigo-50/30 rounded-2xl transition-all shadow-sm hover:shadow-md cursor-pointer group">
+            <div key={p.id} className="flex flex-col md:flex-row md:items-center gap-4 p-4 border border-gray-800 hover:border-indigo-500/30 bg-gray-800/30 hover:bg-gray-800/50 rounded-xl transition-all cursor-pointer group">
               <div className="flex items-center gap-4 flex-1">
-                <span className="text-xl font-black text-slate-300 w-8 text-center group-hover:text-indigo-300 transition-colors">#{i + 1}</span>
-                {p.logo ? <img src={p.logo} alt="logo" className="w-14 h-14 rounded-xl object-cover shadow-sm bg-white shrink-0" /> : <div className="w-14 h-14 bg-indigo-50 rounded-xl flex items-center justify-center font-black text-indigo-200 border border-indigo-100 shrink-0">{p.tag || "P"}</div>}
+                <span className="text-xl font-black text-gray-600 w-8 text-center group-hover:text-indigo-400 transition-colors">#{i + 1}</span>
+                {p.logo ? <img src={p.logo} alt="logo" className="w-14 h-14 rounded-xl object-cover bg-gray-800 shrink-0" /> : <div className="w-14 h-14 bg-indigo-500/10 border border-indigo-500/20 rounded-xl flex items-center justify-center font-black text-indigo-400 shrink-0">{p.tag || "P"}</div>}
                 <div>
-                  <p className="font-black text-slate-900 text-[15px] leading-tight transition-colors group-hover:text-indigo-900">{p.name} {p.tag && <span className="bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded text-[10px] ml-1.5 align-middle select-none">{p.tag}</span>}</p>
-                  <p className="text-[10px] font-bold text-slate-500 uppercase mt-1 tracking-wider"><span className="text-indigo-600">{p.memberCount} Membri</span> <span className="mx-1.5 text-slate-300">•</span> Leader: <span className="text-slate-700">{p.leaderName}</span></p>
+                  <p className="font-black text-gray-100 text-[15px] leading-tight transition-colors group-hover:text-indigo-300">{p.name} {p.tag && <span className="bg-gray-700/50 text-gray-400 px-1.5 py-0.5 rounded text-[10px] ml-1.5 align-middle select-none">{p.tag}</span>}</p>
+                  <p className="text-[10px] font-bold text-gray-500 uppercase mt-1 tracking-wider"><span className="text-indigo-400">{p.memberCount} Membri</span> <span className="mx-1.5 text-gray-600">•</span> Leader: <span className="text-gray-300">{p.leaderName}</span></p>
                 </div>
               </div>
               <div className="hidden md:flex shrink-0">
-                <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-indigo-500 transition-colors" />
+                <ChevronRight className="w-5 h-5 text-gray-600 group-hover:text-indigo-400 transition-colors" />
               </div>
             </div>
           ))}
           {globalParties.length === 0 && (
-            <div className="p-10 text-center border border-dashed border-slate-200 rounded-2xl bg-slate-50">
-              <p className="text-slate-400 font-bold mb-1">Nessun partito fondato finora.</p>
-              <p className="text-sm text-slate-400 font-bold">Sii il primo a scendere in politica!</p>
+            <div className="p-10 text-center border border-dashed border-gray-700/50 rounded-xl bg-gray-800/20">
+              <p className="text-gray-400 font-bold mb-1">Nessun partito fondato finora.</p>
+              <p className="text-sm text-gray-500 font-bold">Sii il primo a scendere in politica!</p>
             </div>
           )}
         </div>

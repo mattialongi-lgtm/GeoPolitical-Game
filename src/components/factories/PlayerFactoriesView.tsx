@@ -161,10 +161,10 @@ export const PlayerFactoriesView = ({
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="text-xl font-black tracking-tight uppercase">Fabbriche Locali</h3>
+        <h3 className="text-xl font-black tracking-tight uppercase text-white">Fabbriche Locali</h3>
         <button
           onClick={() => setCreating(!creating)}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-indigo-100 hover:scale-105 transition-all"
+          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-2xl text-[10px] font-black uppercase shadow-lg shadow-indigo-900/30 hover:scale-105 transition-all"
         >
           {creating ? "Annulla" : <><Plus className="w-4 h-4" /> Fonda Azienda</>}
         </button>
@@ -172,13 +172,13 @@ export const PlayerFactoriesView = ({
 
       {/* Factory search */}
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
         <input
           type="text"
           value={factorySearch}
           onChange={e => setFactorySearch(e.target.value)}
           placeholder="Cerca fabbrica..."
-          className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-100 focus:ring-4 focus:ring-indigo-50 outline-none text-sm font-bold text-slate-700"
+          className="w-full pl-11 pr-4 py-3 rounded-2xl bg-gray-800/60 border border-gray-700/40 text-gray-100 focus:ring-4 focus:ring-indigo-500/20 outline-none text-sm font-bold"
         />
       </div>
 
@@ -186,22 +186,22 @@ export const PlayerFactoriesView = ({
       <div className="flex gap-2">
         <button
           onClick={() => setShowWorldFactories(false)}
-          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!showWorldFactories ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}
+          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${!showWorldFactories ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-800/50 text-gray-400 border border-gray-700/40'}`}
         >
           Fabbriche in {user.regionId}
         </button>
         <button
           onClick={() => setShowWorldFactories(true)}
-          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${showWorldFactories ? 'bg-indigo-600 text-white shadow-md' : 'bg-white text-slate-400 border border-slate-100'}`}
+          className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${showWorldFactories ? 'bg-indigo-600 text-white shadow-md' : 'bg-gray-800/50 text-gray-400 border border-gray-700/40'}`}
         >
           🌍 Fabbriche nel mondo
         </button>
       </div>
 
       {showWorldFactories && (
-        <div className="bg-white p-8 rounded-[2rem] text-center border border-dashed border-slate-200 space-y-4">
-          <Globe className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-          <p className="text-slate-500 font-bold text-sm">Esplora le fabbriche di tutto il mondo</p>
+        <div className="bg-gray-900/60 p-8 rounded-2xl text-center border border-dashed border-gray-700/50 space-y-4">
+          <Globe className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-400 font-bold text-sm">Esplora le fabbriche di tutto il mondo</p>
           <button
             onClick={() => navigate('/world-factories')}
             className="px-6 py-3 bg-emerald-500 text-white rounded-2xl font-black uppercase text-xs shadow-md hover:bg-emerald-600 transition-all"
@@ -212,7 +212,7 @@ export const PlayerFactoriesView = ({
       )}
 
       {creating && (
-        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-6 rounded-[2rem] shadow-lg text-white space-y-4">
+        <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-6 rounded-2xl shadow-lg text-white space-y-4">
           <h4 className="font-black">Nuova Azienda in {regionId}</h4>
           <div className="grid grid-cols-2 gap-2">
             {Object.keys(FACTORY_CREATE_COST).map(type => (
@@ -238,11 +238,11 @@ export const PlayerFactoriesView = ({
       )}
 
       {!showWorldFactories && loading ? (
-        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-600 w-8 h-8" /></div>
+        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-indigo-400 w-8 h-8" /></div>
       ) : !showWorldFactories && factories.length === 0 ? (
-        <div className="bg-white p-10 rounded-[2rem] text-center border border-slate-100 shadow-sm">
+        <div className="bg-gray-900/60 p-10 rounded-2xl text-center border border-dashed border-gray-700/50">
           <span className="text-4xl">🏗️</span>
-          <p className="text-slate-400 font-bold text-sm mt-3">Nessuna fabbrica in questa regione. Sii il primo ad investire qui!</p>
+          <p className="text-gray-400 font-bold text-sm mt-3">Nessuna fabbrica in questa regione. Sii il primo ad investire qui!</p>
         </div>
       ) : !showWorldFactories ? (() => {
         const searchLower = factorySearch.trim().toLowerCase();
@@ -258,47 +258,47 @@ export const PlayerFactoriesView = ({
             const needsBudget = !isResourceMode && f.budget < f.wage;
 
             return (
-              <div key={f.id} className={`bg-white p-5 rounded-[2.5rem] shadow-sm border ${isOwner ? "border-indigo-200" : "border-slate-100"} space-y-4`}>
+              <div key={f.id} className={`bg-gray-900/60 p-5 rounded-2xl border ${isOwner ? "border-indigo-500/30" : "border-gray-800"} space-y-4`}>
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-4">
-                    <div className={`w-14 h-14 rounded-3xl flex items-center justify-center text-3xl shadow-inner ${isOwner ? "bg-indigo-50 text-indigo-600" : "bg-slate-50"}`}>
+                    <div className={`w-14 h-14 rounded-3xl flex items-center justify-center text-3xl ${isOwner ? "bg-indigo-500/10 border border-indigo-500/20" : "bg-gray-800/60 border border-gray-700/40"}`}>
                       {RESOURCE_ICONS[f.type] || "🏭"}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h4 className="font-black text-slate-900 text-lg leading-none tracking-tight">{f.name}</h4>
+                        <h4 className="font-black text-white text-lg leading-none tracking-tight">{f.name}</h4>
                         {isOwner && <span className="text-[9px] font-black uppercase text-white bg-indigo-500 px-2 py-0.5 rounded-lg shadow-sm">La Tua Azienda</span>}
                       </div>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">
-                        Estrazione <span className="text-slate-600">{RESOURCE_NAMES[f.type]}</span> • CEO <span className="text-indigo-500">{f.ownerName}</span>
-                        {isResourceMode ? <span className="ml-2 text-emerald-600">• Modalità Risorse</span> : <span className="ml-2 text-amber-600">• Stipendio Fisso</span>}
+                      <p className="text-[10px] font-bold text-gray-400 uppercase mt-1">
+                        Estrazione <span className="text-gray-300">{RESOURCE_NAMES[f.type]}</span> • CEO <span className="text-indigo-400">{f.ownerName}</span>
+                        {isResourceMode ? <span className="ml-2 text-emerald-400">• Modalità Risorse</span> : <span className="ml-2 text-amber-400">• Stipendio Fisso</span>}
                       </p>
                     </div>
                   </div>
                   <div className="flex flex-col items-end">
-                    <span className="text-2xl font-black text-slate-900">Lv {f.level}</span>
-                    <span className="text-[9px] font-black uppercase text-indigo-500 tracking-widest bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100">{f.exp} XP</span>
+                    <span className="text-2xl font-black text-white">Lv {f.level}</span>
+                    <span className="text-[9px] font-black uppercase text-indigo-400 tracking-widest bg-indigo-500/10 px-2 py-0.5 rounded border border-indigo-500/20">{f.exp} XP</span>
                   </div>
                 </div>
 
                 {isResourceMode ? (
-                  <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100/50">
-                    <span className="text-[10px] font-black uppercase text-emerald-700/70">Modalità</span>
+                  <div className="bg-emerald-500/10 p-3 rounded-2xl flex items-center justify-between border border-emerald-400/30">
+                    <span className="text-[10px] font-black uppercase text-emerald-400">Modalità</span>
                     {isGoldFactory ? (
-                      <span className="text-xs font-black text-emerald-700">🪙 Scava Oro: cash + gold (gold aumenta con la salute regione)</span>
+                      <span className="text-xs font-black text-emerald-400">🪙 Scava Oro: cash + gold (gold aumenta con la salute regione)</span>
                     ) : (
-                      <span className="text-xs font-black text-emerald-700">🪨 Scava {RESOURCE_NAMES[f.type]} (nessun gold premium)</span>
+                      <span className="text-xs font-black text-emerald-400">🪨 Scava {RESOURCE_NAMES[f.type]} (nessun gold premium)</span>
                     )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3 pb-4 border-b border-slate-50">
-                    <div className="bg-emerald-50 p-3 rounded-2xl flex items-center justify-between border border-emerald-100/50">
-                      <span className="text-[10px] font-black uppercase text-emerald-700/70">Salario Offerto</span>
-                      <span className="text-sm font-black text-emerald-700">${f.wage}</span>
+                  <div className="grid grid-cols-2 gap-3 pb-4 border-b border-gray-700/40">
+                    <div className="bg-emerald-500/10 p-3 rounded-2xl flex items-center justify-between border border-emerald-400/30">
+                      <span className="text-[10px] font-black uppercase text-emerald-400">Salario Offerto</span>
+                      <span className="text-sm font-black text-emerald-400">${f.wage}</span>
                     </div>
-                    <div className={`${needsBudget ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'} p-3 rounded-2xl flex items-center justify-between border`}>
-                      <span className={`text-[10px] font-black uppercase ${needsBudget ? 'text-rose-700/70' : 'text-slate-500'}`}>Budget Aziendale</span>
-                      <span className={`text-sm font-black ${needsBudget ? 'text-rose-600' : 'text-slate-700'}`}>${f.budget}</span>
+                    <div className={`${needsBudget ? 'bg-rose-500/10 border-rose-400/30' : 'bg-gray-800/50 border-gray-700/30'} p-3 rounded-2xl flex items-center justify-between border`}>
+                      <span className={`text-[10px] font-black uppercase ${needsBudget ? 'text-rose-400' : 'text-gray-400'}`}>Budget Aziendale</span>
+                      <span className={`text-sm font-black ${needsBudget ? 'text-rose-400' : 'text-gray-200'}`}>${f.budget}</span>
                     </div>
                   </div>
                 )}
@@ -307,7 +307,7 @@ export const PlayerFactoriesView = ({
                   <button
                     onClick={() => handleWork(f.id)}
                     disabled={actionLoading || needsBudget}
-                    className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-200 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:shadow-none"
+                    className="flex-1 py-3 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-900/30 hover:bg-indigo-700 hover:shadow-xl hover:-translate-y-0.5 transition-all disabled:opacity-50 disabled:hover:translate-y-0 disabled:shadow-none"
                   >
                     {isResourceMode
                       ? (isGoldFactory ? `🪙 Scava Oro (+cash +gold, -300⚡)` : `🪨 Scava ${RESOURCE_NAMES[f.type]} (-300⚡, no gold)`)
@@ -315,7 +315,7 @@ export const PlayerFactoriesView = ({
                   </button>
                   <button
                     onClick={() => navigate(`/factory/${f.id}`)}
-                    className="py-3 px-4 bg-slate-100 text-slate-700 rounded-2xl font-black uppercase text-xs hover:bg-slate-200 transition-all"
+                    className="py-3 px-4 bg-gray-800/50 text-gray-300 rounded-2xl font-black uppercase text-xs hover:bg-gray-700/50 transition-all border border-gray-700/40"
                     title="Dettagli fabbrica"
                   >
                     📋
@@ -348,14 +348,14 @@ export const PlayerFactoriesView = ({
                       <button
                         onClick={() => handlePayMode(f.id, 'salary')}
                         disabled={actionLoading || !isResourceMode}
-                        className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${!isResourceMode ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${!isResourceMode ? 'bg-amber-500 text-white' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50 border border-gray-700/40'}`}
                       >
                         💰 Stipendio Fisso
                       </button>
                       <button
                         onClick={() => handlePayMode(f.id, 'resource')}
                         disabled={actionLoading || isResourceMode}
-                        className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${isResourceMode ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                        className={`flex-1 py-2 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${isResourceMode ? 'bg-emerald-500 text-white' : 'bg-gray-800/50 text-gray-400 hover:bg-gray-700/50 border border-gray-700/40'}`}
                       >
                         🪨 Modalità Risorse
                       </button>
@@ -370,7 +370,7 @@ export const PlayerFactoriesView = ({
                             placeholder="Importo..."
                             value={depositAmounts[f.id] || ""}
                             onChange={e => setDepositAmounts(prev => ({ ...prev, [f.id]: e.target.value }))}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
+                            className="w-full bg-gray-800/60 border border-gray-700/40 text-gray-100 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500"
                           />
                           <button
                             onClick={() => handleDeposit(f.id)}
@@ -382,9 +382,9 @@ export const PlayerFactoriesView = ({
                         </div>
                       )}
                       <div className="space-y-2 mt-2">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">⬆️ Potenzia Fabbrica</label>
+                        <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">⬆️ Potenzia Fabbrica</label>
                         <div className="flex gap-2 items-center">
-                          <span className="text-xs font-bold text-slate-600 whitespace-nowrap">Lv {f.level || 1} →</span>
+                          <span className="text-xs font-bold text-gray-300 whitespace-nowrap">Lv {f.level || 1} →</span>
                           <input
                             type="number"
                             min={(f.level || 1) + 1}
@@ -396,16 +396,16 @@ export const PlayerFactoriesView = ({
                               setUpgradeTarget(prev => ({ ...prev, [f.id]: val }));
                               fetchUpgradeCost(f.id, f.level || 1, val);
                             }}
-                            className="w-24 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500"
+                            className="w-24 bg-gray-800/60 border border-gray-700/40 text-gray-100 rounded-xl px-3 py-2 text-xs font-bold outline-none focus:ring-2 focus:ring-amber-500"
                           />
                           {upgradeCost[f.id] != null && (
-                            <span className="text-xs font-bold text-amber-600">🪙 {upgradeCost[f.id]} Gold</span>
+                            <span className="text-xs font-bold text-amber-400">🪙 {upgradeCost[f.id]} Gold</span>
                           )}
                         </div>
                         <button
                           onClick={() => handleUpgrade(f.id, f.level || 1)}
                           disabled={actionLoading}
-                          className="w-full py-3 bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md shadow-amber-100 hover:bg-amber-600 hover:scale-[1.02] transition-all disabled:opacity-50"
+                          className="w-full py-3 bg-amber-500 text-white font-black text-[10px] uppercase tracking-widest rounded-xl shadow-md shadow-amber-900/30 hover:bg-amber-600 hover:scale-[1.02] transition-all disabled:opacity-50"
                         >
                           ⬆️ Potenzia {upgradeTarget[f.id] ? `al Lv ${upgradeTarget[f.id]}` : `al Lv ${(f.level || 1) + 1}`} {upgradeCost[f.id] != null ? `(🪙 ${upgradeCost[f.id]} Gold)` : ''}
                         </button>

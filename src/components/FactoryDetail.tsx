@@ -232,32 +232,32 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
   return (
     <div className="space-y-5 max-w-2xl mx-auto pb-24">
       {/* Back button */}
-      <button onClick={() => navigate("/work")} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-indigo-600 transition-colors">
+      <button onClick={() => navigate("/work")} className="flex items-center gap-2 text-sm font-bold text-gray-400 hover:text-indigo-400 transition-colors">
         <ArrowLeft className="w-4 h-4" /> Torna alle Fabbriche
       </button>
 
       {/* ── Header ── */}
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
+      <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
-            <div className={`w-16 h-16 rounded-3xl flex items-center justify-center text-4xl shadow-inner ${isOwner ? 'bg-indigo-50' : 'bg-slate-50'}`}>
+            <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-4xl border border-gray-700/40 ${isOwner ? 'bg-indigo-500/10' : 'bg-gray-800/60'}`}>
               {typeDef.icon || '🏭'}
             </div>
             <div>
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight">{factory.name}</h1>
-              <p className="text-xs font-bold text-slate-400 uppercase mt-1">
+              <h1 className="text-2xl font-black text-white tracking-tight">{factory.name}</h1>
+              <p className="text-xs font-bold text-gray-400 uppercase mt-1">
                 {typeDef.label || factory.type} • {factory.regionId}
               </p>
-              <p className="text-xs font-bold text-slate-500 mt-1">
-                CEO: <span className="text-indigo-600">{factory.ownerName}</span>
+              <p className="text-xs font-bold text-gray-400 mt-1">
+                CEO: <span className="text-indigo-400">{factory.ownerName}</span>
                 {isOwner && <span className="ml-2 text-[9px] font-black uppercase text-white bg-indigo-500 px-2 py-0.5 rounded-lg">La Tua</span>}
               </p>
             </div>
           </div>
           <div className="text-right">
-            <span className="text-3xl font-black text-slate-900">Lv {level}</span>
+            <span className="text-3xl font-black text-white">Lv {level}</span>
             <div className="flex items-center gap-1 justify-end mt-1">
-              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg ${factory.isActive !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+              <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg ${factory.isActive !== false ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/15 text-rose-400'}`}>
                 {factory.isActive !== false ? '✅ Attiva' : '⛔ Inattiva'}
               </span>
             </div>
@@ -265,20 +265,20 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
         </div>
         {/* Badges */}
         <div className="flex flex-wrap gap-2 mt-4">
-          <span className="text-[9px] font-black uppercase px-3 py-1 rounded-xl bg-amber-50 text-amber-700 border border-amber-100">
+          <span className="text-[9px] font-black uppercase px-3 py-1 rounded-xl bg-amber-500/15 text-amber-300 border border-amber-400/30">
             {isGoldMine ? '🪙 Fabbrica d\'Oro (Valuta + Gold)' : `🪨 Fabbrica di ${typeDef.label || factory.type}`}
           </span>
-          <span className="text-[9px] font-black uppercase px-3 py-1 rounded-xl bg-purple-50 text-purple-700 border border-purple-100">
+          <span className="text-[9px] font-black uppercase px-3 py-1 rounded-xl bg-purple-500/10 text-purple-400 border border-purple-500/20">
             Rarità: {'⭐'.repeat(Math.min(typeDef.rarity || 1, 5))}{(typeDef.rarity || 1) > 5 ? `+${(typeDef.rarity || 1) - 5}` : ''}
           </span>
-          <span className="text-[9px] font-black uppercase px-3 py-1 rounded-xl bg-blue-50 text-blue-700 border border-blue-100">
+          <span className="text-[9px] font-black uppercase px-3 py-1 rounded-xl bg-blue-500/10 text-blue-400 border border-blue-500/20">
             Rendimento: x{yieldMult}
           </span>
         </div>
       </div>
 
       {/* ── Work Action ── */}
-      <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-5 rounded-[2rem] shadow-lg text-white">
+      <div className="bg-gradient-to-br from-indigo-500 to-indigo-700 p-5 rounded-2xl shadow-lg text-white">
         <h3 className="text-sm font-black uppercase tracking-widest opacity-80 mb-3">
           <Zap className="w-4 h-4 inline mr-1" /> Lavora in questa fabbrica
         </h3>
@@ -300,7 +300,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
         <button
           onClick={handleWork}
           disabled={actionLoading}
-          className="mt-4 w-full py-3.5 bg-white text-indigo-700 rounded-2xl font-black uppercase text-sm shadow-md hover:bg-indigo-50 transition-all disabled:opacity-50"
+          className="mt-4 w-full py-3.5 bg-white/10 text-white rounded-2xl font-black uppercase text-sm hover:bg-white/20 transition-all disabled:opacity-50"
         >
           {actionLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : (isGoldMine ? '🪙 Lavora (€ + Gold)' : `💼 Lavora (-300⚡)`)}
         </button>
@@ -308,87 +308,87 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
 
       {/* ── Extraction System Section ── */}
       {extractionBreakdown && (
-        <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-emerald-100 space-y-4">
-          <h3 className="text-sm font-black uppercase tracking-widest text-emerald-600 flex items-center gap-2">
+        <div className="bg-gray-900/60 p-5 rounded-2xl border border-gray-800 space-y-4">
+          <h3 className="text-sm font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
             <Pickaxe className="w-4 h-4" /> Sistema di Estrazione Avanzato
           </h3>
 
           {/* Quick Preview */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-emerald-50 p-3 rounded-2xl border border-emerald-100">
-              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-500">Produttività Stimata</span>
-              <p className="text-lg font-black text-emerald-700">
+            <div className="bg-emerald-500/10 p-3 rounded-2xl border border-emerald-500/20">
+              <span className="text-[9px] font-black uppercase tracking-wider text-emerald-400">Produttività Stimata</span>
+              <p className="text-lg font-black text-emerald-400">
                 {RESOURCE_ICONS_MAP[extractionBreakdown.breakdown?.resourceType as ResourceType] || '📦'} {r2(extractionBreakdown.breakdown?.playerAmount || 0)}
               </p>
-              <p className="text-[9px] font-bold text-emerald-500">{RESOURCE_LABELS[extractionBreakdown.breakdown?.resourceType as ResourceType] || extractionBreakdown.factoryType}</p>
+              <p className="text-[9px] font-bold text-emerald-400">{RESOURCE_LABELS[extractionBreakdown.breakdown?.resourceType as ResourceType] || extractionBreakdown.factoryType}</p>
             </div>
-            <div className="bg-blue-50 p-3 rounded-2xl border border-blue-100">
-              <span className="text-[9px] font-black uppercase tracking-wider text-blue-500">Costo Energia</span>
-              <p className="text-lg font-black text-blue-700">⚡ {extractionBreakdown.energyCost}</p>
-              <p className="text-[9px] font-bold text-blue-500">Energia disponibile: {user?.energy || 0}</p>
+            <div className="bg-blue-500/10 p-3 rounded-2xl border border-blue-500/20">
+              <span className="text-[9px] font-black uppercase tracking-wider text-blue-400">Costo Energia</span>
+              <p className="text-lg font-black text-blue-400">⚡ {extractionBreakdown.energyCost}</p>
+              <p className="text-[9px] font-bold text-blue-400">Energia disponibile: {user?.energy || 0}</p>
             </div>
             {extractionBreakdown.breakdown?.moneyGenerated > 0 && (
-              <div className="bg-amber-50 p-3 rounded-2xl border border-amber-100">
-                <span className="text-[9px] font-black uppercase tracking-wider text-amber-500">Valuta Generata</span>
-                <p className="text-lg font-black text-amber-700">€{Math.round(extractionBreakdown.breakdown.moneyGenerated)}</p>
-                <p className="text-[9px] font-bold text-amber-500">Dall'oro estratto</p>
+              <div className="bg-amber-500/15 p-3 rounded-2xl border border-amber-400/30">
+                <span className="text-[9px] font-black uppercase tracking-wider text-amber-400">Valuta Generata</span>
+                <p className="text-lg font-black text-amber-300">€{Math.round(extractionBreakdown.breakdown.moneyGenerated)}</p>
+                <p className="text-[9px] font-bold text-amber-400">Dall'oro estratto</p>
               </div>
             )}
             {extractionBreakdown.breakdown?.goldGenerated > 0 && (
-              <div className="bg-yellow-50 p-3 rounded-2xl border border-yellow-100">
-                <span className="text-[9px] font-black uppercase tracking-wider text-yellow-600">Gold da Scavata</span>
-                <p className="text-lg font-black text-yellow-700">🪙 {Math.round(extractionBreakdown.breakdown.goldGenerated)}</p>
-                <p className="text-[9px] font-bold text-yellow-600">Base {Math.round(extractionBreakdown.breakdown.goldBaseReward || 0)} • Salute x{r2(extractionBreakdown.breakdown.goldHealthMultiplier || 1)}</p>
+              <div className="bg-yellow-500/10 p-3 rounded-2xl border border-yellow-500/20">
+                <span className="text-[9px] font-black uppercase tracking-wider text-yellow-500">Gold da Scavata</span>
+                <p className="text-lg font-black text-yellow-400">🪙 {Math.round(extractionBreakdown.breakdown.goldGenerated)}</p>
+                <p className="text-[9px] font-bold text-yellow-500">Base {Math.round(extractionBreakdown.breakdown.goldBaseReward || 0)} • Salute x{r2(extractionBreakdown.breakdown.goldHealthMultiplier || 1)}</p>
               </div>
             )}
-            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200">
-              <span className="text-[9px] font-black uppercase tracking-wider text-slate-500">EXP Lavorativa</span>
-              <p className="text-lg font-black text-slate-700">📊 {extractionBreakdown.workExperience || 0}</p>
-              <p className="text-[9px] font-bold text-slate-400">{RESOURCE_LABELS[extractionBreakdown.breakdown?.resourceType as ResourceType] || ''}</p>
+            <div className="bg-gray-800/50 p-3 rounded-2xl border border-gray-700/40">
+              <span className="text-[9px] font-black uppercase tracking-wider text-gray-400">EXP Lavorativa</span>
+              <p className="text-lg font-black text-gray-200">📊 {extractionBreakdown.workExperience || 0}</p>
+              <p className="text-[9px] font-bold text-gray-400">{RESOURCE_LABELS[extractionBreakdown.breakdown?.resourceType as ResourceType] || ''}</p>
             </div>
           </div>
 
           {/* Region Resource Status */}
-          <div className="bg-slate-50 p-3 rounded-xl space-y-2">
-            <div className="flex justify-between text-[10px] font-bold text-slate-500">
+          <div className="bg-gray-800/50 p-3 rounded-xl space-y-2">
+            <div className="flex justify-between text-[10px] font-bold text-gray-400">
               <span>Cap Regionale</span>
               <span>{extractionBreakdown.breakdown?.regionCapTotal || 0} (base: {extractionBreakdown.breakdown?.regionCapMax || 0}{extractionBreakdown.breakdown?.regionDeepBonus > 0 ? ` + ${extractionBreakdown.breakdown.regionDeepBonus} deep` : ''})</span>
             </div>
-            <div className="flex justify-between text-[10px] font-bold text-slate-500">
+            <div className="flex justify-between text-[10px] font-bold text-gray-400">
               <span>Residuo disponibile oggi</span>
-              <span className={extractionBreakdown.breakdown?.regionResidualToday <= 0 ? 'text-red-500' : 'text-emerald-600'}>
+              <span className={extractionBreakdown.breakdown?.regionResidualToday <= 0 ? 'text-rose-400' : 'text-emerald-400'}>
                 {extractionBreakdown.breakdown?.regionResidualToday || 0}
               </span>
             </div>
-            <div className="flex justify-between text-[10px] font-bold text-slate-500">
+            <div className="flex justify-between text-[10px] font-bold text-gray-400">
               <span>Consumo regionale previsto</span>
               <span>{r2(extractionBreakdown.breakdown?.withdrawnPoints || 0)} punti</span>
             </div>
           </div>
 
           {/* Payout Distribution */}
-          <div className="bg-slate-50 p-3 rounded-xl space-y-1">
-            <p className="text-[10px] font-black uppercase text-slate-400 mb-2">Distribuzione Payout</p>
+          <div className="bg-gray-800/50 p-3 rounded-xl space-y-1">
+            <p className="text-[10px] font-black uppercase text-gray-400 mb-2">Distribuzione Payout</p>
             <div className="flex justify-between text-[10px] font-bold">
-              <span className="text-slate-500">Lordo estratto</span>
-              <span className="text-slate-700">{r2(extractionBreakdown.breakdown?.grossAmount || 0)}</span>
+              <span className="text-gray-400">Lordo estratto</span>
+              <span className="text-gray-200">{r2(extractionBreakdown.breakdown?.grossAmount || 0)}</span>
             </div>
             <div className="flex justify-between text-[10px] font-bold">
-              <span className="text-emerald-600">→ Al giocatore</span>
-              <span className="text-emerald-700">{r2(extractionBreakdown.breakdown?.playerAmount || 0)}</span>
+              <span className="text-emerald-400">→ Al giocatore</span>
+              <span className="text-emerald-400">{r2(extractionBreakdown.breakdown?.playerAmount || 0)}</span>
             </div>
             <div className="flex justify-between text-[10px] font-bold">
-              <span className="text-purple-600">→ Al proprietario</span>
-              <span className="text-purple-700">{r2(extractionBreakdown.breakdown?.ownerAmount || 0)}</span>
+              <span className="text-purple-400">→ Al proprietario</span>
+              <span className="text-purple-400">{r2(extractionBreakdown.breakdown?.ownerAmount || 0)}</span>
             </div>
             <div className="flex justify-between text-[10px] font-bold">
-              <span className="text-red-500">→ Tasse</span>
-              <span className="text-red-600">{r2(extractionBreakdown.breakdown?.taxAmount || 0)}</span>
+              <span className="text-rose-400">→ Tasse</span>
+              <span className="text-rose-400">{r2(extractionBreakdown.breakdown?.taxAmount || 0)}</span>
             </div>
             {(extractionBreakdown.breakdown?.autonomyAmount || 0) > 0 && (
               <div className="flex justify-between text-[10px] font-bold">
-                <span className="text-orange-500">→ Autonomia</span>
-                <span className="text-orange-600">{r2(extractionBreakdown.breakdown.autonomyAmount)}</span>
+                <span className="text-orange-400">→ Autonomia</span>
+                <span className="text-orange-400">{r2(extractionBreakdown.breakdown.autonomyAmount)}</span>
               </div>
             )}
           </div>
@@ -396,7 +396,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
           {/* Breakdown Toggle */}
           <button
             onClick={() => setShowBreakdown(!showBreakdown)}
-            className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-black uppercase tracking-widest text-indigo-600 hover:text-indigo-800 transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-2 text-[10px] font-black uppercase tracking-widest text-indigo-400 hover:text-indigo-300 transition-colors"
           >
             <Info className="w-3 h-3" />
             {showBreakdown ? 'Nascondi Dettagli Formula' : 'Mostra Dettagli Formula'}
@@ -404,9 +404,9 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
           </button>
 
           {showBreakdown && extractionBreakdown.breakdown && (
-            <div className="bg-indigo-50 p-4 rounded-xl space-y-2 border border-indigo-100">
-              <p className="text-[10px] font-black uppercase text-indigo-500 mb-2">📐 Breakdown Formula Produttività</p>
-              <div className="space-y-1 text-[10px] font-mono text-indigo-800">
+            <div className="bg-indigo-500/10 p-4 rounded-xl space-y-2 border border-indigo-500/20">
+              <p className="text-[10px] font-black uppercase text-indigo-400 mb-2">📐 Breakdown Formula Produttività</p>
+              <div className="space-y-1 text-[10px] font-mono text-indigo-300">
                 <p>Produttività = {EXTRACTION_CONFIG.BASE_COEFFICIENT} × (LvGiocatore^{EXTRACTION_CONFIG.PLAYER_LEVEL_EXPONENT}) × (CoeffRisorsa/{EXTRACTION_CONFIG.RESOURCE_COEFF_DIVISOR})^{EXTRACTION_CONFIG.RESOURCE_COEFF_EXPONENT} × (LvFabbrica^{EXTRACTION_CONFIG.FACTORY_LEVEL_EXPONENT}) × (1 + EXP/{EXTRACTION_CONFIG.WORK_EXPERIENCE_MULTIPLIER_DIVISOR})</p>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
@@ -420,12 +420,12 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
                 <BreakdownRow label="Bonus Dipartimento" value={`×${extractionBreakdown.breakdown.departmentBonus}`} />
                 <BreakdownRow label="Moltiplicatore Bilanciamento" value={`×${extractionBreakdown.breakdown.balancingMultiplier}`} />
               </div>
-              <div className="mt-3 p-2 bg-white rounded-lg">
-                <p className="text-[11px] font-black text-indigo-700">
+              <div className="mt-3 p-2 bg-gray-800/60 rounded-lg border border-gray-700/40">
+                <p className="text-[11px] font-black text-indigo-400">
                   Produttività Finale: {r2(extractionBreakdown.breakdown.finalProductivity)}
                 </p>
               </div>
-              <div className="mt-2 text-[9px] text-indigo-500 space-y-1">
+              <div className="mt-2 text-[9px] text-indigo-400 space-y-1">
                 <p>💡 Livello più alto = più risorse estratte</p>
                 <p>🏭 Fabbrica di livello superiore = maggiore produttività per lavoro</p>
                 <p>📊 Più esperienza sulla risorsa = rendimento crescente</p>
@@ -443,7 +443,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
             {extractionLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : `⛏️ Estrai Risorse (-${extractionBreakdown.energyCost}⚡)`}
           </button>
           {!extractionBreakdown.canWork && (
-            <p className="text-[10px] font-bold text-red-500 text-center">
+            <p className="text-[10px] font-bold text-rose-400 text-center">
               {(user?.energy || 0) < extractionBreakdown.energyCost ? 'Energia insufficiente' : 'Risorsa esaurita per oggi'}
             </p>
           )}
@@ -451,8 +451,8 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
       )}
 
       {/* ── Economy Section ── */}
-      <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-        <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+      <div className="bg-gray-900/60 p-5 rounded-2xl border border-gray-800 space-y-4">
+        <h3 className="text-sm font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
           <BarChart3 className="w-4 h-4" /> Economia della Fabbrica
         </h3>
         <div className="grid grid-cols-2 gap-3">
@@ -467,15 +467,15 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
         {/* Daily Economy Log */}
         {(factory.economyLogs || []).length > 0 && (
           <div className="mt-4">
-            <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Storico giornaliero (ultimi 7 giorni)</h4>
+            <h4 className="text-[10px] font-black uppercase tracking-widest text-gray-400 mb-2">Storico giornaliero (ultimi 7 giorni)</h4>
             <div className="space-y-1">
               {(factory.economyLogs || []).map((log: any, i: number) => (
-                <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl text-[10px] font-bold">
-                  <span className="text-slate-500">{log.logDate}</span>
-                  <span className="text-slate-600">👷 {log.workerCount}</span>
-                  <span className="text-emerald-600">+€{(log.grossIncome || 0).toLocaleString()}</span>
-                  <span className="text-red-500">-€{(log.taxesPaid || 0).toLocaleString()}</span>
-                  <span className="text-purple-600">📦 {(log.production || 0).toLocaleString()}</span>
+                <div key={i} className="flex items-center justify-between bg-gray-800/50 px-3 py-2 rounded-xl text-[10px] font-bold">
+                  <span className="text-gray-400">{log.logDate}</span>
+                  <span className="text-gray-300">👷 {log.workerCount}</span>
+                  <span className="text-emerald-400">+€{(log.grossIncome || 0).toLocaleString()}</span>
+                  <span className="text-rose-400">-€{(log.taxesPaid || 0).toLocaleString()}</span>
+                  <span className="text-purple-400">📦 {(log.production || 0).toLocaleString()}</span>
                 </div>
               ))}
             </div>
@@ -485,21 +485,21 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
 
       {/* ── Storage Section ── */}
       {!isGoldMine && (
-        <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
-          <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+        <div className="bg-gray-900/60 p-5 rounded-2xl border border-gray-800 space-y-4">
+          <h3 className="text-sm font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
             <Warehouse className="w-4 h-4" /> Magazzino
           </h3>
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500">Capacità: {storageCap.toLocaleString()} unità</span>
-            <span className="text-xs font-bold text-slate-500">Attuale: {currentStorage.toLocaleString()}</span>
+            <span className="text-xs font-bold text-gray-400">Capacità: {storageCap.toLocaleString()} unità</span>
+            <span className="text-xs font-bold text-gray-400">Attuale: {currentStorage.toLocaleString()}</span>
           </div>
-          <div className="w-full bg-slate-100 h-4 rounded-full overflow-hidden">
+          <div className="w-full bg-gray-700 h-4 rounded-full overflow-hidden">
             <div
               className={`h-full rounded-full transition-all ${storagePercent > 90 ? 'bg-red-500' : storagePercent > 60 ? 'bg-amber-500' : 'bg-emerald-500'}`}
               style={{ width: `${Math.min(100, storagePercent)}%` }}
             />
           </div>
-          <div className="text-[10px] font-bold text-slate-400">
+          <div className="text-[10px] font-bold text-gray-400">
             {storagePercent}% pieno • +{(factory.storagePerLevel || 0).toLocaleString()} al prossimo livello (Lv {level + 1}: {(factory.nextLevelStorage || 0).toLocaleString()})
           </div>
 
@@ -507,14 +507,14 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
             <button
               onClick={handleWithdraw}
               disabled={withdrawing}
-              className="w-full mt-2 py-3 bg-indigo-50 text-indigo-700 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-indigo-100 transition-all disabled:opacity-50"
+              className="w-full mt-2 py-3 bg-indigo-500/10 text-indigo-400 rounded-2xl font-black uppercase text-xs flex items-center justify-center gap-2 hover:bg-indigo-500/20 transition-all disabled:opacity-50"
             >
               {withdrawing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               Ritira Risorse nel Magazzino Personale
             </button>
           )}
 
-          <div className="bg-slate-50 p-3 rounded-xl text-[10px] font-mono text-slate-500">
+          <div className="bg-gray-800/50 p-3 rounded-xl text-[10px] font-mono text-gray-400">
             Formula: storage = {(factory.storagePerLevel || 0).toLocaleString()} × livello = {(factory.storagePerLevel || 0).toLocaleString()} × {level} = {storageCap.toLocaleString()}
           </div>
         </div>
@@ -522,17 +522,17 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
 
       {/* ── Recent Workers ── */}
       {(factory.recentWorkers || []).length > 0 && (
-        <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-3">
-          <h3 className="text-sm font-black uppercase tracking-widest text-slate-500 flex items-center gap-2">
+        <div className="bg-gray-900/60 p-5 rounded-2xl border border-gray-800 space-y-3">
+          <h3 className="text-sm font-black uppercase tracking-widest text-gray-400 flex items-center gap-2">
             <Users className="w-4 h-4" /> Lavoratori Recenti
           </h3>
           <div className="space-y-1 max-h-48 overflow-y-auto">
             {(factory.recentWorkers || []).map((w: any, i: number) => (
-              <div key={i} className="flex items-center justify-between bg-slate-50 px-3 py-2 rounded-xl text-[10px] font-bold">
-                <span className="text-indigo-600">{w.workerName}</span>
-                <span className="text-slate-400">{new Date(w.workedAt).toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
-                {w.earningsMoney > 0 && <span className="text-emerald-600">+€{w.earningsMoney}</span>}
-                {w.resourceAmount > 0 && <span className="text-blue-600">+{w.resourceAmount} {w.resourceType}</span>}
+              <div key={i} className="flex items-center justify-between bg-gray-800/50 px-3 py-2 rounded-xl text-[10px] font-bold">
+                <span className="text-indigo-400">{w.workerName}</span>
+                <span className="text-gray-400">{new Date(w.workedAt).toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}</span>
+                {w.earningsMoney > 0 && <span className="text-emerald-400">+€{w.earningsMoney}</span>}
+                {w.resourceAmount > 0 && <span className="text-blue-400">+{w.resourceAmount} {w.resourceType}</span>}
               </div>
             ))}
           </div>
@@ -541,23 +541,23 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
 
       {/* ── Upgrade Section (Owner only) ── */}
       {isOwner && (
-        <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-amber-100 space-y-4">
-          <h3 className="text-sm font-black uppercase tracking-widest text-amber-600 flex items-center gap-2">
+        <div className="bg-gray-900/60 p-5 rounded-2xl border border-amber-400/30 space-y-4">
+          <h3 className="text-sm font-black uppercase tracking-widest text-amber-400 flex items-center gap-2">
             <ChevronUp className="w-4 h-4" /> Potenzia Fabbrica
           </h3>
           <div className="grid grid-cols-2 gap-3 text-xs">
-            <div className="bg-amber-50 p-3 rounded-xl">
-              <span className="font-black text-amber-800">Livello Attuale:</span>
-              <span className="ml-2 font-black text-amber-600">{level}</span>
+            <div className="bg-amber-500/15 border border-amber-400/30 p-3 rounded-xl">
+              <span className="font-black text-amber-300">Livello Attuale:</span>
+              <span className="ml-2 font-black text-amber-300">{level}</span>
             </div>
-            <div className="bg-indigo-50 p-3 rounded-xl">
-              <span className="font-black text-indigo-800">Rendimento:</span>
-              <span className="ml-2 font-black text-indigo-600">x{yieldMult} → x{factory.nextLevelYield}</span>
+            <div className="bg-indigo-500/10 p-3 rounded-xl">
+              <span className="font-black text-indigo-400">Rendimento:</span>
+              <span className="ml-2 font-black text-indigo-400">x{yieldMult} → x{factory.nextLevelYield}</span>
             </div>
           </div>
           <div className="flex gap-2 items-end">
             <div className="flex-1">
-              <label className="text-[10px] font-black uppercase text-slate-400">Livello Target (max {FACTORY_CONFIG.MAX_LEVEL})</label>
+              <label className="text-[10px] font-black uppercase text-gray-400">Livello Target (max {FACTORY_CONFIG.MAX_LEVEL})</label>
               <input
                 type="number"
                 min={level + 1}
@@ -565,11 +565,11 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
                 placeholder={`Lv ${level + 1}`}
                 value={upgradeTarget}
                 onChange={e => { setUpgradeTarget(e.target.value); fetchUpgradeCost(e.target.value); }}
-                className="w-full mt-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-500"
+                className="w-full mt-1 bg-gray-800/60 border border-gray-700/40 text-gray-100 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-amber-500/40"
               />
             </div>
             {upgradeCost !== null && (
-              <div className="text-sm font-black text-amber-600 pb-2.5">🪙 {upgradeCost} Gold</div>
+              <div className="text-sm font-black text-amber-300 pb-2.5">🪙 {upgradeCost} Gold</div>
             )}
           </div>
           <button
@@ -584,18 +584,18 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
 
       {/* ── Market Section (Owner only) ── */}
       {isOwner && (
-        <div className="bg-white p-5 rounded-[2.5rem] shadow-sm border border-emerald-100 space-y-4">
-          <h3 className="text-sm font-black uppercase tracking-widest text-emerald-600 flex items-center gap-2">
+        <div className="bg-gray-900/60 p-5 rounded-2xl border border-emerald-500/20 space-y-4">
+          <h3 className="text-sm font-black uppercase tracking-widest text-emerald-400 flex items-center gap-2">
             <ShoppingCart className="w-4 h-4" /> Mercato
           </h3>
-          <div className="bg-emerald-50 p-3 rounded-xl text-xs font-bold text-emerald-700">
+          <div className="bg-emerald-500/10 p-3 rounded-xl text-xs font-bold text-emerald-400">
             Valore stimato: €{(factory.estimatedValue || 0).toLocaleString()}
           </div>
           {factory.activeListing ? (
             <div className="space-y-3">
-              <div className="bg-amber-50 p-4 rounded-xl border border-amber-100">
-                <p className="text-xs font-black text-amber-800">🏷️ In vendita a €{factory.activeListing.askingPrice?.toLocaleString()}</p>
-                <p className="text-[10px] text-amber-600 mt-1">Pubblicato il {new Date(factory.activeListing.listedAt).toLocaleDateString('it-IT')}</p>
+              <div className="bg-amber-500/15 border border-amber-400/30 p-4 rounded-xl">
+                <p className="text-xs font-black text-amber-300">🏷️ In vendita a €{factory.activeListing.askingPrice?.toLocaleString()}</p>
+                <p className="text-[10px] text-amber-400 mt-1">Pubblicato il {new Date(factory.activeListing.listedAt).toLocaleDateString('it-IT')}</p>
               </div>
               <button
                 onClick={handleCancelListing}
@@ -613,7 +613,7 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
                 placeholder="Prezzo di vendita..."
                 value={salePrice}
                 onChange={e => setSalePrice(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500"
+                className="w-full bg-gray-800/60 border border-gray-700/40 text-gray-100 rounded-xl px-3 py-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/40"
               />
               <button
                 onClick={handleListForSale}
@@ -632,12 +632,12 @@ export default function FactoryDetail({ user, fetchData }: FactoryDetailProps) {
 
 function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
   const colorMap: Record<string, string> = {
-    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-100',
-    amber: 'bg-amber-50 text-amber-700 border-amber-100',
-    blue: 'bg-blue-50 text-blue-700 border-blue-100',
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-100',
-    purple: 'bg-purple-50 text-purple-700 border-purple-100',
-    red: 'bg-red-50 text-red-700 border-red-100',
+    indigo: 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+    amber: 'bg-amber-500/15 text-amber-300 border-amber-400/30',
+    blue: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
+    emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    purple: 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+    red: 'bg-rose-500/15 text-rose-400 border-rose-400/30',
   };
   return (
     <div className={`p-3 rounded-2xl border ${colorMap[color] || colorMap.indigo}`}>
@@ -650,9 +650,9 @@ function StatCard({ label, value, sub, color }: { label: string; value: string; 
 
 function BreakdownRow({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="bg-white p-2 rounded-lg flex justify-between items-center">
-      <span className="text-[9px] font-bold text-indigo-500">{label}</span>
-      <span className="text-[10px] font-black text-indigo-800">{value}</span>
+    <div className="bg-gray-800/60 px-2 py-1.5 rounded-lg border border-gray-700/40">
+      <p className="text-[8px] font-bold text-gray-400 uppercase">{label}</p>
+      <p className="text-[10px] font-black text-indigo-300">{value}</p>
     </div>
   );
 }

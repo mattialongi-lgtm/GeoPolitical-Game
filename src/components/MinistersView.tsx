@@ -218,7 +218,7 @@ export const MinistersView: React.FC<{ user: any; fetchData?: () => any }> = ({ 
                         <Globe className="w-4 h-4" /> Vista Mappa
                     </button>
                 </div>
-                <div className="bg-slate-800/40 p-8 rounded-[2.5rem] border border-slate-700/50 backdrop-blur-md flex flex-col md:flex-row justify-between items-center gap-6">
+                <div className="bg-slate-800/40 p-8 rounded-2xl border border-slate-700/50 backdrop-blur-md flex flex-col md:flex-row justify-between items-center gap-6">
                     <div className="flex items-center gap-6">
                         <div className="p-5 bg-indigo-500/20 rounded-3xl border border-indigo-500/20 shadow-xl shadow-indigo-500/10">
                             <Briefcase className="w-10 h-10 text-indigo-400" />
@@ -238,7 +238,7 @@ export const MinistersView: React.FC<{ user: any; fetchData?: () => any }> = ({ 
                 <div className="lg:col-span-2 space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         {/* Economic Minister Card */}
-                        <div className="bg-slate-800/40 rounded-[2rem] border border-slate-700/50 overflow-hidden group">
+                        <div className="bg-slate-800/40 rounded-2xl border border-slate-700/50 overflow-hidden group">
                             <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-amber-500/10 rounded-xl">
@@ -289,7 +289,7 @@ export const MinistersView: React.FC<{ user: any; fetchData?: () => any }> = ({ 
                         </div>
 
                         {/* Foreign Minister Card */}
-                        <div className="bg-slate-800/40 rounded-[2rem] border border-slate-700/50 overflow-hidden group">
+                        <div className="bg-slate-800/40 rounded-2xl border border-slate-700/50 overflow-hidden group">
                             <div className="p-6 border-b border-slate-700/50 flex justify-between items-center">
                                 <div className="flex items-center gap-3">
                                     <div className="p-2 bg-blue-500/10 rounded-xl">
@@ -350,7 +350,7 @@ export const MinistersView: React.FC<{ user: any; fetchData?: () => any }> = ({ 
 
                         {/* Foreign Minister / Residency Panel */}
                         {(isLeader || isForeignMinister) && (
-                            <div className="bg-slate-800/40 rounded-[2.5rem] border border-slate-700/50 overflow-hidden">
+                            <div className="bg-slate-800/40 rounded-2xl border border-slate-700/50 overflow-hidden">
                                 <div className="p-6 border-b border-slate-700/50">
                                     <h3 className="text-lg font-black text-white">Richieste di Residenza / Lavoro</h3>
                                     <p className="text-xs text-slate-500 font-bold mt-1">Approva o rifiuta le richieste di ingresso nello Stato.</p>
@@ -397,7 +397,7 @@ export const MinistersView: React.FC<{ user: any; fetchData?: () => any }> = ({ 
                 {/* Sidebar: Assignment & Info */}
                 <div className="space-y-6">
                     {isLeader && (
-                        <div className="bg-slate-800/40 p-8 rounded-[2.5rem] border border-slate-700/50 space-y-6">
+                        <div className="bg-slate-800/40 p-8 rounded-2xl border border-slate-700/50 space-y-6">
                             <h3 className="text-lg font-black text-white">Nomina Ministro</h3>
                             <div className="space-y-4">
                                 <div>
@@ -435,12 +435,12 @@ export const MinistersView: React.FC<{ user: any; fetchData?: () => any }> = ({ 
                         </div>
                     )}
 
-                    <div className="bg-white p-8 rounded-[2.5rem] shadow-sm space-y-4">
+                    <div className="bg-gray-900/60 p-8 rounded-2xl border border-gray-800 space-y-4">
                         <div className="flex items-center gap-3">
-                            <Info className="w-5 h-5 text-slate-400" />
-                            <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">Informazioni</h3>
+                            <Info className="w-5 h-5 text-gray-400" />
+                            <h3 className="text-sm font-black text-white uppercase tracking-widest">Informazioni</h3>
                         </div>
-                        <ul className="text-xs text-slate-500 space-y-3 font-bold leading-relaxed">
+                        <ul className="text-xs text-gray-400 space-y-3 font-bold leading-relaxed">
                             <li className="flex gap-2">
                                 <span className="text-indigo-500">•</span>
                                 Un cittadino può essere ministro in un solo Stato alla volta.

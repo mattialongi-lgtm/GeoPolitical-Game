@@ -83,11 +83,11 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white/95 backdrop-blur-sm p-8 rounded-[2rem] shadow-2xl shadow-black/30 border border-white/40"
+          className="bg-gray-900/95 backdrop-blur-sm p-8 rounded-[2rem] shadow-2xl shadow-black/60 border border-gray-700/50"
         >
           <div className="flex flex-col items-center mb-8">
             <TerritorialBrandLogo className="w-full max-w-[16rem] h-auto mb-5 drop-shadow-[0_16px_32px_rgba(2,10,16,0.28)]" />
-            <p className="text-slate-400 text-sm font-medium mt-1">
+            <p className="text-gray-400 text-sm font-medium mt-1">
               {isLogin ? "Bentornato, Comandante" : "Inizia la tua ascesa"}
             </p>
           </div>
@@ -98,7 +98,7 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
                 <button
                   onClick={handleGoogleLogin}
                   disabled={googleLoading || loading}
-                  className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 py-3 rounded-2xl font-bold text-slate-700 hover:bg-slate-50 transition-all active:scale-[0.98] disabled:opacity-50"
+                  className="w-full flex items-center justify-center gap-3 bg-gray-800/50 border border-gray-700/40 py-3 rounded-2xl font-bold text-gray-200 hover:bg-gray-700/50 transition-all active:scale-[0.98] disabled:opacity-50"
                 >
                   {googleLoading ? (
                     <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
@@ -116,23 +116,23 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
                 </button>
 
                 <div className="relative flex items-center py-2">
-                  <div className="flex-grow border-t border-slate-100"></div>
-                  <span className="flex-shrink mx-4 text-slate-300 text-[10px] font-black uppercase tracking-widest">Oppure</span>
-                  <div className="flex-grow border-t border-slate-100"></div>
+                  <div className="flex-grow border-t border-gray-700/50"></div>
+                  <span className="flex-shrink mx-4 text-gray-500 text-[10px] font-black uppercase tracking-widest">Oppure</span>
+                  <div className="flex-grow border-t border-gray-700/50"></div>
                 </div>
               </>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Email</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider ml-1">Email</label>
                 <div className="relative">
-                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                   <input
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 rounded-2xl border border-slate-100 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-300"
+                    className="w-full pl-11 pr-4 py-3 rounded-2xl border border-gray-700/40 bg-gray-800/60 focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all font-medium text-gray-200 placeholder:text-gray-500"
                     placeholder="tua@email.com"
                     required
                   />
@@ -140,14 +140,14 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
               </div>
               {!isLogin && (
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Username</label>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider ml-1">Username</label>
                   <div className="relative">
-                    <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                    <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                     <input
                       type="text"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      className="w-full pl-11 pr-4 py-3 rounded-2xl border border-slate-100 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-300"
+                      className="w-full pl-11 pr-4 py-3 rounded-2xl border border-gray-700/40 bg-gray-800/60 focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all font-medium text-gray-200 placeholder:text-gray-500"
                       placeholder="Il tuo nome"
                       required
                     />
@@ -155,14 +155,14 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
                 </div>
               )}
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Password</label>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider ml-1">Password</label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300" />
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
                   <input
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 rounded-2xl border border-slate-100 bg-slate-50 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700 placeholder:text-slate-300"
+                    className="w-full pl-11 pr-4 py-3 rounded-2xl border border-gray-700/40 bg-gray-800/60 focus:bg-gray-800 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all font-medium text-gray-200 placeholder:text-gray-500"
                     placeholder="••••••••"
                     required
                   />
@@ -182,7 +182,7 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
               <button
                 type="submit"
                 disabled={loading || googleLoading}
-                className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-sm hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 active:scale-[0.98] flex items-center justify-center gap-2 group disabled:opacity-50"
+                className="w-full bg-indigo-600 text-white py-4 rounded-2xl font-black text-sm hover:bg-indigo-700 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group disabled:opacity-50"
               >
                 {loading ? (
                   <Loader2 className="w-5 h-5 animate-spin" />
@@ -199,14 +199,14 @@ const Auth = ({ onLogin }: { onLogin: () => void }) => {
           <div className="mt-8 text-center">
             <button
               onClick={() => { setIsLogin(!isLogin); setError(""); }}
-              className="text-xs font-bold text-slate-400 hover:text-indigo-600 transition-colors"
+              className="text-xs font-bold text-gray-400 hover:text-indigo-400 transition-colors"
             >
               {isLogin ? "Non hai un account? Registrati" : "Hai già un account? Accedi"}
             </button>
           </div>
         </motion.div>
 
-        <p className="mt-8 text-center text-[10px] text-slate-300 font-bold uppercase tracking-[0.2em]">
+        <p className="mt-8 text-center text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em]">
           Territorial &copy; 2026 • Geopolitical MVP
         </p>
       </div>

@@ -231,38 +231,38 @@ const WarsView = ({
       exit={{ opacity: 0, y: -10 }}
       className="space-y-8"
     >
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 text-center">
-        <div className="w-20 h-20 bg-rose-100 rounded-3xl mx-auto flex items-center justify-center mb-4">
-          <Swords className="w-10 h-10 text-rose-600" />
+      <div className="bg-gray-900/60 p-8 rounded-2xl border border-gray-800 text-center">
+        <div className="w-20 h-20 bg-rose-500/15 border border-rose-400/30 rounded-3xl mx-auto flex items-center justify-center mb-4">
+          <Swords className="w-10 h-10 text-rose-400" />
         </div>
-        <h2 className="text-2xl font-black text-slate-900">Ministero della Guerra</h2>
-        <p className="text-slate-400 text-sm font-medium mt-1">Conflitti globali e conquiste territoriali.</p>
+        <h2 className="text-2xl font-black text-white">Ministero della Guerra</h2>
+        <p className="text-gray-400 text-sm font-medium mt-1">Conflitti globali e conquiste territoriali.</p>
         {warId && (
-          <button onClick={() => navigate('/wars')} className="mt-4 text-xs font-black text-indigo-600 uppercase tracking-widest hover:text-indigo-700 transition-colors">
+          <button onClick={() => navigate('/wars')} className="mt-4 text-xs font-black text-indigo-400 uppercase tracking-widest hover:text-indigo-300 transition-colors">
             ← Mostra tutte le guerre
           </button>
         )}
       </div>
 
       {/* Military Training Section */}
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+      <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800 space-y-4">
         <div className="flex items-center gap-3">
-          <div className="p-3 rounded-2xl bg-amber-50">
-            <Dumbbell className="w-6 h-6 text-amber-600" />
+          <div className="p-3 rounded-2xl bg-amber-500/15 border border-amber-400/30">
+            <Dumbbell className="w-6 h-6 text-amber-400" />
           </div>
           <div>
-            <h3 className="font-black text-slate-900 uppercase tracking-tight">Addestramento Militare</h3>
-            <p className="text-xs text-slate-400 font-medium">Allenati per aumentare la tua esperienza militare</p>
+            <h3 className="font-black text-white uppercase tracking-tight">Addestramento Militare</h3>
+            <p className="text-xs text-gray-400 font-medium">Allenati per aumentare la tua esperienza militare</p>
           </div>
         </div>
-        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl">
+        <div className="flex items-center justify-between bg-gray-800/50 p-4 rounded-2xl border border-gray-700/30">
           <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Exp Militare</p>
-            <p className="text-2xl font-black text-slate-900">{militaryExp}</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Exp Militare</p>
+            <p className="text-2xl font-black text-white">{militaryExp}</p>
           </div>
           <div className="text-right">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Energia</p>
-            <p className="text-lg font-black text-amber-600">{user.energy}⚡</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Energia</p>
+            <p className="text-lg font-black text-amber-400">{user.energy}⚡</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -292,9 +292,9 @@ const WarsView = ({
           )}
         </div>
         {autoTraining && (
-          <div className="bg-amber-100 rounded-xl p-3 flex items-center gap-2">
+          <div className="bg-amber-500/15 border border-amber-400/30 rounded-xl p-3 flex items-center gap-2">
             <span className="animate-pulse text-lg">⚙️</span>
-            <span className="text-xs font-black text-amber-800">Danno orario attivo per 24h. Applica un tick ogni 1 ora senza consumare energia o bibite{autoTraining.expiresAt ? ` • Scade: ${new Date(autoTraining.expiresAt).toLocaleString('it-IT')}` : ''}.</span>
+            <span className="text-xs font-black text-amber-300">Danno orario attivo per 24h. Applica un tick ogni 1 ora senza consumare energia o bibite{autoTraining.expiresAt ? ` • Scade: ${new Date(autoTraining.expiresAt).toLocaleString('it-IT')}` : ''}.</span>
           </div>
         )}
       </div>

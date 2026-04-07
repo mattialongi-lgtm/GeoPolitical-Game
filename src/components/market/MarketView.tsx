@@ -114,43 +114,43 @@ export const MarketView = ({ user, fetchData }: { user: User | null, fetchData: 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-8">
       <div className="flex items-center gap-3 mb-4">
-        <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-sm">
-          <ShoppingCart className="w-6 h-6 text-indigo-600" />
+        <div className="w-12 h-12 bg-gray-800/60 rounded-2xl flex items-center justify-center border border-gray-700/40">
+          <ShoppingCart className="w-6 h-6 text-indigo-400" />
         </div>
         <div>
-          <h2 className="text-2xl flex flex-col font-black text-slate-900 tracking-tight uppercase leading-none">
+          <h2 className="text-2xl flex flex-col font-black text-white tracking-tight uppercase leading-none">
             Mercato Globale
           </h2>
-          <p className="text-sm font-bold text-slate-400">Scambia beni con altri giocatori</p>
+          <p className="text-sm font-bold text-gray-400">Scambia beni con altri giocatori</p>
         </div>
       </div>
 
       {/* Acquisto Drink Energetici */}
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-        <h3 className="text-md font-black uppercase text-slate-800 mb-1 flex items-center gap-2">
-          <Zap className="w-5 h-5 text-amber-500" /> Drink Energetici
+      <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
+        <h3 className="text-md font-black uppercase text-white mb-1 flex items-center gap-2">
+          <Zap className="w-5 h-5 text-amber-400" /> Drink Energetici
         </h3>
-        <p className="text-xs font-bold text-slate-500 mb-4">
+        <p className="text-xs font-bold text-gray-400 mb-4">
           Prezzo fisso: {drinkUnitCost} gold per unità.
         </p>
         <div className="flex flex-wrap items-end gap-4">
           <div className="w-28">
-            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Quantità</label>
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Quantità</label>
             <input
               type="number"
               min="1"
               value={safeDrinkQty}
               onChange={e => setDrinkQty(parseInt(e.target.value) || 1)}
-              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold"
+              className="w-full bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-2 font-bold text-gray-100"
             />
           </div>
-          <div className="px-4 py-2 rounded-xl bg-amber-50 border border-amber-200">
-            <p className="text-[10px] font-black text-amber-700 uppercase">Costo Totale</p>
-            <p className="text-lg font-black text-amber-700">{drinkTotalCost} gold</p>
+          <div className="px-4 py-2 rounded-xl bg-amber-500/15 border border-amber-400/30">
+            <p className="text-[10px] font-black text-amber-300 uppercase">Costo Totale</p>
+            <p className="text-lg font-black text-amber-300">{drinkTotalCost} gold</p>
           </div>
-          <div className="px-4 py-2 rounded-xl bg-slate-50 border border-slate-200">
-            <p className="text-[10px] font-black text-slate-500 uppercase">Il tuo Gold</p>
-            <p className={`text-lg font-black ${userGold >= drinkTotalCost ? 'text-emerald-600' : 'text-rose-600'}`}>{userGold}</p>
+          <div className="px-4 py-2 rounded-xl bg-gray-800/50 border border-gray-700/40">
+            <p className="text-[10px] font-black text-gray-400 uppercase">Il tuo Gold</p>
+            <p className={`text-lg font-black ${userGold >= drinkTotalCost ? 'text-emerald-400' : 'text-rose-400'}`}>{userGold}</p>
           </div>
           <button
             onClick={handleBuyEnergyDrinks}
@@ -163,24 +163,24 @@ export const MarketView = ({ user, fetchData }: { user: User | null, fetchData: 
       </div>
 
       {/* Pubblica Offerta */}
-      <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100">
-        <h3 className="text-md font-black uppercase text-slate-800 mb-4 flex items-center gap-2">
-          <DollarSign className="w-5 h-5 text-emerald-500" /> Vendi sul Mercato
+      <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800">
+        <h3 className="text-md font-black uppercase text-white mb-4 flex items-center gap-2">
+          <DollarSign className="w-5 h-5 text-emerald-400" /> Vendi sul Mercato
         </h3>
         <div className="flex flex-wrap items-end gap-4">
           <div className="flex-1 min-w-[120px]">
-            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Oggetto</label>
-            <select value={selectedItem} onChange={e => setSelectedItem(e.target.value)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none">
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Oggetto</label>
+            <select value={selectedItem} onChange={e => setSelectedItem(e.target.value)} className="w-full bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-3 font-bold text-gray-100 focus:ring-2 focus:ring-indigo-500 transition-all outline-none">
               {ITEMS_CATALOG.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
             </select>
           </div>
           <div className="w-24">
-            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Quantità</label>
-            <input type="number" min="1" value={postQty} onChange={e => setPostQty(parseInt(e.target.value) || 1)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold" />
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Quantità</label>
+            <input type="number" min="1" value={postQty} onChange={e => setPostQty(parseInt(e.target.value) || 1)} className="w-full bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-2 font-bold text-gray-100" />
           </div>
           <div className="w-24">
-            <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">Prezzo/Unità</label>
-            <input type="number" min="1" value={postPrice} onChange={e => setPostPrice(parseInt(e.target.value) || 1)} className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-2 font-bold" />
+            <label className="block text-[10px] font-black text-gray-400 uppercase mb-1">Prezzo/Unità</label>
+            <input type="number" min="1" value={postPrice} onChange={e => setPostPrice(parseInt(e.target.value) || 1)} className="w-full bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-2 font-bold text-gray-100" />
           </div>
           <button onClick={handlePostOffer} disabled={posting} className="px-6 py-2.5 bg-indigo-600 text-white font-black uppercase tracking-widest text-xs rounded-xl shadow-lg shadow-indigo-100 hover:scale-105 transition-all h-full">
             {posting ? <Loader2 className="w-4 h-4 animate-spin" /> : "Pubblica"}
@@ -191,23 +191,23 @@ export const MarketView = ({ user, fetchData }: { user: User | null, fetchData: 
       {/* Lista Offerte */}
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <select value={filterType} onChange={e => setFilterType(e.target.value)} className="bg-white border border-slate-100 rounded-xl px-4 py-2 text-sm font-bold text-slate-700 shadow-sm outline-none transition-all focus:ring-2 focus:ring-indigo-500">
+          <select value={filterType} onChange={e => setFilterType(e.target.value)} className="bg-gray-800/60 border border-gray-700/40 rounded-xl px-4 py-2 text-sm font-bold text-gray-200 outline-none transition-all focus:ring-2 focus:ring-indigo-500">
             <option value="all">Filtra per Oggetto (Tutti)</option>
             {ITEMS_CATALOG.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
           </select>
 
-          <label className="flex items-center gap-2 cursor-pointer bg-white px-4 py-2 rounded-xl border border-slate-100 shadow-sm">
-            <input type="checkbox" checked={isStateBuy} onChange={(e) => setIsStateBuy(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 bg-slate-100 border-slate-300" />
-            <span className="text-sm font-black text-slate-700 uppercase">Acquista come Stato</span>
+          <label className="flex items-center gap-2 cursor-pointer bg-gray-800/60 px-4 py-2 rounded-xl border border-gray-700/40">
+            <input type="checkbox" checked={isStateBuy} onChange={(e) => setIsStateBuy(e.target.checked)} className="rounded text-indigo-600 focus:ring-indigo-500 bg-gray-700 border-gray-600" />
+            <span className="text-sm font-black text-gray-200 uppercase">Acquista come Stato</span>
           </label>
         </div>
 
         {loading ? (
-          <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-600 w-8 h-8" /></div>
+          <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-400 w-8 h-8" /></div>
         ) : filtered.length === 0 ? (
-          <div className="text-center bg-white p-12 rounded-[2.5rem] border border-slate-100 shadow-sm">
+          <div className="text-center bg-gray-900/60 p-12 rounded-2xl border border-gray-800">
             <span className="text-4xl mb-3 block">🏜️</span>
-            <p className="text-slate-400 font-bold">Nessuna offerta trovata sul mercato per questo filtro.</p>
+            <p className="text-gray-400 font-bold">Nessuna offerta trovata sul mercato per questo filtro.</p>
           </div>
         ) : (
           <div className="grid gap-3">
@@ -216,25 +216,25 @@ export const MarketView = ({ user, fetchData }: { user: User | null, fetchData: 
               const isAbusive = offer.minPrice && offer.price > offer.minPrice * GAME_CONFIG.MARKET_ANTI_ABUSE_PERCENTAGE;
 
               return (
-                <div key={offer.id} className={`bg-white p-5 rounded-3xl shadow-sm border ${isAbusive ? 'border-rose-200 bg-rose-50/30' : 'border-slate-100'} flex flex-wrap gap-4 items-center justify-between`}>
+                <div key={offer.id} className={`bg-gray-900/60 p-5 rounded-2xl border ${isAbusive ? 'border-rose-500/40 bg-rose-500/5' : 'border-gray-800'} flex flex-wrap gap-4 items-center justify-between`}>
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-slate-50 flex flex-col items-center justify-center rounded-2xl shadow-inner border border-slate-100/50">
+                    <div className="w-12 h-12 bg-gray-800/60 flex flex-col items-center justify-center rounded-2xl border border-gray-700/40">
                       <ResourceIcon id={offer.itemId} size={28} />
                     </div>
                     <div>
-                      <p className="text-sm font-black text-slate-800 capitalize leading-none tracking-tight">{RESOURCE_LABELS[offer.itemId] || item?.name || offer.itemId}</p>
-                      <p className="text-[10px] font-bold text-slate-400 mt-1.5 uppercase tracking-wider">Venditore: <span className="text-indigo-500 font-black">{offer.sellerName}</span></p>
+                      <p className="text-sm font-black text-gray-100 capitalize leading-none tracking-tight">{RESOURCE_LABELS[offer.itemId] || item?.name || offer.itemId}</p>
+                      <p className="text-[10px] font-bold text-gray-400 mt-1.5 uppercase tracking-wider">Venditore: <span className="text-indigo-400 font-black">{offer.sellerName}</span></p>
                     </div>
                   </div>
 
-                  <div className="text-center px-4 border-l border-r border-slate-100">
-                    <p className="text-xs font-black text-slate-400 uppercase">Prezzo Unit.</p>
-                    <p className="text-lg font-black text-emerald-600">${offer.price}</p>
+                  <div className="text-center px-4 border-l border-r border-gray-700/40">
+                    <p className="text-xs font-black text-gray-400 uppercase">Prezzo Unit.</p>
+                    <p className="text-lg font-black text-emerald-400">${offer.price}</p>
                   </div>
 
                   <div className="text-center px-2">
-                    <p className="text-xs font-black text-slate-400 uppercase">Disponibili</p>
-                    <p className="text-md font-bold text-slate-700">{offer.quantity}</p>
+                    <p className="text-xs font-black text-gray-400 uppercase">Disponibili</p>
+                    <p className="text-md font-bold text-gray-200">{offer.quantity}</p>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -242,7 +242,7 @@ export const MarketView = ({ user, fetchData }: { user: User | null, fetchData: 
                       type="number" min="1" max={offer.quantity}
                       value={buyQty[offer.id] || 1}
                       onChange={e => setBuyQty(prev => ({ ...prev, [offer.id]: parseInt(e.target.value) || 1 }))}
-                      className="w-16 px-2 py-2 bg-slate-50 border border-slate-200 rounded-xl text-center font-bold outline-none"
+                      className="w-16 px-2 py-2 bg-gray-800/60 border border-gray-700/40 rounded-xl text-center font-bold text-gray-100 outline-none"
                     />
                     <button
                       disabled={purchasingId === offer.id || isAbusive}
@@ -251,7 +251,7 @@ export const MarketView = ({ user, fetchData }: { user: User | null, fetchData: 
                     >
                       {purchasingId === offer.id ? <Loader2 className="w-4 h-4 animate-spin" /> : "Acquista"}
                     </button>
-                    {isAbusive && <span className="text-[10px] text-rose-500 font-bold block ml-1 absolute right-2 -bottom-2">+110% Anti-Abuso</span>}
+                    {isAbusive && <span className="text-[10px] text-rose-400 font-bold block ml-1 absolute right-2 -bottom-2">+110% Anti-Abuso</span>}
                   </div>
                 </div>
               );

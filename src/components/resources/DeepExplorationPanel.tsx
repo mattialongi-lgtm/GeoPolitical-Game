@@ -97,27 +97,27 @@ export const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: 
   if (loading) return <div className="flex justify-center p-6"><Loader2 className="w-6 h-6 animate-spin text-purple-400" /></div>;
 
   return (
-    <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-sm space-y-4">
-      <h3 className="text-sm font-black uppercase tracking-widest text-purple-600 flex items-center gap-2">
+    <div className="bg-gray-900/60 p-5 rounded-2xl border border-gray-800 space-y-4">
+      <h3 className="text-sm font-black uppercase tracking-widest text-purple-400 flex items-center gap-2">
         🔮 Deep Exploration
       </h3>
-      <p className="text-[10px] text-slate-400">
+      <p className="text-[10px] text-gray-400">
         Attiva una legge temporanea (7 giorni) che aumenta i cap di ricarica per una risorsa in tutte le regioni della nazione.
         Il costo dipende da quanto devi alzare i cap (somma dei delta).
       </p>
 
       {/* Active Deep indicator */}
       {active && (
-        <div className="bg-purple-50 p-3 rounded-xl border border-purple-200 space-y-1">
+        <div className="bg-purple-500/10 p-3 rounded-xl border border-purple-500/20 space-y-1">
           <div className="flex items-center gap-2">
             <span className="text-lg">🔮</span>
-            <span className="font-black text-purple-700 text-sm">Deep Exploration ATTIVA</span>
+            <span className="font-black text-purple-400 text-sm">Deep Exploration ATTIVA</span>
           </div>
-          <p className="text-xs text-purple-600">
+          <p className="text-xs text-purple-400">
             Risorsa: <span className="font-bold">{RESOURCE_ICONS_MAP[active.resourceType as ResourceType]} {RESOURCE_LABELS[active.resourceType as ResourceType]}</span>
             {' '} | Target Cap: <span className="font-bold">{active.targetCap}</span>
           </p>
-          <p className="text-xs text-purple-500">
+          <p className="text-xs text-purple-400">
             Scade: {new Date(active.endsAt).toLocaleDateString('it-IT', { day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </p>
         </div>
@@ -127,14 +127,14 @@ export const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: 
         <>
           {/* Resource selector */}
           <div>
-            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Risorsa Target</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Risorsa Target</label>
             <div className="flex gap-2 flex-wrap">
               {deepResourceTypes.map(rt => (
                 <button
                   key={rt}
                   onClick={() => setSelectedResource(rt)}
                   className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    selectedResource === rt ? 'bg-purple-100 text-purple-700 border-2 border-purple-300' : 'bg-slate-50 text-slate-500 border border-slate-200'
+                    selectedResource === rt ? 'bg-indigo-600 text-white border-2 border-indigo-500' : 'bg-gray-800/50 text-gray-400 border border-gray-700/40 hover:bg-gray-700/50'
                   }`}
                 >
                   <ResourceIcon id={rt} size={14} />
@@ -146,14 +146,14 @@ export const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: 
 
           {/* Level selector */}
           <div>
-            <label className="text-[10px] font-bold text-slate-400 uppercase mb-1 block">Livello Deep</label>
+            <label className="text-[10px] font-bold text-gray-400 uppercase mb-1 block">Livello Deep</label>
             <div className="flex gap-2">
               {levels.map((l: any) => (
                 <button
                   key={l.level}
                   onClick={() => setSelectedLevel(l.level)}
                   className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${
-                    selectedLevel === l.level ? 'bg-purple-600 text-white shadow-lg shadow-purple-200' : 'bg-slate-50 text-slate-600 border border-slate-200'
+                    selectedLevel === l.level ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'bg-gray-800/50 text-gray-400 border border-gray-700/40 hover:bg-gray-700/50'
                   }`}
                 >
                   Lv {l.level} — Cap {l.targetCap}
@@ -164,37 +164,37 @@ export const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: 
 
           {/* Cost preview */}
           {computing && (
-            <div className="flex items-center gap-2 text-xs text-slate-400">
+            <div className="flex items-center gap-2 text-xs text-gray-400">
               <Loader2 className="w-3 h-3 animate-spin" /> Calcolo costi...
             </div>
           )}
 
           {costPreview && !computing && (
-            <div className="bg-slate-50 p-3 rounded-xl space-y-2">
-              <p className="text-[10px] font-bold text-slate-500 uppercase">Anteprima Costi</p>
+            <div className="bg-gray-800/50 p-3 rounded-xl space-y-2">
+              <p className="text-[10px] font-bold text-gray-400 uppercase">Anteprima Costi</p>
               <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-white p-2 rounded-lg border border-slate-100">
-                  <p className="text-[9px] text-slate-400">Target Cap</p>
-                  <p className="text-sm font-black text-purple-700">{costPreview.targetCap}</p>
+                <div className="bg-gray-800/60 p-2 rounded-lg border border-gray-700/40">
+                  <p className="text-[9px] text-gray-400">Target Cap</p>
+                  <p className="text-sm font-black text-purple-400">{costPreview.targetCap}</p>
                 </div>
-                <div className="bg-white p-2 rounded-lg border border-slate-100">
-                  <p className="text-[9px] text-slate-400">Regioni</p>
-                  <p className="text-sm font-black text-slate-700">{costPreview.numRegions}</p>
+                <div className="bg-gray-800/60 p-2 rounded-lg border border-gray-700/40">
+                  <p className="text-[9px] text-gray-400">Regioni</p>
+                  <p className="text-sm font-black text-gray-200">{costPreview.numRegions}</p>
                 </div>
-                <div className="bg-white p-2 rounded-lg border border-slate-100">
-                  <p className="text-[9px] text-slate-400">ΣDelta</p>
-                  <p className="text-sm font-black text-amber-700">{costPreview.sumDelta.toLocaleString()}</p>
+                <div className="bg-gray-800/60 p-2 rounded-lg border border-gray-700/40">
+                  <p className="text-[9px] text-gray-400">ΣDelta</p>
+                  <p className="text-sm font-black text-amber-300">{costPreview.sumDelta.toLocaleString()}</p>
                 </div>
               </div>
               <div className="flex gap-2 text-xs font-bold">
                 {costPreview.costDiamonds > 0 && (
-                  <span className="bg-purple-50 text-purple-700 px-2 py-1 rounded">💎 {costPreview.costDiamonds.toLocaleString()}</span>
+                  <span className="bg-purple-500/10 text-purple-400 px-2 py-1 rounded">💎 {costPreview.costDiamonds.toLocaleString()}</span>
                 )}
                 {costPreview.costEur > 0 && (
-                  <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded">€{costPreview.costEur.toLocaleString()}</span>
+                  <span className="bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded">€{costPreview.costEur.toLocaleString()}</span>
                 )}
                 {costPreview.costGold > 0 && (
-                  <span className="bg-amber-50 text-amber-700 px-2 py-1 rounded">🪙 {costPreview.costGold.toLocaleString()}</span>
+                  <span className="bg-amber-500/15 border border-amber-400/30 text-amber-300 px-2 py-1 rounded">🪙 {costPreview.costGold.toLocaleString()}</span>
                 )}
               </div>
             </div>
@@ -205,7 +205,7 @@ export const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: 
             onClick={handleActivate}
             disabled={!costPreview || activating || computing}
             className={`w-full py-3 rounded-xl font-black text-sm uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${
-              costPreview && !activating ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-200' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+              costPreview && !activating ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-lg shadow-indigo-200' : 'bg-gray-800/50 text-gray-400 cursor-not-allowed'
             }`}
           >
             {activating ? <Loader2 className="w-4 h-4 animate-spin" /> : <span>🔮</span>}
@@ -215,7 +215,7 @@ export const DeepExplorationPanel = ({ user, nationId }: { user: any; nationId: 
       )}
 
       {message && (
-        <div className={`p-3 rounded-xl text-xs font-bold ${message.type === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+        <div className={`p-3 rounded-xl text-xs font-bold ${message.type === 'success' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-rose-500/15 text-rose-400'}`}>
           {message.text}
         </div>
       )}

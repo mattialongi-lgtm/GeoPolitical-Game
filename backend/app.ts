@@ -864,6 +864,94 @@ async function addBudgetTransaction(
   createdByUserId: string | null = null,
   metadata: any = {}
 ) {
+  const normalizeResourcesDelta = (raw: Record<string, number> = {}) => {
+    const normalized: Record<string, number> = {};
+    for (const [key, value] of Object.entries(raw || {})) {
+      const parsed = Math.trunc(Number(value) || 0);
+      if (parsed !== 0) normalized[key] = parsed;
+    }
+    return normalized;
+  };
+
+  const addBudgetTransactionFallback = async () => {
+    const normalizedMoneyDelta = Math.trunc(Number(moneyDelta) || 0);
+    const normalizedResourcesDelta = normalizeResourcesDelta(resourcesDelta);
+
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { data: budget, error: budgetErr } = await supabase
+        .from('budgets')
+        .select('id, moneyEUR, resources')
+        .eq('ownerType', ownerType)
+        .eq('ownerId', ownerId)
+        .maybeSingle();
+      if (budgetErr) throw budgetErr;
+      if (!budget?.id) {
+        await ensureBudgetExists();
+        continue;
+      }
+
+      const currentMoney = Math.trunc(Number(budget.moneyEUR) || 0);
+      const newMoney = currentMoney + normalizedMoneyDelta;
+      if (newMoney < 0) throw new Error('Fondi insufficienti');
+
+      const rawResources = typeof budget.resources === 'string'
+        ? JSON.parse(budget.resources || '{}')
+        : (budget.resources || {});
+      const newResources: Record<string, number> = {};
+      for (const [key, value] of Object.entries(rawResources || {})) {
+        newResources[key] = Math.trunc(Number(value) || 0);
+      }
+
+      for (const [key, delta] of Object.entries(normalizedResourcesDelta)) {
+        const nextValue = (newResources[key] || 0) + delta;
+        if (nextValue < 0) throw new Error(`Risorse insufficienti: ${key}`);
+        newResources[key] = nextValue;
+      }
+
+      const now = Date.now();
+      const { data: updatedBudget, error: updateErr } = await supabase
+        .from('budgets')
+        .update({
+          moneyEUR: newMoney,
+          resources: newResources,
+          updatedAt: now,
+        })
+        .eq('id', budget.id)
+        .eq('moneyEUR', currentMoney)
+        .select('id')
+        .maybeSingle();
+      if (updateErr) throw updateErr;
+      if (!updatedBudget?.id) continue;
+
+      const txId = generateSecureId(12);
+      const txPayload: any = {
+        id: txId,
+        budgetId: budget.id,
+        type,
+        subtype,
+        moneyDelta: normalizedMoneyDelta,
+        resourcesDelta: normalizedResourcesDelta,
+        createdAt: now,
+        metadata: metadata || {},
+      };
+      if (createdByUserId) txPayload.createdByUserId = createdByUserId;
+
+      let { error: txErr } = await supabase.from('budget_transactions').insert(txPayload);
+      if (txErr && txPayload.createdByUserId) {
+        const txMsg = String((txErr as any)?.message || '').toLowerCase();
+        if (txMsg.includes('uuid') || txMsg.includes('invalid input syntax')) {
+          delete txPayload.createdByUserId;
+          ({ error: txErr } = await supabase.from('budget_transactions').insert(txPayload));
+        }
+      }
+      if (txErr) throw txErr;
+
+      return txId;
+    }
+
+    throw new Error('Conflitto durante aggiornamento budget. Riprova.');
+  };
+
   // Older DBs may not have pre-created budgets for all owners.
   // Keep backend automation resilient by auto-creating missing budgets.
   const ensureBudgetExists = async () => {
@@ -899,7 +987,7 @@ async function addBudgetTransaction(
   await ensureBudgetExists();
 
   // We use an RPC 'add_budget_transaction' defined in schema.sql to ensure atomicity
-  let { data, error } = await supabase.rpc('add_budget_transaction', {
+  const payload = {
     p_owner_type: ownerType,
     p_owner_id: ownerId,
     p_type: type,
@@ -908,22 +996,24 @@ async function addBudgetTransaction(
     p_resources_delta: resourcesDelta,
     p_created_by: createdByUserId,
     p_metadata: metadata
-  });
+  };
+
+  let { data, error } = await supabase.rpc('add_budget_transaction', payload);
 
   if (error) {
     const msg = String((error as any)?.message || '').toLowerCase();
     if (msg.includes('budget') || msg.includes('non trovato')) {
       await ensureBudgetExists();
-      ({ data, error } = await supabase.rpc('add_budget_transaction', {
-        p_owner_type: ownerType,
-        p_owner_id: ownerId,
-        p_type: type,
-        p_subtype: subtype,
-        p_money_delta: moneyDelta,
-        p_resources_delta: resourcesDelta,
-        p_created_by: createdByUserId,
-        p_metadata: metadata
-      }));
+      ({ data, error } = await supabase.rpc('add_budget_transaction', payload));
+    }
+    if (error) {
+      const retryMsg = String((error as any)?.message || '').toLowerCase();
+      const isAmbiguousOverload =
+        retryMsg.includes('could not choose the best candidate function') &&
+        retryMsg.includes('add_budget_transaction');
+      if (isAmbiguousOverload) {
+        return await addBudgetTransactionFallback();
+      }
     }
   }
 
@@ -1149,7 +1239,18 @@ async function processAutomationTick() {
         } catch { /* non-critical */ }
 
         try {
-          await performWorkAction(aw.userId, aw.factoryId, { allowAutoDrink: true });
+          const { data: autoWorkUser, error: autoWorkUserError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', aw.userId)
+            .single();
+          if (autoWorkUserError || !autoWorkUser) {
+            await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
+            continue;
+          }
+
+          (autoWorkUser as any).perks = await getUserPerks(aw.userId);
+          await executeExtractionWork(autoWorkUser, aw.factoryId, { allowAutoDrink: true });
           await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
         } catch (err: any) {
           const message = (err?.message || '').toLowerCase();
@@ -3668,12 +3769,15 @@ async function computeDeepCost(nationId: string, resourceType: string, level: nu
 // ██ ADVANCED EXTRACTION SYSTEM ENDPOINTS
 // ══════════════════════════════════════════════════════════════════
 
-async function executeExtractionWork(user: any, factoryId: string) {
+async function executeExtractionWork(user: any, factoryId: string, options?: { allowAutoDrink?: boolean }) {
   const fail = (statusCode: number, message: string, reason?: string) => {
     const err: any = createAutomationError(statusCode, message);
     if (reason) err.reason = reason;
     throw err;
   };
+
+  let workingUser = user;
+  if (!workingUser?.id) fail(404, "Utente non trovato.");
 
   const { data: factory, error: fErr } = await supabase
     .from('factories')
@@ -3684,7 +3788,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
   if (fErr || !factory) fail(404, "Fabbrica non trovata.");
   if (factory.isActive === false) fail(400, "Fabbrica non attiva.");
   const factoryMinLevel = factory.minLevel ?? 1;
-  if ((user.level || 0) < factoryMinLevel) fail(400, `Richiede livello ${factoryMinLevel}.`);
+  if ((workingUser.level || 0) < factoryMinLevel) fail(400, `Richiede livello ${factoryMinLevel}.`);
 
   const factoryType = factory.type || '';
   const typeDef = FACTORY_CONFIG.TYPES[factoryType];
@@ -3694,22 +3798,44 @@ async function executeExtractionWork(user: any, factoryId: string) {
   if (!resourceType) fail(400, "Questa fabbrica non produce risorse estraibili.");
 
   const regionId = factory.regionId;
+  if ((workingUser.regionId || '') !== regionId) {
+    fail(400, "Devi viaggiare in questa regione per lavorare qui.", "travel_required");
+  }
 
   const { data: regionRel } = await supabase.from('regions').select('*').eq('id', regionId).single();
   if (!regionRel) fail(404, "Regione non trovata.");
 
   const restrictionsActive = regionRel.workRestrictions === 1;
-  const isResident = user.residence_id === regionId;
-  const hasWorkPermit = user.work_permit_id === regionId;
-  if (restrictionsActive && !isResident && !hasWorkPermit) {
+  const isResident = workingUser.residenceId === regionId;
+  let hasWorkPermit = workingUser.workPermitId === regionId;
+  if (!hasWorkPermit) {
+    try {
+      const { data: permitRow } = await supabase.from('work_permits')
+        .select('id')
+        .eq('userId', workingUser.id)
+        .eq('regionId', regionId)
+        .maybeSingle();
+      hasWorkPermit = !!permitRow;
+    } catch { /* optional table */ }
+  }
+  if (restrictionsActive && !isResident && !hasWorkPermit && workingUser.id !== factory.ownerUserId) {
     fail(403, "Questa nazione richiede un Permesso di Lavoro.");
   }
 
-  const perks = user.perks || {};
+  const perks = workingUser.perks || await getUserPerks(workingUser.id);
   const resistenza = perks['RESISTENZA'] || 0;
   const energyReduction = Math.min(0.5, resistenza / 100);
   const actualEnergyCost = Math.ceil(EXTRACTION_CONFIG.WORK_ACTION_ENERGY_COST * (1 - energyReduction));
-  if ((user.energy || 0) < actualEnergyCost) {
+  if ((workingUser.energy || 0) < actualEnergyCost && options?.allowAutoDrink) {
+    const drank = await tryUseEnergyDrinkForUser(workingUser.id);
+    if (drank) {
+      const { data: refreshedUser } = await supabase.from('users').select('*').eq('id', workingUser.id).single();
+      if (refreshedUser) {
+        workingUser = { ...refreshedUser, perks };
+      }
+    }
+  }
+  if ((workingUser.energy || 0) < actualEnergyCost) {
     fail(400, "Energia insufficiente.", "no_energy");
   }
 
@@ -3736,7 +3862,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
 
   const maxWorkExperience = getMaxWorkXpPerResource(perks['ISTRUZIONE'] || 0);
   const [workExp, numPowerPlants, departmentBonus] = await Promise.all([
-    getPlayerWorkExperience(user.id, resourceType, maxWorkExperience),
+    getPlayerWorkExperience(workingUser.id, resourceType, maxWorkExperience),
     getRegionPowerPlants(regionId),
     getDepartmentBonus(regionId, resourceType),
   ]);
@@ -3748,7 +3874,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
   const autonomySharePercent = regionRel.regionalProfitSharePercent ?? 0;
 
   const breakdown = calculateExtraction({
-    playerLevel: user.level || 1,
+    playerLevel: workingUser.level || 1,
     factoryLevel: factory.level || 1,
     workExperience: workExp,
     resourceType,
@@ -3768,7 +3894,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
   const { data: playerState } = await supabase
     .from('player_extraction_state')
     .select('*')
-    .eq('playerId', user.id)
+    .eq('playerId', workingUser.id)
     .eq('regionId', regionId)
     .eq('resourceType', resourceType)
     .maybeSingle();
@@ -3804,25 +3930,15 @@ async function executeExtractionWork(user: any, factoryId: string) {
     fail(400, "Produttività insufficiente per estrarre.", "insufficient_productivity");
   }
 
-  // Atomically deduct energy and (for gold_ore) add gold+cash in a single RPC call.
-  // This prevents energy loss without reward if any intermediate step fails.
-  if (resourceType === 'gold_ore') {
-    const { data: deductData, error: deductErr } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: -Math.round(actualMoney),
-      p_gold_cost: -actualGold,
-      p_energy_cost: actualEnergyCost,
-    });
-    if (deductErr) throw deductErr;
-    const parsedDeduct = typeof deductData === 'string' ? JSON.parse(deductData) : deductData;
-    if (parsedDeduct?.error) fail(400, parsedDeduct.error);
-  } else {
-    const { error: energyErr } = await supabase
-      .from('users')
-      .update({ energy: user.energy - actualEnergyCost })
-      .eq('id', user.id);
-    if (energyErr) throw energyErr;
-  }
+  const { data: deductData, error: deductErr } = await supabase.rpc('safe_deduct_currency', {
+    p_user_id: workingUser.id,
+    p_money_cost: resourceType === 'gold_ore' ? -Math.round(actualMoney) : 0,
+    p_gold_cost: resourceType === 'gold_ore' ? -actualGold : 0,
+    p_energy_cost: actualEnergyCost,
+  });
+  if (deductErr) throw deductErr;
+  const parsedDeduct = typeof deductData === 'string' ? JSON.parse(deductData) : deductData;
+  if (parsedDeduct?.error) fail(400, parsedDeduct.error);
 
   if (regionRes) {
     const newDailyExtracted = Math.min(dailyMaxCap, dailyExtracted + roundedPlayer);
@@ -3838,10 +3954,10 @@ async function executeExtractionWork(user: any, factoryId: string) {
     await supabase.from('player_extraction_state').update({
       extractedSinceLastRecharge: newExtracted,
       updatedAt: new Date().toISOString(),
-    }).eq('playerId', user.id).eq('regionId', regionId).eq('resourceType', resourceType);
+    }).eq('playerId', workingUser.id).eq('regionId', regionId).eq('resourceType', resourceType);
   } else {
     await supabase.from('player_extraction_state').insert({
-      playerId: user.id,
+      playerId: workingUser.id,
       regionId,
       resourceType,
       extractedSinceLastRecharge: roundedPlayer,
@@ -3850,14 +3966,14 @@ async function executeExtractionWork(user: any, factoryId: string) {
   }
 
   const { data: existingInv } = await supabase.from('user_inventory')
-    .select('quantity').eq('userId', user.id).eq('itemId', resourceType).maybeSingle();
+    .select('quantity').eq('userId', workingUser.id).eq('itemId', resourceType).maybeSingle();
   if (existingInv) {
     await supabase.from('user_inventory')
       .update({ quantity: existingInv.quantity + roundedPlayer })
-      .eq('userId', user.id).eq('itemId', resourceType);
+      .eq('userId', workingUser.id).eq('itemId', resourceType);
   } else {
     await supabase.from('user_inventory')
-      .insert({ userId: user.id, itemId: resourceType, quantity: roundedPlayer });
+      .insert({ userId: workingUser.id, itemId: resourceType, quantity: roundedPlayer });
   }
 
   // Gold+cash already handled atomically above together with energy deduction.
@@ -3878,7 +3994,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
         p_type: 'INCOME',
         p_subtype: 'EXTRACTION_TAX',
         p_money_delta: taxMoney,
-        p_created_by: user.id,
+        p_created_by: workingUser.id,
         p_metadata: { resourceType, factoryId, grossAmount: actualGross, taxAmount: actualTax },
       });
     }
@@ -3886,13 +4002,13 @@ async function executeExtractionWork(user: any, factoryId: string) {
 
   const requestedWorkExpGain = getWorkExperienceGainForEnergyCost(actualEnergyCost);
   const cappedRequestedGain = workExp >= maxWorkExperience ? 0 : requestedWorkExpGain;
-  const workExpUpdate = await incrementPlayerWorkExperience(user.id, resourceType, cappedRequestedGain, perks['ISTRUZIONE'] || 0);
+  const workExpUpdate = await incrementPlayerWorkExperience(workingUser.id, resourceType, cappedRequestedGain, perks['ISTRUZIONE'] || 0);
 
   const xpGain = GAME_CONFIG.XP_PER_WORK + (perks['ISTRUZIONE'] || 0) * 2;
-  await addXP(user.id, xpGain);
+  await addXP(workingUser.id, xpGain);
 
   await supabase.from('extraction_detailed_logs').insert({
-    playerId: user.id,
+    playerId: workingUser.id,
     regionId,
     factoryId: factory.id,
     resourceType,
@@ -3904,7 +4020,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
     autonomyAmount: Math.round(actualAutonomy),
     moneyGenerated: Math.round(actualMoney),
     withdrawnPoints: actualWithdrawn,
-    playerLevel: user.level || 1,
+    playerLevel: workingUser.level || 1,
     factoryLevel: factory.level || 1,
     workExperience: workExp,
     resourceCoefficient: resourceCoefficient,
@@ -3912,7 +4028,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
   });
 
   const extractionLogPayload = {
-    playerId: user.id,
+    playerId: workingUser.id,
     regionId,
     resourceType,
     amount: roundedPlayer,
@@ -3922,7 +4038,7 @@ async function executeExtractionWork(user: any, factoryId: string) {
   if (extractionLogError) {
     if (/goldGenerated/i.test(String(extractionLogError.message || ''))) {
       const { error: legacyExtractionLogError } = await supabase.from('resource_extraction_logs').insert({
-        playerId: user.id,
+        playerId: workingUser.id,
         regionId,
         resourceType,
         amount: roundedPlayer,

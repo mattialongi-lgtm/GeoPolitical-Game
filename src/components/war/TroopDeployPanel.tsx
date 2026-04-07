@@ -31,11 +31,11 @@ export const TroopDeployPanel: React.FC<TroopDeployPanelProps> = ({
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [expanded, setExpanded] = useState(true);
 
-  const bgColor = sideColor === 'indigo' ? 'bg-indigo-50' : 'bg-rose-50';
-  const borderColor = sideColor === 'indigo' ? 'border-indigo-100/50' : 'border-rose-100/50';
-  const textColor = sideColor === 'indigo' ? 'text-indigo-700' : 'text-rose-700';
-  const accentColor = sideColor === 'indigo' ? 'text-indigo-600' : 'text-rose-600';
-  const btnBorder = sideColor === 'indigo' ? 'border-indigo-200/50' : 'border-rose-200/50';
+  const bgColor = sideColor === 'indigo' ? 'bg-indigo-500/10' : 'bg-rose-500/10';
+  const borderColor = sideColor === 'indigo' ? 'border-indigo-500/20' : 'border-rose-500/20';
+  const textColor = sideColor === 'indigo' ? 'text-indigo-400' : 'text-rose-400';
+  const accentColor = sideColor === 'indigo' ? 'text-indigo-400' : 'text-rose-400';
+  const btnBorder = sideColor === 'indigo' ? 'border-indigo-500/20' : 'border-rose-500/20';
 
   return (
     <div className={`${bgColor} rounded-3xl p-4 border ${borderColor} space-y-3`}>
@@ -46,7 +46,7 @@ export const TroopDeployPanel: React.FC<TroopDeployPanelProps> = ({
         <h5 className={`text-xs font-black ${textColor} uppercase`}>
           {side === 'attacker' ? 'Supporta Attaccante' : 'Supporta Difensore'}
         </h5>
-        {expanded ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+        {expanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
       </button>
 
       {expanded && (
@@ -59,21 +59,21 @@ export const TroopDeployPanel: React.FC<TroopDeployPanelProps> = ({
             const canAfford = userEnergy >= energyCost * qty;
 
             return (
-              <div key={troop} className={`bg-white border ${btnBorder} p-3 rounded-2xl shadow-sm space-y-2`}>
+              <div key={troop} className={`bg-gray-800/60 border ${btnBorder} p-3 rounded-2xl border border-gray-700/40 space-y-2`}>
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-sm flex items-center gap-2">
+                  <span className="font-bold text-sm flex items-center gap-2 text-gray-100">
                     {label.emoji} {label.name}
                   </span>
                   <div className="flex flex-col items-end">
                     <span className={`text-xs font-black ${accentColor}`}>+{(baseDmg * qty).toLocaleString()} Danni</span>
-                    <span className="text-[10px] font-bold text-slate-400">-{energyCost * qty}⚡</span>
+                    <span className="text-[10px] font-bold text-gray-400">-{energyCost * qty}⚡</span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="flex items-center bg-slate-50 rounded-xl border border-slate-200">
+                  <div className="flex items-center bg-gray-800/60 rounded-xl border border-gray-700/40">
                     <button
                       onClick={() => setQuantities(prev => ({ ...prev, [troop]: Math.max(1, (prev[troop] || 1) - 1) }))}
-                      className="px-2 py-1 text-slate-500 hover:text-slate-700 font-black"
+                      className="px-2 py-1 text-gray-400 hover:text-gray-200 font-black"
                     >
                       −
                     </button>
@@ -82,11 +82,11 @@ export const TroopDeployPanel: React.FC<TroopDeployPanelProps> = ({
                       min={1}
                       value={qty}
                       onChange={(e) => setQuantities(prev => ({ ...prev, [troop]: Math.max(1, parseInt(e.target.value) || 1) }))}
-                      className="w-12 text-center text-sm font-black bg-transparent border-0 focus:ring-0"
+                      className="w-12 text-center text-sm font-black bg-transparent border-0 focus:ring-0 text-gray-100"
                     />
                     <button
                       onClick={() => setQuantities(prev => ({ ...prev, [troop]: (prev[troop] || 1) + 1 }))}
-                      className="px-2 py-1 text-slate-500 hover:text-slate-700 font-black"
+                      className="px-2 py-1 text-gray-400 hover:text-gray-200 font-black"
                     >
                       +
                     </button>
@@ -94,7 +94,7 @@ export const TroopDeployPanel: React.FC<TroopDeployPanelProps> = ({
                   <button
                     disabled={deploying || !canAfford}
                     onClick={() => onDeploy(troop, qty)}
-                    className={`flex-1 py-2 ${sideColor === 'indigo' ? 'bg-indigo-500 hover:bg-indigo-600 shadow-indigo-100' : 'bg-rose-500 hover:bg-rose-600 shadow-rose-100'} text-white rounded-xl font-black text-xs uppercase shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-1`}
+                    className={`flex-1 py-2 ${sideColor === 'indigo' ? 'bg-indigo-500 hover:bg-indigo-600 shadow-indigo-900/30' : 'bg-rose-500 hover:bg-rose-600 shadow-rose-900/30'} text-white rounded-xl font-black text-xs uppercase shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-1`}
                   >
                     {deploying ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                     Schiera

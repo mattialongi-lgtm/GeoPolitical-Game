@@ -9,18 +9,18 @@ import {
 } from "lucide-react";
 import { WarFactionBadge } from "../war";
 
-const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => { 
-  const { warId } = useParams(); 
-  const navigate = useNavigate(); 
-  const [data, setData] = useState<any>(null); 
-  const [loading, setLoading] = useState(true); 
- 
-  const resolveFactionName = useCallback((iso2?: string | null, displayName?: string | null) => { 
-    const rawIso = (iso2 || "").trim(); 
-    const countryCode = rawIso.includes("-") ? rawIso.split("-")[0] : rawIso; 
-    const fromNations = nations?.find((n: any) => (n?.id || "").toLowerCase() === countryCode.toLowerCase())?.name; 
-    return fromNations || displayName || iso2 || "Sconosciuto"; 
-  }, [nations]); 
+const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
+  const { warId } = useParams();
+  const navigate = useNavigate();
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  const resolveFactionName = useCallback((iso2?: string | null, displayName?: string | null) => {
+    const rawIso = (iso2 || "").trim();
+    const countryCode = rawIso.includes("-") ? rawIso.split("-")[0] : rawIso;
+    const fromNations = nations?.find((n: any) => (n?.id || "").toLowerCase() === countryCode.toLowerCase())?.name;
+    return fromNations || displayName || iso2 || "Sconosciuto";
+  }, [nations]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -34,8 +34,8 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
     fetchStats();
   }, [warId]);
 
-  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-600 w-8 h-8" /></div>;
-  if (!data) return <div className="text-center p-12">Guerra non trovata.</div>;
+  if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-400 w-8 h-8" /></div>;
+  if (!data) return <div className="text-center p-12 text-gray-400">Guerra non trovata.</div>;
 
   const { war, stats } = data;
   const totalScore = (war.attackerScore || 0) + (war.defenderScore || 0) || 1;
@@ -44,30 +44,30 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
 
   return (
     <div className="space-y-6">
-       <button onClick={() => navigate(-1)} className="px-5 py-2.5 bg-white border border-slate-100 rounded-2xl shadow-sm text-xs font-black text-slate-500 uppercase tracking-widest hover:text-indigo-600 hover:border-indigo-100 transition-all flex items-center gap-2 group">
+       <button onClick={() => navigate(-1)} className="px-5 py-2.5 bg-gray-900/60 border border-gray-800 rounded-2xl text-xs font-black text-gray-400 uppercase tracking-widest hover:text-indigo-400 hover:border-indigo-500/30 transition-all flex items-center gap-2 group">
          <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" /> Indietro
        </button>
 
-       <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 text-center relative overflow-hidden">
+       <div className="bg-gray-900/60 p-8 rounded-2xl border border-gray-800 text-center relative overflow-hidden">
           <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-rose-500" />
-          <h2 className="text-2xl font-black text-slate-900 uppercase">Riepilogo Battaglia</h2>
-          <p className="text-slate-400 text-[10px] font-black mt-1 uppercase tracking-[0.2em]">{war.id}</p>
+          <h2 className="text-2xl font-black text-white uppercase">Riepilogo Battaglia</h2>
+          <p className="text-gray-400 text-[10px] font-black mt-1 uppercase tracking-[0.2em]">{war.id}</p>
        </div>
 
-       <div className="bg-slate-900 p-8 rounded-[3rem] shadow-2xl relative overflow-hidden">
+       <div className="bg-slate-900 p-8 rounded-2xl shadow-2xl relative overflow-hidden border border-gray-700/50">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-900/40 to-rose-900/40 opacity-50" />
           <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
-          
+
           <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
              <div className="text-center">
-                <WarFactionBadge 
-                  name={resolveFactionName(war.attackerCountryIso2, war.attackerDisplayName)} 
-                  icon={war.attackerCountryIso2} 
-                  align="center" 
-                  iconSizeClass="w-10 h-10" 
-                  textClassName="text-4xl font-black text-white uppercase tracking-tighter" 
-                  className="mb-1" 
-                /> 
+                <WarFactionBadge
+                  name={resolveFactionName(war.attackerCountryIso2, war.attackerDisplayName)}
+                  icon={war.attackerCountryIso2}
+                  align="center"
+                  iconSizeClass="w-10 h-10"
+                  textClassName="text-4xl font-black text-white uppercase tracking-tighter"
+                  className="mb-1"
+                />
                 <div className="inline-block px-3 py-1 bg-indigo-500/20 rounded-full border border-indigo-500/30">
                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">Attaccante</p>
                 </div>
@@ -91,14 +91,14 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
              </div>
 
              <div className="text-center">
-                <WarFactionBadge  
-                  name={resolveFactionName(war.defenderCountryIso2, war.defenderDisplayName)}  
-                  icon={war.defenderCountryIso2}  
-                  align="center"  
-                  iconSizeClass="w-10 h-10"  
-                  textClassName="text-4xl font-black text-white uppercase tracking-tighter"  
-                  className="mb-1"  
-                />  
+                <WarFactionBadge
+                  name={resolveFactionName(war.defenderCountryIso2, war.defenderDisplayName)}
+                  icon={war.defenderCountryIso2}
+                  align="center"
+                  iconSizeClass="w-10 h-10"
+                  textClassName="text-4xl font-black text-white uppercase tracking-tighter"
+                  className="mb-1"
+                />
                 <div className="inline-block px-3 py-1 bg-rose-500/20 rounded-full border border-rose-500/30">
                    <p className="text-[10px] font-black text-rose-400 uppercase tracking-widest">Difensore</p>
                 </div>
@@ -108,19 +108,19 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
        </div>
 
        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden">
+          <div className="bg-gray-900/60 p-8 rounded-2xl border border-gray-800 relative overflow-hidden">
              <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500" />
-             <h3 className="text-xs font-black text-indigo-600 uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
-                <div className="p-2 bg-indigo-50 rounded-xl"><Shield className="w-4 h-4" /></div> Top Danni Attaccanti
+             <h3 className="text-xs font-black text-indigo-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
+                <div className="p-2 bg-indigo-500/10 rounded-xl border border-indigo-500/20"><Shield className="w-4 h-4 text-indigo-400" /></div> Top Danni Attaccanti
              </h3>
              <div className="space-y-4">
                 {stats.attacker.length === 0 ? (
-                  <div className="text-center py-12 space-y-3 bg-slate-50/50 rounded-3xl border border-slate-100">
-                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Nessun danno registrato</p>
-                    <p className="text-[9px] text-slate-300 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
+                  <div className="text-center py-12 space-y-3 bg-gray-900/60 rounded-2xl border border-dashed border-gray-700/50">
+                    <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Nessun danno registrato</p>
+                    <p className="text-[9px] text-gray-500 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
                   </div>
                 ) : stats.attacker.map((s: any, i: number) => (
-                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-indigo-50/10 rounded-2xl transition-all border border-transparent hover:border-indigo-500/20 group cursor-pointer" onClick={() => { console.log('Navigating to profile:', s.userId); navigate(`/profile/${s.userId}`); }}>
+                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-indigo-500/10 rounded-2xl transition-all border border-transparent hover:border-indigo-500/20 group cursor-pointer" onClick={() => { console.log('Navigating to profile:', s.userId); navigate(`/profile/${s.userId}`); }}>
                        <div className="flex items-center gap-4">
                           <div className="relative shrink-0">
                             <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-black text-sm overflow-hidden border border-indigo-500/20">
@@ -136,7 +136,7 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
                           </div>
                           <div>
                             <p className="text-sm font-black text-white group-hover:text-indigo-400 transition-colors tracking-tight">{s.username}</p>
-                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{(s.totalDamage || 0).toLocaleString()} danni inflitti</p>
+                            <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{(s.totalDamage || 0).toLocaleString()} danni inflitti</p>
                           </div>
                        </div>
                        <p className="text-base font-black text-indigo-400 font-mono tracking-tighter">{(s.totalDamage).toLocaleString()}</p>
@@ -145,19 +145,19 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
              </div>
           </div>
 
-          <div className="bg-white p-8 rounded-[3rem] border border-slate-100 shadow-sm relative overflow-hidden">
+          <div className="bg-gray-900/60 p-8 rounded-2xl border border-gray-800 relative overflow-hidden">
              <div className="absolute top-0 left-0 w-1.5 h-full bg-rose-500" />
-             <h3 className="text-xs font-black text-rose-600 uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
-                <div className="p-2 bg-rose-50 rounded-xl"><ShieldAlert className="w-4 h-4" /></div> Top Danni Difensori
+             <h3 className="text-xs font-black text-rose-400 uppercase tracking-[0.2em] mb-8 flex items-center gap-3">
+                <div className="p-2 bg-rose-500/10 rounded-xl border border-rose-500/20"><ShieldAlert className="w-4 h-4 text-rose-400" /></div> Top Danni Difensori
              </h3>
              <div className="space-y-4">
                 {stats.defender.length === 0 ? (
-                  <div className="text-center py-12 space-y-3 bg-slate-50/50 rounded-3xl border border-slate-100">
-                    <p className="text-slate-400 text-[10px] font-black uppercase tracking-widest">Nessun danno registrato</p>
-                    <p className="text-[9px] text-slate-300 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
+                  <div className="text-center py-12 space-y-3 bg-gray-900/60 rounded-2xl border border-dashed border-gray-700/50">
+                    <p className="text-gray-400 text-[10px] font-black uppercase tracking-widest">Nessun danno registrato</p>
+                    <p className="text-[9px] text-gray-500 font-bold px-8 leading-relaxed">I dati su chi ha inflitto i danni saranno popolati a partire dalle prossime battaglie.</p>
                   </div>
                 ) : stats.defender.map((s: any, i: number) => (
-                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-rose-50/10 rounded-2xl transition-all border border-transparent hover:border-rose-500/20 group cursor-pointer" onClick={() => { console.log('Navigating to profile:', s.userId); navigate(`/profile/${s.userId}`); }}>
+                    <div key={s.userId} className="flex justify-between items-center p-4 hover:bg-rose-500/10 rounded-2xl transition-all border border-transparent hover:border-rose-500/20 group cursor-pointer" onClick={() => { console.log('Navigating to profile:', s.userId); navigate(`/profile/${s.userId}`); }}>
                        <div className="flex items-center gap-4">
                           <div className="relative shrink-0">
                             <div className="w-12 h-12 rounded-2xl bg-rose-500/10 flex items-center justify-center text-rose-400 font-black text-sm overflow-hidden border border-rose-500/20">
@@ -173,7 +173,7 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
                           </div>
                           <div>
                             <p className="text-sm font-black text-white group-hover:text-rose-400 transition-colors tracking-tight">{s.username}</p>
-                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest">{(s.totalDamage || 0).toLocaleString()} danni inflitti</p>
+                            <p className="text-[9px] font-black text-gray-500 uppercase tracking-widest">{(s.totalDamage || 0).toLocaleString()} danni inflitti</p>
                           </div>
                        </div>
                        <p className="text-base font-black text-rose-400 font-mono tracking-tighter">{(s.totalDamage).toLocaleString()}</p>

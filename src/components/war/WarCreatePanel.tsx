@@ -142,14 +142,14 @@ export const WarCreatePanel: React.FC<WarCreatePanelProps> = ({
   const allowedTypes = currentTarget?.allowedTypes || [];
 
   return (
-    <div className="bg-white p-6 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-4">
+    <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800 space-y-4">
       <div className="flex items-center gap-3">
-        <div className="p-3 rounded-2xl bg-rose-50">
-          <Swords className="w-6 h-6 text-rose-600" />
+        <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-400/30">
+          <Swords className="w-6 h-6 text-rose-400" />
         </div>
         <div>
-          <h3 className="font-black text-slate-900 uppercase tracking-tight">Dichiara Guerra</h3>
-          <p className="text-xs text-slate-400 font-medium">Scegli tra i bersagli geograficamente raggiungibili</p>
+          <h3 className="font-black text-white uppercase tracking-tight">Dichiara Guerra</h3>
+          <p className="text-xs text-gray-400 font-medium">Scegli tra i bersagli geograficamente raggiungibili</p>
         </div>
       </div>
 
@@ -163,17 +163,17 @@ export const WarCreatePanel: React.FC<WarCreatePanelProps> = ({
       ) : (
         <div className="space-y-5">
           {/* Attacker Selection */}
-          <div className="bg-rose-50 p-4 rounded-3xl border border-rose-100 space-y-4">
+          <div className="bg-rose-500/10 p-4 rounded-2xl border border-rose-500/20 space-y-4">
              <div>
-                <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest block mb-1">Passo 1: Regione di Partenza</label>
-                <p className="text-[10px] text-slate-500 mb-2 leading-tight">Da quale costa/confine lancerai le tue armate?</p>
+                <label className="text-[10px] font-black text-rose-400 uppercase tracking-widest block mb-1">Passo 1: Regione di Partenza</label>
+                <p className="text-[10px] text-gray-400 mb-2 leading-tight">Da quale costa/confine lancerai le tue armate?</p>
                 {regionsLoading ? (
-                   <div className="text-xs text-slate-500 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin"/> Caricamento regioni...</div>
+                   <div className="text-xs text-gray-400 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin"/> Caricamento regioni...</div>
                 ) : (
-                   <select 
+                   <select
                      value={attackerRegion}
                      onChange={(e) => setAttackerRegion(e.target.value)}
-                     className="w-full px-4 py-3 rounded-2xl border border-rose-200 bg-white text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-200"
+                     className="w-full px-4 py-3 rounded-2xl border border-rose-500/30 bg-gray-900/60 text-sm font-bold text-gray-100 focus:outline-none focus:ring-2 focus:ring-rose-500/30"
                    >
                      {myRegions.length === 0 && <option value="">Nessuna regione gestita</option>}
                      {myRegions.map(reg => (
@@ -185,17 +185,17 @@ export const WarCreatePanel: React.FC<WarCreatePanelProps> = ({
 
              {/* Target Selection */}
              <div>
-               <label className="text-[10px] font-black text-rose-500 uppercase tracking-widest block mb-1">Passo 2: Regione Bersaglio</label>
+               <label className="text-[10px] font-black text-rose-400 uppercase tracking-widest block mb-1">Passo 2: Regione Bersaglio</label>
                {targetsLoading ? (
-                 <div className="text-xs text-slate-500 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin"/> Ricalcolo mappe satellitari...</div>
+                 <div className="text-xs text-gray-400 flex items-center gap-2"><Loader2 className="w-3 h-3 animate-spin"/> Ricalcolo mappe satellitari...</div>
                ) : targetsError ? (
-                 <p className="text-xs text-red-500">{targetsError}</p>
+                 <p className="text-xs text-rose-400">{targetsError}</p>
                ) : (
                  <select
                    value={targetRegion}
                    onChange={(e) => setTargetRegion(e.target.value)}
                    disabled={validTargets.length === 0}
-                   className="w-full px-4 py-3 rounded-2xl border border-rose-200 bg-white text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:opacity-50"
+                   className="w-full px-4 py-3 rounded-2xl border border-rose-500/30 bg-gray-900/60 text-sm font-bold text-gray-100 focus:outline-none focus:ring-2 focus:ring-rose-500/30 disabled:opacity-50"
                  >
                    {validTargets.length === 0 ? (
                      <option value="">Nessun bersaglio raggiungibile</option>
@@ -219,36 +219,36 @@ export const WarCreatePanel: React.FC<WarCreatePanelProps> = ({
           {/* Validation Status & Type Selection */}
           <div className="min-h-[100px]">
              {(!attackerRegion || validTargets.length === 0) ? (
-               <div className="h-full flex flex-col justify-center p-4 border border-dashed border-slate-200 rounded-2xl text-center">
-                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-relaxed">Nessun attacco possibile al momento.<br/>Devi possedere confini o coste utili.</p>
+               <div className="h-full flex flex-col justify-center p-4 border border-dashed border-gray-700/50 rounded-2xl text-center">
+                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest leading-relaxed">Nessun attacco possibile al momento.<br/>Devi possedere confini o coste utili.</p>
                </div>
              ) : (
                <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-2">Opzioni Militari Disponibili</label>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Opzioni Militari Disponibili</label>
                     <div className="grid grid-cols-2 gap-2">
                        {['land', 'naval'].map((typeKey) => {
                          const type = typeKey as WarType;
                          const isAllowed = allowedTypes.includes(type);
                          const config = WAR_TYPE_CONFIG[type];
-                         
+
                          return (
                            <button
                              key={type}
                              disabled={!isAllowed}
                              onClick={() => setSelectedType(type)}
                              className={`p-3 rounded-2xl border text-left transition-all ${
-                               !isAllowed 
-                                 ? 'bg-slate-50 border-slate-100 opacity-50 cursor-not-allowed hidden'
+                               !isAllowed
+                                 ? 'bg-gray-800/30 border-gray-700/30 opacity-50 cursor-not-allowed hidden'
                                  : selectedType === type
-                                   ? 'border-indigo-400 bg-indigo-50 shadow-sm'
-                                   : 'border-slate-200 bg-white hover:border-indigo-200'
+                                   ? 'border-indigo-500/60 bg-indigo-500/10'
+                                   : 'border-gray-700/40 bg-gray-800/50 hover:border-indigo-500/40'
                              }`}
                            >
                              <div className="text-lg">{config.emoji}</div>
-                             <div className="text-xs font-black text-slate-800">{config.label}</div>
+                             <div className="text-xs font-black text-gray-100">{config.label}</div>
                              {isAllowed && (
-                                <div className="text-[9px] text-slate-400 font-medium">{config.desc}</div>
+                                <div className="text-[9px] text-gray-400 font-medium">{config.desc}</div>
                              )}
                            </button>
                          );
@@ -259,17 +259,17 @@ export const WarCreatePanel: React.FC<WarCreatePanelProps> = ({
              )}
           </div>
 
-          <div className="flex gap-2 pt-2 border-t border-slate-100">
+          <div className="flex gap-2 pt-2 border-t border-gray-700/40">
             <button
               onClick={() => { setShowForm(false); setTargetRegion(''); setValidTargets([]); setSelectedType(null); }}
-              className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-black uppercase text-xs hover:bg-slate-200 transition-all"
+              className="flex-1 py-3 bg-gray-800/50 text-gray-400 rounded-2xl font-black uppercase text-xs hover:bg-gray-700/50 transition-all"
             >
               Annulla
             </button>
             <button
               onClick={handleSubmit}
               disabled={creating || !targetRegion || allowedTypes.length === 0 || !selectedType}
-              className="flex-1 py-3 bg-rose-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-rose-100 hover:bg-rose-600 transition-all disabled:opacity-50 disabled:shadow-none disabled:bg-slate-300 disabled:text-slate-500 flex items-center justify-center gap-2"
+              className="flex-1 py-3 bg-rose-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-rose-100 hover:bg-rose-600 transition-all disabled:opacity-50 disabled:shadow-none disabled:bg-gray-700 disabled:text-gray-500 flex items-center justify-center gap-2"
             >
               {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Swords className="w-4 h-4" />}
               Chiama alle Armi!

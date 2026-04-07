@@ -38,11 +38,11 @@ export const BlocsList = () => {
         >
             <div className="flex justify-between items-center">
                 <div>
-                    <h2 className="text-2xl font-black text-slate-900 tracking-tight uppercase flex items-center gap-2">
-                        <Shield className="w-6 h-6 text-indigo-600" />
+                    <h2 className="text-2xl font-black text-white tracking-tight uppercase flex items-center gap-2">
+                        <Shield className="w-6 h-6 text-indigo-400" />
                         Blocchi Geopolitici
                     </h2>
-                    <p className="text-sm font-bold text-slate-400 mt-1">Alleanze e patti globali</p>
+                    <p className="text-sm font-bold text-gray-400 mt-1">Alleanze e patti globali</p>
                 </div>
                 <button
                     onClick={() => navigate("/blocs/create")}
@@ -54,13 +54,13 @@ export const BlocsList = () => {
             </div>
 
             <div className="relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
                 <input
                     type="text"
                     placeholder="Cerca un blocco..."
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    className="w-full pl-12 pr-4 py-4 rounded-2xl bg-white border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700 shadow-sm"
+                    className="w-full pl-12 pr-4 py-4 rounded-2xl bg-gray-800/60 border border-gray-700/40 text-gray-100 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all font-medium placeholder:text-gray-500"
                 />
             </div>
 
@@ -74,39 +74,39 @@ export const BlocsList = () => {
                         <button
                             key={bloc.id}
                             onClick={() => navigate(`/blocs/${bloc.id}`)}
-                            className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 text-left hover:border-indigo-300 hover:shadow-md transition-all group flex flex-col h-full"
+                            className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800 text-left hover:border-indigo-500/50 hover:shadow-md transition-all group flex flex-col h-full"
                         >
                             <div className="flex items-start gap-4 mb-4">
-                                <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center text-2xl shrink-0 shadow-inner overflow-hidden">
+                                <div className="w-12 h-12 bg-indigo-500/10 rounded-2xl flex items-center justify-center text-2xl shrink-0 border border-indigo-500/20 overflow-hidden">
                                     {(bloc.logo || "").startsWith('http') ? <img src={bloc.logo} alt="logo" className="w-full h-full object-cover" /> : (bloc.logo || "🌍")}
                                 </div>
                                 <div className="flex-1 min-w-0">
-                                    <h3 className="text-xl font-black text-slate-900 truncate group-hover:text-indigo-600 transition-colors">
+                                    <h3 className="text-xl font-black text-white truncate group-hover:text-indigo-400 transition-colors">
                                         {bloc.name}
                                     </h3>
-                                    <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mt-1 truncate">
+                                    <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mt-1 truncate">
                                         Fondatore: {bloc.ownerName}
                                     </p>
                                 </div>
                             </div>
-                            <p className="text-sm text-slate-600 font-medium line-clamp-2 leading-relaxed flex-1">
+                            <p className="text-sm text-gray-300 font-medium line-clamp-2 leading-relaxed flex-1">
                                 {bloc.description || "Nessuna descrizione fornita."}
                             </p>
-                            <div className="flex items-center gap-4 mt-6 pt-4 border-t border-slate-50">
-                                <div className="flex items-center gap-1.5 text-slate-500 bg-slate-50 px-3 py-1.5 rounded-xl">
+                            <div className="flex items-center gap-4 mt-6 pt-4 border-t border-gray-700/40">
+                                <div className="flex items-center gap-1.5 text-gray-400 bg-gray-800/50 px-3 py-1.5 rounded-xl">
                                     <Users className="w-4 h-4" />
                                     <span className="text-xs font-black">{bloc.memberCount} Stati</span>
                                 </div>
-                                <span className="text-[10px] font-bold text-slate-300 ml-auto bg-slate-50 px-2 py-1 rounded-lg">
+                                <span className="text-[10px] font-bold text-gray-500 ml-auto bg-gray-800/50 px-2 py-1 rounded-lg">
                                     Nato il {new Date(bloc.createdAt).toLocaleDateString()}
                                 </span>
                             </div>
                         </button>
                     ))}
                     {filtered.length === 0 && (
-                        <div className="col-span-1 border-2 border-dashed border-slate-200 rounded-[2rem] p-8 text-center bg-slate-50">
-                            <Shield className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                            <p className="text-sm font-bold text-slate-500">Nessun blocco trovato.</p>
+                        <div className="col-span-1 bg-gray-900/60 rounded-2xl border border-dashed border-gray-700/50 p-8 text-center">
+                            <Shield className="w-12 h-12 text-gray-600 mx-auto mb-3" />
+                            <p className="text-sm font-bold text-gray-400">Nessun blocco trovato.</p>
                         </div>
                     )}
                 </div>

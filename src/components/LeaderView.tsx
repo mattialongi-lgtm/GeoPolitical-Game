@@ -539,7 +539,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any; fetchData?: ()
                                 animate={{ opacity: 1, scale: 1 }}
                                 className="space-y-8"
                             >
-                                <div className="bg-gradient-to-tr from-indigo-900/40 to-slate-800/40 p-12 rounded-[2rem] border border-indigo-500/20 text-center relative overflow-hidden group">
+                                <div className="bg-gradient-to-tr from-indigo-900/40 to-slate-800/40 p-12 rounded-2xl border border-indigo-500/20 text-center relative overflow-hidden group">
                                     <div className="absolute inset-0 bg-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
                                     <div className="relative">
                                         <Briefcase className="w-16 h-16 text-indigo-400 mx-auto mb-6" />
@@ -812,7 +812,7 @@ export const LeaderView: React.FC<{ regionId?: string; user: any; fetchData?: ()
                                 animate={{ opacity: 1, scale: 1 }}
                                 className="max-w-3xl mx-auto py-12"
                             >
-                                <div className="bg-gradient-to-b from-slate-800/40 to-indigo-900/20 p-16 rounded-[3rem] border border-slate-700/50 text-center relative overflow-hidden">
+                                <div className="bg-gradient-to-b from-slate-800/40 to-indigo-900/20 p-16 rounded-2xl border border-slate-700/50 text-center relative overflow-hidden">
                                     <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-indigo-500/10 blur-[80px] -z-1" />
                                     <Check className="w-20 h-20 text-indigo-400 mx-auto mb-8 animate-pulse" />
                                     <h2 className="text-3xl font-black text-white uppercase tracking-tighter mb-4">Ufficio Elettorale</h2>

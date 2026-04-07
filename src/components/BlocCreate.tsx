@@ -56,67 +56,67 @@ export const BlocCreate = ({ currentUser, regions }: { currentUser: any, regions
         >
             <button
                 onClick={() => navigate("/blocs")}
-                className="text-xs font-black text-indigo-600 uppercase tracking-widest flex items-center gap-1 hover:gap-2 transition-all"
+                className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-1 hover:gap-2 transition-all"
             >
                 <ArrowLeft className="w-4 h-4" /> Torna ai Blocchi
             </button>
 
-            <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+            <div className="bg-gray-900/60 p-8 rounded-2xl border border-gray-800">
                 <div className="flex items-center gap-4 mb-8">
-                    <div className="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center text-indigo-600 shadow-inner">
+                    <div className="w-14 h-14 bg-indigo-500/10 rounded-2xl flex items-center justify-center text-indigo-400 border border-indigo-500/20">
                         <Shield className="w-7 h-7" />
                     </div>
                     <div>
-                        <h2 className="text-2xl font-black text-slate-900 tracking-tight">Fonda Blocco</h2>
-                        <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-widest">Alleanza Geopolitica</p>
+                        <h2 className="text-2xl font-black text-white tracking-tight">Fonda Blocco</h2>
+                        <p className="text-[10px] font-bold text-gray-400 mt-1 uppercase tracking-widest">Alleanza Geopolitica</p>
                     </div>
                 </div>
 
                 {userRegions.length === 0 ? (
-                    <div className="text-center p-6 border-2 border-dashed border-rose-100 rounded-[2rem] bg-rose-50/50">
-                        <p className="text-sm font-bold text-rose-600">
+                    <div className="text-center p-6 border-2 border-dashed border-rose-400/30 rounded-2xl bg-rose-500/15">
+                        <p className="text-sm font-bold text-rose-400">
                             Devi essere Governatore di almeno uno Stato per fondare un Blocco.
                         </p>
                     </div>
                 ) : (
                     <form onSubmit={handleCreate} className="space-y-6">
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Nome Blocco</label>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider ml-1">Nome Blocco</label>
                             <input
                                 type="text"
                                 value={name}
                                 onChange={e => setName(e.target.value)}
                                 placeholder="Es. Patto di Varsavia"
-                                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-black text-slate-900 placeholder:text-slate-300"
+                                className="w-full px-4 py-3 rounded-2xl bg-gray-800/60 border border-gray-700/40 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all font-black text-white placeholder:text-gray-500"
                                 maxLength={50}
                             />
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Descrizione</label>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider ml-1">Descrizione</label>
                             <textarea
                                 value={description}
                                 onChange={e => setDescription(e.target.value)}
                                 placeholder="Obiettivi, ideali, requisiti..."
                                 rows={4}
-                                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-medium text-slate-700 leading-relaxed placeholder:text-slate-300"
+                                className="w-full px-4 py-3 rounded-2xl bg-gray-800/60 border border-gray-700/40 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all font-medium text-gray-200 leading-relaxed placeholder:text-gray-500"
                                 maxLength={500}
                             />
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider ml-1">Logo (Emoji o URL Immagine)</label>
+                            <label className="text-[10px] font-black text-gray-400 uppercase tracking-wider ml-1">Logo (Emoji o URL Immagine)</label>
                             <input
                                 type="text"
                                 value={logo}
                                 onChange={e => setLogo(e.target.value)}
                                 placeholder="🌍 o url immagine"
-                                className="w-full px-4 py-3 rounded-2xl bg-slate-50 border border-slate-100 focus:bg-white focus:ring-4 focus:ring-indigo-50 outline-none transition-all font-black text-slate-900 placeholder:text-slate-300"
+                                className="w-full px-4 py-3 rounded-2xl bg-gray-800/60 border border-gray-700/40 focus:ring-4 focus:ring-indigo-500/20 outline-none transition-all font-black text-white placeholder:text-gray-500"
                                 maxLength={250}
                             />
                         </div>
 
-                        {error && <p className="text-xs font-bold text-rose-500 ml-1">{error}</p>}
+                        {error && <p className="text-xs font-bold text-rose-400 ml-1">{error}</p>}
 
                         <button
                             type="submit"

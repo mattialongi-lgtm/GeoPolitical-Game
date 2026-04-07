@@ -99,39 +99,39 @@ export const ParliamentView = ({ user }: { user: any }) => {
         </div>
       </div>
 
-      <div className="bg-white p-6 md:p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
-        <h3 className="text-xl font-black text-slate-900">Cariche dello Stato</h3>
+      <div className="bg-gray-900/60 p-6 md:p-8 rounded-2xl border border-gray-800 space-y-4">
+        <h3 className="text-xl font-black text-white">Cariche dello Stato</h3>
         <div className="grid gap-3">
-          <div className="flex items-center justify-between p-4 bg-rose-50 rounded-2xl border border-rose-100">
+          <div className="flex items-center justify-between p-4 bg-rose-500/15 rounded-2xl border border-rose-400/30">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center">
-                <Crown className="w-5 h-5 text-rose-600" />
+              <div className="w-10 h-10 bg-rose-500/15 rounded-xl flex items-center justify-center border border-rose-400/30">
+                <Crown className="w-5 h-5 text-rose-400" />
               </div>
               <div>
-                <p className="font-black text-slate-900 text-sm">Dittatore</p>
-                <p className="text-[10px] font-bold text-rose-500 uppercase mt-0.5">Potere assoluto</p>
+                <p className="font-black text-white text-sm">Dittatore</p>
+                <p className="text-[10px] font-bold text-rose-400 uppercase mt-0.5">Potere assoluto</p>
               </div>
             </div>
-            <span className="text-sm font-black text-slate-700">{regionData?.leaderName || regionData?.leader?.username || '—'}</span>
+            <span className="text-sm font-black text-gray-200">{regionData?.leaderName || regionData?.leader?.username || '—'}</span>
           </div>
-          <div className="flex items-center justify-between p-4 bg-amber-50 rounded-2xl border border-amber-100">
+          <div className="flex items-center justify-between p-4 bg-amber-500/15 rounded-2xl border border-amber-400/30">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center">
-                <Briefcase className="w-5 h-5 text-amber-600" />
+              <div className="w-10 h-10 bg-amber-500/15 rounded-xl flex items-center justify-center border border-amber-400/30">
+                <Briefcase className="w-5 h-5 text-amber-400" />
               </div>
               <div>
-                <p className="font-black text-slate-900 text-sm">Ministro Economico</p>
-                <p className="text-[10px] font-bold text-amber-500 uppercase mt-0.5">Gestione economica</p>
+                <p className="font-black text-white text-sm">Ministro Economico</p>
+                <p className="text-[10px] font-bold text-amber-400 uppercase mt-0.5">Gestione economica</p>
               </div>
             </div>
-            <span className="text-sm font-black text-slate-700">{regionData?.economicAdviserName || '—'}</span>
+            <span className="text-sm font-black text-gray-200">{regionData?.economicAdviserName || '—'}</span>
           </div>
         </div>
       </div>
 
-      <div className="bg-slate-50 p-6 rounded-3xl border border-dashed border-slate-200 text-center">
-        <p className="text-slate-400 font-bold italic text-sm">Le elezioni parlamentari sono sospese durante il regime dittatoriale.</p>
-        <p className="text-[10px] text-slate-300 font-bold mt-1">Il Dittatore può emanare editti dalla sezione Leggi.</p>
+      <div className="bg-gray-900/60 p-6 rounded-2xl border border-dashed border-gray-700/50 text-center">
+        <p className="text-gray-400 font-bold italic text-sm">Le elezioni parlamentari sono sospese durante il regime dittatoriale.</p>
+        <p className="text-[10px] text-gray-500 font-bold mt-1">Il Dittatore può emanare editti dalla sezione Leggi.</p>
       </div>
     </div>
   );
@@ -142,12 +142,12 @@ export const ParliamentView = ({ user }: { user: any }) => {
 
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
-      <div className="bg-white rounded-[2.5rem] p-2 flex gap-2 shadow-sm border border-slate-100 overflow-x-auto hide-scrollbar">
+      <div className="bg-gray-900/60 rounded-2xl p-2 flex gap-2 border border-gray-800 overflow-x-auto hide-scrollbar">
         {availableTabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id as any)}
-            className={`flex-1 min-w-[120px] py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === tab.id ? (isDictatorship ? "bg-rose-600 text-white shadow-lg shadow-rose-200" : "bg-indigo-600 text-white shadow-lg shadow-indigo-200") : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"}`}
+            className={`flex-1 min-w-[120px] py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all ${activeTab === tab.id ? (isDictatorship ? "bg-rose-600 text-white shadow-lg shadow-rose-900/30" : "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30") : "bg-gray-800/50 text-gray-400 hover:bg-gray-700/50"}`}
           >
             {tab.label}
           </button>
@@ -155,7 +155,7 @@ export const ParliamentView = ({ user }: { user: any }) => {
       </div>
 
       {loading ? (
-        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-600" /></div>
+        <div className="flex justify-center p-12"><Loader2 className="w-8 h-8 animate-spin text-indigo-400" /></div>
       ) : (
         <>
           {activeTab === 'dictatorship' && <DictatorshipTab />}

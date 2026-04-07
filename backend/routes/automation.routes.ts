@@ -5,6 +5,7 @@ interface RegisterAutomationRoutesDeps {
   authenticate: any;
   supabase: any;
   GAME_CONFIG: any;
+  FACTORY_CONFIG: any;
 }
 
 export function registerAutomationRoutes(deps: RegisterAutomationRoutesDeps) {

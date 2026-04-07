@@ -44,7 +44,7 @@ export function AppRouter(props: any) {
     user, regions, nations, articles, wars, worldStats,
     navigateToCountry, fetchData,
     actionLoading, handleAction, handleUpgradePerk, handleActivateBooster,
-    autoWorkFactoryId, setAutoWorkFactoryId, autoWorkExpiresAt,
+    autoWorkFactoryId, autoWorkResourceType, autoWorkRegionId, setAutoWorkFactoryId, setAutoWorkResource, autoWorkExpiresAt,
     workExpTransferSource, setWorkExpTransferSource,
     workExpTransferTarget, setWorkExpTransferTarget,
     workExpTransferXp, setWorkExpTransferXp,
@@ -82,6 +82,9 @@ export function AppRouter(props: any) {
             fetchData={fetchData}
             autoWorkFactoryId={autoWorkFactoryId}
             setAutoWorkFactoryId={setAutoWorkFactoryId}
+            autoWorkResourceType={autoWorkResourceType}
+            autoWorkRegionId={autoWorkRegionId}
+            setAutoWorkResource={setAutoWorkResource}
             autoWorkExpiresAt={autoWorkExpiresAt}
             workExpTransferSource={workExpTransferSource}
             setWorkExpTransferSource={setWorkExpTransferSource}

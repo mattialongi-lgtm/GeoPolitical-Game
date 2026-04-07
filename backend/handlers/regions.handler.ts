@@ -27,12 +27,13 @@ export function createRegionsHandlers(deps: {
   AUTONOMY_CONFIG: any;
   BUILDING_LABELS: any;
   GAME_CONFIG: any;
+  FACTORY_CONFIG: any;
 }) {
   const {
     supabase, canManageRegion, canReadRegionScopedData,
     getNationForRegion, getActiveDeep, computeEffectiveCap, getSetting,
     getStateEnergyCompensation,
-    AUTONOMY_CONFIG, BUILDING_LABELS, GAME_CONFIG,
+    AUTONOMY_CONFIG, BUILDING_LABELS, GAME_CONFIG, FACTORY_CONFIG,
   } = deps;
 
   // ── Region Calculation Helpers (from server.ts lines 8443-8690) ──
@@ -261,11 +262,26 @@ export function createRegionsHandlers(deps: {
   async function getRegionResources(req: any, res: any) {
     const regionId = req.params.id;
     try {
-      const { data: resources, error } = await supabase.from('region_resources').select('*').eq('regionId', regionId);
+      const [{ data: resources, error }, { data: factories, error: factoriesError }] = await Promise.all([
+        supabase.from('region_resources').select('*').eq('regionId', regionId),
+        supabase.from('factories').select('id, name, type, level, regionId, isActive').eq('regionId', regionId).eq('isActive', true),
+      ]);
       if (error) throw error;
+      if (factoriesError) throw factoriesError;
       if (!resources || resources.length === 0) {
         return res.json({ resources: [], deepActive: null });
       }
+
+      const backingFactoryByResource: Record<string, any> = {};
+      for (const factory of factories || []) {
+        const resourceType = FACTORY_CONFIG?.TYPES?.[factory.type]?.resource;
+        if (!resourceType) continue;
+        const current = backingFactoryByResource[resourceType];
+        if (!current || Number(factory.level || 0) > Number(current.level || 0)) {
+          backingFactoryByResource[resourceType] = factory;
+        }
+      }
+
       const nationId = await getNationForRegion(regionId);
       const capMaxGlobal = parseInt(await getSetting('cap_max_global')) || 2000;
       const enriched = await Promise.all(resources.map(async (r: any) => {
@@ -274,6 +290,7 @@ export function createRegionsHandlers(deps: {
         const dailyMaxCap = r.dailyMaxCap ?? r.dailyAvailable ?? 5000;
         const currentAvailableCap = r.currentAvailableCap ?? 0;
         const totalUnlockedToday = r.totalUnlockedToday ?? 0;
+        const backingFactory = backingFactoryByResource[r.resourceType] || null;
         return {
           ...r,
           dailyMaxCap,
@@ -285,6 +302,11 @@ export function createRegionsHandlers(deps: {
           deepTargetCap: deep?.targetCap || null,
           deepEndsAt: deep?.endsAt || null,
           remainingDaily: currentAvailableCap, // backward compat: remainingDaily = currentAvailableCap
+          backingFactoryId: backingFactory?.id || null,
+          backingFactoryName: backingFactory?.name || null,
+          backingFactoryLevel: Number(backingFactory?.level || 0),
+          workEnabled: !!backingFactory,
+          workDisabledReason: backingFactory ? null : "Nessuna fabbrica attiva collegata a questa risorsa in questa regione.",
         };
       }));
       res.json({ resources: enriched });

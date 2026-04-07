@@ -43,15 +43,19 @@ html.dark body {
 
 /* Cards, modals, and panels */
 html.dark .bg-white {
-  background-color: #1f2937 !important; /* gray-800 */
+  background-color: #111827 !important; /* gray-900 – main card, darker */
 }
 
 html.dark .bg-slate-50 {
-  background-color: #111827 !important; /* gray-900 */
+  background-color: #1f2937 !important; /* gray-800 – inner element, lighter than card */
 }
 
 html.dark .bg-slate-100 {
-  background-color: #1f2937 !important;
+  background-color: #374151 !important; /* gray-700 – subtle inner bg / progress track container */
+}
+
+html.dark .bg-slate-200 {
+  background-color: #1e293b !important; /* slate-800 – progress bar tracks */
 }
 
 /* Text colors */
@@ -81,11 +85,15 @@ html.dark .text-slate-400 {
 
 /* Borders */
 html.dark .border-slate-100 {
-  border-color: #374151 !important; /* gray-700 */
+  border-color: rgba(55, 65, 81, 0.4) !important; /* gray-700/40 – subtle like game cards */
 }
 
 html.dark .border-slate-200 {
-  border-color: #374151 !important;
+  border-color: rgba(55, 65, 81, 0.5) !important; /* gray-700/50 */
+}
+
+html.dark .border-slate-300 {
+  border-color: rgba(75, 85, 99, 0.5) !important; /* gray-600/50 */
 }
 
 /* Input fields */
@@ -146,11 +154,23 @@ html.dark ::-webkit-scrollbar-thumb {
 }
 
 /* Shadows (less visible in dark mode) */
-html.dark .shadow-sm,
+html.dark .shadow-sm {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5) !important;
+}
+
 html.dark .shadow-lg,
 html.dark .shadow-xl {
-  --tw-shadow-color: rgba(0, 0, 0, 0.3);
+  --tw-shadow-color: rgba(0, 0, 0, 0.5);
 }
+
+/* Colored shadow overrides – keep them subtle */
+html.dark .shadow-indigo-100 { box-shadow: 0 4px 14px rgba(79, 70, 229, 0.25) !important; }
+html.dark .shadow-indigo-200 { box-shadow: 0 4px 14px rgba(79, 70, 229, 0.2) !important; }
+html.dark .shadow-emerald-100 { box-shadow: 0 4px 14px rgba(16, 185, 129, 0.2) !important; }
+html.dark .shadow-emerald-200 { box-shadow: 0 4px 14px rgba(16, 185, 129, 0.15) !important; }
+html.dark .shadow-amber-100 { box-shadow: 0 4px 14px rgba(245, 158, 11, 0.2) !important; }
+html.dark .shadow-rose-100 { box-shadow: 0 4px 14px rgba(244, 63, 94, 0.15) !important; }
+html.dark .shadow-purple-100 { box-shadow: 0 4px 14px rgba(168, 85, 247, 0.2) !important; }
 
 /* Specific component overrides */
 html.dark .bg-indigo-50 {
@@ -193,6 +213,79 @@ html.dark .bg-red-50 {
 html.dark .z-\[999\] {
   background-color: #1f2937 !important;
   border-color: #374151 !important;
+}
+
+/* Light-tinted badge backgrounds – convert to dark-themed equivalents */
+html.dark .bg-amber-100 {
+  background-color: rgba(245, 158, 11, 0.15) !important;
+}
+html.dark .bg-amber-200 {
+  background-color: rgba(245, 158, 11, 0.2) !important;
+}
+html.dark .text-amber-800 {
+  color: #fbbf24 !important; /* amber-400 */
+}
+html.dark .text-amber-700 {
+  color: #fcd34d !important; /* amber-300 */
+}
+html.dark .bg-rose-100 {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+}
+html.dark .text-rose-800 {
+  color: #fb7185 !important; /* rose-400 */
+}
+html.dark .text-rose-600 {
+  color: #fb7185 !important;
+}
+html.dark .bg-indigo-100 {
+  background-color: rgba(99, 102, 241, 0.15) !important;
+}
+html.dark .text-indigo-800 {
+  color: #818cf8 !important; /* indigo-400 */
+}
+html.dark .bg-emerald-100 {
+  background-color: rgba(16, 185, 129, 0.15) !important;
+}
+html.dark .text-emerald-800 {
+  color: #34d399 !important; /* emerald-400 */
+}
+html.dark .text-emerald-600 {
+  color: #34d399 !important;
+}
+html.dark .bg-sky-100 {
+  background-color: rgba(14, 165, 233, 0.15) !important;
+}
+html.dark .bg-green-100 {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+}
+html.dark .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+}
+html.dark .bg-purple-100 {
+  background-color: rgba(168, 85, 247, 0.15) !important;
+}
+html.dark .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+}
+html.dark .text-red-800 {
+  color: #f87171 !important; /* red-400 */
+}
+
+/* Hover on light-tinted bg (e.g. hover:bg-slate-50 for tab inactive states) */
+html.dark .hover\:bg-slate-50:hover {
+  background-color: rgba(55, 65, 81, 0.5) !important; /* gray-700/50 */
+}
+
+/* Focus ring in dark mode */
+html.dark .focus\:ring-indigo-50:focus {
+  --tw-ring-color: rgba(99, 102, 241, 0.2) !important;
+}
+
+/* ============================================
+   GLOBAL GAME UI: Normalize arbitrary large radius
+   ============================================ */
+.rounded-\[2\.5rem\] {
+  border-radius: 1.5rem !important; /* rounded-3xl (24px) – consistent with game style */
 }
 
 /* ============================================

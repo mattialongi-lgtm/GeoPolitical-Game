@@ -11,7 +11,7 @@ export function createCommunicationHandlers(deps: {
 }) {
   const { supabase } = deps;
 
-  // Cache per-channel: evita una query DB ad ogni poll (ogni 15s per client)
+  // Cache per-channel: evita una query DB ad ogni poll (ogni 5s per client)
   const CHAT_CACHE_TTL = 5_000; // 5 secondi — freschezza accettabile per una chat di gioco
   const chatCache = new Map<string, { data: any[]; fetchedAt: number }>();
 
@@ -92,7 +92,8 @@ export function createCommunicationHandlers(deps: {
     }
 
     // Invalida la cache del canale così il prossimo GET vede il nuovo messaggio
-    chatCache.delete(channel === 'local' ? `local:${user.originalNation || 'IT'}` : 'global');
+    // Use reqChannel ('local'|'global') not the resolved channel value (nation code|'global')
+    chatCache.delete(reqChannel === 'local' ? `local:${user.originalNation || 'IT'}` : 'global');
 
     res.json({ success: true });
   }

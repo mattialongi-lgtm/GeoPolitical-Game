@@ -34,7 +34,9 @@ export default function ChatPanel({ currentUser }: ChatPanelProps) {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Fetch messages
+  // Fetch messages — hoisted so handleSend can call it directly
+  const fetchMessagesRef = React.useRef<(() => Promise<void>) | null>(null);
+
   useEffect(() => {
     let active = true;
     const fetchMessages = async () => {
@@ -46,8 +48,9 @@ export default function ChatPanel({ currentUser }: ChatPanelProps) {
         }
       } catch { /* silently fail for mock */ }
     };
+    fetchMessagesRef.current = fetchMessages;
     fetchMessages();
-    const iv = setInterval(fetchMessages, 15000);
+    const iv = setInterval(fetchMessages, 5000);
     return () => { active = false; clearInterval(iv); };
   }, [channel]);
 
@@ -60,12 +63,15 @@ export default function ChatPanel({ currentUser }: ChatPanelProps) {
     if (!input.trim()) return;
     setLoading(true);
     try {
-      await fetch('/api/chat', {
+      const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: input.trim(), channel }),
       });
-      setInput('');
+      if (res.ok) {
+        setInput('');
+        await fetchMessagesRef.current?.();
+      }
     } catch { /* ignore */ }
     setLoading(false);
   };

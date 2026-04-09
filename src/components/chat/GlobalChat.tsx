@@ -32,7 +32,7 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
 
   useEffect(() => {
     fetchMessages();
-    const iv = setInterval(fetchMessages, 15000);
+    const iv = setInterval(fetchMessages, 5000);
     return () => clearInterval(iv);
   }, [channel]);
 

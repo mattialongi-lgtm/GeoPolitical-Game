@@ -12,6 +12,10 @@ export function createMediaHandlers(deps: {
 }) {
   const { supabase, generateSecureId } = deps;
 
+  // Cache per articoli globali — il feed cambia raramente, ottimizza il polling lento (120s)
+  let articlesGlobalCache: { data: any[]; fetchedAt: number } | null = null;
+  const ARTICLES_CACHE_TTL = 2 * 60_000; // 2 minuti
+
   const normalizeNewspaperRole = (value: any): 'owner' | 'editor' | 'writer' | null => {
     const role = String(value || '').trim().toLowerCase();
     if (role === 'owner' || role === 'editor' || role === 'writer') return role;
@@ -27,10 +31,17 @@ export function createMediaHandlers(deps: {
   // GET /api/articles
   async function getArticles(req: any, res: any) {
     const section = req.query.section;
+    const isGlobal = section !== 'local';
+
+    // Cache solo per la sezione global (quella richiesta dal bootstrap lento di tutti i client)
+    if (isGlobal && articlesGlobalCache && Date.now() - articlesGlobalCache.fetchedAt < ARTICLES_CACHE_TTL) {
+      return res.json(articlesGlobalCache.data);
+    }
+
     let query = supabase
       .from('articles')
       .select(`
-        *,
+        id, authorId, title, section, newspaper_id, blocks, content, likeCount, createdAt,
         newspapers (
           name,
           logo_url
@@ -63,6 +74,9 @@ export function createMediaHandlers(deps: {
         : [{ id: 'legacy', type: 'text', content: a.content }]
     }));
 
+    if (isGlobal) {
+      articlesGlobalCache = { data: formatted, fetchedAt: Date.now() };
+    }
     res.json(formatted);
   }
 
@@ -145,6 +159,9 @@ export function createMediaHandlers(deps: {
       console.error("Article insert error:", insertError);
       return res.status(500).json({ error: "Errore nella creazione dell'articolo." });
     }
+
+    // Invalida la cache così il nuovo articolo è subito visibile
+    articlesGlobalCache = null;
 
     res.json({ success: true, id });
   }

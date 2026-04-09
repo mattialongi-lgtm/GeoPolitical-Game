@@ -11,10 +11,21 @@ export function createCommunicationHandlers(deps: {
 }) {
   const { supabase } = deps;
 
+  // Cache per-channel: evita una query DB ad ogni poll (ogni 15s per client)
+  const CHAT_CACHE_TTL = 5_000; // 5 secondi — freschezza accettabile per una chat di gioco
+  const chatCache = new Map<string, { data: any[]; fetchedAt: number }>();
+
   // GET /api/chat
   async function getChat(req: any, res: any) {
     const channel = (req.query.channel as string) || 'global';
     const user = req.user;
+    const nation = user.originalNation || 'IT';
+    const cacheKey = channel === 'local' ? `local:${nation}` : 'global';
+
+    const cached = chatCache.get(cacheKey);
+    if (cached && Date.now() - cached.fetchedAt < CHAT_CACHE_TTL) {
+      return res.json(cached.data);
+    }
 
     let query = supabase.from('chat_messages')
       .select('id, userId, username, regionId, channel, message, createdAt')
@@ -22,8 +33,6 @@ export function createCommunicationHandlers(deps: {
       .limit(50);
 
     if (channel === 'local') {
-      // Local chat: messages stored with nation code as channel (e.g., 'IT', 'US')
-      const nation = user.originalNation || 'IT';
       query = query.eq('channel', nation);
     } else {
       query = query.eq('channel', 'global');
@@ -36,7 +45,9 @@ export function createCommunicationHandlers(deps: {
       return res.json([]);
     }
 
-    res.json(messages ? messages.reverse() : []); // oldest first for display
+    const result = messages ? messages.reverse() : [];
+    chatCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
+    res.json(result);
   }
 
   // POST /api/chat
@@ -79,6 +90,9 @@ export function createCommunicationHandlers(deps: {
       logger.error('operation_failed', { error: insertError.message });
       return res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
+
+    // Invalida la cache del canale così il prossimo GET vede il nuovo messaggio
+    chatCache.delete(channel === 'local' ? `local:${user.originalNation || 'IT'}` : 'global');
 
     res.json({ success: true });
   }

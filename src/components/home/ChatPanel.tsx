@@ -47,7 +47,7 @@ export default function ChatPanel({ currentUser }: ChatPanelProps) {
       } catch { /* silently fail for mock */ }
     };
     fetchMessages();
-    const iv = setInterval(fetchMessages, 5000);
+    const iv = setInterval(fetchMessages, 15000);
     return () => { active = false; clearInterval(iv); };
   }, [channel]);
 

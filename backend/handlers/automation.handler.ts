@@ -71,7 +71,7 @@ export function createAutomationHandlers(deps: {
   async function getAutoWork(req: any, res: any) {
     const { data: autoWork, error: readError } = await supabase
       .from('work_auto_actions')
-      .select('*')
+      .select('id, userId, factoryId, resourceType, regionId, activatedAt, expiresAt, isActive')
       .eq('userId', req.user.id)
       .eq('isActive', true)
       .maybeSingle();
@@ -218,7 +218,7 @@ export function createAutomationHandlers(deps: {
   async function getAutoTraining(req: any, res: any) {
     const { data: autoTraining, error: readError } = await supabase
       .from('training_auto_actions')
-      .select('*')
+      .select('id, userId, mode, activatedAt, expiresAt, isActive')
       .eq('userId', req.user.id)
       .eq('isActive', true)
       .maybeSingle();
@@ -246,7 +246,7 @@ export function createAutomationHandlers(deps: {
   async function getAutoWarAttacks(req: any, res: any) {
     const { data: autoAttacks } = await supabase
       .from('war_auto_attacks')
-      .select('*')
+      .select('id, userId, warId, autoType, activatedAt, expiresAt, isActive')
       .eq('userId', req.user.id)
       .eq('isActive', true)
       .order('activatedAt', { ascending: false });

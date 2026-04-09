@@ -19,6 +19,7 @@ import { motion } from "motion/react";
 import { useNavigate } from "react-router-dom";
 import { Region, War, User } from "../../types";
 import { TravelTimer } from "../ui";
+import { usePollingTask } from "../../hooks/usePollingTask";
 
 import QuickAccessMenu from "./QuickAccessMenu";
 import WorldStatsCarousel from "./WorldStatsCarousel";
@@ -47,6 +48,8 @@ interface HomePageProps {
   worldStats?: WorldStats;
   navigateToCountry: (id: string) => void;
   handleAction: (action: string, body?: any) => void;
+  refreshRegionsAndNations: () => Promise<void>;
+  refreshWorldStats: () => Promise<void>;
 }
 
 /** Divider between dashboard sections */
@@ -54,17 +57,42 @@ const SectionDivider = () => (
   <div className="h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
 );
 
-export default function HomePage({ user, regions, wars, worldStats, navigateToCountry, handleAction }: HomePageProps) {
+export default function HomePage({
+  user,
+  regions,
+  wars,
+  worldStats,
+  navigateToCountry,
+  handleAction,
+  refreshRegionsAndNations,
+  refreshWorldStats,
+}: HomePageProps) {
   const navigate = useNavigate();
 
   const [dashboardStats, setDashboardStats] = React.useState<any>(null);
 
-  React.useEffect(() => {
-    fetch("/api/dashboard-stats")
-      .then(r => r.json())
-      .then(d => { if (!d.error) setDashboardStats(d); })
-      .catch(e => console.error("Error fetching dashboard stats:", e));
+  const refreshDashboardStats = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/dashboard-stats");
+      const data = await res.json();
+      if (!data.error) setDashboardStats(data);
+    } catch (err) {
+      console.error("Error fetching dashboard stats:", err);
+    }
   }, []);
+
+  usePollingTask(refreshDashboardStats, {
+    intervalMs: 90_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
+
+  React.useEffect(() => {
+    void Promise.all([
+      refreshRegionsAndNations(),
+      refreshWorldStats(),
+    ]);
+  }, [refreshRegionsAndNations, refreshWorldStats]);
 
   // Build region stats from real data if available
   const playerRegion = regions.find(r => r.id === user.regionId);

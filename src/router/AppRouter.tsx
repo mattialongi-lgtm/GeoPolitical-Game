@@ -42,7 +42,7 @@ import { BudgetView } from "../components/budget/BudgetView";
 export function AppRouter(props: any) {
   const {
     user, regions, nations, articles, wars, worldStats,
-    navigateToCountry, fetchData,
+    navigateToCountry, fetchData, refreshArticles, refreshRegionsAndNations, refreshWars, refreshWorldStats,
     actionLoading, handleAction, handleUpgradePerk, handleActivateBooster,
     autoWorkFactoryId, autoWorkFactoryName, autoWorkResourceType, autoWorkRegionId, setAutoWorkFactoryId, setAutoWorkResource, autoWorkExpiresAt,
     workExpTransferSource, setWorkExpTransferSource,
@@ -56,7 +56,21 @@ export function AppRouter(props: any) {
 
   return (
     <Routes>
-      <Route path="/" element={<HomePage user={user} regions={regions} wars={wars} worldStats={worldStats} navigateToCountry={navigateToCountry} handleAction={handleAction} />} />
+      <Route
+        path="/"
+        element={
+          <HomePage
+            user={user}
+            regions={regions}
+            wars={wars}
+            worldStats={worldStats}
+            navigateToCountry={navigateToCountry}
+            handleAction={handleAction}
+            refreshRegionsAndNations={refreshRegionsAndNations}
+            refreshWorldStats={refreshWorldStats}
+          />
+        }
+      />
       <Route path="/daily" element={<DailyTasksPage user={user} regions={regions} />} />
       <Route path="/map" element={<WorldMap onRegionClick={navigateToCountry} regions={regions} />} />
       <Route path="/market" element={<MarketView user={user} fetchData={fetchData} />} />
@@ -64,16 +78,16 @@ export function AppRouter(props: any) {
       <Route path="/inventory/history/:itemId" element={<ResourceHistoryView fetchData={fetchData} />} />
       <Route path="/profile/total-damage" element={user ? <TotalDamageView /> : <Navigate to="/" />} />
       <Route path="/produce" element={<ProduceView user={user} />} />
-      <Route path="/states" element={<NationsList />} />
-      <Route path="/state/:id" element={<StatePage user={user} />} />
+      <Route path="/states" element={<NationsList nations={nations} refreshRegionsAndNations={refreshRegionsAndNations} />} />
+      <Route path="/state/:id" element={<StatePage user={user} fetchData={fetchData} />} />
       <Route path="/players" element={<PlayersList />} />
       <Route path="/parties" element={<PartiesList />} />
       <Route path="/world-factories" element={<WorldFactoriesList />} />
-      <Route path="/independent-regions" element={<IndependentRegionsList />} />
-      <Route path="/articles" element={<ArticlesView articles={articles} setSelectedArticleId={setSelectedArticleId} actionLoading={actionLoading} fetchData={fetchData} />} />
-      <Route path="/articles/:id" element={<ArticleDetailView articles={articles} user={user} fetchData={fetchData} />} />
-      <Route path="/articles/new" element={<NewArticleView actionLoading={actionLoading} fetchData={fetchData} />} />
-      <Route path="/articles/edit/:editId" element={<NewArticleView actionLoading={actionLoading} fetchData={fetchData} />} />
+      <Route path="/independent-regions" element={<IndependentRegionsList regions={regions} refreshRegionsAndNations={refreshRegionsAndNations} />} />
+      <Route path="/articles" element={<ArticlesView articles={articles} setSelectedArticleId={setSelectedArticleId} actionLoading={actionLoading} fetchData={fetchData} refreshArticles={refreshArticles} />} />
+      <Route path="/articles/:id" element={<ArticleDetailView articles={articles} user={user} fetchData={fetchData} refreshArticles={refreshArticles} />} />
+      <Route path="/articles/new" element={<NewArticleView actionLoading={actionLoading} fetchData={fetchData} refreshArticles={refreshArticles} />} />
+      <Route path="/articles/edit/:editId" element={<NewArticleView actionLoading={actionLoading} fetchData={fetchData} refreshArticles={refreshArticles} />} />
       <Route path="/newspapers/:id" element={<NewspaperDetailView user={user} />} />
       <Route path="/work" element={
         user ? (
@@ -102,8 +116,8 @@ export function AppRouter(props: any) {
           />
         ) : <Navigate to="/" />
       } />
-      <Route path="/wars" element={<WarsView wars={wars} user={user} nations={nations} fetchData={fetchData} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
-      <Route path="/wars/:warId" element={<WarsView wars={wars} user={user} nations={nations} fetchData={fetchData} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
+      <Route path="/wars" element={<WarsView wars={wars} user={user} nations={nations} fetchData={fetchData} refreshWars={refreshWars} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
+      <Route path="/wars/:warId" element={<WarsView wars={wars} user={user} nations={nations} fetchData={fetchData} refreshWars={refreshWars} actionLoading={actionLoading} autoWorkFactoryId={autoWorkFactoryId} setAutoWorkFactoryId={setAutoWorkFactoryId} />} />
       <Route path="/war/:warId/summary" element={<WarStatsView user={user} nations={nations} />} />
       <Route path="/party" element={<PartyHub user={user} fetchData={fetchData} />} />
       <Route path="/profile" element={<ProfileView user={user} regions={regions} nations={nations} handleUpgradePerk={handleUpgradePerk} handleActivateBooster={handleActivateBooster} actionLoading={actionLoading} fetchData={fetchData} />} />

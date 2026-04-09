@@ -32,3 +32,12 @@ Original prompt: lo storico dei guadagni di gold dal lavoro non viene visionato.
 - Fix backend: l'auto-work passa ora a `executeExtractionWork(...)` un `energyCostOverride` da `300`, cosi ogni tick automatico scala sempre un ciclo pieno invece del costo manuale da estrazione singola.
 - Regola drink: il cooldown delle bibite energetiche usa adesso un parser robusto per timestamp numerici e ISO, quindi il consumo automatico resta coerente anche con dati legacy o serializzati.
 - Safety net: aggiunti test unitari sui nuovi helper energia per bloccare regressioni tra estrazione manuale e auto-work.
+
+- Nuovo prompt: applicare il pattern refresh immediato + polling periodico + refresh on focus/action across app.
+- Infrastruttura: aggiunto `src/hooks/usePollingTask.ts` per unificare fetch immediato, interval cleanup, guard anti-overlap e refresh al ritorno in foreground.
+- Bootstrap app: `useAppBootstrapData` ora separa `/api/me` (20s), regioni+nazioni (90s), world-stats (300s), mentre articoli e guerre vengono caricati subito ma non piu pollati globalmente per evitare doppio polling sui rispettivi schermi.
+- Guerre: `WarsView`, `RevolutionPanel` e `WarStatsView` fanno refresh immediato e poi ogni 15s, con refresh immediato anche dopo create/deploy/train/auto-war e sui ritorni di focus/visibility.
+- Articoli: feed, dettaglio e giornale fanno refresh immediato e poi ogni 120s; publish/delete/newspaper management fanno refresh subito dopo l'azione riuscita.
+- Regioni/Nazioni: `HomePage`, `NationsList`, `IndependentRegionsList`, `CountryDetailView` e `StatePage` ora forzano un refresh all'apertura schermo e mantengono i dati aggiornati con cadenze 90s dove serve.
+- Verifica: `npm.cmd run lint` OK.
+- Smoke test UI: tentativo locale bloccato dal sandbox (`spawn EPERM` su `tsx --watch` e `vite/esbuild`). Richiesta approvazione escalation inviata per lanciare frontend/backend fuori sandbox.

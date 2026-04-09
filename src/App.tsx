@@ -37,7 +37,14 @@ export default function App() {
 
   const { isDarkMode, setIsDarkMode } = useDarkMode();
 
-  const { fetchData } = useAppBootstrapData({
+  const {
+    fetchData,
+    refreshBootstrapData,
+    refreshArticles,
+    refreshRegionsAndNations,
+    refreshWars,
+    refreshWorldStats,
+  } = useAppBootstrapData({
     setUser,
     setRegions,
     setNations,
@@ -48,7 +55,7 @@ export default function App() {
   });
 
   useAuthBootstrap({
-    onSessionReady: fetchData,
+    onSessionReady: refreshBootstrapData,
     onSignedOut: () => {
       setUser(null);
       setLoading(false);
@@ -89,7 +96,7 @@ export default function App() {
     </div>
   );
 
-  if (!user) return <Auth onLogin={fetchData} />;
+  if (!user) return <Auth onLogin={refreshBootstrapData} />;
 
   const isDashboardRoute =
     location.pathname.startsWith("/leader") ||
@@ -121,6 +128,10 @@ export default function App() {
           worldStats={worldStats}
           navigateToCountry={navigateToCountry}
           fetchData={fetchData}
+          refreshArticles={refreshArticles}
+          refreshRegionsAndNations={refreshRegionsAndNations}
+          refreshWars={refreshWars}
+          refreshWorldStats={refreshWorldStats}
           actionLoading={actionLoading}
           handleAction={handleAction}
           handleUpgradePerk={handleUpgradePerk}

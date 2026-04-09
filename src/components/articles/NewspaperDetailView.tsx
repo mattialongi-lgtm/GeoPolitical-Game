@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Loader2, Plus, Edit2, BookOpen, ChevronRight, ThumbsUp } from "lucide-react";
+import { usePollingTask } from "../../hooks/usePollingTask";
 
 const NewspaperDetailView = ({ user }: { user: any }) => {
   const { id } = useParams();
@@ -17,7 +18,7 @@ const NewspaperDetailView = ({ user }: { user: any }) => {
   const [editLogoUrl, setEditLogoUrl] = useState('');
   const [updating, setUpdating] = useState(false);
 
-  const fetchNewspaper = async () => {
+  const fetchNewspaper = React.useCallback(async () => {
     try {
       const res = await fetch(`/api/newspapers/${id}`);
       if (res.ok) {
@@ -29,7 +30,7 @@ const NewspaperDetailView = ({ user }: { user: any }) => {
       }
     } catch { }
     setLoading(false);
-  };
+  }, [id]);
 
   const handleUpdateNewspaper = async () => {
     if (!editName.trim()) return;
@@ -55,8 +56,15 @@ const NewspaperDetailView = ({ user }: { user: any }) => {
   };
 
   useEffect(() => {
-    fetchNewspaper();
+    setLoading(true);
   }, [id]);
+
+  usePollingTask(fetchNewspaper, {
+    enabled: Boolean(id),
+    intervalMs: 120_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
 
   const handleAddMember = async () => {
     if (!newMemberId.trim()) return;

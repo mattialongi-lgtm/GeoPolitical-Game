@@ -5,7 +5,15 @@ import { Loader2, Check, Send, ChevronDown } from "lucide-react";
 import { ArticleBlock } from "../../types";
 import { ArticleEditor } from "../ArticleEditor";
 
-const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, fetchData: () => void }) => {
+const NewArticleView = ({
+  actionLoading,
+  fetchData,
+  refreshArticles,
+}: {
+  actionLoading: boolean,
+  fetchData: () => void,
+  refreshArticles: () => Promise<void>,
+}) => {
   const { editId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -67,7 +75,10 @@ const NewArticleView = ({ actionLoading, fetchData }: { actionLoading: boolean, 
         }),
       });
       if (res.ok) {
-        fetchData();
+        await Promise.all([
+          fetchData(),
+          refreshArticles(),
+        ]);
         navigate("/articles");
       } else {
         const data = await res.json();

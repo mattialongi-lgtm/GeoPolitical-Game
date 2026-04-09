@@ -3,8 +3,21 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Plus, Search, Loader2, BookOpen, ChevronRight, ThumbsUp, User as UserIcon } from "lucide-react";
 import { Article } from "../../types";
+import { usePollingTask } from "../../hooks/usePollingTask";
 
-const ArticlesView = ({ articles: _articles, setSelectedArticleId, actionLoading, fetchData }: { articles: Article[], setSelectedArticleId: (id: string) => void, actionLoading: boolean, fetchData: () => void }) => {
+const ArticlesView = ({
+  articles: _articles,
+  setSelectedArticleId,
+  actionLoading,
+  fetchData,
+  refreshArticles,
+}: {
+  articles: Article[],
+  setSelectedArticleId: (id: string) => void,
+  actionLoading: boolean,
+  fetchData: () => void,
+  refreshArticles: () => Promise<void>,
+}) => {
   const navigate = useNavigate();
   const [section, setSection] = useState<'global' | 'local'>('global');
   const [category, setCategory] = useState<'all' | 'best' | 'guides' | 'newspapers'>('all');
@@ -13,16 +26,12 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId, actionLoading
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearch, setShowSearch] = useState(false);
 
-  useEffect(() => {
-    const fetchSectionArticles = async () => {
-      setLoadingArticles(true);
-      try {
-        const res = await fetch(`/api/articles?section=${section}`);
-        if (res.ok) setLocalArticles(await res.json());
-      } catch { }
-      setLoadingArticles(false);
-    };
-    fetchSectionArticles();
+  const fetchSectionArticles = React.useCallback(async () => {
+    try {
+      const res = await fetch(`/api/articles?section=${section}`);
+      if (res.ok) setLocalArticles(await res.json());
+    } catch { }
+    setLoadingArticles(false);
   }, [section]);
 
   const displayArticles = useMemo(() => {
@@ -60,19 +69,39 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId, actionLoading
   const [npDesc, setNpDesc] = useState('');
   const [npLogo, setNpLogo] = useState('');
 
+  const fetchNewspapers = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/newspapers");
+      if (res.ok) setNewspapers(await res.json());
+    } catch {}
+    setLoadingNewspapers(false);
+  }, []);
+
+  useEffect(() => {
+    if (category !== 'newspapers') {
+      setLoadingArticles(true);
+    }
+  }, [category, section]);
+
   useEffect(() => {
     if (category === 'newspapers') {
-      const fetchNewspapers = async () => {
-        setLoadingNewspapers(true);
-        try {
-          const res = await fetch("/api/newspapers");
-          if (res.ok) setNewspapers(await res.json());
-        } catch {}
-        setLoadingNewspapers(false);
-      };
-      fetchNewspapers();
+      setLoadingNewspapers(true);
     }
   }, [category]);
+
+  usePollingTask(fetchSectionArticles, {
+    enabled: category !== 'newspapers',
+    intervalMs: 120_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
+
+  usePollingTask(fetchNewspapers, {
+    enabled: category === 'newspapers',
+    intervalMs: 120_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
 
   const handleCreateNewspaper = async () => {
     if (!npName.trim()) return alert("Nome richiesto");
@@ -84,9 +113,11 @@ const ArticlesView = ({ articles: _articles, setSelectedArticleId, actionLoading
       });
       if (res.ok) {
         setShowCreateNewspaper(false);
-        const resList = await fetch("/api/newspapers");
-        if (resList.ok) setNewspapers(await resList.json());
-        fetchData(); // Update user money
+        await Promise.all([
+          fetchNewspapers(),
+          fetchData(),
+          refreshArticles(),
+        ]);
       } else {
         const data = await res.json();
         alert(data.error);

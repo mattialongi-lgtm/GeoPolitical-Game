@@ -4,54 +4,88 @@ import { motion } from "motion/react";
 import { User as UserIcon, BookOpen, ChevronRight, ChevronLeft, ThumbsUp, ThumbsDown, Loader2, Edit2, Trash2, Send, MessageSquare } from "lucide-react";
 import { Article } from "../../types";
 import { ArticleBlockRenderer } from "../ArticleBlockRenderer";
+import { usePollingTask } from "../../hooks/usePollingTask";
 
-const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[], user: any, fetchData: () => void }) => {
+const ArticleDetailView = ({
+  articles,
+  user,
+  fetchData,
+  refreshArticles,
+}: {
+  articles: Article[],
+  user: any,
+  fetchData: () => void,
+  refreshArticles: () => Promise<void>,
+}) => {
   const { id } = useParams();
   const navigate = useNavigate();
   const [actionLoading, setActionLoading] = useState(false);
+  const [article, setArticle] = useState<Article | null>(null);
   const [comments, setComments] = useState<any[]>([]);
   const [newComment, setNewComment] = useState('');
   const [userVote, setUserVote] = useState<'up' | 'down' | null>(null);
   const [voteScore, setVoteScore] = useState(0);
   const [allArticles, setAllArticles] = useState<Article[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch all articles for prev/next navigation
   useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const res = await fetch('/api/articles?section=global');
-        if (res.ok) setAllArticles(await res.json());
-      } catch { }
-    };
-    fetchAll();
-  }, []);
+    setArticle(articles.find(a => a.id === id) || null);
+  }, [articles, id]);
 
-  const article = articles.find(a => a.id === id) || allArticles.find(a => a.id === id);
-
-  // Fetch comments and vote status
-  useEffect(() => {
+  const refreshArticle = React.useCallback(async () => {
     if (!id) return;
-    const fetchComments = async () => {
-      try {
-        const res = await fetch(`/api/articles/${id}/comments`);
-        if (res.ok) setComments(await res.json());
-      } catch { }
-    };
-    const fetchVote = async () => {
-      try {
-        const res = await fetch(`/api/articles/${id}/vote`);
-        if (res.ok) {
-          const data = await res.json();
-          setUserVote(data.vote || null);
-          setVoteScore(data.score || 0);
-        }
-      } catch { }
-    };
-    fetchComments();
-    fetchVote();
+    try {
+      const res = await fetch(`/api/articles/${id}`);
+      if (res.ok) {
+        setArticle(await res.json());
+      }
+    } catch { }
   }, [id]);
 
-  // Find prev/next articles
+  const refreshArticleList = React.useCallback(async () => {
+    try {
+      const res = await fetch('/api/articles?section=global');
+      if (res.ok) setAllArticles(await res.json());
+    } catch { }
+  }, []);
+
+  const refreshCommentsAndVote = React.useCallback(async () => {
+    if (!id) return;
+    try {
+      const [commentsRes, voteRes] = await Promise.all([
+        fetch(`/api/articles/${id}/comments`),
+        fetch(`/api/articles/${id}/vote`),
+      ]);
+
+      if (commentsRes.ok) setComments(await commentsRes.json());
+      if (voteRes.ok) {
+        const voteData = await voteRes.json();
+        setUserVote(voteData.vote || null);
+        setVoteScore(voteData.score || 0);
+      }
+    } catch { }
+  }, [id]);
+
+  const refreshArticleDetail = React.useCallback(async () => {
+    await Promise.all([
+      refreshArticle(),
+      refreshArticleList(),
+      refreshCommentsAndVote(),
+    ]);
+    setLoading(false);
+  }, [refreshArticle, refreshArticleList, refreshCommentsAndVote]);
+
+  useEffect(() => {
+    setLoading(true);
+  }, [id]);
+
+  usePollingTask(refreshArticleDetail, {
+    enabled: Boolean(id),
+    intervalMs: 120_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
+
   const articlesList = allArticles.length > 0 ? allArticles : articles;
   const currentIdx = articlesList.findIndex(a => a.id === id);
   const prevArticle = currentIdx > 0 ? articlesList[currentIdx - 1] : null;
@@ -68,6 +102,7 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
         const data = await res.json();
         setUserVote(data.vote || null);
         setVoteScore(data.score || 0);
+        setArticle(prev => prev ? { ...prev, likeCount: data.score || 0 } : prev);
       }
     } catch { }
   };
@@ -89,6 +124,12 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
     } catch { }
     setActionLoading(false);
   };
+
+  if (loading) return (
+    <div className="bg-gray-900/60 p-12 rounded-2xl text-center border border-gray-800">
+      <Loader2 className="w-8 h-8 animate-spin text-indigo-400 mx-auto" />
+    </div>
+  );
 
   if (!article) return (
     <div className="bg-gray-900/60 p-12 rounded-2xl text-center border border-gray-800">
@@ -150,7 +191,6 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
           )}
         </div>
 
-        {/* Vote section */}
         <div className="flex items-center gap-4 pt-4 border-t border-gray-800/50">
           <button
             onClick={() => handleVote('up')}
@@ -169,7 +209,6 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
           </button>
         </div>
 
-        {/* Prev/Next navigation */}
         <div className="flex justify-between pt-4 border-t border-gray-800/50">
           {prevArticle ? (
             <button onClick={() => navigate(`/articles/${prevArticle.id}`)} className="text-xs font-black text-indigo-400 flex items-center gap-1 hover:underline">
@@ -198,7 +237,10 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
                 try {
                   const res = await fetch(`/api/articles/${id}`, { method: "DELETE" });
                   if (res.ok) {
-                    fetchData();
+                    await Promise.all([
+                      fetchData(),
+                      refreshArticles(),
+                    ]);
                     navigate("/articles");
                   }
                 } catch (err) {
@@ -215,7 +257,6 @@ const ArticleDetailView = ({ articles, user, fetchData }: { articles: Article[],
         )}
       </div>
 
-      {/* Comments Section */}
       <div className="bg-gray-900/60 p-6 rounded-2xl border border-gray-800 space-y-4">
         <h3 className="font-black text-gray-100 uppercase tracking-tight flex items-center gap-2">
           <MessageSquare className="w-5 h-5 text-indigo-400" />

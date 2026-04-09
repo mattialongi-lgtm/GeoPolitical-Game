@@ -8,6 +8,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { WarFactionBadge } from "../war";
+import { usePollingTask } from "../../hooks/usePollingTask";
 
 const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
   const { warId } = useParams();
@@ -22,17 +23,26 @@ const WarStatsView = ({ user, nations }: { user: any, nations: any[] }) => {
     return fromNations || displayName || iso2 || "Sconosciuto";
   }, [nations]);
 
-  useEffect(() => {
-    const fetchStats = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/wars/${warId}/stats`);
-        if (res.ok) setData(await res.json());
-      } catch (err) { }
-      setLoading(false);
-    };
-    fetchStats();
+  const fetchStats = useCallback(async () => {
+    if (!warId) return;
+    try {
+      const res = await fetch(`/api/wars/${warId}/stats`);
+      if (res.ok) setData(await res.json());
+    } catch (err) { }
+    setLoading(false);
   }, [warId]);
+
+  useEffect(() => {
+    setLoading(true);
+    setData(null);
+  }, [warId]);
+
+  usePollingTask(fetchStats, {
+    enabled: Boolean(warId),
+    intervalMs: 15_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
 
   if (loading) return <div className="flex justify-center p-12"><Loader2 className="animate-spin text-indigo-400 w-8 h-8" /></div>;
   if (!data) return <div className="text-center p-12 text-gray-400">Guerra non trovata.</div>;

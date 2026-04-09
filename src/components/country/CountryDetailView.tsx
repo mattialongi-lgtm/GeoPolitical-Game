@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { motion } from "motion/react";
 import { Globe, Loader2, AlertCircle, Info, Crown, Briefcase, Pickaxe, Zap, Users, UserCheck, Flag, Factory } from "lucide-react";
@@ -8,6 +8,7 @@ import { RESOURCE_ICONS, RESOURCE_NAMES } from "../../constants";
 import { RegionResourcesTab } from "../resources/RegionResourcesTab";
 import { DeepExplorationPanel } from "../resources/DeepExplorationPanel";
 import { GovernmentView } from "../GovernmentView";
+import { usePollingTask } from "../../hooks/usePollingTask";
 
 const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { user: any, handleAction: (a: string, b: any) => void, actionLoading: boolean, fetchData: () => void }) => {
   const { iso2 } = useParams();
@@ -43,7 +44,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     return allRegions.find((entry) => entry.id === destinationId)?.name || destinationId;
   }, [allRegions, region?.id, region?.name, user?.travelingTo]);
 
-  const fetchCountryDetail = async () => {
+  const fetchCountryDetail = useCallback(async () => {
     try {
       const res = await fetch(`/api/countries/${iso2}`);
       if (!res.ok) throw new Error("Country not found");
@@ -58,9 +59,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     } finally {
       setLoading(false);
     }
-  };
+  }, [iso2, user?.id]);
 
-  const fetchAgreements = async () => {
+  const fetchAgreements = useCallback(async () => {
     try {
       const res = await fetch(`/api/countries/${iso2}/agreements`);
       if (res.ok) {
@@ -73,9 +74,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [iso2]);
 
-  const fetchSanctions = async () => {
+  const fetchSanctions = useCallback(async () => {
     try {
       const res = await fetch(`/api/countries/${iso2}/sanctions`);
       if (res.ok) {
@@ -84,9 +85,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [iso2]);
 
-  const fetchRegionFactories = async () => {
+  const fetchRegionFactories = useCallback(async () => {
     try {
       const res = await fetch(`/api/factories?regionId=${iso2?.toUpperCase()}`);
       if (res.ok) {
@@ -95,9 +96,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [iso2]);
 
-  const fetchRegionParties = async () => {
+  const fetchRegionParties = useCallback(async () => {
     try {
       const res = await fetch(`/api/parties?regionId=${iso2?.toUpperCase()}`);
       if (res.ok) {
@@ -106,9 +107,9 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     } catch (e) {
       console.error(e);
     }
-  };
+  }, [iso2]);
 
-  const fetchAutonomyData = async () => {
+  const fetchAutonomyData = useCallback(async () => {
     if (!iso2) return;
     try {
       const res = await fetch(`/api/regions/${iso2.toUpperCase()}/autonomy`);
@@ -116,18 +117,48 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     } catch (e) {
       console.error(e);
     }
-  };
-  useEffect(() => {
-    fetchCountryDetail();
-    fetchAgreements();
-    fetchSanctions();
-    fetchRegionFactories();
-    fetchRegionParties();
-    fetchAutonomyData();
-    fetch('/api/regions')
-      .then(r => r.json())
-      .then((data: any[]) => setAllRegions(data.map((r: any) => ({ id: r.id, name: r.name }))));
   }, [iso2]);
+
+  const fetchAllRegions = useCallback(async () => {
+    try {
+      const res = await fetch('/api/regions');
+      if (!res.ok) return;
+      const data = await res.json();
+      setAllRegions(data.map((entry: any) => ({ id: entry.id, name: entry.name })));
+    } catch (e) {
+      console.error(e);
+    }
+  }, []);
+
+  const refreshCountryScreen = useCallback(async () => {
+    await Promise.all([
+      fetchCountryDetail(),
+      fetchAgreements(),
+      fetchSanctions(),
+      fetchRegionFactories(),
+      fetchRegionParties(),
+      fetchAutonomyData(),
+    ]);
+  }, [
+    fetchAgreements,
+    fetchAutonomyData,
+    fetchCountryDetail,
+    fetchRegionFactories,
+    fetchRegionParties,
+    fetchSanctions,
+  ]);
+
+  useEffect(() => {
+    setLoading(true);
+    void fetchAllRegions();
+  }, [fetchAllRegions, iso2]);
+
+  usePollingTask(refreshCountryScreen, {
+    enabled: Boolean(iso2),
+    intervalMs: 90_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
 
   if (loading) return (
     <div className="min-h-[400px] flex items-center justify-center bg-gray-900/60 border border-gray-800 rounded-2xl">
@@ -152,7 +183,10 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
 
   const handleActionWithRefresh = async (action: string, body: any) => {
     await handleAction(action, body);
-    fetchCountryDetail();
+    await Promise.all([
+      fetchData(),
+      refreshCountryScreen(),
+    ]);
   };
 
   const handleImmigrationAction = async (endpoint: string, body: any) => {
@@ -168,7 +202,10 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
         if (data.autoAccepted) alert("Richiesta accettata automaticamente (Regione Neutrale)!");
         else if (endpoint.includes("apply")) alert("Richiesta inviata con successo all'ufficio immigrazione.");
         else if (data.travelMinutes) alert(`✈️ Viaggio iniziato verso ${data.regionId}! Tempo stimato: ${data.travelMinutes} minuti.`);
-        fetchCountryDetail();
+        await Promise.all([
+          fetchData(),
+          refreshCountryScreen(),
+        ]);
       }
     } catch (err) {
       alert("Errore nell'operazione.");
@@ -188,7 +225,7 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
       if (data.error) return alert(data.error);
       alert(type === 'migration_agreement' ? 'Proposta legge inviata.' : 'Proposta revoca inviata.');
       setAgreementTargetId('');
-      fetchAgreements();
+      await refreshCountryScreen();
     } catch {
       alert('Errore di connessione.');
     }

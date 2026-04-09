@@ -12,12 +12,14 @@ import { motion, AnimatePresence } from "motion/react";
 import type { WarType } from "../../types";
 import { WarCreatePanel, RevolutionPanel, WarDamageBar, WarFactionBadge } from "../war";
 import { WarTimer } from '../ui';
+import { usePollingTask } from "../../hooks/usePollingTask";
 
 const WarsView = ({ 
   wars, 
   user, 
   nations,
   fetchData, 
+  refreshWars,
   actionLoading, 
   autoWorkFactoryId, 
   setAutoWorkFactoryId 
@@ -25,7 +27,8 @@ const WarsView = ({
   wars: any, 
   user: any, 
   nations: any[],
-  fetchData: () => void, 
+  fetchData: () => void,
+  refreshWars: () => Promise<void>,
   actionLoading: boolean, 
   autoWorkFactoryId: string | null, 
   setAutoWorkFactoryId: (val: string | null) => void 
@@ -38,6 +41,10 @@ const WarsView = ({
   const [autoAttack, setAutoAttack] = useState<any | null>(null);
   const [autoTraining, setAutoTraining] = useState<any | null>(null);
   const [regionDevelopmentIndex, setRegionDevelopmentIndex] = useState<number>(0);
+
+  useEffect(() => {
+    setMilitaryExp(user?.militaryExp || 0);
+  }, [user?.militaryExp]);
 
   useEffect(() => {
     if (!user?.regionId) return;
@@ -79,11 +86,18 @@ const WarsView = ({
     }
   }, [warId]);
 
-  useEffect(() => {
-    refreshAutomationStatus();
-    const iv = setInterval(refreshAutomationStatus, 30000);
-    return () => clearInterval(iv);
-  }, [refreshAutomationStatus]);
+  const refreshWarScreen = useCallback(async () => {
+    await Promise.all([
+      refreshWars(),
+      refreshAutomationStatus(),
+    ]);
+  }, [refreshAutomationStatus, refreshWars]);
+
+  usePollingTask(refreshWarScreen, {
+    intervalMs: 15_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
 
   const hasIncompatibleAutoAttackWithAutoWork = activeAutoAttacks.some((entry: any) => entry?.autoType !== 'hourly');
 
@@ -102,12 +116,18 @@ const WarsView = ({
       if (data.error) alert(data.error);
       else {
         setMilitaryExp(data.militaryExp || militaryExp + 5);
-        fetchData();
+        await Promise.all([
+          fetchData(),
+          refreshWarScreen(),
+        ]);
       }
     } catch {
       // Fallback: simulate training locally
       setMilitaryExp(prev => prev + 5);
-      fetchData();
+      await Promise.all([
+        fetchData(),
+        refreshWarScreen(),
+      ]);
     } finally {
       setTraining(false);
     }
@@ -129,7 +149,7 @@ const WarsView = ({
       alert(data.error);
       return;
     }
-    await refreshAutomationStatus();
+    await refreshWarScreen();
   };
 
   const handleStopWarAutomation = async (warIdValue: string) => {
@@ -138,7 +158,7 @@ const WarsView = ({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ enabled: false }),
     });
-    await refreshAutomationStatus();
+    await refreshWarScreen();
   };
 
   const handleSetHourlyTraining = async (enabled: boolean) => {
@@ -152,7 +172,7 @@ const WarsView = ({
       alert(data.error);
       return;
     }
-    await refreshAutomationStatus();
+    await refreshWarScreen();
   };
 
   const [warCreating, setWarCreating] = useState(false);
@@ -169,7 +189,10 @@ const WarsView = ({
       const data = await res.json();
       if (data.error) alert(data.error);
       else {
-        fetchData();
+        await Promise.all([
+          fetchData(),
+          refreshWarScreen(),
+        ]);
         if (data.warId) navigate(`/wars/${data.warId}`);
       }
     } catch { alert("Errore nella dichiarazione di guerra."); }
@@ -193,7 +216,10 @@ const WarsView = ({
         return { ok: false, error: errorMessage };
       }
       alert(data.message || "Rivoluzione iniziata!");
-      fetchData();
+      await Promise.all([
+        fetchData(),
+        refreshWarScreen(),
+      ]);
       return { ok: true };
     } catch { alert("Errore nell'avvio della rivoluzione."); }
     finally { setRevLoading(false); }
@@ -217,7 +243,10 @@ const WarsView = ({
         return { ok: false, error: errorMessage };
       }
       alert(data.message || "Colpo di stato iniziato!");
-      fetchData();
+      await Promise.all([
+        fetchData(),
+        refreshWarScreen(),
+      ]);
       return { ok: true };
     } catch { alert("Errore nell'avvio del colpo di stato."); }
     finally { setRevLoading(false); }
@@ -343,7 +372,10 @@ const WarsView = ({
                   const data = await res.json();
                   if (data.error) alert(data.error);
                   else {
-                    fetchData(); // Refresh scores and user resources
+                    await Promise.all([
+                      fetchData(),
+                      refreshWarScreen(),
+                    ]);
                   }
                 } catch {
                   alert("Errore durante lo schieramento.");

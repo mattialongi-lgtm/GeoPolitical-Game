@@ -1,12 +1,19 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { User, Region, Article, War } from '../types';
 import type { WorldStats } from '../components/home/mockData';
-import { fetchUserOnly, fetchSlowBootstrapData } from '../api/appClient';
+import {
+  fetchArticlesOnly,
+  fetchRegionsAndNations,
+  fetchUserOnly,
+  fetchWarsOnly,
+  fetchWorldStatsOnly,
+} from '../api/appClient';
+import { usePollingTask } from './usePollingTask';
 
-// Intervalli di polling separati per volatilità dei dati
-const POLL_USER_MS   = 20_000;  // /api/me — energia, soldi, XP cambiano spesso
-const POLL_SLOW_MS  = 120_000;  // regioni, nazioni, guerre, articoli, world-stats
+const POLL_USER_MS = 20_000;
+const POLL_REGIONS_AND_NATIONS_MS = 90_000;
+const POLL_WORLD_STATS_MS = 300_000;
 
 interface UseAppBootstrapDataParams {
   setUser: Dispatch<SetStateAction<User | null>>;
@@ -27,101 +34,184 @@ export function useAppBootstrapData({
   setWorldStats,
   setLoading,
 }: UseAppBootstrapDataParams) {
-  // ── Fetch veloce: solo /api/me ──────────────────────────────
-  const fetchUser = useCallback(async () => {
-    if (!document.cookie.includes('sb-access-token')) return;
+  const regionsRef = useRef<Region[]>([]);
+  const nationsRef = useRef<any[]>([]);
+
+  const userInFlightRef = useRef(false);
+  const regionsAndNationsInFlightRef = useRef(false);
+  const articlesInFlightRef = useRef(false);
+  const warsInFlightRef = useRef(false);
+  const worldStatsInFlightRef = useRef(false);
+
+  const hasSession = () => document.cookie.includes('sb-access-token');
+
+  const applyWorldStatsCounts = useCallback((base: WorldStats | null, fallback: WorldStats) => {
+    let next = base ?? fallback;
+    const regions = regionsRef.current;
+    const nations = nationsRef.current;
+
+    if (regions.length > 0) {
+      const independentCount = regions.filter((region: any) =>
+        !region.nation_id || region.territoryStatus === 'INDEPENDENT_REGION'
+      ).length;
+
+      next = {
+        ...next,
+        totalRegions: regions.length,
+        independentRegions: independentCount,
+      };
+    }
+
+    if ((!next.totalStates || next.totalStates <= 0) && nations.length > 0) {
+      next = {
+        ...next,
+        totalStates: nations.length,
+      };
+    }
+
+    return next;
+  }, []);
+
+  const refreshUser = useCallback(async () => {
+    if (!hasSession()) {
+      setUser(null);
+      setLoading(false);
+      return;
+    }
+    if (userInFlightRef.current) return;
+
+    userInFlightRef.current = true;
     try {
       const data = await fetchUserOnly();
       if (data.ok) setUser(data.data as User);
       else setUser(null);
     } catch (err) {
-      console.error('[bootstrap] fetchUser error:', err);
+      console.error('[bootstrap] refreshUser error:', err);
     } finally {
+      userInFlightRef.current = false;
       setLoading(false);
     }
-  }, [setUser, setLoading]);
+  }, [setLoading, setUser]);
 
-  // ── Fetch lento: regioni, nazioni, guerre, articoli, stats ──
-  const fetchSlowData = useCallback(async () => {
-    if (!document.cookie.includes('sb-access-token')) return;
+  const refreshRegionsAndNations = useCallback(async () => {
+    if (!hasSession() || regionsAndNationsInFlightRef.current) return;
+
+    regionsAndNationsInFlightRef.current = true;
     try {
-      const data = await fetchSlowBootstrapData();
+      const data = await fetchRegionsAndNations();
 
-      const regionsData = data.regions.ok ? (data.regions.data || []) : [];
-      if (data.regions.ok) setRegions(regionsData as Region[]);
-      if (data.nations.ok) setNations((data.nations.data || []) as any[]);
-      if (data.articles.ok) setArticles((data.articles.data || []) as Article[]);
-      if (data.wars.ok) setWars(data.wars.data as { active: War[]; ended: War[] });
-
-      setWorldStats((prev) => {
-        let ws = data.worldStats.ok && data.worldStats.data
-          ? (data.worldStats.data as WorldStats)
-          : prev;
-
-        if (regionsData.length > 0) {
-          const independentCount = regionsData.filter((r: any) =>
-            !r.nation_id || r.territoryStatus === 'INDEPENDENT_REGION'
-          ).length;
-          ws = {
-            ...ws,
-            totalRegions: regionsData.length,
-            independentRegions: independentCount,
-          };
-        }
-
-        if (!ws.totalStates || ws.totalStates <= 0) {
-          const nationsFallback = data.nations.ok && Array.isArray(data.nations.data)
-            ? (data.nations.data as any[]).length : 0;
-          if (nationsFallback > 0) ws = { ...ws, totalStates: nationsFallback };
-        }
-
-        return ws;
-      });
-    } catch (err) {
-      console.error('[bootstrap] fetchSlowData error:', err);
-    }
-  }, [setArticles, setNations, setRegions, setWars, setWorldStats]);
-
-  const userIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const slowIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const startPolling = useCallback(() => {
-    if (!userIntervalRef.current) {
-      userIntervalRef.current = setInterval(fetchUser, POLL_USER_MS);
-    }
-    if (!slowIntervalRef.current) {
-      slowIntervalRef.current = setInterval(fetchSlowData, POLL_SLOW_MS);
-    }
-  }, [fetchUser, fetchSlowData]);
-
-  const stopPolling = useCallback(() => {
-    if (userIntervalRef.current) { clearInterval(userIntervalRef.current); userIntervalRef.current = null; }
-    if (slowIntervalRef.current) { clearInterval(slowIntervalRef.current); slowIntervalRef.current = null; }
-  }, []);
-
-  useEffect(() => {
-    // Prima fetch immediata di tutti i dati
-    fetchUser();
-    fetchSlowData();
-    startPolling();
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        stopPolling();
-      } else {
-        // Torna visibile: aggiorna subito solo user (i dati lenti aspettano il prossimo tick)
-        fetchUser();
-        startPolling();
+      if (data.regions.ok) {
+        const nextRegions = (data.regions.data || []) as Region[];
+        regionsRef.current = nextRegions;
+        setRegions(nextRegions);
       }
-    };
 
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [fetchUser, fetchSlowData, startPolling, stopPolling]);
+      if (data.nations.ok) {
+        const nextNations = (data.nations.data || []) as any[];
+        nationsRef.current = nextNations;
+        setNations(nextNations);
+      }
 
-  // fetchData esposto per i POST che richiedono refresh immediato del profilo utente
-  return { fetchData: fetchUser };
+      setWorldStats((prev) => applyWorldStatsCounts(null, prev));
+    } catch (err) {
+      console.error('[bootstrap] refreshRegionsAndNations error:', err);
+    } finally {
+      regionsAndNationsInFlightRef.current = false;
+    }
+  }, [applyWorldStatsCounts, setNations, setRegions, setWorldStats]);
+
+  const refreshArticles = useCallback(async () => {
+    if (!hasSession() || articlesInFlightRef.current) return;
+
+    articlesInFlightRef.current = true;
+    try {
+      const data = await fetchArticlesOnly();
+      if (data.ok) setArticles((data.data || []) as Article[]);
+    } catch (err) {
+      console.error('[bootstrap] refreshArticles error:', err);
+    } finally {
+      articlesInFlightRef.current = false;
+    }
+  }, [setArticles]);
+
+  const refreshWars = useCallback(async () => {
+    if (!hasSession() || warsInFlightRef.current) return;
+
+    warsInFlightRef.current = true;
+    try {
+      const data = await fetchWarsOnly();
+      if (data.ok) setWars(data.data as { active: War[]; ended: War[] });
+    } catch (err) {
+      console.error('[bootstrap] refreshWars error:', err);
+    } finally {
+      warsInFlightRef.current = false;
+    }
+  }, [setWars]);
+
+  const refreshWorldStats = useCallback(async () => {
+    if (!hasSession() || worldStatsInFlightRef.current) return;
+
+    worldStatsInFlightRef.current = true;
+    try {
+      const data = await fetchWorldStatsOnly();
+      setWorldStats((prev) => applyWorldStatsCounts(
+        data.ok && data.data ? (data.data as WorldStats) : null,
+        prev,
+      ));
+    } catch (err) {
+      console.error('[bootstrap] refreshWorldStats error:', err);
+    } finally {
+      worldStatsInFlightRef.current = false;
+    }
+  }, [applyWorldStatsCounts, setWorldStats]);
+
+  usePollingTask(refreshUser, {
+    intervalMs: POLL_USER_MS,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
+
+  usePollingTask(refreshRegionsAndNations, {
+    intervalMs: POLL_REGIONS_AND_NATIONS_MS,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
+
+  usePollingTask(refreshWorldStats, {
+    intervalMs: POLL_WORLD_STATS_MS,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
+
+  const refreshInitialSlowData = useCallback(async () => {
+    await Promise.all([
+      refreshArticles(),
+      refreshWars(),
+    ]);
+  }, [refreshArticles, refreshWars]);
+
+  usePollingTask(refreshInitialSlowData, {
+    intervalMs: null,
+    refreshOnVisible: false,
+    refreshOnFocus: false,
+  });
+
+  const refreshBootstrapData = useCallback(async () => {
+    await Promise.all([
+      refreshUser(),
+      refreshRegionsAndNations(),
+      refreshArticles(),
+      refreshWars(),
+      refreshWorldStats(),
+    ]);
+  }, [refreshArticles, refreshRegionsAndNations, refreshUser, refreshWars, refreshWorldStats]);
+
+  return {
+    fetchData: refreshUser,
+    refreshBootstrapData,
+    refreshArticles,
+    refreshRegionsAndNations,
+    refreshWars,
+    refreshWorldStats,
+  };
 }

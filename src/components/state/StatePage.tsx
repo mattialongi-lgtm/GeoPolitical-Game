@@ -8,7 +8,7 @@
  * All data currently uses mock data as fallback until Supabase backend is connected.
  * Each section uses CollapsibleSection for clean expand/collapse behavior.
  */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 import {
@@ -42,19 +42,21 @@ import { RESOURCE_LABELS, RESOURCE_ICONS_MAP } from '../../types';
 import type { ResourceType } from '../../types';
 import type { StateData } from './mockData';
 import DepartmentsSection from './DepartmentsSection';
+import { usePollingTask } from '../../hooks/usePollingTask';
 
 interface StatePageProps {
   user?: any;
+  fetchData: () => void;
 }
 
-export default function StatePage({ user }: StatePageProps) {
+export default function StatePage({ user, fetchData }: StatePageProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [stateData, setStateData] = useState<StateData | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadState = async () => {
-    setLoading(true);
+  const loadState = useCallback(async (showLoader = false) => {
+    if (showLoader) setLoading(true);
     try {
       const res = await fetch(`/api/state/${id}`);
       if (!res.ok) throw new Error("Failed to fetch state data");
@@ -66,11 +68,20 @@ export default function StatePage({ user }: StatePageProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [id]);
 
   useEffect(() => {
-    loadState();
+    setLoading(true);
   }, [id]);
+
+  const refreshState = useCallback(() => loadState(false), [loadState]);
+
+  usePollingTask(refreshState, {
+    enabled: Boolean(id),
+    intervalMs: 90_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
 
   const [isDonateModalOpen, setIsDonateModalOpen] = useState(false);
 
@@ -378,9 +389,12 @@ export default function StatePage({ user }: StatePageProps) {
         <DonateModal 
           stateId={id!} 
           onClose={() => setIsDonateModalOpen(false)} 
-          onSuccess={() => {
+          onSuccess={async () => {
             setIsDonateModalOpen(false);
-            loadState();
+            await Promise.all([
+              loadState(true),
+              fetchData(),
+            ]);
           }}
         />
       )}

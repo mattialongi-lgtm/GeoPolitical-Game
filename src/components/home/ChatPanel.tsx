@@ -4,6 +4,7 @@
  */
 import React, { useState, useRef, useEffect } from "react";
 import { Send, MessageSquare } from "lucide-react";
+import { usePollingTask } from "../../hooks/usePollingTask";
 
 interface ChatMessage {
   id: number;
@@ -33,33 +34,30 @@ export default function ChatPanel({ currentUser }: ChatPanelProps) {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Fetch messages — hoisted so handleSend can call it directly
-  const fetchMessagesRef = React.useRef<(() => Promise<void>) | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    const fetchMessages = async () => {
-      try {
-        const res = await fetch(`/api/chat?channel=${encodeURIComponent(channel)}`);
-        if (res.ok && active) {
-          const data = await res.json();
-          setMessages(Array.isArray(data) ? data : []);
-        }
-      } catch { /* silently fail for mock */ }
-    };
-    fetchMessagesRef.current = fetchMessages;
-    fetchMessages();
-    const iv = setInterval(fetchMessages, 5000);
-    return () => { active = false; clearInterval(iv); };
+  const fetchMessages = React.useCallback(async () => {
+    try {
+      const res = await fetch(`/api/chat?channel=${encodeURIComponent(channel)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(Array.isArray(data) ? data : []);
+      }
+    } catch {
+      // silently fail for mock
+    }
   }, [channel]);
+
+  usePollingTask(fetchMessages, {
+    intervalMs: 5_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
 
   // Auto-scroll on new messages
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
-  const handleSend = async () => {
+  const handleSend = React.useCallback(async () => {
     if (!input.trim()) return;
     setLoading(true);
     try {
@@ -70,11 +68,11 @@ export default function ChatPanel({ currentUser }: ChatPanelProps) {
       });
       if (res.ok) {
         setInput('');
-        await fetchMessagesRef.current?.();
+        await fetchMessages();
       }
     } catch { /* ignore */ }
     setLoading(false);
-  };
+  }, [channel, fetchMessages, input]);
 
   const channels = [
     { id: 'global' as const, label: '🌍 Globale' },

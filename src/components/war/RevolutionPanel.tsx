@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Flag, Users, AlertTriangle, Loader2, Zap } from 'lucide-react';
 import { GAME_CONFIG } from '../../types';
+import { usePollingTask } from '../../hooks/usePollingTask';
 
 interface LobbyInfo {
   id: string;
@@ -41,7 +42,7 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
   const canCoup = regionDevelopment === GAME_CONFIG.WAR_COUP_MAX_DEVELOPMENT
     && userGold >= GAME_CONFIG.WAR_COUP_GOLD_COST;
 
-  const fetchLobbies = async () => {
+  const fetchLobbies = React.useCallback(async () => {
     if (!regionId) return;
     setLoadingLobbies(true);
     try {
@@ -52,13 +53,14 @@ export const RevolutionPanel: React.FC<RevolutionPanelProps> = ({
       }
     } catch (err) { console.error("[lobbies] Fetch error:", err); }
     setLoadingLobbies(false);
-  };
-
-  useEffect(() => {
-    fetchLobbies();
-    const iv = setInterval(fetchLobbies, 30000); // Refresh every 30s
-    return () => clearInterval(iv);
   }, [regionId]);
+
+  usePollingTask(fetchLobbies, {
+    enabled: Boolean(regionId),
+    intervalMs: 15_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
   useEffect(() => {
     setJoinedOverride({});
   }, [regionId]);

@@ -5,6 +5,11 @@ export interface EndpointResult<T> {
   data: T | null;
 }
 
+export interface RegionsAndNationsResult {
+  regions: EndpointResult<any[]>;
+  nations: EndpointResult<any[]>;
+}
+
 export interface AppBootstrapApiResult {
   user: EndpointResult<any>;
   regions: EndpointResult<any[]>;
@@ -49,31 +54,31 @@ export async function fetchUserOnly(): Promise<EndpointResult<any>> {
   return readResult<any>(res);
 }
 
-export interface SlowBootstrapApiResult {
-  regions: EndpointResult<any[]>;
-  nations: EndpointResult<any[]>;
-  articles: EndpointResult<any[]>;
-  wars: EndpointResult<any>;
-  worldStats: EndpointResult<any>;
-}
-
-/** Fetch dati quasi statici — usato per il polling lento (ogni 120s). */
-export async function fetchSlowBootstrapData(): Promise<SlowBootstrapApiResult> {
-  const [regionsRes, nationsRes, articlesRes, warsRes, worldStatsRes] = await Promise.all([
+export async function fetchRegionsAndNations(): Promise<RegionsAndNationsResult> {
+  const [regionsRes, nationsRes] = await Promise.all([
     httpFetch('/api/regions'),
     httpFetch('/api/nations'),
-    httpFetch('/api/articles'),
-    httpFetch('/api/wars'),
-    httpFetch('/api/world-stats'),
   ]);
 
-  const [regions, nations, articles, wars, worldStats] = await Promise.all([
+  const [regions, nations] = await Promise.all([
     readResult<any[]>(regionsRes),
     readResult<any[]>(nationsRes),
-    readResult<any[]>(articlesRes),
-    readResult<any>(warsRes),
-    readResult<any>(worldStatsRes),
   ]);
 
-  return { regions, nations, articles, wars, worldStats };
+  return { regions, nations };
+}
+
+export async function fetchArticlesOnly(): Promise<EndpointResult<any[]>> {
+  const res = await httpFetch('/api/articles');
+  return readResult<any[]>(res);
+}
+
+export async function fetchWarsOnly(): Promise<EndpointResult<any>> {
+  const res = await httpFetch('/api/wars');
+  return readResult<any>(res);
+}
+
+export async function fetchWorldStatsOnly(): Promise<EndpointResult<any>> {
+  const res = await httpFetch('/api/world-stats');
+  return readResult<any>(res);
 }

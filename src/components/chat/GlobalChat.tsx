@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Send, Loader2 } from "lucide-react";
+import { usePollingTask } from "../../hooks/usePollingTask";
 
 interface ChatMessage {
   id: number;
@@ -20,7 +21,7 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
   const bottomRef = React.useRef<HTMLDivElement>(null);
   const listRef = React.useRef<HTMLDivElement>(null);
 
-  const fetchMessages = async () => {
+  const fetchMessages = React.useCallback(async () => {
     try {
       const res = await fetch(`/api/chat?channel=${channel}`);
       if (res.ok) {
@@ -28,13 +29,13 @@ const GlobalChat = ({ currentUser }: { currentUser: any }) => {
         setMessages(data);
       }
     } catch (_) { }
-  };
-
-  useEffect(() => {
-    fetchMessages();
-    const iv = setInterval(fetchMessages, 5000);
-    return () => clearInterval(iv);
   }, [channel]);
+
+  usePollingTask(fetchMessages, {
+    intervalMs: 5_000,
+    refreshOnVisible: true,
+    refreshOnFocus: true,
+  });
 
   // Auto-scroll to bottom only inside the container
   useEffect(() => {

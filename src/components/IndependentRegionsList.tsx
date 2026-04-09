@@ -44,28 +44,31 @@ const GENERIC_LANDSCAPES = [
   'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05',
 ];
 
-export default function IndependentRegionsList() {
+export default function IndependentRegionsList({
+  regions,
+  refreshRegionsAndNations,
+}: {
+  regions: Region[];
+  refreshRegionsAndNations: () => Promise<void>;
+}) {
   const navigate = useNavigate();
-  const [regions, setRegions] = useState<Region[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/regions");
-      if (res.ok) {
-        const data = await res.json();
-        setRegions(Array.isArray(data) ? data : []);
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        await refreshRegionsAndNations();
+      } finally {
+        if (mounted) setLoading(false);
       }
-    } catch {
-      setRegions([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); }, []);
+    };
+    void refresh();
+    return () => {
+      mounted = false;
+    };
+  }, [refreshRegionsAndNations]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

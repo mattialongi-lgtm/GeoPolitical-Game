@@ -13,28 +13,31 @@ type Nation = {
   playerCount?: number;
 };
 
-export default function NationsList() {
+export default function NationsList({
+  nations,
+  refreshRegionsAndNations,
+}: {
+  nations: Nation[];
+  refreshRegionsAndNations: () => Promise<void>;
+}) {
   const navigate = useNavigate();
-  const [nations, setNations] = useState<Nation[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  const load = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/nations");
-      if (res.ok) {
-        const data = await res.json();
-        setNations(Array.isArray(data) ? data : []);
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      try {
+        await refreshRegionsAndNations();
+      } finally {
+        if (mounted) setLoading(false);
       }
-    } catch {
-      setNations([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { load(); }, []);
+    };
+    void refresh();
+    return () => {
+      mounted = false;
+    };
+  }, [refreshRegionsAndNations]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();

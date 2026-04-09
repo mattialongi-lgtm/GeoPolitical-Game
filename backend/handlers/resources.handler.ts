@@ -201,7 +201,7 @@ export function createResourcesHandlers(deps: {
     try {
       const { data: region, error: regErr } = await supabase
         .from('regions')
-        .select('*')
+        .select('id, ownerUserId, economicAdviserId')
         .eq('id', regionId)
         .single();
       if (regErr || !region) return res.status(404).json({ error: "Regione non trovata." });
@@ -245,7 +245,7 @@ export function createResourcesHandlers(deps: {
       const cooldownSec = parseInt(await getSetting('recharge_cooldown_seconds')) || 1800;
       const { data: rechargeData } = await supabase
         .from('resource_recharges')
-        .select('*')
+        .select('lastRechargeAt, regionId, resourceType')
         .eq('regionId', regionId)
         .eq('resourceType', resourceType)
         .maybeSingle();
@@ -339,7 +339,7 @@ export function createResourcesHandlers(deps: {
       const costEur = parseInt(await getSetting('recharge_cost_eur')) || 0;
 
       const [rechargeData, regionRes, budget] = await Promise.all([
-        supabase.from('resource_recharges').select('*').eq('regionId', regionId).eq('resourceType', resourceType).maybeSingle().then(r => r.data),
+        supabase.from('resource_recharges').select('lastRechargeAt').eq('regionId', regionId).eq('resourceType', resourceType).maybeSingle().then(r => r.data),
         supabase.from('region_resources').select('dailyMaxCap, currentAvailableCap, totalUnlockedToday, initialAvailableCap').eq('regionId', regionId).eq('resourceType', resourceType).maybeSingle().then(r => r.data),
         supabase.from('budgets').select('moneyEUR').eq('ownerType', 'REGION').eq('ownerId', regionId).maybeSingle().then(r => r.data),
       ]);
@@ -605,7 +605,7 @@ export function createResourcesHandlers(deps: {
     if (!factoryId) return res.status(400).json({ error: "factoryId è obbligatorio." });
 
     try {
-      const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
+      const { data: factory } = await supabase.from('factories').select('id, type, regionId, level').eq('id', factoryId).single();
       if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
 
       const factoryType = factory.type || '';
@@ -615,12 +615,14 @@ export function createResourcesHandlers(deps: {
       const resourceType = typeDef.resource;
       const regionId = factory.regionId;
 
-      const { data: regionRel } = await supabase.from('regions').select('*').eq('id', regionId).single();
+      const { data: regionRel } = await supabase.from('regions')
+        .select('id, marketTaxRate, industryTaxPercent, regionalProfitSharePercent, healthIndex')
+        .eq('id', regionId).single();
       if (!regionRel) return res.status(404).json({ error: "Regione non trovata." });
 
       const { data: regionRes } = await supabase
         .from('region_resources')
-        .select('*')
+        .select('regionId, resourceType, baseCapPerRecharge, currentAvailableCap, totalUnlockedToday, dailyMaxCap')
         .eq('regionId', regionId)
         .eq('resourceType', resourceType)
         .maybeSingle();

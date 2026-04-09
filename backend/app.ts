@@ -3,6 +3,7 @@ import "dotenv/config";
 (BigInt.prototype as any).toJSON = function() { return this.toString(); };
 
 import express from "express";
+import compression from "compression";
 import { createClient } from "@supabase/supabase-js";
 import cookieParser from "cookie-parser";
 import { randomBytes } from "crypto";
@@ -153,6 +154,8 @@ const factoryCreateService = new FactoryCreateService(new FactoryCreateRepositor
 const partyAssetsService = new PartyAssetsService(new PartyAssetsRepository(supabase));
 const productionService = new ProductionService(new ProductionRepository(supabase));
 
+// Compressione gzip/deflate: riduce egress JSON del 60-75% su tutte le risposte
+app.use(compression());
 app.use(express.json());
 
 function isTransientSupabaseNetworkError(error: any) {
@@ -1242,7 +1245,7 @@ async function processAutomationTick() {
     // 1. Process auto-work
     const { data: activeAutoWork, error: autoWorkErr } = await supabase
       .from('work_auto_actions')
-      .select('*')
+      .select('id, userId, factoryId, activatedAt, expiresAt, lastFiredAt, isActive')
       .eq('isActive', true);
 
     if (autoWorkErr) {
@@ -1347,7 +1350,7 @@ async function processAutomationTick() {
     // 2. Process hourly training damage
     const { data: activeAutoTraining, error: autoTrainingErr } = await supabase
       .from('training_auto_actions')
-      .select('*')
+      .select('id, userId, activatedAt, expiresAt, lastFiredAt, isActive')
       .eq('isActive', true);
 
     if (autoTrainingErr) {
@@ -1379,7 +1382,7 @@ async function processAutomationTick() {
     // 3. Process auto-attacks
     const { data: activeAutoAttacks, error: autoAttacksErr } = await supabase
       .from('war_auto_attacks')
-      .select('*')
+      .select('id, userId, warId, activatedAt, expiresAt, lastFiredAt, isActive, autoType, side, troopType')
       .eq('isActive', true);
 
     if (autoAttacksErr) {
@@ -3842,7 +3845,7 @@ async function executeExtractionWork(
 
   const { data: factory, error: fErr } = await supabase
     .from('factories')
-    .select('*')
+    .select('id, type, regionId, level, isActive, payMode, ownerUserId, minLevel, totalWorkerCount, totalProduction, totalOwnerProfit, totalTaxesPaid')
     .eq('id', factoryId)
     .single();
 
@@ -3866,7 +3869,9 @@ async function executeExtractionWork(
     fail(400, "Devi viaggiare in questa regione per lavorare qui.", "travel_required");
   }
 
-  const { data: regionRel } = await supabase.from('regions').select('*').eq('id', regionId).single();
+  const { data: regionRel } = await supabase.from('regions')
+    .select('id, workRestrictions, marketTaxRate, industryTaxPercent, regionalProfitSharePercent, isAutonomous, nation_id, healthIndex')
+    .eq('id', regionId).single();
   if (!regionRel) fail(404, "Regione non trovata.");
 
   const restrictionsActive = regionRel.workRestrictions === 1;
@@ -3895,9 +3900,11 @@ async function executeExtractionWork(
   if ((workingUser.energy || 0) < actualEnergyCost && options?.allowAutoDrink) {
     const drank = await tryUseEnergyDrinkForUser(workingUser.id);
     if (drank) {
-      const { data: refreshedUser } = await supabase.from('users').select('*').eq('id', workingUser.id).single();
+      const { data: refreshedUser } = await supabase.from('users')
+        .select('id, energy, level, regionId, residenceId, workPermitId')
+        .eq('id', workingUser.id).single();
       if (refreshedUser) {
-        workingUser = { ...refreshedUser, perks };
+        workingUser = { ...workingUser, ...refreshedUser, perks };
       }
     }
   }
@@ -3907,7 +3914,7 @@ async function executeExtractionWork(
 
   const { data: regionRes } = await supabase
     .from('region_resources')
-    .select('*')
+    .select('regionId, resourceType, dailyMaxCap, currentAvailableCap, dailyExtracted, baseCapPerRecharge')
     .eq('regionId', regionId)
     .eq('resourceType', resourceType)
     .maybeSingle();
@@ -3959,7 +3966,7 @@ async function executeExtractionWork(
 
   const { data: playerState } = await supabase
     .from('player_extraction_state')
-    .select('*')
+    .select('extractedSinceLastRecharge')
     .eq('playerId', workingUser.id)
     .eq('regionId', regionId)
     .eq('resourceType', resourceType)

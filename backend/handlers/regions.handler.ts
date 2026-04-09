@@ -14,6 +14,7 @@ import {
   type BuildingType,
 } from '../../src/types';
 import { logger } from '../utils/logger';
+import { pickPreferredExtractionFactory } from '../utils/extraction-factory';
 
 export function createRegionsHandlers(deps: {
   supabase: any;
@@ -35,6 +36,12 @@ export function createRegionsHandlers(deps: {
     getStateEnergyCompensation,
     AUTONOMY_CONFIG, BUILDING_LABELS, GAME_CONFIG, FACTORY_CONFIG,
   } = deps;
+
+  const isAutomationExpired = (activatedAt?: string | null, expiresAt?: string | null, now = Date.now()) => {
+    if (expiresAt) return new Date(expiresAt).getTime() <= now;
+    if (!activatedAt) return false;
+    return (now - new Date(activatedAt).getTime()) >= 24 * 60 * 60 * 1000;
+  };
 
   // ── Region Calculation Helpers (from server.ts lines 8443-8690) ──
 
@@ -264,7 +271,7 @@ export function createRegionsHandlers(deps: {
     try {
       const [{ data: resources, error }, { data: factories, error: factoriesError }] = await Promise.all([
         supabase.from('region_resources').select('*').eq('regionId', regionId),
-        supabase.from('factories').select('id, name, type, level, regionId, isActive').eq('regionId', regionId).eq('isActive', true),
+        supabase.from('factories').select('id, name, type, level, regionId, isActive, payMode').eq('regionId', regionId).eq('isActive', true).eq('payMode', 'resource'),
       ]);
       if (error) throw error;
       if (factoriesError) throw factoriesError;
@@ -272,14 +279,20 @@ export function createRegionsHandlers(deps: {
         return res.json({ resources: [], deepActive: null });
       }
 
-      const backingFactoryByResource: Record<string, any> = {};
-      for (const factory of factories || []) {
-        const resourceType = FACTORY_CONFIG?.TYPES?.[factory.type]?.resource;
-        if (!resourceType) continue;
-        const current = backingFactoryByResource[resourceType];
-        if (!current || Number(factory.level || 0) > Number(current.level || 0)) {
-          backingFactoryByResource[resourceType] = factory;
+      let preferredFactoryId: string | null = null;
+      try {
+        const { data: activeAutoWork, error: activeAutoWorkError } = await supabase
+          .from('work_auto_actions')
+          .select('factoryId, activatedAt, expiresAt')
+          .eq('userId', req.user.id)
+          .eq('isActive', true)
+          .maybeSingle();
+
+        if (!activeAutoWorkError && activeAutoWork && !isAutomationExpired(activeAutoWork.activatedAt, activeAutoWork.expiresAt)) {
+          preferredFactoryId = activeAutoWork.factoryId || null;
         }
+      } catch {
+        preferredFactoryId = null;
       }
 
       const nationId = await getNationForRegion(regionId);
@@ -290,7 +303,12 @@ export function createRegionsHandlers(deps: {
         const dailyMaxCap = r.dailyMaxCap ?? r.dailyAvailable ?? 5000;
         const currentAvailableCap = r.currentAvailableCap ?? 0;
         const totalUnlockedToday = r.totalUnlockedToday ?? 0;
-        const backingFactory = backingFactoryByResource[r.resourceType] || null;
+        const backingFactory = pickPreferredExtractionFactory(
+          factories,
+          FACTORY_CONFIG,
+          r.resourceType,
+          preferredFactoryId,
+        );
         return {
           ...r,
           dailyMaxCap,
@@ -306,7 +324,7 @@ export function createRegionsHandlers(deps: {
           backingFactoryName: backingFactory?.name || null,
           backingFactoryLevel: Number(backingFactory?.level || 0),
           workEnabled: !!backingFactory,
-          workDisabledReason: backingFactory ? null : "Nessuna fabbrica attiva collegata a questa risorsa in questa regione.",
+          workDisabledReason: backingFactory ? null : "Nessuna fabbrica attiva in Modalita Risorse collegata a questa risorsa in questa regione.",
         };
       }));
       res.json({ resources: enriched });

@@ -21,3 +21,14 @@ Original prompt: lo storico dei guadagni di gold dal lavoro non viene visionato.
 - UI fix: `/api/regions/:id/resources` espone il collegamento backend della risorsa (fabbrica attiva associata). `ResourceExtractView` usa quel binding per disabilitare lavoro/auto-lavoro quando manca una fabbrica reale, mostra il target backend e sposta i controlli di auto-work dentro il blocco di estrazione.
 - Pulizia UX: `WorkView` non mostra piu il vecchio pannello auto-work scollegato dalle risorse; la lista fabbriche resta visibile ma senza i toggle automatici in quella pagina.
 - Verifica: `npm.cmd run lint` OK. Test mirato: `node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand backend/__tests__/services/extraction.service.test.ts` OK (11/11).
+
+- Nuovo prompt: l'auto-work mostra una fabbrica backend diversa da quella selezionata e il flusso estrattivo resta incoerente.
+- Fix backend: i resolver di auto-work/estrazione ora accettano solo fabbriche attive in `payMode = resource`; i target salary non possono piu essere agganciati come backend estrattivo.
+- Allineamento selezione: `/api/resources/work-extract` e `/api/regions/:id/resources` preferiscono la fabbrica gia collegata all'auto-work attivo quando regione e risorsa coincidono, invece di sovrascriverla con la prima fabbrica di livello piu alto.
+- Hardening scheduler: `executeExtractionWork()` rifiuta fabbriche fuori Modalita Risorse e il tick automatico disattiva configurazioni ormai invalide.
+- UX: la lista fabbriche non propone piu il pulsante Auto su card non compatibili e la schermata risorse mostra anche il nome della factory target dell'auto-work attivo.
+
+- Nuovo prompt: la modalita autowork del gold deve tornare al ciclo reale da 300 energia ogni 10 minuti, bevendo una bibita quando l'energia non basta.
+- Fix backend: l'auto-work passa ora a `executeExtractionWork(...)` un `energyCostOverride` da `300`, cosi ogni tick automatico scala sempre un ciclo pieno invece del costo manuale da estrazione singola.
+- Regola drink: il cooldown delle bibite energetiche usa adesso un parser robusto per timestamp numerici e ISO, quindi il consumo automatico resta coerente anche con dati legacy o serializzati.
+- Safety net: aggiunti test unitari sui nuovi helper energia per bloccare regressioni tra estrazione manuale e auto-work.

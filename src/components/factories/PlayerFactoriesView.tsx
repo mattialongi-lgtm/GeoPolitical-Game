@@ -256,6 +256,7 @@ export const PlayerFactoriesView = ({
             const isResourceMode = f.payMode === 'resource';
             const isGoldFactory = f.type === 'gold';
             const needsBudget = !isResourceMode && f.budget < f.wage;
+            const canConfigureAutoWork = isResourceMode || autoWorkFactoryId === f.id;
 
             return (
               <div key={f.id} className={`bg-gray-900/60 p-5 rounded-2xl border ${isOwner ? "border-indigo-500/30" : "border-gray-800"} space-y-4`}>
@@ -320,7 +321,7 @@ export const PlayerFactoriesView = ({
                   >
                     📋
                   </button>
-                  {setAutoWorkFactoryId && (
+                  {setAutoWorkFactoryId && canConfigureAutoWork && (
                     autoWorkFactoryId === f.id ? (
                       <button
                         onClick={() => setAutoWorkFactoryId(null)}
@@ -333,7 +334,7 @@ export const PlayerFactoriesView = ({
                         onClick={() => setAutoWorkFactoryId(f.id)}
                         disabled={!!autoWorkFactoryId}
                         className="py-3 px-4 bg-amber-500 text-white rounded-2xl font-black uppercase text-xs shadow-lg hover:bg-amber-600 transition-all disabled:opacity-50"
-                        title="Attiva lavoro automatico per 24 ore"
+                        title="Attiva lavoro automatico estrattivo per 24 ore"
                       >
                         🤖 Auto
                       </button>

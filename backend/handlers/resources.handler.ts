@@ -13,6 +13,11 @@
 
 import { logger } from '../utils/logger';
 import { REGION_RESOURCE_CAPS_BY_TYPE } from '../../src/types';
+import {
+  getFactoryResourceType,
+  isExtractionFactoryEligible,
+  pickPreferredExtractionFactory,
+} from '../utils/extraction-factory';
 
 export function createResourcesHandlers(deps: {
   supabase: any;
@@ -61,6 +66,12 @@ export function createResourcesHandlers(deps: {
     GAME_CONFIG, RESOURCE_TYPES, EXTRACTION_CONFIG, FACTORY_CONFIG,
   } = deps;
 
+  const isAutomationExpired = (activatedAt?: string | null, expiresAt?: string | null, now = Date.now()) => {
+    if (expiresAt) return new Date(expiresAt).getTime() <= now;
+    if (!activatedAt) return false;
+    return (now - new Date(activatedAt).getTime()) >= 24 * 60 * 60 * 1000;
+  };
+
   // GET /api/resources/player-state
   async function getPlayerState(req: any, res: any) {
     const user = req.user;
@@ -108,19 +119,56 @@ export function createResourcesHandlers(deps: {
         return res.status(400).json({ error: "Nessuna fabbrica compatibile per questa risorsa." });
       }
 
-      const { data: factories, error: factoryErr } = await supabase
-        .from('factories')
-        .select('*')
-        .eq('regionId', regionId)
-        .in('type', factoryTypeCandidates)
-        .eq('isActive', true)
-        .order('level', { ascending: false })
-        .limit(1);
+      let preferredFactoryId: string | null = null;
+      try {
+        const { data: activeAutoWork, error: autoWorkError } = await supabase
+          .from('work_auto_actions')
+          .select('factoryId, activatedAt, expiresAt')
+          .eq('userId', user.id)
+          .eq('isActive', true)
+          .maybeSingle();
 
-      if (factoryErr) throw factoryErr;
-      const targetFactory = factories?.[0];
+        if (!autoWorkError && activeAutoWork && !isAutomationExpired(activeAutoWork.activatedAt, activeAutoWork.expiresAt)) {
+          preferredFactoryId = activeAutoWork.factoryId || null;
+        }
+      } catch {
+        preferredFactoryId = null;
+      }
+
+      let targetFactory = null as any;
+      if (preferredFactoryId) {
+        const { data: preferredFactory, error: preferredFactoryError } = await supabase
+          .from('factories')
+          .select('*')
+          .eq('id', preferredFactoryId)
+          .maybeSingle();
+        if (preferredFactoryError) throw preferredFactoryError;
+
+        if (
+          isExtractionFactoryEligible(preferredFactory, FACTORY_CONFIG) &&
+          preferredFactory.regionId === regionId &&
+          getFactoryResourceType(preferredFactory, FACTORY_CONFIG) === resourceType
+        ) {
+          targetFactory = preferredFactory;
+        }
+      }
+
       if (!targetFactory) {
-        return res.status(404).json({ error: "Nessuna fabbrica attiva trovata per questa risorsa nella regione selezionata." });
+        const { data: factories, error: factoryErr } = await supabase
+          .from('factories')
+          .select('*')
+          .eq('regionId', regionId)
+          .in('type', factoryTypeCandidates)
+          .eq('isActive', true)
+          .eq('payMode', 'resource')
+          .order('level', { ascending: false });
+
+        if (factoryErr) throw factoryErr;
+        targetFactory = pickPreferredExtractionFactory(factories, FACTORY_CONFIG, resourceType, preferredFactoryId);
+      }
+
+      if (!targetFactory) {
+        return res.status(404).json({ error: "Nessuna fabbrica attiva in Modalita Risorse trovata per questa risorsa nella regione selezionata." });
       }
 
       const result = await executeExtractionWork(user, targetFactory.id);

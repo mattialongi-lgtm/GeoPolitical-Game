@@ -77,6 +77,10 @@ import { isDailyBonusClaimSuccess, isDailyMissionClaimSuccess } from "./observab
 import { mapServiceResultToHttp } from "./services/http-result.mapper";
 import { errorHandler } from "./middleware/errorHandler.middleware";
 import { globalLimiter } from "./middleware/rateLimiter.middleware";
+import {
+  hasEnergyDrinkCooldownExpired,
+  resolveExtractionEnergyCost,
+} from "./utils/automation-energy";
 
 console.log("Starting backend/app.ts...");
 
@@ -1250,13 +1254,21 @@ async function processAutomationTick() {
           }
 
           (autoWorkUser as any).perks = await getUserPerks(aw.userId);
-          await executeExtractionWork(autoWorkUser, aw.factoryId, { allowAutoDrink: true });
+          await executeExtractionWork(autoWorkUser, aw.factoryId, {
+            allowAutoDrink: true,
+            energyCostOverride: GAME_CONFIG.ENERGY_MAX,
+          });
           await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
         } catch (err: any) {
           const message = (err?.message || '').toLowerCase();
 
           // Fatal / invalid config → disable automation
-          if (err?.statusCode === 404 || message.includes('fabbrica non trovata') || message.includes('devi viaggiare')) {
+          if (
+            err?.statusCode === 404 ||
+            message.includes('fabbrica non trovata') ||
+            message.includes('devi viaggiare') ||
+            message.includes('modalita risorse')
+          ) {
             await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
             continue;
           }
@@ -1381,7 +1393,7 @@ async function tryUseEnergyDrinkForUser(userId: string): Promise<boolean> {
 
   if (readError || !freshUser) return false;
   if ((freshUser.energyDrinks || 0) <= 0) return false;
-  if ((now - (freshUser.lastEnergyDrink || 0)) < GAME_CONFIG.ENERGY_DRINK_COOLDOWN) return false;
+  if (!hasEnergyDrinkCooldownExpired(freshUser.lastEnergyDrink, now, GAME_CONFIG.ENERGY_DRINK_COOLDOWN)) return false;
 
   let updateQuery = supabase
     .from('users')
@@ -3769,7 +3781,11 @@ async function computeDeepCost(nationId: string, resourceType: string, level: nu
 // ██ ADVANCED EXTRACTION SYSTEM ENDPOINTS
 // ══════════════════════════════════════════════════════════════════
 
-async function executeExtractionWork(user: any, factoryId: string, options?: { allowAutoDrink?: boolean }) {
+async function executeExtractionWork(
+  user: any,
+  factoryId: string,
+  options?: { allowAutoDrink?: boolean; energyCostOverride?: number }
+) {
   const fail = (statusCode: number, message: string, reason?: string) => {
     const err: any = createAutomationError(statusCode, message);
     if (reason) err.reason = reason;
@@ -3796,6 +3812,9 @@ async function executeExtractionWork(user: any, factoryId: string, options?: { a
 
   const resourceType = typeDef.resource;
   if (!resourceType) fail(400, "Questa fabbrica non produce risorse estraibili.");
+  if (String(factory.payMode || '').toLowerCase() !== 'resource') {
+    fail(400, "Questa fabbrica non e in Modalita Risorse.", "resource_mode_required");
+  }
 
   const regionId = factory.regionId;
   if ((workingUser.regionId || '') !== regionId) {
@@ -3823,9 +3842,11 @@ async function executeExtractionWork(user: any, factoryId: string, options?: { a
   }
 
   const perks = workingUser.perks || await getUserPerks(workingUser.id);
-  const resistenza = perks['RESISTENZA'] || 0;
-  const energyReduction = Math.min(0.5, resistenza / 100);
-  const actualEnergyCost = Math.ceil(EXTRACTION_CONFIG.WORK_ACTION_ENERGY_COST * (1 - energyReduction));
+  const actualEnergyCost = resolveExtractionEnergyCost(
+    EXTRACTION_CONFIG.WORK_ACTION_ENERGY_COST,
+    perks['RESISTENZA'] || 0,
+    options?.energyCostOverride
+  );
   if ((workingUser.energy || 0) < actualEnergyCost && options?.allowAutoDrink) {
     const drank = await tryUseEnergyDrinkForUser(workingUser.id);
     if (drank) {

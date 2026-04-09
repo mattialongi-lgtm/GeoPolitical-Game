@@ -1,3 +1,9 @@
+import {
+  getExtractionFactoryMeta,
+  isExtractionFactoryEligible,
+  pickPreferredExtractionFactory,
+} from '../utils/extraction-factory';
+
 /**
  * Automation Handlers
  *
@@ -37,22 +43,7 @@ export function createAutomationHandlers(deps: {
 }) {
   const { supabase, FACTORY_CONFIG } = deps;
 
-  const getFactoryMeta = (factory: any) => {
-    if (!factory) return null;
-    const typeDef = FACTORY_CONFIG?.TYPES?.[factory.type];
-    const resourceType = typeDef?.resource || null;
-    if (!resourceType) return null;
-
-    return {
-      factoryId: factory.id,
-      factoryName: factory.name || null,
-      factoryType: factory.type,
-      factoryLevel: Number(factory.level || 0),
-      regionId: factory.regionId,
-      resourceType,
-      connected: true,
-    };
-  };
+  const getFactoryMeta = (factory: any) => getExtractionFactoryMeta(factory, FACTORY_CONFIG);
 
   const resolveFactoryFromResource = async (regionId: string, resourceType: string) => {
     const factoryTypeCandidates = Object.entries(FACTORY_CONFIG?.TYPES || {})
@@ -65,15 +56,15 @@ export function createAutomationHandlers(deps: {
 
     const { data: factories, error } = await supabase
       .from('factories')
-      .select('id, name, type, level, regionId, isActive')
+      .select('id, name, type, level, regionId, isActive, payMode')
       .eq('regionId', regionId)
       .in('type', factoryTypeCandidates)
       .eq('isActive', true)
-      .order('level', { ascending: false })
-      .limit(1);
+      .eq('payMode', 'resource')
+      .order('level', { ascending: false });
 
     if (error) throw error;
-    return { factory: factories?.[0] || null, error: null };
+    return { factory: pickPreferredExtractionFactory(factories, FACTORY_CONFIG, resourceType), error: null };
   };
 
   // GET /api/automation/work
@@ -107,7 +98,7 @@ export function createAutomationHandlers(deps: {
 
     const { data: factory, error: factoryError } = await supabase
       .from('factories')
-      .select('id, name, type, level, regionId, isActive')
+      .select('id, name, type, level, regionId, isActive, payMode')
       .eq('id', autoWork.factoryId)
       .maybeSingle();
 
@@ -145,7 +136,7 @@ export function createAutomationHandlers(deps: {
       if (factoryId) {
         const { data: factory, error: factoryError } = await supabase
           .from('factories')
-          .select('id, name, type, level, regionId, isActive')
+          .select('id, name, type, level, regionId, isActive, payMode')
           .eq('id', factoryId)
           .maybeSingle();
         if (factoryError) throw factoryError;
@@ -165,6 +156,10 @@ export function createAutomationHandlers(deps: {
           return res.status(400).json({ error: resolved.error });
         }
         targetFactory = resolved.factory;
+      }
+
+      if (targetFactory && !isExtractionFactoryEligible(targetFactory, FACTORY_CONFIG)) {
+        return res.status(400).json({ error: "Auto-lavoro estrattivo disponibile solo su fabbriche attive in Modalita Risorse." });
       }
 
       const factoryMeta = getFactoryMeta(targetFactory);

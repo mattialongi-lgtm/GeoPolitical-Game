@@ -16,6 +16,7 @@ export function useAppActions(
   const [workExpTransferOk, setWorkExpTransferOk] = useState<string | null>(null);
 
   const [autoWorkFactoryId, setAutoWorkFactoryIdState] = useState<string | null>(null);
+  const [autoWorkFactoryName, setAutoWorkFactoryName] = useState<string | null>(null);
   const [autoWorkResourceType, setAutoWorkResourceType] = useState<string | null>(null);
   const [autoWorkRegionId, setAutoWorkRegionId] = useState<string | null>(null);
   const [autoWorkExpiresAt, setAutoWorkExpiresAt] = useState<string | null>(null);
@@ -25,11 +26,13 @@ export function useAppActions(
       const res = await fetch("/api/automation/work");
       const data = await res.json();
       setAutoWorkFactoryIdState(data.autoWork?.factoryId || null);
+      setAutoWorkFactoryName(data.autoWork?.factoryName || null);
       setAutoWorkResourceType(data.autoWork?.resourceType || null);
       setAutoWorkRegionId(data.autoWork?.regionId || null);
       setAutoWorkExpiresAt(data.autoWork?.expiresAt || null);
     } catch {
       setAutoWorkFactoryIdState(null);
+      setAutoWorkFactoryName(null);
       setAutoWorkResourceType(null);
       setAutoWorkRegionId(null);
       setAutoWorkExpiresAt(null);
@@ -227,6 +230,7 @@ export function useAppActions(
   return {
     actionLoading,
     autoWorkFactoryId,
+    autoWorkFactoryName,
     autoWorkResourceType,
     autoWorkRegionId,
     setAutoWorkFactoryId,

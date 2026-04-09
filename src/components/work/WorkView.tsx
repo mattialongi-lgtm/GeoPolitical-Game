@@ -6,7 +6,7 @@ import { PlayerFactoriesView } from "../factories/PlayerFactoriesView";
 
 export function WorkView(props: any) {
   const {
-    user, fetchData, autoWorkFactoryId, autoWorkResourceType, autoWorkRegionId, setAutoWorkFactoryId, setAutoWorkResource, autoWorkExpiresAt,
+    user, fetchData, autoWorkFactoryId, autoWorkFactoryName, autoWorkResourceType, autoWorkRegionId, setAutoWorkFactoryId, setAutoWorkResource, autoWorkExpiresAt,
     workExpTransferSource, setWorkExpTransferSource,
     workExpTransferTarget, setWorkExpTransferTarget,
     workExpTransferXp, setWorkExpTransferXp,
@@ -37,6 +37,7 @@ export function WorkView(props: any) {
       <ResourceExtractView
         user={user}
         fetchData={fetchData}
+        autoWorkFactoryName={autoWorkFactoryName}
         autoWorkResourceType={autoWorkResourceType}
         autoWorkRegionId={autoWorkRegionId}
         autoWorkExpiresAt={autoWorkExpiresAt}

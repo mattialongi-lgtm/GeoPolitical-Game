@@ -59,7 +59,7 @@ export default function App() {
 
   const {
     actionLoading,
-    autoWorkFactoryId, autoWorkResourceType, autoWorkRegionId, setAutoWorkFactoryId, setAutoWorkResource, autoWorkExpiresAt,
+    autoWorkFactoryId, autoWorkFactoryName, autoWorkResourceType, autoWorkRegionId, setAutoWorkFactoryId, setAutoWorkResource, autoWorkExpiresAt,
     workExpTransferSource, setWorkExpTransferSource,
     workExpTransferTarget, setWorkExpTransferTarget,
     workExpTransferXp, setWorkExpTransferXp,
@@ -126,6 +126,7 @@ export default function App() {
           handleUpgradePerk={handleUpgradePerk}
           handleActivateBooster={handleActivateBooster}
           autoWorkFactoryId={autoWorkFactoryId}
+          autoWorkFactoryName={autoWorkFactoryName}
           autoWorkResourceType={autoWorkResourceType}
           autoWorkRegionId={autoWorkRegionId}
           setAutoWorkFactoryId={setAutoWorkFactoryId}

@@ -6,6 +6,7 @@ import type { ResourceType } from "../../types";
 type ResourceExtractViewProps = {
   user: any;
   fetchData: () => void;
+  autoWorkFactoryName?: string | null;
   autoWorkResourceType?: string | null;
   autoWorkRegionId?: string | null;
   autoWorkExpiresAt?: string | null;
@@ -15,6 +16,7 @@ type ResourceExtractViewProps = {
 export const ResourceExtractView = ({
   user,
   fetchData,
+  autoWorkFactoryName,
   autoWorkResourceType,
   autoWorkRegionId,
   autoWorkExpiresAt,
@@ -105,7 +107,7 @@ export const ResourceExtractView = ({
       setMessage({
         text: isStopping
           ? "Auto-lavoro disattivato."
-          : `Auto-lavoro attivato su ${label}. Ogni ciclo userà il backend estrattivo reale.`,
+          : `Auto-lavoro attivato su ${label}. Ogni 10 minuti scalerà 300 energia; se sei sotto soglia berrà una bibita e poi rieseguirà lo scavo reale.`,
         type: 'success',
       });
     } catch (err: any) {
@@ -126,7 +128,7 @@ export const ResourceExtractView = ({
   const hasBackingFactory = !!selectedRes?.backingFactoryId;
   const canWork = hasBackingFactory && currentAvailableCap > 0 && (user?.energy || 0) >= 10;
   const blockReason = !hasBackingFactory
-    ? (selectedRes?.workDisabledReason || "Nessuna fabbrica attiva collegata a questa risorsa in questa regione.")
+    ? (selectedRes?.workDisabledReason || "Nessuna fabbrica attiva in Modalita Risorse collegata a questa risorsa in questa regione.")
     : currentAvailableCap <= 0
       ? "Risorsa giornaliera esaurita!"
       : (user?.energy || 0) < 10
@@ -241,9 +243,12 @@ export const ResourceExtractView = ({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-[9px] font-black uppercase tracking-widest text-amber-300">Auto-Lavoro Estrattivo</p>
+                {autoWorkFactoryName && (
+                  <p className="text-[10px] font-bold text-amber-200">Fabbrica target: {autoWorkFactoryName}</p>
+                )}
                 {autoWorkActiveOnSelectedResource ? (
                   <p className="text-xs font-black text-amber-300">
-                    Attivo su questa risorsa. Ogni 10 minuti userà energia, estrazione e ricompense del backend reale
+                    Attivo su questa risorsa. Ogni 10 minuti scalerà 300 energia; se necessario consumerà una bibita, si ricaricherà a 300 e poi applicherà estrazione e ricompense del backend reale
                     {autoWorkExpiresAt ? ` • Scade: ${new Date(autoWorkExpiresAt).toLocaleString('it-IT')}` : ''}.
                   </p>
                 ) : autoWorkActiveElsewhere ? (

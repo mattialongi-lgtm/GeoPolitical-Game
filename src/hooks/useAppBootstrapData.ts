@@ -2,7 +2,11 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import type { User, Region, Article, War } from '../types';
 import type { WorldStats } from '../components/home/mockData';
-import { fetchAppBootstrapData } from '../api/appClient';
+import { fetchUserOnly, fetchSlowBootstrapData } from '../api/appClient';
+
+// Intervalli di polling separati per volatilità dei dati
+const POLL_USER_MS   = 20_000;  // /api/me — energia, soldi, XP cambiano spesso
+const POLL_SLOW_MS  = 120_000;  // regioni, nazioni, guerre, articoli, world-stats
 
 interface UseAppBootstrapDataParams {
   setUser: Dispatch<SetStateAction<User | null>>;
@@ -23,31 +27,31 @@ export function useAppBootstrapData({
   setWorldStats,
   setLoading,
 }: UseAppBootstrapDataParams) {
-  const fetchData = useCallback(async () => {
+  // ── Fetch veloce: solo /api/me ──────────────────────────────
+  const fetchUser = useCallback(async () => {
     if (!document.cookie.includes('sb-access-token')) return;
     try {
-      const data = await fetchAppBootstrapData();
+      const data = await fetchUserOnly();
+      if (data.ok) setUser(data.data as User);
+      else setUser(null);
+    } catch (err) {
+      console.error('[bootstrap] fetchUser error:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [setUser, setLoading]);
 
-      if (data.user.ok) {
-        setUser(data.user.data as User);
-      } else {
-        setUser(null);
-      }
+  // ── Fetch lento: regioni, nazioni, guerre, articoli, stats ──
+  const fetchSlowData = useCallback(async () => {
+    if (!document.cookie.includes('sb-access-token')) return;
+    try {
+      const data = await fetchSlowBootstrapData();
 
       const regionsData = data.regions.ok ? (data.regions.data || []) : [];
-
-      if (data.regions.ok) {
-        setRegions(regionsData as Region[]);
-      }
-      if (data.nations.ok) {
-        setNations((data.nations.data || []) as any[]);
-      }
-      if (data.articles.ok) {
-        setArticles((data.articles.data || []) as Article[]);
-      }
-      if (data.wars.ok) {
-        setWars(data.wars.data as { active: War[]; ended: War[] });
-      }
+      if (data.regions.ok) setRegions(regionsData as Region[]);
+      if (data.nations.ok) setNations((data.nations.data || []) as any[]);
+      if (data.articles.ok) setArticles((data.articles.data || []) as Article[]);
+      if (data.wars.ok) setWars(data.wars.data as { active: War[]; ended: War[] });
 
       setWorldStats((prev) => {
         let ws = data.worldStats.ok && data.worldStats.data
@@ -65,43 +69,59 @@ export function useAppBootstrapData({
           };
         }
 
-        // Non derivare gli "Stati" dalle regioni: usare API /api/world-stats (o fallback su /api/nations)
         if (!ws.totalStates || ws.totalStates <= 0) {
-          const nationsFallback = data.nations.ok && Array.isArray(data.nations.data) ? (data.nations.data as any[]).length : 0;
+          const nationsFallback = data.nations.ok && Array.isArray(data.nations.data)
+            ? (data.nations.data as any[]).length : 0;
           if (nationsFallback > 0) ws = { ...ws, totalStates: nationsFallback };
         }
 
         return ws;
       });
     } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+      console.error('[bootstrap] fetchSlowData error:', err);
     }
-  }, [setArticles, setLoading, setNations, setRegions, setUser, setWars, setWorldStats]);
+  }, [setArticles, setNations, setRegions, setWars, setWorldStats]);
 
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const userIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const slowIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startPolling = useCallback(() => {
+    if (!userIntervalRef.current) {
+      userIntervalRef.current = setInterval(fetchUser, POLL_USER_MS);
+    }
+    if (!slowIntervalRef.current) {
+      slowIntervalRef.current = setInterval(fetchSlowData, POLL_SLOW_MS);
+    }
+  }, [fetchUser, fetchSlowData]);
+
+  const stopPolling = useCallback(() => {
+    if (userIntervalRef.current) { clearInterval(userIntervalRef.current); userIntervalRef.current = null; }
+    if (slowIntervalRef.current) { clearInterval(slowIntervalRef.current); slowIntervalRef.current = null; }
+  }, []);
 
   useEffect(() => {
-    pollIntervalRef.current = setInterval(fetchData, 10000);
+    // Prima fetch immediata di tutti i dati
+    fetchUser();
+    fetchSlowData();
+    startPolling();
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
-        pollIntervalRef.current = null;
+        stopPolling();
       } else {
-        fetchData();
-        pollIntervalRef.current = setInterval(fetchData, 10000);
+        // Torna visibile: aggiorna subito solo user (i dati lenti aspettano il prossimo tick)
+        fetchUser();
+        startPolling();
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-
     return () => {
-      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      stopPolling();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [fetchData]);
+  }, [fetchUser, fetchSlowData, startPolling, stopPolling]);
 
-  return { fetchData };
+  // fetchData esposto per i POST che richiedono refresh immediato del profilo utente
+  return { fetchData: fetchUser };
 }

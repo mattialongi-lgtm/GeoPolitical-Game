@@ -476,6 +476,41 @@ const calculateTravelTimeMs = (fromIso2: string, toIso2: string): number => {
   return minutes * 60 * 1000;
 };
 
+// ── Auth cache ───────────────────────────────────────────────
+// Evita 5-9 query Supabase per ogni richiesta: il risultato
+// dell'hydration utente viene tenuto 45 secondi per token.
+const AUTH_CACHE_TTL_MS = 45_000;
+const authCache = new Map<string, { user: any; expiresAt: number }>();
+
+function getCachedAuthUser(token: string): any | null {
+  const entry = authCache.get(token);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    authCache.delete(token);
+    return null;
+  }
+  return entry.user;
+}
+
+function setCachedAuthUser(token: string, user: any): void {
+  // Pulizia periodica per evitare memory leak su server long-running
+  if (authCache.size > 2000) {
+    const now = Date.now();
+    for (const [k, v] of authCache) {
+      if (now > v.expiresAt) authCache.delete(k);
+    }
+  }
+  authCache.set(token, { user: { ...user }, expiresAt: Date.now() + AUTH_CACHE_TTL_MS });
+}
+
+/** Invalida la cache per un utente (chiamare dopo mutazioni critiche su users) */
+function invalidateUserAuthCache(userId: string): void {
+  for (const [token, entry] of authCache) {
+    if (entry.user?.id === userId) authCache.delete(token);
+  }
+}
+// ─────────────────────────────────────────────────────────────
+
 // Middleware to verify Supabase JWT and update user state
 const authenticate = async (req: any, res: any, next: any) => {
   let token = null;
@@ -489,6 +524,13 @@ const authenticate = async (req: any, res: any, next: any) => {
 
   if (!token) {
     return res.status(401).json({ error: "Unauthorized: Access token missing." });
+  }
+
+  // ▼ Cache hit: skip all Supabase queries for this request
+  const cachedUser = getCachedAuthUser(token);
+  if (cachedUser) {
+    req.user = cachedUser;
+    return next();
   }
 
   try {
@@ -780,6 +822,9 @@ const authenticate = async (req: any, res: any, next: any) => {
       // Non-critical: log and continue
       console.error("[Auth] Energy regen error:", regenErr);
     }
+
+    // ▼ Salva in cache per evitare re-hydration nei prossimi 45s
+    setCachedAuthUser(token, req.user);
 
     next();
   } catch (err) {

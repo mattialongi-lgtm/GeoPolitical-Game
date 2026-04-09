@@ -12,9 +12,20 @@ export function createWorldHandlers(deps: {
 }) {
   const { supabase } = deps;
 
+  // Cache in-memory per /api/world-stats — statistiche globali quasi statiche
+  let worldStatsCache: { data: any; fetchedAt: number } | null = null;
+  const WORLD_STATS_CACHE_TTL = 5 * 60_000; // 5 minuti
+
+  // Cache in-memory per /api/nations — quasi statiche
+  let nationsCache: { data: any[]; fetchedAt: number } | null = null;
+  const NATIONS_CACHE_TTL = 5 * 60_000; // 5 minuti
+
   // GET /api/world-stats
   async function getWorldStats(_req: any, res: any) {
     try {
+      if (worldStatsCache && Date.now() - worldStatsCache.fetchedAt < WORLD_STATS_CACHE_TTL) {
+        return res.json(worldStatsCache.data);
+      }
       const onlineThreshold = Date.now() - 5 * 60 * 1000; // 5 minutes
 
       const [usersRes, onlineRes, regionsRes, blocsRes, partiesRes, factoriesRes] = await Promise.all([
@@ -61,7 +72,7 @@ export function createWorldHandlers(deps: {
         .select('id', { count: 'exact', head: true })
         .is('nation_id', null);
 
-      res.json({
+      const statsPayload = {
         totalPlayers: usersRes.count || 0,
         onlinePlayers: onlineRes.count || 0,
         totalRegions: regionsRes.count || 0,
@@ -70,7 +81,9 @@ export function createWorldHandlers(deps: {
         independentRegions: independentRes.count || 0,
         totalParties: partiesRes.count || 0,
         totalFactories: factoriesRes.count || 0,
-      });
+      };
+      worldStatsCache = { data: statsPayload, fetchedAt: Date.now() };
+      res.json(statsPayload);
     } catch (error) {
       res.status(500).json({ error: "Errore nel caricamento statistiche mondiali" });
     }
@@ -125,6 +138,11 @@ export function createWorldHandlers(deps: {
   async function getNations(_req: any, res: any) {
     try {
       const includeInactive = String(_req.query.includeInactive || '').toLowerCase() === 'true';
+
+      // Cache solo per la richiesta standard (senza includeInactive)
+      if (!includeInactive && nationsCache && Date.now() - nationsCache.fetchedAt < NATIONS_CACHE_TTL) {
+        return res.json(nationsCache.data);
+      }
 
       let nations: any[] = [];
       let nationsErr: any = null;
@@ -187,6 +205,9 @@ export function createWorldHandlers(deps: {
         playerCount: playerCounts[n.id] || 0,
       }));
 
+      if (!includeInactive) {
+        nationsCache = { data: enriched, fetchedAt: Date.now() };
+      }
       res.json(enriched);
     } catch (err: any) {
       console.error("Error fetching nations:", err);

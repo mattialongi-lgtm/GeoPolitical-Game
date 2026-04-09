@@ -96,11 +96,11 @@ export function useAppActions(
     }
   }, [fetchData, refreshAutoWorkStatus]);
 
+  // Fetch iniziale dello stato automazione al login — nessun polling: il bootstrap
+  // utente (ogni 20s) e le azioni POST già chiamano refreshAutoWorkStatus on-demand.
   useEffect(() => {
     if (!user) return;
     refreshAutoWorkStatus();
-    const iv = setInterval(refreshAutoWorkStatus, 30000);
-    return () => clearInterval(iv);
   }, [user, refreshAutoWorkStatus]);
 
   const handleUseDrink = async () => {

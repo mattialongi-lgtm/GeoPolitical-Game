@@ -196,13 +196,26 @@ export function createRegionsHandlers(deps: {
 
   // ── Handlers ──
 
+  // Cache in-memory per /api/regions — i dati cambiano raramente
+  let regionsCache: { data: any[]; fetchedAt: number } | null = null;
+  const REGIONS_CACHE_TTL = 60_000; // 60 secondi
+
   async function getRegions(_req: any, res: any) {
     try {
+      if (regionsCache && Date.now() - regionsCache.fetchedAt < REGIONS_CACHE_TTL) {
+        return res.json(regionsCache.data);
+      }
+
       const { data: regions, error } = await supabase
         .from('regions')
         .select(`*, owner:users!ownerUserId(username, avatarData), leader:users!leaderUserId(username, level, avatarData)`);
       if (error) throw error;
-      const { data: userStats, error: userError } = await supabase.from('users').select('regionId');
+
+      // Conta player per regione con una sola query aggregata (solo regionId, no full scan)
+      const { data: userStats, error: userError } = await supabase
+        .from('users')
+        .select('regionId')
+        .not('regionId', 'is', null);
       const playerRegionCounts: Record<string, number> = {};
       if (!userError && userStats) {
         userStats.forEach((u: any) => {
@@ -218,6 +231,8 @@ export function createRegionsHandlers(deps: {
         leaderLevel: r.leader?.level,
         playerCount: playerRegionCounts[r.id] || 0
       }));
+
+      regionsCache = { data: formatted, fetchedAt: Date.now() };
       res.json(formatted);
     } catch (err: any) {
       console.error("Error fetching regions:", err);

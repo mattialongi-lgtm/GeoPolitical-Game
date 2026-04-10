@@ -58,7 +58,7 @@ export function createMediaHandlers(deps: {
 
     const { data: articles, error } = await query;
     if (error) {
-      console.error("Articles fetch error:", error);
+      logger.error("Articles fetch error", { err: error });
       return res.json([]);
     }
 
@@ -156,7 +156,7 @@ export function createMediaHandlers(deps: {
     });
 
     if (insertError) {
-      console.error("Article insert error:", insertError);
+      logger.error("Article insert error", { err: insertError });
       return res.status(500).json({ error: "Errore nella creazione dell'articolo." });
     }
 
@@ -199,9 +199,10 @@ export function createMediaHandlers(deps: {
       .from('article_comments')
       .select('id, articleId, authorId, authorName, content, createdAt')
       .eq('articleId', req.params.id)
-      .order('createdAt', { ascending: true });
+      .order('createdAt', { ascending: true })
+      .limit(100);
     if (error) {
-      console.error("Article comments fetch error:", error);
+      logger.error("Article comments fetch error", { err: error });
       return res.json([]);
     }
     res.json(comments || []);
@@ -416,11 +417,17 @@ export function createMediaHandlers(deps: {
       .eq('newspaper_id', req.params.id)
       .eq('status', 'active');
 
+    // Pagination support for articles
+    const page = Math.max(1, Number(req.query.page || 1));
+    const limit = 50;
+    const offset = (page - 1) * limit;
+
     const { data: articles } = await supabase
       .from('articles')
       .select('*')
       .eq('newspaper_id', req.params.id)
-      .order('createdAt', { ascending: false });
+      .order('createdAt', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     res.json({
       ...newspaper,

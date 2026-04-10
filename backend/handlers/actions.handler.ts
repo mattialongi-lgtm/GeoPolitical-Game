@@ -8,6 +8,7 @@
  *   /api/perks/upgrade, /api/perks/booster
  */
 import { logger } from '../utils/logger';
+import { randomInt } from 'crypto';
 
 // ── Travel helpers (module-level, no deps needed) ──
 
@@ -546,7 +547,7 @@ export function createActionsHandlers(deps: {
     return res.status(400).json({ error: "Action on cooldown" });
   }
 
-  const influenceGain = 5 + Math.floor(Math.random() * 5);
+  const influenceGain = 5 + randomInt(0, 5);
 
   try {
     // Perform updates
@@ -890,7 +891,8 @@ export function createActionsHandlers(deps: {
   if (resistenza >= 100) alphaBonus += 0.15;
 
   const winProbability = Math.min(0.9, 0.3 + totalDmgBonus + alphaBonus);
-  const success = Math.random() < winProbability;
+  const roll = randomInt(0, 1000);
+  const success = roll < Math.round(winProbability * 1000);
 
   await supabase.from('users').update({ energy: user.energy - finalEnergyCost }).eq('id', user.id);
 

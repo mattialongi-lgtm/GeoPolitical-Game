@@ -9,6 +9,7 @@
  *   /api/sanctions/*
  */
 import { logger } from '../utils/logger';
+import { randomInt } from 'crypto';
 
 export function createGovernanceHandlers(deps: {
   supabase: any;
@@ -181,7 +182,7 @@ export function createGovernanceHandlers(deps: {
     const cost = isDeep ? 50000 : 15000;
 
     try {
-      const foundOil = isDeep ? Math.floor(Math.random() * 500) + 100 : Math.floor(Math.random() * 100) + 20;
+      const foundOil = isDeep ? randomInt(100, 600) : randomInt(20, 120);
       const foundItems: Record<string, number> = { oil: foundOil };
 
       await supabase.rpc('add_budget_transaction', {

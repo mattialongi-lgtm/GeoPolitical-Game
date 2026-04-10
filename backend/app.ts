@@ -82,13 +82,20 @@ import {
   hasEnergyDrinkCooldownExpired,
   resolveExtractionEnergyCost,
 } from "./utils/automation-energy";
+import { logger } from "./utils/logger";
 
-console.log("Starting backend/app.ts...");
+logger.info("Starting backend/app.ts");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const ENABLE_DEV_ENDPOINTS = process.env.ENABLE_DEV_ENDPOINTS === 'true';
+
+// Validate JWT_SECRET — must not be default in production
+if (IS_PRODUCTION && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'change-me-in-production')) {
+  console.error('FATAL ERROR: JWT_SECRET must be set to a strong value in production');
+  process.exit(1);
+}
 
 const generateSecureId = (length: number = 9): string =>
   randomBytes(Math.ceil(length / 2)).toString("hex").slice(0, length);
@@ -4300,7 +4307,7 @@ async function dailyResourceReset() {
         .lt('endsAt', nowStr)
     );
 
-    // Reset regional autonomy daily extraction counters for all regions
+    // Reset regional autonomy daily extraction counters for regions that need reset
     const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     const { error: resetErr } = await retrySupabaseOperation(
       "reset regional extraction counters",
@@ -4311,10 +4318,10 @@ async function dailyResourceReset() {
         dailyExtractedUranium: 0,
         dailyExtractedDiamonds: 0,
         nextExtractionResetAt: tomorrow,
-      }).neq('id', '')
-    ); // matches all rows with non-empty id (i.e., all regions)
-    if (resetErr) console.error("[ResourceReset] Error resetting regional extraction:", resetErr);
-    else console.log("[ResourceReset] Regional extraction counters reset.");
+      }).lte('nextExtractionResetAt', nowStr)
+    ); // Only update regions whose daily reset is due
+    if (resetErr) logger.error("ResourceReset: Error resetting regional extraction", { err: resetErr });
+    else logger.info("ResourceReset: Regional extraction counters reset.");
 
     // Pay salaries at daily reset
     await payoutStateSalaries();
@@ -4340,7 +4347,7 @@ async function checkAndResolveElections() {
   const DEFAULT_ELECTION_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
   const INDEPENDENT_PARLIAMENT_DURATION_MS = 24 * 60 * 60 * 1000; // 24h
 
-  const { data: activeElections } = await supabase.from('elections').select('*').eq('status', 'active');
+  const { data: activeElections } = await supabase.from('elections').select('*').eq('status', 'active').lte('closesAt', nowIso);
   const activeElectionByRegion = new Map(activeElections?.map((e: any) => [e.regionId, e]) || []);
 
   for (const r of regions) {
@@ -4434,9 +4441,11 @@ async function checkAndAdvanceIndependentRegions() {
   const MS_24H = 24 * 60 * 60 * 1000;
 
   try {
+    // Filter to regions that need state-machine advancement (independent or in election)
     const { data: regions, error } = await supabase
       .from('regions')
-      .select('id, name, nation_id, territoryStatus, independentAt, parliamentaryElectionStartedAt, presidentialElectionStartedAt, presidentialElectionClosesAt');
+      .select('id, name, nation_id, territoryStatus, independentAt, parliamentaryElectionStartedAt, presidentialElectionStartedAt, presidentialElectionClosesAt')
+      .in('territoryStatus', ['INDEPENDENT_REGION', 'PARLIAMENTARY_ELECTION', 'PRESIDENTIAL_ELECTION']);
     if (error || !regions) return;
 
     const candidatesByRegion: string[] = [];
@@ -5322,32 +5331,25 @@ export async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+    logger.info(`Server running on http://localhost:${PORT}`);
     startBackgroundJobs();
   }).on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {
-      console.error(`FATAL ERROR: Port ${PORT} is already in use.`);
+      logger.error(`FATAL ERROR: Port ${PORT} is already in use.`, { err });
     } else {
-      console.error("FATAL ERROR: Server failed to start:", err);
+      logger.error("FATAL ERROR: Server failed to start.", { err });
     }
     process.exit(1);
   });
 }
 
 export function startBackgroundJobs() {
-  checkAndResolveElections();
-  checkAndAdvanceIndependentRegions();
-  checkAndResolveLeaderElections();
-  checkAndResolveLaws();
-  checkAndResolveWars();
-  processAutomationTick();
-
   // Global Budget Tick (every 60 seconds)
   setInterval(() => {
     try {
       budgetMaintenanceTick();
     } catch (e) {
-      console.error("Budget tick error:", e);
+      logger.error("Budget tick error", { err: e });
     }
   }, 60 * 1000);
 

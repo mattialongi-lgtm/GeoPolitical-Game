@@ -1,0 +1,114 @@
+# UI
+
+> **Navigation aid.** Component inventory and prop signatures extracted via AST. Read the source files before adding props or modifying component logic.
+
+**103 components** (react)
+
+## Components
+
+- **App** — `src\App.tsx`
+- **ArticleBlockRenderer** — props: blocks — `src\components\ArticleBlockRenderer.tsx`
+- **ArticleEditor** — props: blocks, setBlocks — `src\components\ArticleEditor.tsx`
+- **ArticleDetailView** — props: articles, user, fetchData, refreshArticles — `src\components\articles\ArticleDetailView.tsx`
+- **ArticlesView** — props: articles, setSelectedArticleId, actionLoading, fetchData, refreshArticles — `src\components\articles\ArticlesView.tsx`
+- **NewArticleView** — props: actionLoading, fetchData, refreshArticles — `src\components\articles\NewArticleView.tsx`
+- **NewspaperDetailView** — props: user — `src\components\articles\NewspaperDetailView.tsx`
+- **Auth** — props: onLogin — `src\components\auth\Auth.tsx`
+- **BlocCreate** — props: currentUser, regions — `src\components\BlocCreate.tsx`
+- **BlocDetail** — props: currentUser, regions — `src\components\BlocDetail.tsx`
+- **BlocsList** — `src\components\BlocsList.tsx`
+- **BudgetView** — props: regionId, user, isLeader — `src\components\budget\BudgetView.tsx`
+- **GlobalChat** — props: currentUser — `src\components\chat\GlobalChat.tsx`
+- **CountryDetailView** — props: user, handleAction, actionLoading, fetchData — `src\components\country\CountryDetailView.tsx`
+- **AcademyCard** — props: academy, residenceRegionName, currentRegionName, onBuild — `src\components\daily\AcademyCard.tsx`
+- **DailyMissionsCard** — props: missions, bonusClaimed, bonusReward, onClaimMission, onClaimBonus — `src\components\daily\DailyMissionsCard.tsx`
+- **DailyTasksCard** — props: tasks, onTaskClick — `src\components\daily\DailyTasksCard.tsx`
+- **DailyTasksPage** — props: user, regions — `src\components\daily\DailyTasksPage.tsx`
+- **FarmingAutomationCard** — props: autoWork, farmingBonus, resources, onActivateAutoWork, onDeactivateAutoWork — `src\components\daily\FarmingAutomationCard.tsx`
+- **FreeRewardsCard** — props: rewards, streak, periodicRewards, bottleValue, onClaimReward — `src\components\daily\FreeRewardsCard.tsx`
+- **MilitaryTrainingCard** — props: damageState, onSendDamage — `src\components\daily\MilitaryTrainingCard.tsx`
+- **PerksUpgradeCard** — props: perks, playerMoney, playerGold, onUpgrade — `src\components\daily\PerksUpgradeCard.tsx`
+- **RewardSummaryCard** — props: rewards — `src\components\daily\RewardSummaryCard.tsx`
+- **ExtractionDashboard** — props: user — `src\components\ExtractionDashboard.tsx`
+- **PlayerFactoriesView** — props: user, fetchData, autoWorkFactoryId, setAutoWorkFactoryId — `src\components\factories\PlayerFactoriesView.tsx`
+- **FactoryDetail** — props: user, fetchData — `src\components\FactoryDetail.tsx`
+- **FactoryMarket** — props: user, fetchData — `src\components\FactoryMarket.tsx`
+- **GovernmentView** — props: region, currentUser, onUpdate — `src\components\GovernmentView.tsx`
+- **ChatPanel** — props: currentUser — `src\components\home\ChatPanel.tsx`
+- **EventHistoryCard** — props: events — `src\components\home\EventHistoryCard.tsx`
+- **HomePage** — props: user, regions, wars, worldStats, navigateToCountry, handleAction, refreshRegionsAndNations, refreshWorldStats — `src\components\home\HomePage.tsx`
+- **ParliamentCard** — props: laws, governmentForm — `src\components\home\ParliamentCard.tsx`
+- **PartySummaryCard** — props: party, resources, soldier — `src\components\home\PartySummaryCard.tsx`
+- **QuickAccessMenu** — `src\components\home\QuickAccessMenu.tsx`
+- **RegionStatsCarousel** — props: stats, userRegionId, navigateToCountry — `src\components\home\RegionStatsCarousel.tsx`
+- **StateStatsCarousel** — props: stats, navigateToCountry — `src\components\home\StateStatsCarousel.tsx`
+- **WarQuickPanel** — props: wars — `src\components\home\WarQuickPanel.tsx`
+- **WorldStatsCarousel** — props: stats — `src\components\home\WorldStatsCarousel.tsx`
+- **IndependentRegionsList** — props: regions, refreshRegionsAndNations — `src\components\IndependentRegionsList.tsx`
+- **Leaderboard** — `src\components\leaderboard\Leaderboard.tsx`
+- **LeaderView** — props: propRegionId, user, parentFetchData — `src\components\LeaderView.tsx`
+- **MarketView** — props: user, fetchData — `src\components\market\MarketView.tsx`
+- **MinistersView** — props: user, parentFetchData — `src\components\MinistersView.tsx`
+- **NationView** — props: user, fetchData — `src\components\nation\NationView.tsx`
+- **NationsList** — props: nations, refreshRegionsAndNations — `src\components\NationsList.tsx`
+- **ElectionsTab** — props: data, user, reload — `src\components\parliament\ElectionsTab.tsx`
+- **LawsTab** — props: laws, registry, user, reload, isMp, region — `src\components\parliament\LawsTab.tsx`
+- **ParliamentTab** — props: members — `src\components\parliament\ParliamentTab.tsx`
+- **ParliamentView** — props: user — `src\components\parliament\ParliamentView.tsx`
+- **PartiesList** — `src\components\PartiesList.tsx`
+- **PartyDashboard** — props: party, members, activeMembersCount, myRole, user, reload, fetchData, primariesVoteCounts, hasVotedPrimaries — `src\components\party\PartyDashboard.tsx`
+- **PartyHub** — props: user, fetchData — `src\components\party\PartyHub.tsx`
+- **PlayersList** — `src\components\PlayersList.tsx`
+- **ProduceView** — props: user — `src\components\produce\ProduceView.tsx`
+- **ProfileView** — props: user, handleUpgradePerk, handleActivateBooster, actionLoading, fetchData, regions, nations, isPublic — `src\components\profile\ProfileView.tsx`
+- **PublicProfileView** — props: regions, nations — `src\components\profile\PublicProfileView.tsx`
+- **ResourceHistoryView** — props: fetchData — `src\components\ResourceHistoryView.tsx`
+- **ResourceIcon** — props: id, size, className — `src\components\ResourceIcon.tsx`
+- **DeepExplorationPanel** — props: user, nationId — `src\components\resources\DeepExplorationPanel.tsx`
+- **RechargeResourcePanel** — props: regionId, user — `src\components\resources\RechargeResourcePanel.tsx`
+- **RegionResourcesTab** — props: regionId, user — `src\components\resources\RegionResourcesTab.tsx`
+- **ResourceExtractView** — props: user, fetchData, autoWorkFactoryName, autoWorkResourceType, autoWorkRegionId, autoWorkExpiresAt, setAutoWorkResource — `src\components\resources\ResourceExtractView.tsx`
+- **ShopPage** — props: user — `src\components\ShopPage.tsx`
+- **AgreementListItem** — props: type, partnerName, partnerFlag, status, expiresAt — `src\components\state\AgreementListItem.tsx`
+- **CollapsibleSection** — props: title, icon, defaultOpen, badge, emptyMessage, isEmpty — `src\components\state\CollapsibleSection.tsx`
+- **DepartmentsSection** — props: nationId, user — `src\components\state\DepartmentsSection.tsx`
+- **DetailRow** — props: label, value, highlight, unit — `src\components\state\DetailRow.tsx`
+- **PoliticalInfoCard** — props: governmentForm, headOfState, economyMinister, foreignMinister, geopoliticalBloc — `src\components\state\PoliticalInfoCard.tsx`
+- **RegionListItem** — props: name, population, mainResource, developmentLevel, governor, onClick — `src\components\state\RegionListItem.tsx`
+- **StateHeader** — props: name, regionCount, population, onHelpClick — `src\components\state\StateHeader.tsx`
+- **StateIdentityCard** — props: flag, flagUrl, representativeImage, stateName, onParliamentClick — `src\components\state\StateIdentityCard.tsx`
+- **StatePage** — props: user, fetchData — `src\components\state\StatePage.tsx`
+- **StateStatsGrid** — props: nationId, citizens, residents, parties, factories — `src\components\state\StateStatsGrid.tsx`
+- **WorkDepartmentModal** — props: nationId, allDepartments, onClose, onSuccess — `src\components\state\WorkDepartmentModal.tsx`
+- **StorageView** — props: user — `src\components\storage\StorageView.tsx`
+- **TotalDamageView** — `src\components\TotalDamageView.tsx`
+- **AppHeader** — `src\components\ui\AppHeader.tsx`
+- **BottomNav** — `src\components\ui\BottomNav.tsx`
+- **DarkCard** — props: className — `src\components\ui\DarkCard.tsx`
+- **NationalFlag** — props: iso2, className, style — `src\components\ui\NationalFlag.tsx`
+- **NationLogo** — props: iso2, logo, className, style — `src\components\ui\NationLogo.tsx`
+- **PerkProgressBar** — props: startedAt, willCompleteAt — `src\components\ui\PerkProgressBar.tsx`
+- **PerkTimer** — props: willCompleteAt, onComplete — `src\components\ui\PerkTimer.tsx`
+- **ResourceStrip** — props: user — `src\components\ui\ResourceStrip.tsx`
+- **StatCard** — props: Icon, label, value, color, subValue — `src\components\ui\StatCard.tsx`
+- **StatRow** — props: label, value, Icon, onClick — `src\components\ui\StatRow.tsx`
+- **TerritorialBrandLogo** — props: className, alt — `src\components\ui\TerritorialBrandLogo.tsx`
+- **TravelTimer** — props: endsAt, onComplete — `src\components\ui\TravelTimer.tsx`
+- **UsernameEditor** — props: username, fetchData — `src\components\ui\UsernameEditor.tsx`
+- **WarTimer** — props: endsAt — `src\components\ui\WarTimer.tsx`
+- **AutoAttackPanel** — props: warId, availableTroops, currentAutoAttack, onSetAutoAttack, onStopAutoAttack — `src\components\war\AutoAttackPanel.tsx`
+- **RevolutionPanel** — props: regionId, userId, userGold, regionDevelopment, onStartRevolution, onStartCoup, loading — `src\components\war\RevolutionPanel.tsx`
+- **TroopDeployPanel** — props: warId, side, availableTroops, userEnergy, onDeploy, deploying, sideColor — `src\components\war\TroopDeployPanel.tsx`
+- **WarCreatePanel** — props: userRegionId, onCreateWar, creating — `src\components\war\WarCreatePanel.tsx`
+- **WarDamageBar** — props: attackerScore, defenderScore, attackerLabel, defenderLabel, height, showPercentages — `src\components\war\WarDamageBar.tsx`
+- **WarFactionBadge** — props: name, icon, align, iconSizeClass, textClassName, className — `src\components\war\WarFactionBadge.tsx`
+- **WarHistoryList** — props: warId — `src\components\war\WarHistoryList.tsx`
+- **WarStatsView** — props: user, nations — `src\components\wars\WarStatsView.tsx`
+- **WarsView** — props: wars, user, nations, fetchData, refreshWars, actionLoading, autoWorkFactoryId, setAutoWorkFactoryId — `src\components\wars\WarsView.tsx`
+- **WorkView** — `src\components\work\WorkView.tsx`
+- **WorldFactoriesList** — `src\components\WorldFactoriesList.tsx`
+- **DEFAULT_ENCLAVE_DATA** — props: onRegionClick, regions — `src\components\WorldMap.tsx`
+- **AppRouter** — `src\router\AppRouter.tsx`
+
+---
+_Back to [overview.md](./overview.md)_

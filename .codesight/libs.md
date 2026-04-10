@@ -1,0 +1,196 @@
+# Libraries
+
+- `backend\app.ts` — function startServer: () => void, function startBackgroundJobs: () => void
+- `backend\controllers\war.controller.ts` — class WarController
+- `backend\errors\AppError.ts`
+  - class AppError
+  - class ValidationError
+  - class AuthError
+  - class ForbiddenError
+  - class NotFoundError
+  - class ConflictError
+  - _...1 more_
+- `backend\handlers\actions.handler.ts` — function createActionsHandlers: (deps, boosterInfo?, any>) => void
+- `backend\handlers\automation.handler.ts` — function createAutomationHandlers: (deps) => void
+- `backend\handlers\communication.handler.ts` — function createCommunicationHandlers: (deps) => void
+- `backend\handlers\countries.handler.ts` — function createCountriesHandlers: (deps) => void
+- `backend\handlers\daily.handler.ts` — function createDailyHandlers: (deps, playerLevel) => void
+- `backend\handlers\factories.handler.ts` — function createFactoriesHandlers: (deps, boosterInfo?, any>) => void
+- `backend\handlers\factory-market.handler.ts` — function createFactoryMarketHandlers: (deps) => void
+- `backend\handlers\governance.handler.ts` — function createGovernanceHandlers: (deps) => void
+- `backend\handlers\market.handler.ts` — function createMarketHandlers: (deps) => void
+- `backend\handlers\media.handler.ts` — function createMediaHandlers: (deps) => void
+- `backend\handlers\politics.handler.ts` — function createPoliticsHandlers: (deps) => void
+- `backend\handlers\regions.handler.ts` — function createRegionsHandlers: (deps) => void
+- `backend\handlers\resources.handler.ts` — function createResourcesHandlers: (deps) => void
+- `backend\handlers\state.handler.ts` — function createStateHandlers: (deps) => void
+- `backend\handlers\user.handler.ts` — function createUserHandlers: (deps, boosterInfo?, any>) => void
+- `backend\handlers\wars-legacy.handler.ts` — function createWarsLegacyHandlers: (deps) => void
+- `backend\handlers\world.handler.ts` — function createWorldHandlers: (deps) => void
+- `backend\middleware\errorHandler.middleware.ts` — function errorHandler: (err, req, res, _next) => void
+- `backend\middleware\validation.middleware.ts` — function validateBody: (schema) => void, function validateQuery: (schema) => void
+- `backend\observability\contract-guards.ts`
+  - function isWarsListResponse: (payload) => boolean
+  - function isWarStatsResponse: (payload) => boolean
+  - function isPlayerDamageSummaryResponse: (payload) => boolean
+  - function isDailyMissionClaimSuccess: (payload) => boolean
+  - function isDailyBonusClaimSuccess: (payload) => boolean
+- `backend\repositories\daily-reward.repository.ts` — class DailyRewardRepository
+- `backend\repositories\factory-create.repository.ts` — class FactoryCreateRepository
+- `backend\repositories\factory-economy.repository.ts` — class FactoryEconomyRepository, type FactoryBudgetRow
+- `backend\repositories\factory-upgrade.repository.ts` — class FactoryUpgradeRepository
+- `backend\repositories\party-assets.repository.ts` — class PartyAssetsRepository
+- `backend\repositories\production.repository.ts` — class ProductionRepository
+- `backend\repositories\war.repository.ts` — class WarRepository
+- `backend\routes\actions.routes.ts` — function registerActionsRoutes: (deps) => void
+- `backend\routes\automation.routes.ts` — function registerAutomationRoutes: (deps) => void
+- `backend\routes\communication.routes.ts` — function registerCommunicationRoutes: (deps) => void
+- `backend\routes\countries.routes.ts` — function registerCountriesRoutes: (deps) => void
+- `backend\routes\daily.routes.ts` — function registerDailyRoutes: (deps) => void
+- `backend\routes\factories.routes.ts` — function registerFactoriesRoutes: (deps) => void
+- `backend\routes\factory-market.routes.ts` — function registerFactoryMarketRoutes: (deps) => void
+- `backend\routes\governance.routes.ts` — function registerGovernanceRoutes: (deps) => void
+- `backend\routes\index.ts` — function setupRoutes: (deps) => void
+- `backend\routes\market.routes.ts` — function registerMarketRoutes: (deps) => void
+- `backend\routes\media.routes.ts` — function registerMediaRoutes: (deps) => void
+- `backend\routes\politics.routes.ts` — function registerPoliticsRoutes: (deps) => void
+- `backend\routes\regions.routes.ts` — function registerRegionsRoutes: (deps) => void
+- `backend\routes\resources.routes.ts` — function registerResourcesRoutes: (deps) => void
+- `backend\routes\state.routes.ts` — function registerStateRoutes: (deps) => void
+- `backend\routes\user.routes.ts` — function registerUserRoutes: (deps) => void
+- `backend\routes\war.routes.ts` — function registerWarRoutes: ({...}, authenticate, supabase, warDomain, }) => void
+- `backend\routes\wars-legacy.routes.ts` — function registerWarsLegacyRoutes: (deps) => void
+- `backend\routes\world.routes.ts` — function registerWorldRoutes: (deps) => void
+- `backend\services\daily-reward.service.ts` — class DailyRewardService
+- `backend\services\economy.service.ts` — class EconomyService
+- `backend\services\extraction.service.ts` — class ExtractionService
+- `backend\services\factory-create.service.ts` — class FactoryCreateService
+- `backend\services\factory-economy.service.ts` — class FactoryEconomyService
+- `backend\services\factory-economy.shared.ts`
+  - function buildCriticalRollbackMessage: (prefix) => string
+  - function createEconomyOperationId: (flow, entityId, userId) => void
+  - function runCasRetry: (retries, runAttempt) => void
+  - type EconomyFlow
+  - const FACTORY_ECONOMY_CAS_RETRIES
+  - const ECONOMY_ROLLBACK_NOT_CONFIRMED_SUFFIX
+  - _...1 more_
+- `backend\services\factory-upgrade.service.ts` — class FactoryUpgradeService
+- `backend\services\governance.service.ts` — class GovernanceService
+- `backend\services\http-result.mapper.ts` — function mapServiceResultToHttp: (result) => void
+- `backend\services\index.ts` — function createServices: (supabase) => Services, interface Services
+- `backend\services\party-assets.service.ts` — class PartyAssetsService
+- `backend\services\production.service.ts` — class ProductionService
+- `backend\services\service-result.ts`
+  - function validationError
+  - function forbiddenError
+  - function notFoundError
+  - function conflictError
+  - function systemError
+  - type ServiceResultType
+  - _...4 more_
+- `backend\services\user.service.ts` — class UserService
+- `backend\services\war-create.usecase.ts` — function executeWarCreateUseCase: (warRepository, deps, input) => void, interface CreateWarInput
+- `backend\services\war-deploy.usecase.ts` — function executeWarDeployUseCase: (warRepository, deps, input) => void, interface DeployTroopsInput
+- `backend\services\war-domain.helpers.ts` — function createWarDomainDeps: (input) => WarDomainDeps, interface WarDomainDeps
+- `backend\services\war-targets.usecase.ts` — function executeGetValidWarTargetsUseCase: (warRepository, input) => void, interface GetValidWarTargetsInput
+- `backend\services\war-validation.usecase.ts` — function executeWarValidationUseCase: (warRepository, input) => void, interface ValidateWarTypesInput
+- `backend\services\war.service.ts` — class WarService
+- `backend\utils\automation-energy.ts`
+  - function parseEnergyTimestamp: (value) => number | null
+  - function hasEnergyDrinkCooldownExpired: (lastEnergyDrink, now, cooldownMs) => boolean
+  - function resolveExtractionEnergyCost: (baseEnergyCost, resistanceLevel, exactEnergyCost?) => number
+- `backend\utils\extraction-factory.ts`
+  - function getFactoryResourceType: (factory, FACTORY_CONFIG) => string | null
+  - function isExtractionFactoryEligible: (factory, FACTORY_CONFIG) => boolean
+  - function getExtractionFactoryMeta: (factory, FACTORY_CONFIG) => void
+  - function pickPreferredExtractionFactory: (factories, FACTORY_CONFIG, resourceType, preferredFactoryId?) => void
+  - type ExtractionFactoryLike
+- `backend\utils\geography.ts` — function haversineDistance: (lat1, lon1, lat2, lon2) => number, const WAR_NAVAL_MAX_DISTANCE_KM
+- `backend\__tests__\setup.ts`
+  - function createMockSupabase: () => void
+  - function createMockRequest: (overrides, any>) => void
+  - function createMockResponse: () => void
+  - function createMockNext: () => jest.Mock
+- `src\api\appClient.ts`
+  - function fetchAppBootstrapData: () => Promise<AppBootstrapApiResult>
+  - function fetchUserOnly: () => Promise<EndpointResult<any>>
+  - function fetchRegionsAndNations: () => Promise<RegionsAndNationsResult>
+  - function fetchArticlesOnly: () => Promise<EndpointResult<any[]>>
+  - function fetchWarsOnly: () => Promise<EndpointResult<any>>
+  - function fetchWorldStatsOnly: () => Promise<EndpointResult<any>>
+  - _...3 more_
+- `src\api\authClient.ts`
+  - function getSupabaseSession: () => void
+  - function subscribeToAuthStateChange: (callback, session) => void
+  - function fetchCurrentUser: () => void
+  - function setBackendAuthCookie
+  - function clearBackendAuthCookie
+- `src\api\dailyClient.ts`
+  - function fetchDailyMissions: () => void
+  - function claimDailyMission: (missionId) => Promise<boolean>
+  - function claimDailyBonus: () => Promise<boolean>
+- `src\api\httpClient.ts` — function httpFetch: (input, init) => Promise<Response>, function httpJson: (input, init) => Promise<T>
+- `src\api\inventoryClient.ts` — function fetchInventoryHistory: (itemId) => void
+- `src\api\profileClient.ts`
+  - function fetchMyPlayerDamageSummary: () => Promise<PlayerDamageSummary>
+  - interface PlayerDamageByWarEntry
+  - interface PlayerDamageSummary
+- `src\constants\flags.ts`
+  - function isoToFlag
+  - function getFlag
+  - const COUNTRY_FLAGS: Record<string, string>
+- `src\hooks\daily\useDailyMissions.ts` — function useDailyMissions: () => UseDailyMissionsResult
+- `src\hooks\useAppActions.ts` — function useAppActions: (fetchData) => void
+- `src\hooks\useAppBootstrapData.ts` — function useAppBootstrapData: ({...}, setRegions, setNations, setArticles, setWars, setWorldStats, setLoading, }) => void
+- `src\hooks\useAuthBootstrap.ts` — function useAuthBootstrap: ({...}, onSignedOut }) => void
+- `src\hooks\useDarkMode.ts` — function useDarkMode: () => void
+- `src\hooks\useEnergyTimer.ts` — function useEnergyTimer: (user) => void
+- `src\hooks\usePollingTask.ts` — function usePollingTask: (task) => void
+- `src\services\battleResolver.ts`
+  - function getResolutionEffects: (warType, winner) => ResolutionEffects
+  - function resolveWar: (war) => WarResolution
+  - function calculateLoot: (defenderBuildingValues) => number
+  - interface ResolutionEffects
+- `src\services\dailyMissionsService.ts`
+  - function computeTarget: (template, playerLevel) => number
+  - function resolveDescription: (template, target) => string
+  - function selectDailyMissions: (dateStr, userId, playerLevel, count) => DailyMission[]
+  - function isMissionComplete: (mission) => boolean
+  - const MISSION_TEMPLATES: MissionTemplate[]
+  - const MISSION_ACTION_MAP: Record<string, string[]>
+- `src\services\damageCalculator.ts`
+  - function calculateDamage: (ctx) => DamageBreakdown
+  - function calculateInitialAttackDamage: (academies) => number
+  - function calculateInitialDefensePoints: (buildings, number>) => number
+  - function calculateDamageCap: (level, resistance, isPremium) => number
+  - interface DamageContext
+- `src\services\troopManager.ts`
+  - function validateTroopDeployment: (troopType, quantity, warType, navalPhase, userEnergy) => TroopValidation
+  - function getMaxDeployableTroops: (troopType, level, resistance, isPremium) => number
+  - function getAvailableTroops: (warType, navalPhase) => TroopType[]
+  - interface TroopValidation
+- `src\services\warScheduler.ts`
+  - function shouldAutoAttackFire: (autoType, lastFiredAt, activatedAt, now) => void
+  - function getWarsToResolve: (wars) => string[]
+  - function getNavalWarsForPhaseTransition: (wars) => string[]
+- `src\services\warService.ts`
+  - function validateWarCreation: (params) => WarValidation
+  - function getWarDuration: (warType) => number
+  - function calculateInitialDamages: (attackerBuildings, number>, defenderBuildings, number>) => void
+  - function calculateDistancePenalty: (distanceKm, maxDistanceKm) => number
+  - function determineWinner: (attackerScore, defenderScore) => WarSide
+  - function shouldTransitionNavalPhase: (war) => void
+  - _...1 more_
+- `src\types.ts`
+  - function factoryYieldMultiplier: (level) => number
+  - function factoryStorageLimit: (factoryType, level) => number
+  - function estimateFactoryValue: (factoryType, level, recentDailyProfit) => number
+  - interface User
+  - interface Perk
+  - interface Region
+  - _...97 more_
+- `src\utils\time.ts`
+  - function getTs
+  - function formatDuration
+  - function formatRemaining
+  - function formatTime

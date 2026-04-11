@@ -20,7 +20,7 @@ export const ChangeNationSchema = z.object({
 export type ChangeNationBody = z.infer<typeof ChangeNationSchema>;
 
 export const UpdateAvatarSchema = z.object({
-  avatarData: z.string().min(1, 'avatarData è obbligatorio'),
+  avatarData: z.string().min(1, 'avatarData è obbligatorio').max(260000, 'avatarData supera la dimensione massima consentita'),
 });
 export type UpdateAvatarBody = z.infer<typeof UpdateAvatarSchema>;
 

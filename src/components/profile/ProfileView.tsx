@@ -163,14 +163,14 @@ export const ProfileView = ({ user, handleUpgradePerk, handleActivateBooster, ac
                     if (!file) return;
                     const img = new Image();
                     img.onload = async () => {
-                        const SIZE = 256;
+                        const SIZE = 192;
                         const canvas = document.createElement("canvas");
                         canvas.width = SIZE; canvas.height = SIZE;
                         const ctx = canvas.getContext("2d")!;
                         const scale = Math.max(SIZE / img.width, SIZE / img.height);
                         const sw = img.width * scale; const sh = img.height * scale;
                         ctx.drawImage(img, (SIZE - sw) / 2, (SIZE - sh) / 2, sw, sh);
-                        const base64 = canvas.toDataURL("image/jpeg", 0.85);
+                        const base64 = canvas.toDataURL("image/jpeg", 0.72);
                         try {
                             const res = await fetch("/api/profile/avatar", {
                                 method: "POST", headers: { "Content-Type": "application/json" },

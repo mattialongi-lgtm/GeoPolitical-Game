@@ -62,7 +62,7 @@ export class WarRepository {
 
     const { data } = await this.supabase
       .from('users')
-      .select('id, username, level, avatarData')
+      .select('id, username, level')
       .in('id', userIds);
 
     return data || [];

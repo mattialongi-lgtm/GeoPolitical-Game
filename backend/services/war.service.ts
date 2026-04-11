@@ -161,7 +161,6 @@ export class WarService {
           userId: p.userId,
           username: u?.username || 'Guerriero',
           level: u?.level || 1,
-          avatarData: u?.avatarData || null,
           totalDamage: p.totalDamage || 0,
           hits: hits || 1,
           side: p.side,

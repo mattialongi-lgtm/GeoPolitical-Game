@@ -4,6 +4,7 @@ import type { User, Region, Article, War } from '../types';
 import type { WorldStats } from '../components/home/mockData';
 import {
   fetchArticlesOnly,
+  fetchMyAvatarOnly,
   fetchRegionsAndNations,
   fetchUserOnly,
   fetchWarsOnly,
@@ -14,6 +15,7 @@ import { usePollingTask } from './usePollingTask';
 const POLL_USER_MS = 20_000;
 const POLL_REGIONS_AND_NATIONS_MS = 90_000;
 const POLL_WORLD_STATS_MS = 300_000;
+const AVATAR_CACHE_TTL_MS = 10 * 60_000;
 
 interface UseAppBootstrapDataParams {
   setUser: Dispatch<SetStateAction<User | null>>;
@@ -38,10 +40,16 @@ export function useAppBootstrapData({
   const nationsRef = useRef<any[]>([]);
 
   const userInFlightRef = useRef(false);
+  const userAvatarInFlightRef = useRef(false);
   const regionsAndNationsInFlightRef = useRef(false);
   const articlesInFlightRef = useRef(false);
   const warsInFlightRef = useRef(false);
   const worldStatsInFlightRef = useRef(false);
+  const userAvatarCacheRef = useRef<{ userId: string | null; avatarData: string | null; fetchedAt: number }>({
+    userId: null,
+    avatarData: null,
+    fetchedAt: 0,
+  });
 
   const hasSession = () => document.cookie.includes('sb-access-token');
 
@@ -72,8 +80,9 @@ export function useAppBootstrapData({
     return next;
   }, []);
 
-  const refreshUser = useCallback(async () => {
+  const refreshUser = useCallback(async (opts: { forceAvatarRefresh?: boolean } = {}) => {
     if (!hasSession()) {
+      userAvatarCacheRef.current = { userId: null, avatarData: null, fetchedAt: 0 };
       setUser(null);
       setLoading(false);
       return;
@@ -83,8 +92,51 @@ export function useAppBootstrapData({
     userInFlightRef.current = true;
     try {
       const data = await fetchUserOnly();
-      if (data.ok) setUser(data.data as User);
-      else setUser(null);
+      if (data.ok && data.data) {
+        const baseUser = data.data as User;
+        const now = Date.now();
+        const avatarCache = userAvatarCacheRef.current;
+        const avatarCacheMatchesUser = avatarCache.userId === baseUser.id;
+        const avatarCacheFresh = avatarCacheMatchesUser && (now - avatarCache.fetchedAt) < AVATAR_CACHE_TTL_MS;
+
+        if (avatarCacheMatchesUser && avatarCache.avatarData) {
+          baseUser.avatarData = avatarCache.avatarData;
+        }
+
+        setUser(baseUser);
+
+        const shouldFetchAvatar =
+          !userAvatarInFlightRef.current &&
+          (
+            opts.forceAvatarRefresh === true ||
+            !avatarCacheMatchesUser ||
+            !avatarCacheFresh
+          );
+
+        if (shouldFetchAvatar) {
+          userAvatarInFlightRef.current = true;
+          try {
+            const avatarResult = await fetchMyAvatarOnly();
+            const avatarData = avatarResult.ok ? (avatarResult.data?.avatarData ?? null) : null;
+            userAvatarCacheRef.current = {
+              userId: baseUser.id,
+              avatarData,
+              fetchedAt: Date.now(),
+            };
+            setUser((prev) => {
+              if (!prev || prev.id !== baseUser.id) return prev;
+              return { ...prev, avatarData: avatarData || undefined };
+            });
+          } catch (avatarErr) {
+            console.error('[bootstrap] refreshUser avatar fetch error:', avatarErr);
+          } finally {
+            userAvatarInFlightRef.current = false;
+          }
+        }
+      } else {
+        userAvatarCacheRef.current = { userId: null, avatarData: null, fetchedAt: 0 };
+        setUser(null);
+      }
     } catch (err) {
       console.error('[bootstrap] refreshUser error:', err);
     } finally {
@@ -198,7 +250,7 @@ export function useAppBootstrapData({
 
   const refreshBootstrapData = useCallback(async () => {
     await Promise.all([
-      refreshUser(),
+      refreshUser({ forceAvatarRefresh: true }),
       refreshRegionsAndNations(),
       refreshArticles(),
       refreshWars(),
@@ -206,8 +258,10 @@ export function useAppBootstrapData({
     ]);
   }, [refreshArticles, refreshRegionsAndNations, refreshUser, refreshWars, refreshWorldStats]);
 
+  const fetchData = useCallback(() => refreshUser({ forceAvatarRefresh: true }), [refreshUser]);
+
   return {
-    fetchData: refreshUser,
+    fetchData,
     refreshBootstrapData,
     refreshArticles,
     refreshRegionsAndNations,

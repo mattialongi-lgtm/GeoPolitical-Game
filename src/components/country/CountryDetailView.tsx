@@ -61,6 +61,27 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
     }
   }, [iso2, user?.id]);
 
+  const fetchCountryAvatars = useCallback(async () => {
+    if (!iso2) return;
+    try {
+      const res = await fetch(`/api/countries/${iso2}?includeAvatar=true`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setRegion((prev: any) => {
+        if (!prev) return data;
+        return {
+          ...prev,
+          ownerAvatarData: data.ownerAvatarData || null,
+          leaderAvatarData: data.leaderAvatarData || null,
+          economicAdviserAvatarData: data.economicAdviserAvatarData || null,
+          foreignMinisterAvatarData: data.foreignMinisterAvatarData || null,
+        };
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  }, [iso2]);
+
   const fetchAgreements = useCallback(async () => {
     try {
       const res = await fetch(`/api/countries/${iso2}/agreements`);
@@ -151,7 +172,8 @@ const CountryDetailView = ({ user, handleAction, actionLoading, fetchData }: { u
   useEffect(() => {
     setLoading(true);
     void fetchAllRegions();
-  }, [fetchAllRegions, iso2]);
+    void fetchCountryAvatars();
+  }, [fetchAllRegions, fetchCountryAvatars, iso2]);
 
   usePollingTask(refreshCountryScreen, {
     enabled: Boolean(iso2),

@@ -64,17 +64,21 @@ export function createCountriesHandlers(deps: {
 
     try {
       const isoId = iso2.toUpperCase();
+      const includeAvatar = String(req.query.includeAvatar || '').toLowerCase() === 'true';
+      const ownerUserSelect = includeAvatar ? 'username, avatarData' : 'username';
+      const leaderUserSelect = includeAvatar ? 'username, level, avatarData' : 'username, level';
+      const adviserUserSelect = includeAvatar ? 'username, avatarData' : 'username';
 
       // 1. Get region data from Supabase
       let { data: region, error } = await supabase
         .from('regions')
         .select(`
           *,
-          owner:users!ownerUserId(username, avatarData),
-          leader:users!leaderUserId(username, level, avatarData),
+          owner:users!ownerUserId(${ownerUserSelect}),
+          leader:users!leaderUserId(${leaderUserSelect}),
           governor:users!governorPlayerId(username),
-          economicAdviser:users!economicAdviserId(username, avatarData),
-          foreignMinister:users!foreignMinisterId(username, avatarData),
+          economicAdviser:users!economicAdviserId(${adviserUserSelect}),
+          foreignMinister:users!foreignMinisterId(${adviserUserSelect}),
           nation:nations(*)
         `)
         .eq('id', isoId)
@@ -130,22 +134,29 @@ export function createCountriesHandlers(deps: {
       (memberUserStats || []).forEach((u: any) => {
         memberPlayerCounts[u.regionId] = (memberPlayerCounts[u.regionId] || 0) + 1;
       });
-
+      const {
+        owner,
+        leader,
+        governor,
+        economicAdviser,
+        foreignMinister,
+        ...regionFields
+      } = region;
 
       // 4. Construct response
       const response = {
         ...gameStats,
-        ...region,
-        ownerName: region.owner?.username,
-        ownerAvatarData: region.owner?.avatarData || null,
-        leaderName: region.leader?.username,
-        leaderLevel: region.leader?.level,
-        leaderAvatarData: region.leader?.avatarData || null,
-        governorName: region.governor?.username || null,
-        economicAdviserName: region.economicAdviser?.username || null,
-        economicAdviserAvatarData: region.economicAdviser?.avatarData || null,
-        foreignMinisterName: region.foreignMinister?.username || null,
-        foreignMinisterAvatarData: region.foreignMinister?.avatarData || null,
+        ...regionFields,
+        ownerName: owner?.username || null,
+        ownerAvatarData: owner?.avatarData || null,
+        leaderName: leader?.username || null,
+        leaderLevel: leader?.level ?? null,
+        leaderAvatarData: leader?.avatarData || null,
+        governorName: governor?.username || null,
+        economicAdviserName: economicAdviser?.username || null,
+        economicAdviserAvatarData: economicAdviser?.avatarData || null,
+        foreignMinisterName: foreignMinister?.username || null,
+        foreignMinisterAvatarData: foreignMinister?.avatarData || null,
         citizenCount: citizenCount || 0,
         residentCount: residentCount || 0,
         memberRegions: (memberRegions || []).map((mr: any) => ({

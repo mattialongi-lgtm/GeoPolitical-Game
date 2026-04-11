@@ -19,6 +19,10 @@ export interface AppBootstrapApiResult {
   worldStats: EndpointResult<any>;
 }
 
+export interface AvatarPayload {
+  avatarData: string | null;
+}
+
 const readResult = async <T>(response: Response): Promise<EndpointResult<T>> => {
   if (!response.ok) {
     return { ok: false, data: null };
@@ -52,6 +56,11 @@ export async function fetchAppBootstrapData(): Promise<AppBootstrapApiResult> {
 export async function fetchUserOnly(): Promise<EndpointResult<any>> {
   const res = await httpFetch('/api/me');
   return readResult<any>(res);
+}
+
+export async function fetchMyAvatarOnly(): Promise<EndpointResult<AvatarPayload>> {
+  const res = await httpFetch('/api/profile/avatar');
+  return readResult<AvatarPayload>(res);
 }
 
 export async function fetchRegionsAndNations(): Promise<RegionsAndNationsResult> {

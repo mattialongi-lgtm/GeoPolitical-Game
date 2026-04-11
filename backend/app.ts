@@ -627,11 +627,12 @@ const authenticate = async (req: any, res: any, next: any) => {
 
     // Fetch user data from 'users' table — using MINIMAL select to reduce query size
     // We use the service role client (global 'supabase') to bypass RLS and see all columns/users
-    let { data: user, error: userError } = await supabase
+    const { data: initialUser, error: userError } = await supabase
       .from('users')
       .select(AUTH_USER_SELECT_MINIMAL)
       .eq('id', authUser.id)
       .single();
+    let user: any = initialUser;
 
     if (userError || !user) {
       if (userError && userError.code !== 'PGRST116') {
@@ -688,7 +689,7 @@ const authenticate = async (req: any, res: any, next: any) => {
           lastLogin: Date.now()
         })
         .select(AUTH_USER_SELECT_MINIMAL)
-        .single();
+        .single() as any;
       
       if (createError) {
         if (createError.code === '23505') {
@@ -698,7 +699,7 @@ const authenticate = async (req: any, res: any, next: any) => {
             .from('users')
             .select(AUTH_USER_SELECT_MINIMAL)
             .eq('id', authUser.id)
-            .single();
+            .single() as any;
           
           if (retryError || !retryUser) {
             console.error("[JIT] Error re-fetching user after race condition:", retryError);

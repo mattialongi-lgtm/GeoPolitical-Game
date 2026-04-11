@@ -347,11 +347,14 @@ export function createGovernanceHandlers(deps: {
     const wageForeign = await calculateMinisterWage(iso2, 'foreign');
 
     // Format for backward compatibility if needed (users property to username)
-    const formattedMinisters = ministers?.map((m: any) => ({
-      ...m,
-      username: m.users?.username,
-      avatarData: m.users?.avatarData || null
-    }));
+    const formattedMinisters = ministers?.map((m: any) => {
+      const { users, ...ministerFields } = m;
+      return {
+        ...ministerFields,
+        username: users?.username,
+        avatarData: users?.avatarData || null
+      };
+    });
 
     res.json({ ministers: formattedMinisters, wages: { economics: wageEconomics, foreign: wageForeign } });
   }

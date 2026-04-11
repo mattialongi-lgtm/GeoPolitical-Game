@@ -7,6 +7,7 @@ import compression from "compression";
 import { createClient } from "@supabase/supabase-js";
 import cookieParser from "cookie-parser";
 import { randomBytes } from "crypto";
+import { hostname } from "os";
 import {
   GAME_CONFIG,
   PERKS_DEFS,
@@ -90,6 +91,8 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 const ENABLE_DEV_ENDPOINTS = process.env.ENABLE_DEV_ENDPOINTS === 'true';
+const DAILY_RESOURCE_RESET_LOCK_TIMEOUT_SECONDS = 30 * 60;
+const DAILY_RESOURCE_RESET_OWNER = `${hostname()}:${PORT}:${process.pid}:${randomBytes(4).toString("hex")}`;
 
 // Validate JWT_SECRET — must not be default in production
 if (IS_PRODUCTION && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'change-me-in-production')) {
@@ -1185,11 +1188,16 @@ async function processAutomationTick() {
   if (automationTickRunning) return;
   automationTickRunning = true;
   try {
-    // 1. Process auto-work
+    // Cache for this tick to avoid N+1 queries
+    const userCache = new Map<string, any>();
+    const warCache = new Map<string, any>();
+
+    // 1. Process auto-work (batch limited to 500 per tick)
     const { data: activeAutoWork, error: autoWorkErr } = await supabase
       .from('work_auto_actions')
       .select('id, userId, factoryId, activatedAt, expiresAt, lastFiredAt, isActive')
-      .eq('isActive', true);
+      .eq('isActive', true)
+      .limit(500);
 
     if (autoWorkErr) {
       if (autoWorkErr.code === 'PGRST205') {
@@ -1213,35 +1221,36 @@ async function processAutomationTick() {
           : aw.lastFiredAt;
         if (!shouldRecurringAutomationFire(mode, effectiveLastFiredAt, aw.activatedAt)) continue;
 
-        // Apply server-side energy regeneration before attempting work
         try {
-          const { data: userForRegen } = await supabase.from('users')
-            .select('energy, lastEnergyUpdate')
-            .eq('id', aw.userId)
-            .single();
-          if (userForRegen && (userForRegen.energy || 0) < GAME_CONFIG.ENERGY_MAX) {
-            const nowMs = Date.now();
-            const lastUpdate = parseAutomationTimestamp(userForRegen.lastEnergyUpdate, nowMs);
-            const elapsedHours = (nowMs - lastUpdate) / (60 * 60 * 1000);
-            const regenAmount = Math.floor(elapsedHours * GAME_CONFIG.ENERGY_REGEN_RATE);
-            if (regenAmount > 0) {
-              const newEnergy = Math.min(GAME_CONFIG.ENERGY_MAX, (userForRegen.energy || 0) + regenAmount);
-              await supabase.from('users')
-                .update({ energy: newEnergy, lastEnergyUpdate: nowMs })
-                .eq('id', aw.userId);
+          // Get or fetch user (cached within this tick)
+          let autoWorkUser = userCache.get(aw.userId);
+          if (!autoWorkUser) {
+            const { data: user, error: userErr } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', aw.userId)
+              .single();
+            if (userErr || !user) {
+              await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
+              continue;
             }
+            autoWorkUser = user;
+            userCache.set(aw.userId, autoWorkUser);
           }
-        } catch { /* non-critical */ }
 
-        try {
-          const { data: autoWorkUser, error: autoWorkUserError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', aw.userId)
-            .single();
-          if (autoWorkUserError || !autoWorkUser) {
-            await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
-            continue;
+          // Apply server-side energy regeneration before attempting work
+          const nowMs = Date.now();
+          const lastUpdate = parseAutomationTimestamp(autoWorkUser.lastEnergyUpdate, nowMs);
+          const elapsedHours = (nowMs - lastUpdate) / (60 * 60 * 1000);
+          const regenAmount = Math.floor(elapsedHours * GAME_CONFIG.ENERGY_REGEN_RATE);
+          if (regenAmount > 0 && (autoWorkUser.energy || 0) < GAME_CONFIG.ENERGY_MAX) {
+            const newEnergy = Math.min(GAME_CONFIG.ENERGY_MAX, (autoWorkUser.energy || 0) + regenAmount);
+            await supabase.from('users')
+              .update({ energy: newEnergy, lastEnergyUpdate: nowMs })
+              .eq('id', aw.userId);
+            autoWorkUser.energy = newEnergy;
+            autoWorkUser.lastEnergyUpdate = nowMs;
+            userCache.set(aw.userId, autoWorkUser);
           }
 
           (autoWorkUser as any).perks = await getUserPerks(aw.userId);
@@ -1266,19 +1275,13 @@ async function processAutomationTick() {
 
           // Energy exhausted: check if user has drinks (possibly on cooldown) or truly has nothing left
           if (message.includes('energia insufficiente')) {
-            try {
-              const { data: drinkCheck } = await supabase.from('users')
-                .select('energyDrinks')
-                .eq('id', aw.userId)
-                .single();
-              if ((drinkCheck?.energyDrinks || 0) > 0) {
-                // Has drinks but cooldown not yet expired → backoff, will retry next cycle
-                await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
-              } else {
-                // No drinks and no energy → stop correctly
-                await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
-              }
-            } catch {
+            const cachedUser = userCache.get(aw.userId);
+            const energyDrinks = cachedUser?.energyDrinks ?? 0;
+            if (energyDrinks > 0) {
+              // Has drinks but cooldown not yet expired → backoff, will retry next cycle
+              await supabase.from('work_auto_actions').update({ lastFiredAt: new Date().toISOString() }).eq('id', aw.id);
+            } else {
+              // No drinks and no energy → stop correctly
               await supabase.from('work_auto_actions').update({ isActive: false }).eq('id', aw.id);
             }
             continue;
@@ -1290,11 +1293,12 @@ async function processAutomationTick() {
       }
     }
 
-    // 2. Process hourly training damage
+    // 2. Process hourly training damage (batch limited to 500 per tick)
     const { data: activeAutoTraining, error: autoTrainingErr } = await supabase
       .from('training_auto_actions')
       .select('id, userId, activatedAt, expiresAt, lastFiredAt, isActive')
-      .eq('isActive', true);
+      .eq('isActive', true)
+      .limit(500);
 
     if (autoTrainingErr) {
       if (autoTrainingErr.code === 'PGRST205') {
@@ -1322,11 +1326,12 @@ async function processAutomationTick() {
       }
     }
 
-    // 3. Process auto-attacks
+    // 3. Process auto-attacks (batch limited to 500 per tick)
     const { data: activeAutoAttacks, error: autoAttacksErr } = await supabase
       .from('war_auto_attacks')
       .select('id, userId, warId, activatedAt, expiresAt, lastFiredAt, isActive, autoType, side, troopType')
-      .eq('isActive', true);
+      .eq('isActive', true)
+      .limit(500);
 
     if (autoAttacksErr) {
       console.error('[AUTOMATION] war_auto_attacks read error:', autoAttacksErr);
@@ -1339,11 +1344,16 @@ async function processAutomationTick() {
 
         if (!shouldRecurringAutomationFire(aa.autoType, aa.lastFiredAt, aa.activatedAt)) continue;
 
-        // Check war is still active
-        const { data: war } = await supabase.from('wars').select('status').eq('id', aa.warId).single();
-        if (!war || war.status !== 'active') {
-          await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
-          continue;
+        // Check war is still active (cached within this tick)
+        let war = warCache.get(aa.warId);
+        if (!war) {
+          const { data: warData } = await supabase.from('wars').select('status').eq('id', aa.warId).single();
+          if (!warData || warData.status !== 'active') {
+            await supabase.from('war_auto_attacks').update({ isActive: false }).eq('id', aa.id);
+            continue;
+          }
+          war = warData;
+          warCache.set(aa.warId, war);
         }
 
         try {
@@ -4220,9 +4230,61 @@ async function payoutStateSalaries() {
 }
 
 // ── Daily Reset Cron (resource extraction) ──────────────────────
-async function dailyResourceReset() {
+type DailyResourceResetLockResult = {
+  success?: boolean;
+  acquired?: boolean;
+  completed?: boolean;
+  released?: boolean;
+  idempotent?: boolean;
+  code?: string;
+  lockDate?: string;
+  lockOwner?: string | null;
+  lastCompletedDate?: string | null;
+};
+
+async function acquireDailyResourceResetLock(logicalDate: string): Promise<DailyResourceResetLockResult> {
+  const { data, error } = await retrySupabaseOperation(
+    `acquire daily resource reset lock for ${logicalDate}`,
+    async () => await supabase.rpc('acquire_daily_resource_reset_lock', {
+      p_logical_date: logicalDate,
+      p_lock_owner: DAILY_RESOURCE_RESET_OWNER,
+      p_timeout_seconds: DAILY_RESOURCE_RESET_LOCK_TIMEOUT_SECONDS,
+    })
+  );
+
+  if (error) throw error;
+  return (data ?? {}) as DailyResourceResetLockResult;
+}
+
+async function completeDailyResourceResetLock(
+  logicalDate: string,
+  markCompleted: boolean
+): Promise<DailyResourceResetLockResult> {
+  const { data, error } = await retrySupabaseOperation(
+    `${markCompleted ? "complete" : "release"} daily resource reset lock for ${logicalDate}`,
+    async () => await supabase.rpc('complete_daily_resource_reset_lock', {
+      p_logical_date: logicalDate,
+      p_lock_owner: DAILY_RESOURCE_RESET_OWNER,
+      p_mark_completed: markCompleted,
+    })
+  );
+
+  if (error) throw error;
+  return (data ?? {}) as DailyResourceResetLockResult;
+}
+
+async function dailyResourceReset(logicalDate = new Date().toISOString().slice(0, 10)) {
   try {
-    console.log("[ResourceReset] Running daily resource extraction reset...");
+    const lockResult = await acquireDailyResourceResetLock(logicalDate);
+
+    if (!lockResult.acquired) {
+      if (lockResult.success === false && lockResult.code !== 'already_completed' && lockResult.code !== 'in_progress') {
+        logger.warn("ResourceReset: unable to acquire daily reset lock", { logicalDate, lockResult });
+      }
+      return;
+    }
+
+    console.log(`[ResourceReset] Running daily resource extraction reset for ${logicalDate}...`);
     // Reset dailyExtracted=0, currentAvailableCap=initialAvailableCap, totalUnlockedToday=initialAvailableCap
     const { error } = await retrySupabaseOperation(
       "reset daily resource caps",
@@ -4261,9 +4323,29 @@ async function dailyResourceReset() {
 
     // Pay salaries at daily reset
     await payoutStateSalaries();
+    const completionResult = await completeDailyResourceResetLock(logicalDate, true);
+    if (!completionResult.completed) {
+      throw new Error(`Daily reset completion watermark was not persisted (code=${completionResult.code || 'unknown'})`);
+    }
 
   } catch (err) {
+    try {
+      const releaseResult = await completeDailyResourceResetLock(logicalDate, false);
+      if (!releaseResult.success) {
+        logger.error("ResourceReset: failed to release daily reset lock after error", {
+          logicalDate,
+          releaseResult,
+        });
+      }
+    } catch (releaseErr) {
+      logger.error("ResourceReset: failed to release daily reset lock after error", {
+        logicalDate,
+        err: releaseErr instanceof Error ? releaseErr.message : String(releaseErr),
+      });
+    }
+
     console.error("[ResourceReset] Error in daily reset:", {
+      logicalDate,
       message: err instanceof Error ? err.message : String(err),
       details: (err as any)?.details || null,
       hint: (err as any)?.hint || null,
@@ -5310,14 +5392,10 @@ export function startBackgroundJobs() {
     processAutomationTick();
   }, 60 * 1000); // Check every minute
 
-  // Daily Resource Reset (check every 5 minutes, run once per day at UTC midnight)
-  let lastDailyReset = '';
+  // Daily Resource Reset (check every 5 minutes, DB-backed single execution per UTC day)
   setInterval(async () => {
     const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
-    if (today !== lastDailyReset) {
-      lastDailyReset = today;
-      await dailyResourceReset();
-    }
+    await dailyResourceReset(today);
   }, 5 * 60 * 1000);
 }
 

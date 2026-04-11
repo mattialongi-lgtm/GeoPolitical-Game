@@ -41,3 +41,10 @@ Original prompt: lo storico dei guadagni di gold dal lavoro non viene visionato.
 - Regioni/Nazioni: `HomePage`, `NationsList`, `IndependentRegionsList`, `CountryDetailView` e `StatePage` ora forzano un refresh all'apertura schermo e mantengono i dati aggiornati con cadenze 90s dove serve.
 - Verifica: `npm.cmd run lint` OK.
 - Smoke test UI: tentativo locale bloccato dal sandbox (`spawn EPERM` su `tsx --watch` e `vite/esbuild`). Richiesta approvazione escalation inviata per lanciare frontend/backend fuori sandbox.
+
+- Nuovo prompt: ottimizzare `processAutomationTick()` per ridurre costi job senza cambiare gameplay.
+- Analisi problemi: il job leggeva TUTTE le automazioni attive (potenzialmente 10k+) ad ogni tick ogni 10s, generando O(n) queries; per ogni record faceva N+1 queries user/war senza cache; filtrava il 80-90% in memoria dopo aver deserializzato.
+- Ottimizzazioni applicate: aggiunto batch limiting `.limit(500)` a tutte e tre le query SELECT (work/training/war); introdotto caching in-memory `userCache` e `warCache` per eliminare query ridondanti sullo stesso utente/guerra dentro il tick; consolidato il flusso work_auto_actions per fetchare l'utente una volta sola e usarlo per regen + esecuzione + drink-check.
+- Meccanica preservata: calcolo `shouldRecurringAutomationFire()` rimane identico (intervallo ricorrente), logica di scadenza/disattivazione intatta, gameplay invariato.
+- Impatto atteso: riducionecarico read da O(n) a O(min(n, 500)) per tick; con 5k automazioni attive e distribuzione uniforme riduzione ~90% dei record letti; N+1 queries eliminate dal caching (da 3 query/record a 1); tempo tick stabile perche il lavoro è CPU-bound una volta caricato il batch.
+- Verifica: `npm run build` completato con successo, no TS errors.

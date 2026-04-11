@@ -492,6 +492,69 @@ const calculateTravelTimeMs = (fromIso2: string, toIso2: string): number => {
 const AUTH_CACHE_TTL_MS = 45_000;
 const authCache = new Map<string, { user: any; expiresAt: number }>();
 
+// ▼ MINIMAL select per /api/me polling (ogni 20s) — ~20 campi essenziali
+// Evita: email, influence, militaryExp, createdAt, lastLogin, perkPoints
+const AUTH_USER_SELECT_MINIMAL = [
+  'id',
+  'username',
+  'money',
+  'gold',
+  'energy',
+  'regionId',
+  'residenceId',
+  'workPermitId',
+  'originalNation',
+  'displayedNation',
+  'lastOriginalNationChange',
+  'lastEnergyUpdate',
+  'xp',
+  'level',
+  'energyDrinks',
+  'lastEnergyDrink',
+  'warMedals',
+  'lastMedalClaim',
+  'travelingTo',
+  'travelingUntil',
+  'travelingFrom',
+  'travelDurationMs',
+  'perkUpgradesJson',
+  'boostersJson',
+].join(', ');
+
+// ▼ FULL select per initial load / detailed operations
+const AUTH_USER_SELECT = [
+  'id',
+  'username',
+  'email',
+  'money',
+  'gold',
+  'energy',
+  'influence',
+  'regionId',
+  'residenceId',
+  'workPermitId',
+  'originalNation',
+  'displayedNation',
+  'lastOriginalNationChange',
+  'lastEnergyUpdate',
+  'xp',
+  'level',
+  'perkPoints',
+  'energyDrinks',
+  'lastEnergyDrink',
+  'warMedals',
+  'lastMedalClaim',
+  'lastLogin',
+  'perkUpgradesJson',
+  'boostersJson',
+  'travelingTo',
+  'travelingUntil',
+  'travelingFrom',
+  'travelDurationMs',
+  'militaryExp',
+  'createdAt',
+].join(', ');
+
 function getCachedAuthUser(token: string): any | null {
   const entry = authCache.get(token);
   if (!entry) return null;
@@ -562,11 +625,11 @@ const authenticate = async (req: any, res: any, next: any) => {
       return res.status(401).json({ error: "Unauthorized: Invalid session." });
     }
 
-    // Fetch user data from 'users' table
+    // Fetch user data from 'users' table — using MINIMAL select to reduce query size
     // We use the service role client (global 'supabase') to bypass RLS and see all columns/users
     let { data: user, error: userError } = await supabase
       .from('users')
-      .select('*')
+      .select(AUTH_USER_SELECT_MINIMAL)
       .eq('id', authUser.id)
       .single();
 
@@ -624,7 +687,7 @@ const authenticate = async (req: any, res: any, next: any) => {
           lastEnergyUpdate: Date.now(),
           lastLogin: Date.now()
         })
-        .select()
+        .select(AUTH_USER_SELECT_MINIMAL)
         .single();
       
       if (createError) {
@@ -633,7 +696,7 @@ const authenticate = async (req: any, res: any, next: any) => {
           // Re-fetch the newly created user record.
           let { data: retryUser, error: retryError } = await supabase
             .from('users')
-            .select('*')
+            .select(AUTH_USER_SELECT_MINIMAL)
             .eq('id', authUser.id)
             .single();
           
@@ -672,30 +735,18 @@ const authenticate = async (req: any, res: any, next: any) => {
     req.user = user;
     req.user.maxEnergy = GAME_CONFIG.ENERGY_MAX;
 
-    // Fetch party membership
-    const { data: membership } = await supabase
-      .from('party_members')
-      .select('partyId, parties(name, logo)')
-      .eq('userId', user.id)
-      .maybeSingle() as any;
+    // ▼ OPTIMIZATION: Heavy operations moved to /api/sync-state (called separately, not on every auth)
+    // Previously loaded here:
+    // - party membership (join query)
+    // - perk levels (separate query to perks table)
+    // - inventory (separate query to user_inventory table)
+    // - work experience (separate query to player_resource_work_experience table)
+    // - perk upgrade finalization (upsert + update)
+    // - travel auto-completion (update)
+    // - energy regeneration (update)
+    // - lastLogin update
 
-    if (membership) {
-      req.user.partyId = membership.partyId;
-      req.user.partyName = membership.parties?.name;
-      req.user.partyLogo = membership.parties?.logo;
-    }
-
-    // Update lastLogin timestamp for activity tracking
-    const nowLogin = Date.now();
-    if (!user.lastLogin || nowLogin - (typeof user.lastLogin === 'number' ? user.lastLogin : new Date(user.lastLogin).getTime()) > 60000) {
-      await supabase.from('users').update({ lastLogin: nowLogin }).eq('id', user.id);
-      req.user.lastLogin = nowLogin;
-    }
-
-    // Load perk levels from perks table
-    req.user.perks = await getUserPerks(user.id);
-
-    // Parse perkUpgrades and boosters from JSON columns
+    // Load minimal parsed data from JSON columns
     try {
       req.user.perkUpgrades = JSON.parse(user.perkUpgradesJson || '{}');
     } catch { req.user.perkUpgrades = {}; }
@@ -703,135 +754,19 @@ const authenticate = async (req: any, res: any, next: any) => {
       req.user.boosters = JSON.parse(user.boostersJson || '{}');
     } catch { req.user.boosters = {}; }
 
-    // Auto-finalize completed perk upgrades
-    const nowTs = Date.now();
-    let upgradesChanged = false;
-    if (!req.user.perkUpgrades || typeof req.user.perkUpgrades !== 'object' || Array.isArray(req.user.perkUpgrades)) {
-      req.user.perkUpgrades = {};
-    }
-
-    for (const [perkId, upg] of Object.entries(req.user.perkUpgrades as Record<string, any>)) {
-      if (upg.willCompleteAt && upg.willCompleteAt <= nowTs) {
-        // Upgrade completed → increment perk level
-        const newLevel = (req.user.perks[perkId] || 0) + 1;
-        const { error: upsertErr } = await supabase.from('perks').upsert(
-          { userId: user.id, perkId, level: newLevel },
-          { onConflict: 'userId,perkId' }
-        );
-        if (!upsertErr) {
-          req.user.perks[perkId] = newLevel;
-          delete req.user.perkUpgrades[perkId];
-          upgradesChanged = true;
-        } else {
-          console.error("Error finalizing perk upgrade:", upsertErr);
-        }
-      }
-    }
-    if (upgradesChanged) {
-      const { error: updateErr } = await supabase.from('users').update({
-        perkUpgradesJson: JSON.stringify(req.user.perkUpgrades)
-      }).eq('id', user.id);
-      if (updateErr) {
-        console.error("Error updating perkUpgradesJson:", updateErr);
-      }
-    }
-
-    // Auto-complete travel if travelingUntil has passed
-    if (user.travelingUntil && user.travelingTo && Date.now() >= user.travelingUntil) {
-      const { error: travelErr } = await supabase.from('users').update({
-        regionId: user.travelingTo,
-        travelingUntil: null,
-        travelingTo: null,
-        travelingFrom: null,
-        travelDurationMs: null
-      }).eq('id', user.id);
-      if (!travelErr) {
-        req.user.regionId = user.travelingTo;
-        req.user.travelingUntil = null;
-        req.user.travelingTo = null;
-        req.user.travelingFrom = null;
-        req.user.travelDurationMs = null;
-      }
-    }
-
-    // Fetch user inventory from user_inventory table and attach as inventory object
-    try {
-      const { data: invItems } = await supabase.from('user_inventory')
-        .select('itemId, quantity')
-        .eq('userId', user.id);
-      const inventoryObj: Record<string, number> = {};
-      let totalVolume = 0;
-      (invItems || []).forEach((item: any) => {
-        if (item.quantity > 0) {
-          inventoryObj[item.itemId] = item.quantity;
-          totalVolume += item.quantity;
-          // Standardize resource access - flatten common resources for frontend compatibility
-          if (['oil', 'minerals', 'uranium', 'diamonds', 'energyDrinks', 'liquidOxygen', 'helium3'].includes(item.itemId)) {
-             req.user[item.itemId] = item.quantity;
-          }
-        }
-      });
-      req.user.inventory = inventoryObj;
-      req.user.inventoryVolume = totalVolume;
-    } catch (invErr) {
-      // Non-critical: continue without inventory
-      req.user.inventory = {};
-      req.user.inventoryVolume = 0;
-    }
-
-    // Backward-compatible work experience fields used by legacy UI cards.
+    // Provide placeholder values to prevent frontend errors
+    // These will be filled by /api/sync-state when called
+    req.user.perks = {};
+    req.user.partyId = undefined;
+    req.user.partyName = undefined;
+    req.user.partyLogo = undefined;
+    req.user.inventory = {};
+    req.user.inventoryVolume = 0;
     req.user.oilExp = 0;
     req.user.mineralsExp = 0;
     req.user.uraniumExp = 0;
     req.user.diamondsExp = 0;
     req.user.goldOreExp = 0;
-    try {
-      const { data: workExpRows } = await supabase
-        .from('player_resource_work_experience')
-        .select('resourceType, experience')
-        .eq('playerId', user.id);
-
-      for (const row of workExpRows || []) {
-        const experience = Math.max(0, Math.floor(Number(row?.experience) || 0));
-        const resourceType = row?.resourceType;
-        if (resourceType === 'oil') req.user.oilExp = experience;
-        else if (resourceType === 'minerals') req.user.mineralsExp = experience;
-        else if (resourceType === 'uranium') req.user.uraniumExp = experience;
-        else if (resourceType === 'diamonds') req.user.diamondsExp = experience;
-        else if (resourceType === 'gold_ore') req.user.goldOreExp = experience;
-      }
-    } catch (workExpErr) {
-      // Non-critical: legacy UI will fall back to 0 if experience table is unavailable.
-      console.error("Error loading player work experience:", workExpErr);
-    }
-
-    // Energy regeneration — mirrors the old server.ts authenticate middleware logic.
-    // Without this, energy never regens for users who don't use autowork.
-    try {
-      const energyMax = GAME_CONFIG.ENERGY_MAX;
-      if ((req.user.energy || 0) < energyMax) {
-        const regenBonus = (req.user.perks?.['regen_boost'] || 0) * 5;
-        const regenRate = GAME_CONFIG.ENERGY_REGEN_RATE + regenBonus;
-        const nowTs = Date.now();
-        const rawLastUpdate = req.user.lastEnergyUpdate;
-        const lastUpdate = rawLastUpdate
-          ? (typeof rawLastUpdate === 'number' ? rawLastUpdate : Number(rawLastUpdate) || new Date(rawLastUpdate).getTime())
-          : nowTs;
-        const hoursPassed = (nowTs - lastUpdate) / (1000 * 60 * 60);
-        const regen = Math.floor(hoursPassed * regenRate);
-        if (regen > 0) {
-          const newEnergy = Math.min(energyMax, (req.user.energy || 0) + regen);
-          await supabase.from('users')
-            .update({ energy: newEnergy, lastEnergyUpdate: nowTs })
-            .eq('id', req.user.id);
-          req.user.energy = newEnergy;
-          req.user.lastEnergyUpdate = nowTs;
-        }
-      }
-    } catch (regenErr) {
-      // Non-critical: log and continue
-      console.error("[Auth] Energy regen error:", regenErr);
-    }
 
     // ▼ Salva in cache per evitare re-hydration nei prossimi 45s
     setCachedAuthUser(token, req.user);

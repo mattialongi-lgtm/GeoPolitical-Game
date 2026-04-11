@@ -9,6 +9,37 @@
  */
 import { logger } from '../utils/logger';
 
+const PLAYERS_BASE_SELECT = 'id, username, regionId, originalNation, level, lastLogin';
+const PUBLIC_PLAYER_PROFILE_SELECT = [
+  'id',
+  'username',
+  'money',
+  'gold',
+  'energy',
+  'xp',
+  'level',
+  'regionId',
+  'residenceId',
+  'workPermitId',
+  'originalNation',
+  'displayedNation',
+  'lastOriginalNationChange',
+  'lastEnergyUpdate',
+  'energyDrinks',
+  'lastEnergyDrink',
+  'warMedals',
+  'lastMedalClaim',
+  'lastLogin',
+  'perkUpgradesJson',
+  'travelingTo',
+  'travelingUntil',
+  'travelingFrom',
+  'travelDurationMs',
+  'militaryExp',
+  'avatarData',
+  'createdAt',
+].join(', ');
+
 export function createUserHandlers(deps: {
   supabase: any;
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
@@ -18,9 +49,11 @@ export function createUserHandlers(deps: {
 }) {
   const { supabase, getUserPerks, isAllowedAvatarDataUrl, IS_PRODUCTION, ENABLE_DEV_ENDPOINTS } = deps;
 
-  // GET /api/me
+  // GET /api/me — OPTIMIZED: minimal response for frequent polling (every 20s)
+  // Returns only core state: money, gold, energy, regions, travel status, perks/boosters JSON
+  // Heavy data (inventory, party membership, work experience) loaded separately by /api/sync-state
   function getMe(req: any, res: any) {
-    res.set('Cache-Control', 'no-store');
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
     res.json(req.user);
   }
 
@@ -28,11 +61,13 @@ export function createUserHandlers(deps: {
   async function getPlayers(req: any, res: any) {
     try {
       const onlyOnline = String(req.query.online || '').toLowerCase() === 'true';
+      const includeAvatar = String(req.query.includeAvatar || '').toLowerCase() === 'true';
       const onlineThreshold = Date.now() - 5 * 60 * 1000;
+      const playersSelect = includeAvatar ? `${PLAYERS_BASE_SELECT}, avatarData` : PLAYERS_BASE_SELECT;
 
       let query = supabase
         .from('users')
-        .select('id, username, regionId, originalNation, level, lastLogin, avatarData', { count: 'exact' })
+        .select(playersSelect, { count: 'exact' })
         .not('username', 'ilike', 'app_%')
         .not('username', 'ilike', 'mgr_%')
         .not('username', 'ilike', 'out_%')
@@ -64,7 +99,7 @@ export function createUserHandlers(deps: {
     try {
       const { data: player, error } = await supabase
         .from('users')
-        .select('*')
+        .select(PUBLIC_PLAYER_PROFILE_SELECT)
         .eq('id', req.params.id)
         .single();
       if (error || !player) {
@@ -154,6 +189,23 @@ export function createUserHandlers(deps: {
     res.json({ success: true, originalNation: normalizedNationId, lastOriginalNationChange: now });
   }
 
+  // GET /api/profile/avatar
+  async function getMyAvatar(req: any, res: any) {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('avatarData')
+        .eq('id', req.user.id)
+        .single();
+
+      if (error) throw error;
+      return res.json({ avatarData: data?.avatarData || null });
+    } catch (err: any) {
+      logger.error('operation_failed', { error: err?.message, path: req?.path });
+      return res.status(500).json({ error: "Errore nel caricamento avatar" });
+    }
+  }
+
   // POST /api/profile/avatar
   async function updateAvatar(req: any, res: any) {
     const { avatarData } = req.body;
@@ -163,11 +215,11 @@ export function createUserHandlers(deps: {
     if (!isAllowedAvatarDataUrl(avatarData)) {
       return res.status(400).json({ error: "Formato immagine non valido" });
     }
-    if (avatarData.length > 700000) {
-      return res.status(400).json({ error: "Immagine troppo grande (max ~512KB)" });
+    if (avatarData.length > 260000) {
+      return res.status(400).json({ error: "Immagine troppo grande (max ~190KB)" });
     }
     await supabase.from('users').update({ avatarData }).eq('id', req.user.id);
-    res.json({ success: true });
+    res.json({ success: true, avatarData });
   }
 
   // PUT /api/profile/username
@@ -214,14 +266,192 @@ export function createUserHandlers(deps: {
     res.json({ success: true, cash: cashNum, gold: goldNum });
   }
 
+  // POST /api/sync-state — Load heavy data & execute side effects
+  // Called less frequently (e.g., 60s or on demand) instead of every auth request
+  async function syncState(req: any, res: any) {
+    const user = req.user;
+    const userId = user.id;
+    const nowTs = Date.now();
+
+    try {
+      // ▼ 1. Load party membership (join query)
+      try {
+        const { data: membership } = await supabase
+          .from('party_members')
+          .select('partyId, parties(name, logo)')
+          .eq('userId', userId)
+          .maybeSingle() as any;
+
+        if (membership) {
+          user.partyId = membership.partyId;
+          user.partyName = membership.parties?.name;
+          user.partyLogo = membership.parties?.logo;
+        }
+      } catch (err) {
+        console.error("[SyncState] Error loading party membership:", err);
+      }
+
+      // ▼ 2. Load perk levels from perks table
+      try {
+        user.perks = await getUserPerks(userId);
+      } catch (err) {
+        console.error("[SyncState] Error loading perks:", err);
+        user.perks = {};
+      }
+
+      // ▼ 3. Load inventory from user_inventory table
+      try {
+        const { data: invItems } = await supabase.from('user_inventory')
+          .select('itemId, quantity')
+          .eq('userId', userId);
+        const inventoryObj: Record<string, number> = {};
+        let totalVolume = 0;
+        (invItems || []).forEach((item: any) => {
+          if (item.quantity > 0) {
+            inventoryObj[item.itemId] = item.quantity;
+            totalVolume += item.quantity;
+            // Flatten common resources for frontend compatibility
+            if (['oil', 'minerals', 'uranium', 'diamonds', 'energyDrinks', 'liquidOxygen', 'helium3'].includes(item.itemId)) {
+              user[item.itemId] = item.quantity;
+            }
+          }
+        });
+        user.inventory = inventoryObj;
+        user.inventoryVolume = totalVolume;
+      } catch (err) {
+        console.error("[SyncState] Error loading inventory:", err);
+        user.inventory = {};
+        user.inventoryVolume = 0;
+      }
+
+      // ▼ 4. Load work experience
+      try {
+        user.oilExp = 0;
+        user.mineralsExp = 0;
+        user.uraniumExp = 0;
+        user.diamondsExp = 0;
+        user.goldOreExp = 0;
+
+        const { data: workExpRows } = await supabase
+          .from('player_resource_work_experience')
+          .select('resourceType, experience')
+          .eq('playerId', userId);
+
+        for (const row of workExpRows || []) {
+          const experience = Math.max(0, Math.floor(Number(row?.experience) || 0));
+          const resourceType = row?.resourceType;
+          if (resourceType === 'oil') user.oilExp = experience;
+          else if (resourceType === 'minerals') user.mineralsExp = experience;
+          else if (resourceType === 'uranium') user.uraniumExp = experience;
+          else if (resourceType === 'diamonds') user.diamondsExp = experience;
+          else if (resourceType === 'gold_ore') user.goldOreExp = experience;
+        }
+      } catch (err) {
+        console.error("[SyncState] Error loading work experience:", err);
+      }
+
+      // ▼ 5. Side effect: Update lastLogin timestamp (rate limited: only if > 60s old)
+      const lastLoginTime = typeof user.lastLogin === 'number'
+        ? user.lastLogin
+        : (user.lastLogin ? new Date(user.lastLogin).getTime() : 0);
+
+      if (!lastLoginTime || nowTs - lastLoginTime > 60000) {
+        await supabase.from('users').update({ lastLogin: nowTs }).eq('id', userId);
+        user.lastLogin = nowTs;
+      }
+
+      // ▼ 6. Side effect: Auto-finalize completed perk upgrades
+      let upgradesChanged = false;
+      const perkUpgrades = user.perkUpgrades || {};
+      if (typeof perkUpgrades === 'object' && !Array.isArray(perkUpgrades)) {
+        for (const [perkId, upg] of Object.entries(perkUpgrades as Record<string, any>)) {
+          if (upg.willCompleteAt && upg.willCompleteAt <= nowTs) {
+            const newLevel = (user.perks[perkId] || 0) + 1;
+            const { error: upsertErr } = await supabase.from('perks').upsert(
+              { userId, perkId, level: newLevel },
+              { onConflict: 'userId,perkId' }
+            );
+            if (!upsertErr) {
+              user.perks[perkId] = newLevel;
+              delete perkUpgrades[perkId];
+              upgradesChanged = true;
+            } else {
+              console.error("[SyncState] Error finalizing perk upgrade:", upsertErr);
+            }
+          }
+        }
+        if (upgradesChanged) {
+          const { error: updateErr } = await supabase.from('users').update({
+            perkUpgradesJson: JSON.stringify(perkUpgrades)
+          }).eq('id', userId);
+          if (updateErr) {
+            console.error("[SyncState] Error updating perkUpgradesJson:", updateErr);
+          }
+        }
+      }
+
+      // ▼ 7. Side effect: Auto-complete travel if travelingUntil has passed
+      if (user.travelingUntil && user.travelingTo && nowTs >= user.travelingUntil) {
+        const { error: travelErr } = await supabase.from('users').update({
+          regionId: user.travelingTo,
+          travelingUntil: null,
+          travelingTo: null,
+          travelingFrom: null,
+          travelDurationMs: null
+        }).eq('id', userId);
+        if (!travelErr) {
+          user.regionId = user.travelingTo;
+          user.travelingUntil = null;
+          user.travelingTo = null;
+          user.travelingFrom = null;
+          user.travelDurationMs = null;
+        }
+      }
+
+      // ▼ 8. Side effect: Energy regeneration (using perks data if available)
+      // Only proceed if perks were loaded in this sync
+      if (Object.keys(user.perks || {}).length > 0) {
+        const ENERGY_MAX = 300; // From GAME_CONFIG.ENERGY_MAX
+        const ENERGY_REGEN_RATE = 5; // From GAME_CONFIG.ENERGY_REGEN_RATE
+
+        if ((user.energy || 0) < ENERGY_MAX) {
+          const regenBonus = (user.perks?.['regen_boost'] || 0) * 5;
+          const regenRate = ENERGY_REGEN_RATE + regenBonus;
+          const lastUpdate = typeof user.lastEnergyUpdate === 'number'
+            ? user.lastEnergyUpdate
+            : (user.lastEnergyUpdate ? new Date(user.lastEnergyUpdate).getTime() : nowTs);
+
+          const hoursPassed = (nowTs - lastUpdate) / (1000 * 60 * 60);
+          const regen = Math.floor(hoursPassed * regenRate);
+
+          if (regen > 0) {
+            const newEnergy = Math.min(ENERGY_MAX, (user.energy || 0) + regen);
+            await supabase.from('users')
+              .update({ energy: newEnergy, lastEnergyUpdate: nowTs })
+              .eq('id', userId);
+            user.energy = newEnergy;
+            user.lastEnergyUpdate = nowTs;
+          }
+        }
+      }
+
+      res.json(user);
+    } catch (err: any) {
+      console.error("[SyncState] Error:", err);
+      res.status(500).json({ error: "Failed to sync state. Please try again." });
+    }
+  }
+
   return {
     getMe,
     getPlayers,
     getPlayerById,
     changeDisplayedNation,
     changeOriginalNation,
+    getMyAvatar,
     updateAvatar,
     updateUsername,
     addCurrency,
+    syncState,
   };
 }

@@ -4283,7 +4283,10 @@ async function checkAndResolveElections() {
   const DEFAULT_ELECTION_DURATION_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
   const INDEPENDENT_PARLIAMENT_DURATION_MS = 24 * 60 * 60 * 1000; // 24h
 
-  const { data: activeElections } = await supabase.from('elections').select('*').eq('status', 'active').lte('closesAt', nowIso);
+  const { data: activeElections } = await supabase
+    .from('elections')
+    .select('*')
+    .eq('status', 'active');
   const activeElectionByRegion = new Map(activeElections?.map((e: any) => [e.regionId, e]) || []);
 
   for (const r of regions) {

@@ -5243,6 +5243,36 @@ async function updateMissionProgress(
 
 const dailyRewardService = new DailyRewardService(new DailyRewardRepository(supabase));
 
+function createNoOverlapBackgroundJob(jobName: string, job: () => Promise<void>) {
+  let running = false;
+  let overlapWarned = false;
+
+  return async () => {
+    if (running) {
+      if (!overlapWarned) {
+        overlapWarned = true;
+        logger.warn('Background job overlap prevented', { jobName });
+      }
+      return;
+    }
+
+    running = true;
+    overlapWarned = false;
+
+    try {
+      await job();
+    } catch (error) {
+      logger.error('Background job execution failed', {
+        jobName,
+        err: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      running = false;
+      overlapWarned = false;
+    }
+  };
+}
+
 // Vite middleware for development
 export async function startServer() {
   setupRoutes({
@@ -5365,13 +5395,19 @@ export async function startServer() {
 }
 
 export function startBackgroundJobs() {
+  const runBudgetMaintenanceTick = createNoOverlapBackgroundJob('budgetMaintenanceTick', budgetMaintenanceTick);
+  const runCheckAndResolveElections = createNoOverlapBackgroundJob('checkAndResolveElections', checkAndResolveElections);
+  const runCheckAndAdvanceIndependentRegions = createNoOverlapBackgroundJob('checkAndAdvanceIndependentRegions', checkAndAdvanceIndependentRegions);
+  const runCheckAndResolveLaws = createNoOverlapBackgroundJob('checkAndResolveLaws', checkAndResolveLaws);
+  const runCheckAndResolveWars = createNoOverlapBackgroundJob('checkAndResolveWars', checkAndResolveWars);
+  const runDailyResourceReset = createNoOverlapBackgroundJob('dailyResourceReset', async () => {
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+    await dailyResourceReset(today);
+  });
+
   // Global Budget Tick (every 60 seconds)
   setInterval(() => {
-    try {
-      budgetMaintenanceTick();
-    } catch (e) {
-      logger.error("Budget tick error", { err: e });
-    }
+    void runBudgetMaintenanceTick();
   }, 60 * 1000);
 
   // Global Economy Tick (every 10 minutes)
@@ -5385,17 +5421,16 @@ export function startBackgroundJobs() {
 
   // Game Cronjobs (Laws and Elections)
   setInterval(() => {
-    checkAndResolveElections();
-    checkAndAdvanceIndependentRegions();
-    checkAndResolveLaws();
-    checkAndResolveWars();
+    void runCheckAndResolveElections();
+    void runCheckAndAdvanceIndependentRegions();
+    void runCheckAndResolveLaws();
+    void runCheckAndResolveWars();
     processAutomationTick();
   }, 60 * 1000); // Check every minute
 
   // Daily Resource Reset (check every 5 minutes, DB-backed single execution per UTC day)
-  setInterval(async () => {
-    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
-    await dailyResourceReset(today);
+  setInterval(() => {
+    void runDailyResourceReset();
   }, 5 * 60 * 1000);
 }
 

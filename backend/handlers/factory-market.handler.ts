@@ -9,6 +9,7 @@ import { logger } from '../utils/logger';
 
 export function createFactoryMarketHandlers(deps: {
   supabase: any;
+  atomicOperations?: any;
   generateSecureId: (len: number) => string;
   estimateFactoryValue: (type: string, level: number, recentProfit?: number) => number;
   FACTORY_CONFIG: any;
@@ -17,6 +18,7 @@ export function createFactoryMarketHandlers(deps: {
 }) {
   const {
     supabase,
+    atomicOperations,
     estimateFactoryValue,
     FACTORY_CONFIG,
     factoryYieldMultiplier,
@@ -81,13 +83,33 @@ export function createFactoryMarketHandlers(deps: {
       return res.status(400).json({ error: "Parametri non validi." });
     }
 
-    const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
-    if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
-    if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
-    if (factory.listedForSale) return res.status(400).json({ error: "Fabbrica già in vendita." });
-
     try {
-      // Create listing
+      if (atomicOperations?.listFactoryMarket) {
+        const result = await atomicOperations.listFactoryMarket({
+          factoryId,
+          sellerId: user.id,
+          askingPrice: Math.floor(askingPrice),
+          operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+        });
+
+        if (!result?.success) {
+          const codeToStatus: Record<string, number> = {
+            invalid_input: 400,
+            factory_not_found: 404,
+            forbidden: 403,
+            listing_active: 409,
+          };
+          return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+        }
+
+        return res.json({ success: true, listing: result.listing });
+      }
+
+      const { data: factory } = await supabase.from('factories').select('*').eq('id', factoryId).single();
+      if (!factory) return res.status(404).json({ error: "Fabbrica non trovata." });
+      if (factory.ownerUserId !== user.id) return res.status(403).json({ error: "Non sei il proprietario." });
+      if (factory.listedForSale) return res.status(400).json({ error: "Fabbrica già in vendita." });
+
       const { data: listing, error: listErr } = await supabase.from('factory_market_listings').insert({
         factoryId,
         sellerId: user.id,
@@ -95,11 +117,8 @@ export function createFactoryMarketHandlers(deps: {
         status: 'active',
       }).select().single();
       if (listErr) throw listErr;
-
-      // Mark factory as listed
       await supabase.from('factories').update({ listedForSale: true, salePrice: Math.floor(askingPrice) }).eq('id', factoryId);
-
-      res.json({ success: true, listing });
+      return res.json({ success: true, listing });
     } catch (err: any) {
       logger.error('operation_failed', { error: err?.message, path: req?.path });
       res.status(500).json({ error: "An unexpected error occurred. Please try again." });
@@ -147,16 +166,33 @@ export function createFactoryMarketHandlers(deps: {
     if (!listingId) return res.status(400).json({ error: "ID annuncio mancante." });
 
     try {
+      if (atomicOperations?.cancelFactoryMarket) {
+        const result = await atomicOperations.cancelFactoryMarket({
+          listingId,
+          sellerId: user.id,
+          operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+        });
+
+        if (!result?.success) {
+          const codeToStatus: Record<string, number> = {
+            invalid_input: 400,
+            listing_not_found: 404,
+            forbidden: 403,
+            listing_not_active: 409,
+          };
+          return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+        }
+
+        return res.json({ success: true });
+      }
+
       const { data: listing } = await supabase.from('factory_market_listings')
         .select('*').eq('id', listingId).eq('status', 'active').single();
-
       if (!listing) return res.status(404).json({ error: "Annuncio non trovato." });
       if (listing.sellerId !== user.id) return res.status(403).json({ error: "Non sei il venditore." });
-
       await supabase.from('factory_market_listings').update({ status: 'cancelled' }).eq('id', listingId);
       await supabase.from('factories').update({ listedForSale: false, salePrice: 0 }).eq('id', listing.factoryId);
-
-      res.json({ success: true });
+      return res.json({ success: true });
     } catch (err: any) {
       logger.error('operation_failed', { error: err?.message, path: req?.path });
       res.status(500).json({ error: "An unexpected error occurred. Please try again." });

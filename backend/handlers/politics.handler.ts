@@ -10,6 +10,7 @@ import { logger } from '../utils/logger';
 
 export function createPoliticsHandlers(deps: {
   supabase: any;
+  atomicOperations?: any;
   generateSecureId: (length?: number) => string;
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
   partyAssetsService: any;
@@ -17,7 +18,7 @@ export function createPoliticsHandlers(deps: {
   LawRegistry: any;
   GAME_CONFIG: any;
 }) {
-  const { supabase, generateSecureId, getUserPerks, partyAssetsService, mapServiceResultToHttp, LawRegistry, GAME_CONFIG } = deps;
+  const { supabase, atomicOperations, generateSecureId, getUserPerks, partyAssetsService, mapServiceResultToHttp, LawRegistry, GAME_CONFIG } = deps;
 
   // Helper: primaries cycle
   const PRIMARIES_CYCLE_MS = 5 * 24 * 60 * 60 * 1000;
@@ -68,14 +69,37 @@ export function createPoliticsHandlers(deps: {
     if (!name || name.trim().length === 0) return res.status(400).json({ error: "Nome obbligatorio." });
     if (user.gold < 100) return res.status(400).json({ error: "Fondi in Gold insufficienti (costa 100 Gold)." });
 
-    const { data: existingMember } = await supabase.from('party_members').select('partyId').eq('userId', user.id).maybeSingle();
-    if (existingMember) return res.status(400).json({ error: "Sei già membro di un partito." });
-
-    const partyId = generateSecureId(9);
-    const now = Date.now();
-
     try {
-      // 1. Create party
+      if (atomicOperations?.createParty) {
+        const result = await atomicOperations.createParty({
+          userId: user.id,
+          username: user.username,
+          regionId,
+          name: name.trim(),
+          ideology,
+          tag,
+          description,
+          logo,
+          operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+        });
+
+        if (!result?.success) {
+          const codeToStatus: Record<string, number> = {
+            invalid_input: 400,
+            insufficient_gold: 400,
+            already_member: 409,
+            user_not_found: 404,
+          };
+          return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+        }
+
+        return res.json({ success: true, partyId: result.partyId });
+      }
+
+      const { data: existingMember } = await supabase.from('party_members').select('partyId').eq('userId', user.id).maybeSingle();
+      if (existingMember) return res.status(400).json({ error: "Sei già membro di un partito." });
+      const partyId = generateSecureId(9);
+      const now = Date.now();
       await supabase.from('parties').insert({
         id: partyId,
         name: name.trim(),
@@ -87,36 +111,17 @@ export function createPoliticsHandlers(deps: {
         leaderUserId: user.id,
         createdAt: now
       });
-
-      // 2. Add founder as leader
-      await supabase.from('party_members').insert({
-        userId: user.id,
-        partyId,
-        role: 'leader',
-        joinedAt: now
-      });
-
-      // 3. Deduct gold atomically
+      await supabase.from('party_members').insert({ userId: user.id, partyId, role: 'leader', joinedAt: now });
       const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-        p_user_id: user.id,
-        p_money_cost: 0,
-        p_gold_cost: 100,
-        p_energy_cost: 0,
+        p_user_id: user.id, p_money_cost: 0, p_gold_cost: 100, p_energy_cost: 0,
       });
       if (deductError) throw deductError;
       const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
       if (deductData?.error) return res.status(400).json({ error: deductData.error });
-
-      // 4. Log creation
       await supabase.from('party_logs').insert({
-        id: generateSecureId(9),
-        partyId,
-        action: 'created',
-        details: `Partito creato da ${user.username} in ${regionId}`,
-        timestamp: now
+        id: generateSecureId(9), partyId, action: 'created', details: `Partito creato da ${user.username} in ${regionId}`, timestamp: now
       });
-
-      res.json({ success: true, partyId });
+      return res.json({ success: true, partyId });
     } catch (err: any) {
       logger.error('operation_failed', { error: err?.message, path: req?.path });
       res.status(500).json({ error: "An unexpected error occurred. Please try again." });
@@ -516,17 +521,34 @@ export function createPoliticsHandlers(deps: {
     const user = req.user;
     const { inviteId } = req.body;
 
+    if (atomicOperations?.joinParty) {
+      const result = await atomicOperations.joinParty({
+        inviteId,
+        userId: user.id,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          invite_invalid: 400,
+          invite_not_found: 404,
+          already_member: 409,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+      }
+
+      return res.json({ success: true, partyId: result.partyId });
+    }
+
     const { data: invite } = await supabase.from('party_invites').select('partyId, status').eq('id', inviteId).eq('userId', user.id).single();
     if (!invite) return res.status(404).json({ error: "Invito non trovato." });
     if (invite.status !== 'pending') return res.status(400).json({ error: "L'invito non è più valido." });
-
     const { data: existingMember } = await supabase.from('party_members').select('partyId').eq('userId', user.id).single();
     if (existingMember) return res.status(400).json({ error: "Fai già parte di un partito." });
-
     await supabase.from('party_invites').update({ status: 'accepted' }).eq('id', inviteId);
     await supabase.from('party_members').insert({ userId: user.id, partyId: invite.partyId, role: 'member', joinedAt: new Date().toISOString() });
     await supabase.from('party_invites').update({ status: 'rejected' }).eq('userId', user.id).eq('status', 'pending');
-
     res.json({ success: true, partyId: invite.partyId });
   }
 
@@ -809,22 +831,41 @@ export function createPoliticsHandlers(deps: {
     if (!name || name.trim().length === 0) return res.status(400).json({ error: "Nome obbligatorio." });
     if (!stateId) return res.status(400).json({ error: "Devi selezionare uno Stato da te guidato." });
 
+    if (atomicOperations?.createBloc) {
+      const result = await atomicOperations.createBloc({
+        userId: user.id,
+        stateId,
+        name: name.trim(),
+        description,
+        logo,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          forbidden: 403,
+          region_not_found: 404,
+          already_member: 409,
+          name_conflict: 409,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+      }
+
+      return res.json({ success: true, blocId: result.blocId });
+    }
+
     const { data: region } = await supabase.from('regions').select('ownerUserId').eq('id', stateId).single();
     if (!region || region.ownerUserId !== user.id) return res.status(403).json({ error: "Solo il Leader dello Stato può creare un blocco a suo nome." });
-
     const { data: existingMembership } = await supabase.from('bloc_memberships').select('blocId').eq('stateId', stateId).eq('status', 'active').maybeSingle();
     if (existingMembership) return res.status(400).json({ error: "Questo Stato fa già parte di un blocco." });
-
     const { data: existingBloc } = await supabase.from('blocs').select('id').eq('name', name.trim()).maybeSingle();
     if (existingBloc) return res.status(409).json({ error: "Esiste già un blocco con questo nome." });
-
     const id = generateSecureId(9);
     const now = new Date().toISOString();
-
     await supabase.from('blocs').insert({ id, name: name.trim(), logo: logo || '', description: description || '', ownerStateId: stateId, ownerUserId: user.id, createdAt: now });
     await supabase.from('bloc_memberships').insert({ blocId: id, stateId, status: 'active', joinedAt: now });
     await supabase.from('bloc_regulations').insert({ blocId: id, openBorders: 0, defaultMilitaryAgreement: 0 });
-
     res.json({ success: true, blocId: id });
   }
 
@@ -836,23 +877,36 @@ export function createPoliticsHandlers(deps: {
 
     if (!stateId) return res.status(400).json({ error: "Stato non specificato." });
 
+    if (atomicOperations?.applyToBloc) {
+      const result = await atomicOperations.applyToBloc({
+        blocId,
+        userId: user.id,
+        stateId,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          forbidden: 403,
+          region_not_found: 404,
+          already_member: 409,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+      }
+
+      return res.json({ success: true });
+    }
+
     const { data: region } = await supabase.from('regions').select('ownerUserId').eq('id', stateId).single();
     if (!region || region.ownerUserId !== user.id) return res.status(403).json({ error: "Solo il leader può candidarsi." });
-
     const { data: existingMember } = await supabase.from('bloc_memberships').select('blocId').eq('stateId', stateId).eq('status', 'active').maybeSingle();
     if (existingMember) return res.status(400).json({ error: "Questo Stato è già in un blocco." });
-
     const { data: existingApp } = await supabase.from('bloc_applications').select('id').eq('blocId', blocId).eq('stateId', stateId).eq('status', 'pending').maybeSingle();
     if (existingApp) return res.status(400).json({ error: "Candidatura già pendente." });
-
     await supabase.from('bloc_applications').insert({
-      id: generateSecureId(9),
-      blocId,
-      stateId,
-      createdAt: new Date().toISOString(),
-      status: 'pending'
+      id: generateSecureId(9), blocId, stateId, createdAt: new Date().toISOString(), status: 'pending'
     });
-
     res.json({ success: true });
   }
 
@@ -863,38 +917,50 @@ export function createPoliticsHandlers(deps: {
     const { voterStateId, choice } = req.body;
     const voteChoice = choice ? 1 : 0;
 
+    if (atomicOperations?.voteBlocApplication) {
+      const result = await atomicOperations.voteBlocApplication({
+        applicationId: appId,
+        voterUserId: user.id,
+        voterStateId,
+        choice: voteChoice,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          invalid_application: 400,
+          forbidden: 403,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+      }
+
+      return res.json({ success: true, result: result.result });
+    }
+
     const { data: application } = await supabase.from('bloc_applications').select('*').eq('id', appId).single();
     if (!application || application.status !== 'pending') return res.status(400).json({ error: "Candidatura non valida." });
-
     const blocId = application.blocId;
     const { data: membership } = await supabase.from('bloc_memberships').select('status').eq('blocId', blocId).eq('stateId', voterStateId).eq('status', 'active').single();
     if (!membership) return res.status(403).json({ error: "Stato non autorizzato a votare." });
-
     const { data: voterRegion } = await supabase.from('regions').select('ownerUserId').eq('id', voterStateId).single();
     if (!voterRegion || voterRegion.ownerUserId !== user.id) return res.status(403).json({ error: "Solo il leader può votare." });
-
     const { data: existingVote } = await supabase.from('bloc_votes').select('*').eq('targetId', appId).eq('voterStateId', voterStateId).maybeSingle();
     if (existingVote) return res.status(400).json({ error: "Voto già inviato." });
-
     await supabase.from('bloc_votes').insert({ targetId: appId, voterStateId, choice: voteChoice, createdAt: new Date().toISOString() });
-
     const { data: activeMembers } = await supabase.from('bloc_memberships').select('stateId').eq('blocId', blocId).eq('status', 'active');
     const activeCount = activeMembers?.length || 0;
-
     const { data: allVotes } = await supabase.from('bloc_votes').select('choice').eq('targetId', appId);
     const yesVotes = allVotes?.filter(v => v.choice === 1).length || 0;
     const noVotes = allVotes?.filter(v => v.choice === 0).length || 0;
-
     const requiredToPass = Math.floor(activeCount / 2) + 1;
     const requiredToReject = activeCount - requiredToPass + 1;
-
     if (yesVotes >= requiredToPass) {
       await supabase.from('bloc_applications').update({ status: 'approved' }).eq('id', appId);
       await supabase.from('bloc_memberships').insert({ blocId, stateId: application.stateId, status: 'active', joinedAt: new Date().toISOString() });
     } else if (noVotes >= requiredToReject || (yesVotes + noVotes) >= activeCount) {
       await supabase.from('bloc_applications').update({ status: 'rejected' }).eq('id', appId);
     }
-
     res.json({ success: true });
   }
 
@@ -907,20 +973,39 @@ export function createPoliticsHandlers(deps: {
 
     if (!['openBorders', 'migrationOpen', 'defaultMilitaryAgreement'].includes(type)) return res.status(400).json({ error: "Tipo non valido." });
 
+    if (atomicOperations?.proposeBlocRegulation) {
+      const result = await atomicOperations.proposeBlocRegulation({
+        blocId,
+        proposerUserId: user.id,
+        proposerStateId,
+        type,
+        proposedValue: value,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          invalid_type: 400,
+          forbidden: 403,
+          duplicate_pending: 409,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+      }
+
+      return res.json({ success: true, proposalId: result.proposalId });
+    }
+
     const { data: membership } = await supabase.from('bloc_memberships').select('status').eq('blocId', blocId).eq('stateId', proposerStateId).eq('status', 'active').single();
     if (!membership) return res.status(403).json({ error: "Non sei un membro attivo." });
-
     const { data: region } = await supabase.from('regions').select('ownerUserId').eq('id', proposerStateId).single();
     if (!region || region.ownerUserId !== user.id) return res.status(403).json({ error: "Solo il leader può proporre." });
-
     const { data: existingProp } = await supabase.from('bloc_regulation_proposals').select('id').eq('blocId', blocId).eq('type', type).eq('status', 'pending').maybeSingle();
     if (existingProp) return res.status(400).json({ error: "Proposta già pendente." });
-
     const id = generateSecureId(9);
     const now = new Date().toISOString();
     await supabase.from('bloc_regulation_proposals').insert({ id, blocId, type, proposedValue: value, createdAt: now, status: 'pending' });
     await supabase.from('bloc_votes').insert({ targetId: id, voterStateId: proposerStateId, choice: 1, createdAt: now });
-
     res.json({ success: true });
   }
 
@@ -931,31 +1016,44 @@ export function createPoliticsHandlers(deps: {
     const { voterStateId, choice } = req.body;
     const voteChoice = choice ? 1 : 0;
 
+    if (atomicOperations?.voteBlocRegulation) {
+      const result = await atomicOperations.voteBlocRegulation({
+        proposalId: propId,
+        voterUserId: user.id,
+        voterStateId,
+        choice: voteChoice,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          invalid_proposal: 400,
+          forbidden: 403,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+      }
+
+      return res.json({ success: true, result: result.result });
+    }
+
     const { data: proposal } = await supabase.from('bloc_regulation_proposals').select('*').eq('id', propId).single();
     if (!proposal || proposal.status !== 'pending') return res.status(400).json({ error: "Proposta non valida." });
-
     const blocId = proposal.blocId;
     const { data: membership } = await supabase.from('bloc_memberships').select('status').eq('blocId', blocId).eq('stateId', voterStateId).eq('status', 'active').single();
     if (!membership) return res.status(403).json({ error: "Non sei membro del blocco." });
-
     const { data: voterRegion } = await supabase.from('regions').select('ownerUserId').eq('id', voterStateId).single();
     if (!voterRegion || voterRegion.ownerUserId !== user.id) return res.status(403).json({ error: "Solo il leader può votare." });
-
     const { data: existingVote } = await supabase.from('bloc_votes').select('*').eq('targetId', propId).eq('voterStateId', voterStateId).maybeSingle();
     if (existingVote) return res.status(400).json({ error: "Voto già inviato." });
-
     await supabase.from('bloc_votes').insert({ targetId: propId, voterStateId, choice: voteChoice, createdAt: new Date().toISOString() });
-
     const { data: activeMembers } = await supabase.from('bloc_memberships').select('stateId').eq('blocId', blocId).eq('status', 'active');
     const activeCount = activeMembers?.length || 0;
-
     const { data: allVotes } = await supabase.from('bloc_votes').select('choice').eq('targetId', propId);
     const yesVotes = allVotes?.filter(v => v.choice === 1).length || 0;
     const noVotes = allVotes?.filter(v => v.choice === 0).length || 0;
-
     const requiredToPass = Math.floor(activeCount / 2) + 1;
     const requiredToReject = activeCount - requiredToPass + 1;
-
     if (yesVotes >= requiredToPass) {
       await supabase.from('bloc_regulation_proposals').update({ status: 'approved' }).eq('id', propId);
       const updateObj: any = {};
@@ -964,7 +1062,6 @@ export function createPoliticsHandlers(deps: {
     } else if (noVotes >= requiredToReject || (yesVotes + noVotes) >= activeCount) {
       await supabase.from('bloc_regulation_proposals').update({ status: 'rejected' }).eq('id', propId);
     }
-
     res.json({ success: true });
   }
 
@@ -1062,44 +1159,58 @@ export function createPoliticsHandlers(deps: {
 
       if (activeLaw) return res.status(400).json({ error: "Una proposta simile è già in votazione o in attesa di sanzione." });
 
-      const lawId = `law_${Date.now()}_${generateSecureId(6)}`;
-      const nowIso = new Date().toISOString();
-
-      // Check Dictatorship / Autocracies
       const autocracies = ["DICTATORSHIP", "ONE_PARTY_SYSTEM"];
-      if (region.dictatorship || autocracies.includes(region.governmentForm)) {
-        if (!isLeader) return res.status(403).json({ error: "In questo regime solo il Leader può legiferare." });
-
-        await supabase.from('laws').insert({
-          id: lawId, regionId: region.id, proposerId: user.id, type, params, status: 'passed', createdAt: nowIso, expiresAt: nowIso
-        });
-
-        await lawDef.execute(region, params, lawId);
-        return res.json({ success: true, lawId, immediate: true });
-      }
-
-      // Normal Democracy / Executive Monarchy
       const isEconomicsMinister = region.economicAdviserId === user.id;
       const lawCat = lawDef.category;
       const canFastPass = (isEconomicsMinister && (lawCat === "Economia e Tasse" || lawCat === "Costruzioni Statali")) ||
         (isForeignMinister && (type === 'open_borders' || type === 'close_borders'));
+      const forceImmediate = !!(region.dictatorship || autocracies.includes(region.governmentForm) || canFastPass);
 
-      if (canFastPass) {
+      if (forceImmediate && !isLeader && (region.dictatorship || autocracies.includes(region.governmentForm))) {
+        return res.status(403).json({ error: "In questo regime solo il Leader può legiferare." });
+      }
+
+      if (atomicOperations?.proposeLaw) {
+        const result = await atomicOperations.proposeLaw({
+          userId: user.id,
+          regionId: region.id,
+          type,
+          params,
+          forceImmediate,
+          operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+        });
+
+        if (!result?.success) {
+          const codeToStatus: Record<string, number> = {
+            invalid_input: 400,
+            region_not_found: 404,
+            duplicate_pending: 409,
+            dictatorship_limit: 409,
+            forbidden: 403,
+          };
+          return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+        }
+
+        return res.json({
+          success: true,
+          lawId: result.lawId,
+          immediate: !!result.immediate,
+          ...(forceImmediate ? { message: "Legge approvata immediatamente grazie ai tuoi poteri ministeriali." } : {}),
+        });
+      }
+
+      const lawId = `law_${Date.now()}_${generateSecureId(6)}`;
+      const nowIso = new Date().toISOString();
+      if (forceImmediate) {
         await supabase.from('laws').insert({
           id: lawId, regionId: region.id, proposerId: user.id, type, params, status: 'passed', createdAt: nowIso, expiresAt: nowIso
         });
         await lawDef.execute(region, params, lawId);
-        return res.json({ success: true, lawId, immediate: true, message: "Legge approvata immediatamente grazie ai tuoi poteri ministeriali." });
+        return res.json({ success: true, lawId, immediate: true, ...(canFastPass ? { message: "Legge approvata immediatamente grazie ai tuoi poteri ministeriali." } : {}) });
       }
-
       const expiresAt = new Date(Date.now() + (lawDef.delayDays * 24 * 60 * 60 * 1000)).toISOString();
-      await supabase.from('laws').insert({
-        id: lawId, regionId: region.id, proposerId: user.id, type, params, status: 'pending', createdAt: nowIso, expiresAt
-      });
-
-      // Auto-vote PRO
+      await supabase.from('laws').insert({ id: lawId, regionId: region.id, proposerId: user.id, type, params, status: 'pending', createdAt: nowIso, expiresAt });
       await supabase.from('law_votes').insert({ lawId, voterId: user.id, vote: 'yes', createdAt: nowIso });
-
       res.json({ success: true, lawId, immediate: false });
     } catch (err: any) {
       console.error("Error proposing law:", err);
@@ -1136,19 +1247,26 @@ export function createPoliticsHandlers(deps: {
           return res.status(403).json({ error: "Non hai l'autorità per sanzionare o porre veto a questa legge." });
         }
 
-        const nowIso = new Date().toISOString();
+        if (atomicOperations?.resolveLaw) {
+          const result = await atomicOperations.resolveLaw({
+            lawId,
+            actorUserId: user.id,
+            action: vote === 'yes' || vote === 'assent' ? 'assent' : 'veto',
+            operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+          });
+          if (!result?.success) {
+            return res.status(400).json({ error: result?.message || "Operazione non riuscita." });
+          }
+          return res.json({ success: true, result: result.result });
+        }
+
         if (vote === 'yes' || vote === 'assent') {
           await supabase.from('laws').update({ status: 'passed' }).eq('id', lawId);
-          try {
-            await LawRegistry[law.type]?.execute(region, law.params, law.id);
-          } catch (e) {
-            console.error(`Error executing law ${law.type} after assent:`, e);
-          }
+          try { await LawRegistry[law.type]?.execute(region, law.params, law.id); } catch (e) { console.error(`Error executing law ${law.type} after assent:`, e); }
           return res.json({ success: true, result: 'passed' });
-        } else {
-          await supabase.from('laws').update({ status: 'rejected' }).eq('id', lawId);
-          return res.json({ success: true, result: 'vetoed' });
         }
+        await supabase.from('laws').update({ status: 'rejected' }).eq('id', lawId);
+        return res.json({ success: true, result: 'vetoed' });
       }
 
       // Normal Voting Phase
@@ -1193,11 +1311,18 @@ export function createPoliticsHandlers(deps: {
     if (law.status !== 'pending' && law.status !== 'pending_assent') return res.status(400).json({ error: "Puoi ritirare solo leggi attualmente in votazione." });
     if (law.proposerId !== user.id) return res.status(403).json({ error: "Solo il creatore della proposta può ritirarla." });
 
-    const { error: uError } = await supabase
-      .from('laws')
-      .update({ status: 'withdrawn' })
-      .eq('id', lawId);
+    if (atomicOperations?.resolveLaw) {
+      const result = await atomicOperations.resolveLaw({
+        lawId,
+        actorUserId: user.id,
+        action: 'withdraw',
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+      if (!result?.success) return res.status(400).json({ error: result?.message || "Operazione non riuscita." });
+      return res.json({ success: true });
+    }
 
+    const { error: uError } = await supabase.from('laws').update({ status: 'withdrawn' }).eq('id', lawId);
     if (uError) return res.status(500).json({ error: uError.message });
     res.json({ success: true });
   }
@@ -1230,14 +1355,19 @@ export function createPoliticsHandlers(deps: {
         return res.status(403).json({ error: "Non hai i poteri ministeriali per approvare questa legge via Fast-Pass." });
       }
 
-      await supabase.from('laws').update({ status: 'passed', expiresAt: new Date().toISOString() }).eq('id', lawId);
-
-      try {
-        await lawDef.execute(region, law.params, law.id);
-      } catch (e) {
-        console.error(`Error executing fast-passed law ${law.type}:`, e);
+      if (atomicOperations?.resolveLaw) {
+        const result = await atomicOperations.resolveLaw({
+          lawId,
+          actorUserId: user.id,
+          action: 'fast_pass',
+          operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+        });
+        if (!result?.success) return res.status(400).json({ error: result?.message || "Operazione non riuscita." });
+        return res.json({ success: true, message: "Legge approvata via Fast-Pass ministeriale." });
       }
 
+      await supabase.from('laws').update({ status: 'passed', expiresAt: new Date().toISOString() }).eq('id', lawId);
+      try { await lawDef.execute(region, law.params, law.id); } catch (e) { console.error(`Error executing fast-passed law ${law.type}:`, e); }
       res.json({ success: true, message: "Legge approvata via Fast-Pass ministeriale." });
     } catch (err: any) {
       console.error("Error in fast-pass:", err);

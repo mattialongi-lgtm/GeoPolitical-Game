@@ -13,6 +13,7 @@ import { randomInt } from 'crypto';
 
 export function createGovernanceHandlers(deps: {
   supabase: any;
+  atomicOperations?: any;
   generateSecureId: (len: number) => string;
   isValidIso2: (v: string) => boolean;
   isValidUuid: (v: string) => boolean;
@@ -26,6 +27,7 @@ export function createGovernanceHandlers(deps: {
 }) {
   const {
     supabase,
+    atomicOperations,
     generateSecureId,
     isValidIso2,
     isValidUuid,
@@ -94,6 +96,28 @@ export function createGovernanceHandlers(deps: {
     if (currency === 'EUR' && user.money < amountNum) return res.status(400).json({ error: "Fondi in € insufficienti." });
     if (currency === 'GOLD' && user.gold < amountNum) return res.status(400).json({ error: "Fondi in Gold insufficienti." });
 
+    if (atomicOperations?.budgetDonate) {
+      const result = await atomicOperations.budgetDonate({
+        userId: user.id,
+        entityId,
+        amount: amountNum,
+        currency,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          forbidden: 403,
+          insufficient_funds: 400,
+          user_not_found: 404,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "La donazione è fallita." });
+      }
+
+      return res.json({ success: true, donated: result?.donated ?? null });
+    }
+
     const conversionRate = 500000;
     const moneyDelta = currency === 'GOLD' ? amountNum * conversionRate : amountNum;
 
@@ -132,6 +156,27 @@ export function createGovernanceHandlers(deps: {
     const user = req.user;
     const { regionId } = req.body;
     if (!regionId) return res.status(400).json({ error: "Nessuna regione specificata." });
+
+    if (atomicOperations?.budgetCleanRadiation) {
+      const result = await atomicOperations.budgetCleanRadiation({
+        userId: user.id,
+        regionId,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          forbidden: 403,
+          region_not_found: 404,
+          no_radiation: 400,
+          insufficient_budget: 400,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Fondi insufficienti." });
+      }
+
+      return res.json({ success: true });
+    }
 
     // Only Governor/Leader can do this
     const { data: region, error: regionError } = await supabase
@@ -273,6 +318,30 @@ export function createGovernanceHandlers(deps: {
       return res.status(400).json({ error: "L'utente ricopre già una carica ministeriale in un altro Stato." });
     }
 
+    if (atomicOperations?.ministersAssign) {
+      const result = await atomicOperations.ministersAssign({
+        leaderUserId: leader.id,
+        stateId: managedIso2,
+        userId,
+        role,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          forbidden: 403,
+          region_not_found: 404,
+          user_not_found: 404,
+          role_not_supported: 400,
+          already_minister: 409,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Errore durante l'assegnazione." });
+      }
+
+      return res.json({ success: true, title: result?.title ?? null });
+    }
+
     const { data: targetUser } = await supabase.from('users').select('username').eq('id', userId).maybeSingle();
     if (!targetUser) return res.status(404).json({ error: "Utente non trovato." });
 
@@ -312,6 +381,26 @@ export function createGovernanceHandlers(deps: {
     const iso2 = normalizeRegionLikeId(String(rawIso2 || '').replace('NATION_', ''));
     const managedIso2 = await assertCanManageRegion(req, res, iso2, "Solo il Leader può revocare i ministri.");
     if (!managedIso2) return;
+
+    if (atomicOperations?.ministersRevoke) {
+      const result = await atomicOperations.ministersRevoke({
+        leaderUserId: req.user.id,
+        stateId: managedIso2,
+        role,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          forbidden: 403,
+          region_not_found: 404,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Errore durante la revoca." });
+      }
+
+      return res.json({ success: true });
+    }
 
     try {
       await supabase.from('ministers').update({ status: 'REVOKED' }).eq('stateId', managedIso2).eq('role', role);
@@ -675,6 +764,27 @@ export function createGovernanceHandlers(deps: {
 
     if (user.residenceId !== regionId) return res.status(403).json({ error: "Devi essere cittadino per votare." });
 
+    if (atomicOperations?.leaderVote) {
+      const result = await atomicOperations.leaderVote({
+        regionId,
+        voterId: user.id,
+        candidateId,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          forbidden: 403,
+          already_voted: 409,
+          candidate_not_found: 404,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+      }
+
+      return res.json({ success: true });
+    }
+
     const { error } = await supabase.from('leader_votes').insert({ regionId, voterId: user.id, candidateId });
     if (error) return res.status(400).json({ error: "Hai già votato o regione non valida." });
 
@@ -755,6 +865,28 @@ export function createGovernanceHandlers(deps: {
     const targetStateId = rawTarget?.toUpperCase().replace('NATION_', '').replace('nation_', '');
     const finalFromStateId = (rawFrom || user.regionId)?.toUpperCase().replace('NATION_', '').replace('nation_', '');
 
+    if (atomicOperations?.sanctionsApply) {
+      const result = await atomicOperations.sanctionsApply({
+        actorUserId: user.id,
+        fromStateId: finalFromStateId,
+        targetStateId,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          forbidden: 403,
+          region_not_found: 404,
+          target_not_found: 404,
+          conflict: 409,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+      }
+
+      return res.json({ success: true });
+    }
+
     const { data: region } = await supabase.from('regions').select('ownerUserId, economicAdviserId').eq('id', finalFromStateId).single();
     if (!region) return res.status(404).json({ error: "Regione non trovata." });
 
@@ -785,6 +917,26 @@ export function createGovernanceHandlers(deps: {
   async function sanctionsRevoke(req: any, res: any) {
     const user = req.user;
     const { sanctionId } = req.body;
+
+    if (atomicOperations?.sanctionsRevoke) {
+      const result = await atomicOperations.sanctionsRevoke({
+        actorUserId: user.id,
+        sanctionId,
+        operationKey: req.body?.idempotencyKey || req.headers?.['x-idempotency-key'] || null,
+      });
+
+      if (!result?.success) {
+        const codeToStatus: Record<string, number> = {
+          invalid_input: 400,
+          forbidden: 403,
+          not_found: 404,
+          conflict: 409,
+        };
+        return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Operazione non riuscita." });
+      }
+
+      return res.json({ success: true });
+    }
 
     const { data: sanction } = await supabase.from('sanctions').select('*').eq('id', sanctionId).single();
     if (!sanction) return res.status(404).json({ error: "Sanzione non trovata." });

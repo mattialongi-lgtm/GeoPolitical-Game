@@ -4735,6 +4735,21 @@ async function checkAndResolveLaws() {
         continue;
       }
 
+      if (atomicOperations?.resolveLaw) {
+        const result = await atomicOperations.resolveLaw({
+          lawId: law.id,
+          actorUserId: null,
+          action: 'fast_pass',
+          operationKey: `cron:${law.id}`,
+        });
+
+        if (!result?.success) {
+          console.error(`Atomic law resolution failed for ${law.type} (${law.id}):`, result);
+          await supabase.from('laws').update({ status: 'rejected' }).eq('id', law.id);
+        }
+        continue;
+      }
+
       await supabase.from('laws').update({ status: 'passed' }).eq('id', law.id);
 
       try {

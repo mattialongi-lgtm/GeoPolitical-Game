@@ -5,6 +5,7 @@ interface RegisterGovernanceRoutesDeps {
   app: any;
   authenticate: any;
   supabase: any;
+  atomicOperations?: any;
   generateSecureId: (len: number) => string;
   isValidIso2: (v: string) => boolean;
   isValidUuid: (v: string) => boolean;

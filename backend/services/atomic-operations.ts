@@ -15,6 +15,104 @@ async function callAtomicRpc<T>(supabase: any, name: string, payload: RpcPayload
 
 export function createAtomicOperations(supabase: any) {
   return {
+    budgetDonate(input: {
+      userId: string;
+      entityId: string;
+      amount: number;
+      currency: 'EUR' | 'GOLD';
+      operationKey?: string | null;
+    }) {
+      return callAtomicRpc<any>(supabase, 'rpc_budget_donate_atomic', {
+        p_user_id: input.userId,
+        p_entity_id: input.entityId,
+        p_amount: input.amount,
+        p_currency: input.currency,
+        p_operation_key: input.operationKey ?? null,
+      });
+    },
+
+    budgetCleanRadiation(input: {
+      userId: string;
+      regionId: string;
+      operationKey?: string | null;
+    }) {
+      return callAtomicRpc<any>(supabase, 'rpc_budget_clean_radiation_atomic', {
+        p_user_id: input.userId,
+        p_region_id: input.regionId,
+        p_operation_key: input.operationKey ?? null,
+      });
+    },
+
+    ministersAssign(input: {
+      leaderUserId: string;
+      stateId: string;
+      userId: string;
+      role: 'economics' | 'foreign';
+      operationKey?: string | null;
+    }) {
+      return callAtomicRpc<any>(supabase, 'rpc_ministers_assign_atomic', {
+        p_leader_user_id: input.leaderUserId,
+        p_state_id: input.stateId,
+        p_user_id: input.userId,
+        p_role: input.role,
+        p_operation_key: input.operationKey ?? null,
+      });
+    },
+
+    ministersRevoke(input: {
+      leaderUserId: string;
+      stateId: string;
+      role: 'economics' | 'foreign';
+      operationKey?: string | null;
+    }) {
+      return callAtomicRpc<any>(supabase, 'rpc_ministers_revoke_atomic', {
+        p_leader_user_id: input.leaderUserId,
+        p_state_id: input.stateId,
+        p_role: input.role,
+        p_operation_key: input.operationKey ?? null,
+      });
+    },
+
+    leaderVote(input: {
+      regionId: string;
+      voterId: string;
+      candidateId: string;
+      operationKey?: string | null;
+    }) {
+      return callAtomicRpc<any>(supabase, 'rpc_leader_vote_atomic', {
+        p_region_id: input.regionId,
+        p_voter_id: input.voterId,
+        p_candidate_id: input.candidateId,
+        p_operation_key: input.operationKey ?? null,
+      });
+    },
+
+    sanctionsApply(input: {
+      actorUserId: string;
+      fromStateId: string;
+      targetStateId: string;
+      operationKey?: string | null;
+    }) {
+      return callAtomicRpc<any>(supabase, 'rpc_sanctions_apply_atomic', {
+        p_actor_user_id: input.actorUserId,
+        p_from_state_id: input.fromStateId,
+        p_target_state_id: input.targetStateId,
+        p_operation_key: input.operationKey ?? null,
+      });
+    },
+
+    sanctionsRevoke(input: {
+      actorUserId: string;
+      sanctionId: string;
+      operationKey?: string | null;
+    }) {
+      return callAtomicRpc<any>(supabase, 'rpc_sanctions_revoke_atomic', {
+        p_actor_user_id: input.actorUserId,
+        p_sanction_id: input.sanctionId,
+        p_operation_key: input.operationKey ?? null,
+      });
+    },
+
     provisionInitialUser(input: {
       userId: string;
       email?: string | null;
@@ -257,13 +355,13 @@ export function createAtomicOperations(supabase: any) {
 
     resolveLaw(input: {
       lawId: string;
-      actorUserId: string;
+      actorUserId?: string | null;
       action: string;
       operationKey?: string | null;
     }) {
       return callAtomicRpc<any>(supabase, 'rpc_resolve_law_atomic', {
         p_law_id: input.lawId,
-        p_actor_user_id: input.actorUserId,
+        p_actor_user_id: input.actorUserId ?? null,
         p_action: input.action,
         p_operation_key: input.operationKey ?? null,
       });

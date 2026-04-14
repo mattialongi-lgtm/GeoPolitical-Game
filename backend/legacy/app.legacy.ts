@@ -87,7 +87,7 @@ import {
 } from "../utils/automation-energy";
 import { logger } from "../utils/logger";
 import { createAuthenticateMiddleware } from "../middleware/authenticate.middleware";
-import { startBackgroundJobs as startBackgroundJobsScheduler } from "../jobs/background-jobs";
+import { startBackendJobs } from "../jobs/scheduler";
 
 logger.info("Starting backend/app.ts");
 
@@ -733,8 +733,6 @@ let missingAutomationTablesWarned = {
   training: false,
 } as { work: boolean; training: boolean };
 
-let automationTickRunning = false;
-
 const parseAutomationTimestamp = (value: string | number | null | undefined, fallback: number): number => {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string' && value.trim()) {
@@ -755,8 +753,6 @@ const shouldTreatAutoWorkAsNeverFired = (lastFiredAt: string | null, activatedAt
 };
 
 async function processAutomationTick() {
-  if (automationTickRunning) return;
-  automationTickRunning = true;
   try {
     // Cache for this tick to avoid N+1 queries
     const userCache = new Map<string, any>();
@@ -949,8 +945,6 @@ async function processAutomationTick() {
     }
   } catch (error) {
     console.error('[AUTOMATION] processAutomationTick error:', error);
-  } finally {
-    automationTickRunning = false;
   }
 }
 
@@ -4882,7 +4876,7 @@ export async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     logger.info(`Server running on http://localhost:${PORT}`);
-    startBackgroundJobsScheduler({
+    startBackendJobs({
       budgetMaintenanceTick,
       checkAndResolveElections,
       checkAndAdvanceIndependentRegions,

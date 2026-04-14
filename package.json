@@ -15,6 +15,7 @@
     "test:watch": "node --experimental-vm-modules node_modules/.bin/jest --watch",
     "test:security-hardening": "node scripts/security-hardening-regression-smoke.cjs",
     "test:security-db-integration": "node scripts/security-db-integration.mjs",
+    "test:security-atomic-actions": "node scripts/security-atomic-actions-integration.mjs",
     "test:security-db-integration:ci": "node -e \"process.env.REQUIRE_DB_INTEGRATION='true'; process.env.RUN_DB_INTEGRATION_TESTS='true'; import('./scripts/security-db-integration.mjs')\"",
     "test:security-db-rls-validation": "node scripts/security-db-rls-validation.mjs",
     "test:security-db-rls-validation:ci": "node -e \"process.env.REQUIRE_DB_RLS_VALIDATION='true'; process.env.RUN_DB_RLS_VALIDATION_TESTS='true'; import('./scripts/security-db-rls-validation.mjs')\"",

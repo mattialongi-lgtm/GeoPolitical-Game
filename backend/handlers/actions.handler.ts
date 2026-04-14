@@ -90,6 +90,7 @@ const calculateTravelTimeMs = (fromIso2: string, toIso2: string): number => {
 
 export function createActionsHandlers(deps: {
   supabase: any;
+  atomicOperations: any;
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
   addXP: (userId: string, amount: number) => Promise<void>;
   generateSecureId: (length: number) => string;
@@ -114,7 +115,7 @@ export function createActionsHandlers(deps: {
   incrementPlayerWorkExperience: (userId: string, resourceType: string, gain: number, istruzioneLevel: number) => Promise<any>;
 }) {
   const {
-    supabase, getUserPerks, addXP, generateSecureId, addBudgetTransaction,
+    supabase, atomicOperations, getUserPerks, addXP, generateSecureId, addBudgetTransaction,
     isValidIso2, performTrainingAction, performWorkAction,
     updateMissionProgress,
     GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, FACTORY_CONFIG, AUTONOMY_CONFIG,
@@ -695,105 +696,39 @@ export function createActionsHandlers(deps: {
   if (!regionId) return res.status(400).json({ error: "Nessuna destinazione specificata." });
   const normalizedRegionId = String(regionId).trim().toUpperCase();
   if (!isValidIso2(normalizedRegionId)) return res.status(400).json({ error: "Regione non valida." });
-  if (user.regionId === normalizedRegionId) return res.status(400).json({ error: "Sei già in questa regione." });
-
-  // Block travel if already traveling
-  if (user.travelingUntil && Date.now() < user.travelingUntil) {
-    const remainingMin = Math.ceil((user.travelingUntil - Date.now()) / 60000);
-    return res.status(400).json({ error: `Sei già in viaggio verso ${user.travelingTo}. Arrivo tra ${remainingMin} minuti.` });
-  }
-
-  // 1. Fetch target region info (use * to avoid errors if optional columns are missing)
-  const { data: targetRegion, error: regionError } = await supabase
-    .from('regions')
-    .select('*')
-    .eq('id', normalizedRegionId)
-    .single();
-
-  if (regionError || !targetRegion) return res.status(404).json({ error: "Regione non trovata." });
-
-  let isRestricted = targetRegion.workRestrictions === 1;
-  let travelFee = targetRegion.travelFee || 0;
-  const sourceStateId = user.residenceId || user.regionId;
-
-  // 2. Bloc check
-  const [{ data: userBloc }, { data: targetBloc }] = await Promise.all([
-    supabase.from('bloc_memberships').select('blocId').eq('stateId', sourceStateId).eq('status', 'active').maybeSingle(),
-    supabase.from('bloc_memberships').select('blocId').eq('stateId', normalizedRegionId).eq('status', 'active').maybeSingle()
-  ]);
-
-  if (userBloc && targetBloc && userBloc.blocId === targetBloc.blocId) {
-    const { data: blocReg } = await supabase.from('bloc_regulations').select('openBorders, migrationOpen').eq('blocId', userBloc.blocId).maybeSingle();
-    if (blocReg && (blocReg.openBorders || blocReg.migrationOpen)) {
-      isRestricted = false;
-      travelFee = 0;
-    }
-  }
-
-  // 3. Migration Agreement check
-  if (isRestricted || travelFee > 0) {
-    const { data: agreement } = await supabase
-      .from('migration_agreements')
-      .select('id')
-      .eq('fromStateId', normalizedRegionId)
-      .eq('toStateId', sourceStateId)
-      .eq('status', 'ACTIVE')
-      .maybeSingle();
-
-    if (agreement) {
-      isRestricted = false;
-      travelFee = 0;
-    }
-  }
-
-  // 4. Budget check
-  if (isRestricted && travelFee > 0 && user.money < travelFee) {
-    return res.status(400).json({ error: `Fondi insufficienti per pagare la tassa di frontiera ($${travelFee}).` });
-  }
 
   try {
-    // 5. Calculate travel time
     const travelTimeMs = calculateTravelTimeMs(user.regionId, normalizedRegionId);
-    const travelingUntil = Date.now() + travelTimeMs;
-    const travelMinutes = Math.round(travelTimeMs / 60000);
+    const result = await atomicOperations.startTravel({
+      userId: user.id,
+      targetRegionId: normalizedRegionId,
+      travelTimeMs,
+    });
 
-    // 6. Start travel (set travelingTo and travelingUntil instead of instant move)
-    const updateData: any = {
-      travelingFrom: user.regionId,
-      travelingTo: normalizedRegionId,
-      travelingUntil,
-      travelDurationMs: travelTimeMs,
+    const codeToStatus: Record<string, number> = {
+      invalid_input: 400,
+      invalid_region: 400,
+      same_region: 400,
+      already_traveling: 400,
+      insufficient_funds: 400,
+      user_not_found: 404,
+      region_not_found: 404,
     };
-    if (isRestricted && travelFee > 0) {
-      updateData.money = user.money - travelFee;
-    }
 
-    await supabase.from('users').update(updateData).eq('id', user.id);
-
-    // Budget transaction for travel fee
-    if (isRestricted && travelFee > 0) {
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: normalizedRegionId,
-        p_type: 'INCOME',
-        p_subtype: 'TRAVEL_FEE',
-        p_money_delta: travelFee,
-        p_resources_delta: {},
-        p_created_by: user.id,
-        p_metadata: { fromRegion: user.regionId }
-      });
+    if (!result?.success) {
+      return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "Errore durante il viaggio" });
     }
 
     res.json({
       success: true,
-      regionId: normalizedRegionId,
-      travelMinutes,
-      travelingUntil,
-      travelingFrom: user.regionId,
-      travelDurationMs: travelTimeMs,
+      regionId: result.regionId ?? normalizedRegionId,
+      travelMinutes: result.travelMinutes,
+      travelingUntil: result.travelingUntil,
+      travelingFrom: result.travelingFrom ?? user.regionId,
+      travelDurationMs: result.travelDurationMs ?? travelTimeMs,
     });
   } catch (err: any) {
-    console.error("Travel error:", err);
+    logger.error('operation_failed', { error: err?.message, path: req?.path, flow: 'travel_atomic' });
     res.status(500).json({ error: "Errore durante il viaggio" });
   }
   }
@@ -843,91 +778,41 @@ export function createActionsHandlers(deps: {
   async function actionsAttack(req: any, res: any) {
   const user = req.user;
   const { regionId } = req.body;
+  if (!regionId) return res.status(400).json({ error: "Region ID required" });
 
-  const perks = await getUserPerks(user.id);
-
-  // RESISTENZA reduces energy in war too (same formula as work, capped at lv50)
-  const resistenza = perks['RESISTENZA'] || 0;
-  const energyReduction = Math.min(0.5, resistenza / 100);
-  const energyCost = Math.ceil(GAME_CONFIG.ATTACK_ENERGY_COST * (1 - energyReduction));
-
-  let finalEnergyCost = energyCost;
-
-  if (user.energy < finalEnergyCost) return res.status(400).json({ error: "Not enough energy" });
-
-  // Cooldown check via Supabase
-  const { data: lastAttack } = await supabase
-    .from('cooldowns')
-    .select('last_used')
-    .eq('user_id', user.id)
-    .eq('action_type', 'attack')
-    .maybeSingle();
-
-  if (lastAttack && Date.now() - new Date(lastAttack.last_used).getTime() < GAME_CONFIG.ATTACK_COOLDOWN) {
-    return res.status(400).json({ error: "Action on cooldown" });
-  }
-
-  const { data: region } = await supabase.from('regions').select('*').eq('id', regionId).single();
-  if (!region) return res.status(404).json({ error: "Region not found" });
-
-  // Bloc restriction
-  const [{ data: attackerBloc }, { data: defenderBloc }] = await Promise.all([
-    supabase.from('bloc_memberships').select('blocId').eq('stateId', user.regionId).eq('status', 'active').maybeSingle(),
-    supabase.from('bloc_memberships').select('blocId').eq('stateId', regionId).eq('status', 'active').maybeSingle()
-  ]);
-
-  if (attackerBloc && defenderBloc && attackerBloc.blocId === defenderBloc.blocId) {
-    return res.status(403).json({ error: "Non puoi dichiarare guerra a un membro dello stesso Blocco Geopolitico." });
-  }
-
-  const forzaBonus = (perks['FORZA'] || 0) * 0.05;
-  const istruzBonus = (perks['ISTRUZIONE'] || 0) * 0.02;
-  const resistBonus = (perks['RESISTENZA'] || 0) * 0.03;
-  const totalDmgBonus = forzaBonus + istruzBonus + resistBonus;
-
-  let alphaBonus = 0;
-  if (resistenza >= 50) alphaBonus += 0.10;
-  if (resistenza >= 75) alphaBonus += 0.10;
-  if (resistenza >= 100) alphaBonus += 0.15;
-
-  const winProbability = Math.min(0.9, 0.3 + totalDmgBonus + alphaBonus);
-  const roll = randomInt(0, 1000);
-  const success = roll < Math.round(winProbability * 1000);
-
-  await supabase.from('users').update({ energy: user.energy - finalEnergyCost }).eq('id', user.id);
-
-  if (success) {
-    await supabase.from('regions').update({
-      ownerUserId: user.id,
-      stability: Math.max(0, (region.stability || 100) - 20)
-    }).eq('id', regionId);
-
-    const warId = generateSecureId(7);
-    await supabase.from('wars').insert({
-      id: warId,
-      attackerCountryIso2: user.regionId,
-      defenderCountryIso2: regionId,
-      attackerUserId: user.id,
-      defenderUserId: region.ownerUserId,
-      status: 'ended',
-      startedAt: new Date().toISOString(),
-      endsAt: new Date().toISOString(),
-      attackerScore: 100,
-      defenderScore: 0
+  try {
+    const result = await atomicOperations.attackRegion({
+      userId: user.id,
+      targetRegionId: String(regionId).trim().toUpperCase(),
+      attackCooldownMs: GAME_CONFIG.ATTACK_COOLDOWN,
+      baseEnergyCost: GAME_CONFIG.ATTACK_ENERGY_COST,
+      xpSuccess: GAME_CONFIG.XP_PER_ATTACK,
+      xpFailure: Math.floor(GAME_CONFIG.XP_PER_ATTACK / 2),
     });
 
-    await addXP(user.id, GAME_CONFIG.XP_PER_ATTACK);
-  } else {
-    await addXP(user.id, Math.floor(GAME_CONFIG.XP_PER_ATTACK / 2));
+    const codeToStatus: Record<string, number> = {
+      invalid_input: 400,
+      invalid_region: 400,
+      same_region: 400,
+      cooldown_active: 400,
+      insufficient_energy: 400,
+      forbidden_same_bloc: 403,
+      user_not_found: 404,
+      region_not_found: 404,
+    };
+
+    if (!result?.success) {
+      return res.status(codeToStatus[result?.code] || 400).json({ error: result?.message || "An unexpected error occurred. Please try again." });
+    }
+
+    res.json({
+      success: !!result.attackSucceeded,
+      winProbability: Number(result.winProbability || 0),
+    });
+  } catch (err: any) {
+    logger.error('operation_failed', { error: err?.message, path: req?.path, flow: 'attack_atomic' });
+    res.status(500).json({ error: "An unexpected error occurred. Please try again." });
   }
-
-  await supabase.from('cooldowns').upsert({
-    user_id: user.id,
-    action_type: 'attack',
-    last_used: new Date().toISOString()
-  });
-
-  res.json({ success, winProbability: Math.round(winProbability * 100) });
   }
 
   // ── POST /api/actions/train ──

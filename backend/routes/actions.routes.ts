@@ -5,6 +5,7 @@ interface RegisterActionsRoutesDeps {
   app: any;
   authenticate: any;
   supabase: any;
+  atomicOperations: any;
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
   addXP: (userId: string, amount: number) => Promise<void>;
   generateSecureId: (length: number) => string;

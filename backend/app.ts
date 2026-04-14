@@ -75,6 +75,7 @@ import { PartyAssetsRepository } from "./repositories/party-assets.repository";
 import { PartyAssetsService } from "./services/party-assets.service";
 import { ProductionRepository } from "./repositories/production.repository";
 import { ProductionService } from "./services/production.service";
+import { createAtomicOperations } from "./services/atomic-operations";
 import { isDailyBonusClaimSuccess, isDailyMissionClaimSuccess } from "./observability/contract-guards";
 import { mapServiceResultToHttp } from "./services/http-result.mapper";
 import { errorHandler } from "./middleware/errorHandler.middleware";
@@ -158,6 +159,7 @@ if (!supabaseUrl || !supabaseKey) {
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
+const atomicOperations = createAtomicOperations(supabase);
 const factoryEconomyService = new FactoryEconomyService(new FactoryEconomyRepository(supabase));
 const factoryUpgradeService = new FactoryUpgradeService(new FactoryUpgradeRepository(supabase));
 const factoryCreateService = new FactoryCreateService(new FactoryCreateRepository(supabase));
@@ -676,62 +678,31 @@ const authenticate = async (req: any, res: any, next: any) => {
         return res.status(500).json({ error: "Failed to create user profile: no region available in database." });
       }
 
-      const { data: newUser, error: createError } = await supabase
-        .from('users')
-        .insert({
-          id: authUser.id,
-          username: authUser.user_metadata?.username || authUser.email?.split('@')[0] || `User_${authUser.id.substring(0, 5)}`,
-          money: 5000,
-          gold: 50,
-          energy: 100,
-          xp: 0,
-          level: 1,
-          regionId: defaultRegionId,
-          residenceId: defaultRegionId,
+      try {
+        const provisionResult = await atomicOperations.provisionInitialUser({
+          userId: authUser.id,
+          email: authUser.email ?? null,
+          username: authUser.user_metadata?.username ?? null,
+          defaultRegionId,
           lastEnergyUpdate: Date.now(),
-          lastLogin: Date.now()
-        })
-        .select(AUTH_USER_SELECT_MINIMAL)
-        .single() as any;
-      
-      if (createError) {
-        if (createError.code === '23505') {
-          // Race condition: another request created the user concurrently.
-          // Re-fetch the newly created user record.
-          let { data: retryUser, error: retryError } = await supabase
-            .from('users')
-            .select(AUTH_USER_SELECT_MINIMAL)
-            .eq('id', authUser.id)
-            .single() as any;
-          
-          if (retryError || !retryUser) {
-            console.error("[JIT] Error re-fetching user after race condition:", retryError);
-            return res.status(500).json({ error: "Failed to retrieve user profile after concurrent creation." });
-          }
-          user = retryUser;
-        } else {
-          console.error("[JIT] Error provisioning user:", createError);
+          lastLogin: Date.now(),
+        });
+
+        if (!provisionResult?.success || !provisionResult?.user) {
+          console.error("[JIT] Provisioning RPC returned failure:", provisionResult);
           return res.status(500).json({ error: "Failed to create user profile. Please check if 'regions' table is populated." });
         }
-      } else {
-        if (newUser) {
-          console.log(`[JIT] Successfully provisioned user: ${newUser.username}`);
-          user = newUser;
 
-          // Grant starter resources to new player
-          const starterResources = [
-            { userId: newUser.id, itemId: 'oil', quantity: 20 },
-            { userId: newUser.id, itemId: 'minerals', quantity: 20 },
-            { userId: newUser.id, itemId: 'uranium', quantity: 5 },
-            { userId: newUser.id, itemId: 'diamonds', quantity: 5 },
-          ];
-          try {
-            await supabase.from('user_inventory').insert(starterResources);
-            console.log(`[JIT] Granted starter resources to ${newUser.username}`);
-          } catch (invErr) {
-            console.error("[JIT] Error granting starter resources:", invErr);
-          }
+        user = provisionResult.user;
+
+        if (provisionResult.created) {
+          console.log(`[JIT] Successfully provisioned user: ${user.username}`);
+        } else {
+          console.log(`[JIT] Provisioning replay detected, reusing user: ${user.username}`);
         }
+      } catch (createError: any) {
+        console.error("[JIT] Error provisioning user:", createError);
+        return res.status(500).json({ error: "Failed to create user profile. Please check if 'regions' table is populated." });
       }
     }
 
@@ -5280,6 +5251,7 @@ export async function startServer() {
     authenticate,
     supabase,
     getUserPerks,
+    atomicOperations,
     isAllowedAvatarDataUrl,
     IS_PRODUCTION,
     ENABLE_DEV_ENDPOINTS,

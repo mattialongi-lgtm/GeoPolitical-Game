@@ -71,6 +71,7 @@ const MIGRATIONS: string[] = [
   'migration_travel_cancel.sql',
   'migration_extraction_caps_rebalance.sql',
   'migration_daily_resource_reset_lock.sql',
+  'migration_atomic_actions_rpc.sql',
 ];
 
 const __filename = fileURLToPath(import.meta.url);

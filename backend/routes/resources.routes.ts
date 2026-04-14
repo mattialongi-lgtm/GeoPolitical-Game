@@ -5,6 +5,7 @@ interface RegisterResourcesRoutesDeps {
   app: any;
   authenticate: any;
   supabase: any;
+  atomicOperations: any;
   getUserPerks: any;
   addXP: any;
   updateMissionProgress: any;

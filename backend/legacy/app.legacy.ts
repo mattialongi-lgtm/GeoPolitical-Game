@@ -76,6 +76,7 @@ import { PartyAssetsService } from "../services/party-assets.service";
 import { ProductionRepository } from "../repositories/production.repository";
 import { ProductionService } from "../services/production.service";
 import { createAtomicOperations } from "../services/atomic-operations";
+import { EconomyService } from "../services/economy.service";
 import { isDailyBonusClaimSuccess, isDailyMissionClaimSuccess } from "../observability/contract-guards";
 import { mapServiceResultToHttp } from "../services/http-result.mapper";
 import { errorHandler } from "../middleware/errorHandler.middleware";
@@ -167,6 +168,7 @@ const factoryUpgradeService = new FactoryUpgradeService(new FactoryUpgradeReposi
 const factoryCreateService = new FactoryCreateService(new FactoryCreateRepository(supabase));
 const partyAssetsService = new PartyAssetsService(new PartyAssetsRepository(supabase));
 const productionService = new ProductionService(new ProductionRepository(supabase));
+const economyService = new EconomyService(supabase);
 
 // Compressione gzip/deflate: riduce egress JSON del 60-75% su tutte le risposte
 app.use(compression());
@@ -567,7 +569,7 @@ const updateCooldown = async (userId: string, actionType: string) => {
 
 // --- Budget Core Helper ---
 // --- Budget Core Helper (Supabase RPC based) ---
-async function addBudgetTransaction(
+const addBudgetTransaction = async (
   ownerType: string,
   ownerId: string,
   type: string,
@@ -575,164 +577,20 @@ async function addBudgetTransaction(
   moneyDelta: number,
   resourcesDelta: Record<string, number> = {},
   createdByUserId: string | null = null,
-  metadata: any = {}
-) {
-  const normalizeResourcesDelta = (raw: Record<string, number> = {}) => {
-    const normalized: Record<string, number> = {};
-    for (const [key, value] of Object.entries(raw || {})) {
-      const parsed = Math.trunc(Number(value) || 0);
-      if (parsed !== 0) normalized[key] = parsed;
-    }
-    return normalized;
-  };
-
-  const addBudgetTransactionFallback = async () => {
-    const normalizedMoneyDelta = Math.trunc(Number(moneyDelta) || 0);
-    const normalizedResourcesDelta = normalizeResourcesDelta(resourcesDelta);
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const { data: budget, error: budgetErr } = await supabase
-        .from('budgets')
-        .select('id, moneyEUR, resources')
-        .eq('ownerType', ownerType)
-        .eq('ownerId', ownerId)
-        .maybeSingle();
-      if (budgetErr) throw budgetErr;
-      if (!budget?.id) {
-        await ensureBudgetExists();
-        continue;
-      }
-
-      const currentMoney = Math.trunc(Number(budget.moneyEUR) || 0);
-      const newMoney = currentMoney + normalizedMoneyDelta;
-      if (newMoney < 0) throw new Error('Fondi insufficienti');
-
-      const rawResources = typeof budget.resources === 'string'
-        ? JSON.parse(budget.resources || '{}')
-        : (budget.resources || {});
-      const newResources: Record<string, number> = {};
-      for (const [key, value] of Object.entries(rawResources || {})) {
-        newResources[key] = Math.trunc(Number(value) || 0);
-      }
-
-      for (const [key, delta] of Object.entries(normalizedResourcesDelta)) {
-        const nextValue = (newResources[key] || 0) + delta;
-        if (nextValue < 0) throw new Error(`Risorse insufficienti: ${key}`);
-        newResources[key] = nextValue;
-      }
-
-      const now = Date.now();
-      const { data: updatedBudget, error: updateErr } = await supabase
-        .from('budgets')
-        .update({
-          moneyEUR: newMoney,
-          resources: newResources,
-          updatedAt: now,
-        })
-        .eq('id', budget.id)
-        .eq('moneyEUR', currentMoney)
-        .select('id')
-        .maybeSingle();
-      if (updateErr) throw updateErr;
-      if (!updatedBudget?.id) continue;
-
-      const txId = generateSecureId(12);
-      const txPayload: any = {
-        id: txId,
-        budgetId: budget.id,
-        type,
-        subtype,
-        moneyDelta: normalizedMoneyDelta,
-        resourcesDelta: normalizedResourcesDelta,
-        createdAt: now,
-        metadata: metadata || {},
-      };
-      if (createdByUserId) txPayload.createdByUserId = createdByUserId;
-
-      let { error: txErr } = await supabase.from('budget_transactions').insert(txPayload);
-      if (txErr && txPayload.createdByUserId) {
-        const txMsg = String((txErr as any)?.message || '').toLowerCase();
-        if (txMsg.includes('uuid') || txMsg.includes('invalid input syntax')) {
-          delete txPayload.createdByUserId;
-          ({ error: txErr } = await supabase.from('budget_transactions').insert(txPayload));
-        }
-      }
-      if (txErr) throw txErr;
-
-      return txId;
-    }
-
-    throw new Error('Conflitto durante aggiornamento budget. Riprova.');
-  };
-
-  // Older DBs may not have pre-created budgets for all owners.
-  // Keep backend automation resilient by auto-creating missing budgets.
-  const ensureBudgetExists = async () => {
-    const { data: existing, error: readErr } = await supabase
-      .from('budgets')
-      .select('id')
-      .eq('ownerType', ownerType)
-      .eq('ownerId', ownerId)
-      .maybeSingle();
-    if (readErr) throw readErr;
-    if (existing?.id) return;
-
-    const { error: insertErr } = await supabase.from('budgets').insert({
-      ownerType,
-      ownerId,
-      moneyEUR: 0,
-      resources: {},
-      updatedAt: Date.now(),
-    });
-    if (insertErr) {
-      // Race-safe retry read
-      const { data: retry, error: retryErr } = await supabase
-        .from('budgets')
-        .select('id')
-        .eq('ownerType', ownerType)
-        .eq('ownerId', ownerId)
-        .maybeSingle();
-      if (retryErr) throw retryErr;
-      if (!retry?.id) throw insertErr;
-    }
-  };
-
-  await ensureBudgetExists();
-
-  // We use an RPC 'add_budget_transaction' defined in schema.sql to ensure atomicity
-  const payload = {
-    p_owner_type: ownerType,
-    p_owner_id: ownerId,
-    p_type: type,
-    p_subtype: subtype,
-    p_money_delta: moneyDelta,
-    p_resources_delta: resourcesDelta,
-    p_created_by: createdByUserId,
-    p_metadata: metadata
-  };
-
-  let { data, error } = await supabase.rpc('add_budget_transaction', payload);
-
-  if (error) {
-    const msg = String((error as any)?.message || '').toLowerCase();
-    if (msg.includes('budget') || msg.includes('non trovato')) {
-      await ensureBudgetExists();
-      ({ data, error } = await supabase.rpc('add_budget_transaction', payload));
-    }
-    if (error) {
-      const retryMsg = String((error as any)?.message || '').toLowerCase();
-      const isAmbiguousOverload =
-        retryMsg.includes('could not choose the best candidate function') &&
-        retryMsg.includes('add_budget_transaction');
-      if (isAmbiguousOverload) {
-        return await addBudgetTransactionFallback();
-      }
-    }
-  }
-
-  if (error) throw error;
-  return data;
-}
+  metadata: any = {},
+) => {
+  return economyService.addBudgetTransactionLegacy(
+    ownerType,
+    ownerId,
+    type,
+    subtype,
+    moneyDelta,
+    resourcesDelta,
+    createdByUserId,
+    metadata,
+    generateSecureId,
+  );
+};
 
 async function buyEnergyDrinksForUser(userId: string, quantityInput: unknown) {
   const quantity = Math.floor(Number(quantityInput) || 0);
@@ -752,21 +610,18 @@ async function buyEnergyDrinksForUser(userId: string, quantityInput: unknown) {
     if (error) {
       const message = String(error.message || "Errore durante l'acquisto dei drink.");
 
-      // Fallback for environments where the migration has not been applied yet.
-      // Keep business rule server-side: totalCost = quantity * 30 gold.
-      if (/buy_energy_drinks|function .* does not exist/i.test(message)) {
-        const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-          p_user_id: userId,
-          p_money_cost: 0,
-          p_gold_cost: totalCost,
-          p_energy_cost: 0,
-        });
-        if (deductError) {
-          return { ok: false as const, status: 500, error: String(deductError.message || "Errore durante la deduzione gold.") };
-        }
-        const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-        if (deductData?.error) {
-          return { ok: false as const, status: 400, error: String(deductData.error) };
+       // Fallback for environments where the migration has not been applied yet.
+       // Keep business rule server-side: totalCost = quantity * 30 gold.
+       if (/buy_energy_drinks|function .* does not exist/i.test(message)) {
+        try {
+          await economyService.safeDeductCurrencyOrThrow({
+            userId,
+            moneyCost: 0,
+            goldCost: totalCost,
+            energyCost: 0,
+          });
+        } catch (err: any) {
+          return { ok: false as const, status: 400, error: String(err?.message || "Errore durante la deduzione gold.") };
         }
 
         const { data: updatedUser, error: updateError } = await supabase
@@ -1137,23 +992,12 @@ async function performTrainingAction(userId: string, options?: { freeHourly?: bo
 
   if (!freeHourly) {
     try {
-      const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-        p_user_id: userId,
-        p_money_cost: 0,
-        p_gold_cost: 0,
-        p_energy_cost: TRAIN_ENERGY_COST,
+      await economyService.safeDeductCurrencyOrThrow({
+        userId,
+        moneyCost: 0,
+        goldCost: 0,
+        energyCost: TRAIN_ENERGY_COST,
       });
-      if (deductError) {
-        const msg = (deductError.message || '').toLowerCase();
-        if (msg.includes('energia') || msg.includes('energy') || msg.includes('insufficient')) {
-          throw createAutomationError(400, "Energia insufficiente (serve 10)");
-        }
-        throw deductError;
-      }
-      const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-      if (deductData?.error) {
-        throw createAutomationError(400, "Energia insufficiente (serve 10)");
-      }
     } catch (rpcErr: any) {
       const { data: freshUser } = await supabase.from('users').select('energy').eq('id', userId).single();
       if (!freshUser || (freshUser.energy || 0) < TRAIN_ENERGY_COST) {
@@ -1256,29 +1100,29 @@ async function performWorkActionV2(params: {
     const hasAutonomyResources = Object.keys(autonomyResources).length > 0;
 
     if (stateMoney > 0 || hasStateResources) {
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: stateId,
-        p_type: 'INCOME',
-        p_subtype: subtype,
-        p_money_delta: stateMoney,
-        p_resources_delta: stateResources,
-        p_created_by: user.id,
-        p_metadata: { ...metadata, scope: 'STATE', autonomySharePercent },
-      });
+      await addBudgetTransaction(
+        'REGION',
+        stateId,
+        'INCOME',
+        subtype,
+        stateMoney,
+        stateResources,
+        user.id,
+        { ...metadata, scope: 'STATE', autonomySharePercent },
+      );
     }
 
     if (autonomyMoney > 0 || hasAutonomyResources) {
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: factory.regionId,
-        p_type: 'INCOME',
-        p_subtype: subtype,
-        p_money_delta: autonomyMoney,
-        p_resources_delta: autonomyResources,
-        p_created_by: user.id,
-        p_metadata: { ...metadata, scope: 'AUTONOMY', autonomySharePercent },
-      });
+      await addBudgetTransaction(
+        'REGION',
+        factory.regionId,
+        'INCOME',
+        subtype,
+        autonomyMoney,
+        autonomyResources,
+        user.id,
+        { ...metadata, scope: 'AUTONOMY', autonomySharePercent },
+      );
     }
   };
 
@@ -1305,24 +1149,20 @@ async function performWorkActionV2(params: {
 
     const ownerCutMoney = Math.floor(baseMoney * FACTORY_CONFIG.OWNER_PROFIT_RATE);
 
-    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: -netMoney,
-      p_gold_cost: -netGold,
-      p_energy_cost: energyCost,
+    await economyService.safeDeductCurrencyOrThrow({
+      userId: user.id,
+      moneyCost: -netMoney,
+      goldCost: -netGold,
+      energyCost,
     });
-    if (deductError) throw deductError;
-    parseRpcResultOrThrow(deductResult);
 
     if (ownerCutMoney > 0 && owner.id !== user.id) {
-      const { data: ownerResult, error: ownerErr } = await supabase.rpc('safe_deduct_currency', {
-        p_user_id: owner.id,
-        p_money_cost: -ownerCutMoney,
-        p_gold_cost: 0,
-        p_energy_cost: 0,
-      });
-      if (ownerErr) throw ownerErr;
-      parseRpcResultOrThrow(ownerResult);
+    await economyService.safeDeductCurrencyOrThrow({
+      userId: owner.id,
+      moneyCost: -ownerCutMoney,
+      goldCost: 0,
+      energyCost: 0,
+    });
     }
 
     await addTaxToBudgets('INDUSTRY_TAX', taxesMoney, {}, { factoryId: factory.id, factoryType: 'gold', taxRate, grossMoney: baseMoney });
@@ -1349,14 +1189,12 @@ async function performWorkActionV2(params: {
       throw createAutomationError(400, "Il magazzino della fabbrica è pieno.");
     }
 
-    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: -netMoney,
-      p_gold_cost: 0,
-      p_energy_cost: energyCost,
+    await economyService.safeDeductCurrencyOrThrow({
+      userId: user.id,
+      moneyCost: -netMoney,
+      goldCost: 0,
+      energyCost,
     });
-    if (deductError) throw deductError;
-    parseRpcResultOrThrow(deductResult);
 
     const { error: factoryUpdateErr } = await supabase.from('factories').update({
       budget: (freshFactory.budget || 0) - grossEarnings,
@@ -1382,14 +1220,12 @@ async function performWorkActionV2(params: {
       throw createAutomationError(400, "Il magazzino della fabbrica è pieno.");
     }
 
-    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: 0,
-      p_gold_cost: 0,
-      p_energy_cost: energyCost,
+    await economyService.safeDeductCurrencyOrThrow({
+      userId: user.id,
+      moneyCost: 0,
+      goldCost: 0,
+      energyCost,
     });
-    if (deductError) throw deductError;
-    parseRpcResultOrThrow(deductResult);
 
     if (playerResourceOutput > 0) {
       const { data: playerInv } = await supabase.from('user_inventory')
@@ -1587,15 +1423,13 @@ async function performWorkActionV3(
   };
 
   const safeDeduct = async (moneyDelta: number, goldDelta: number, energyDelta: number) => {
-    const { data, error } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
+    await economyService.safeDeductCurrencyOrThrow({
+      userId: user.id,
       // RPC semantics: positive = cost (deduct), negative = grant (add)
-      p_money_cost: moneyDelta,
-      p_gold_cost: goldDelta,
-      p_energy_cost: energyDelta,
+      moneyCost: moneyDelta,
+      goldCost: goldDelta,
+      energyCost: energyDelta,
     });
-    if (error) throw error;
-    parseRpcResultOrThrow(data);
   };
 
   const level = factory.level || 1;
@@ -1629,14 +1463,12 @@ async function performWorkActionV3(
     // Owner profit (money)
     ownerCutMoney = Math.floor(baseMoney * FACTORY_CONFIG.OWNER_PROFIT_RATE);
     if (ownerCutMoney > 0 && ownerId && ownerId !== user.id) {
-      const { data, error } = await supabase.rpc('safe_deduct_currency', {
-        p_user_id: ownerId,
-        p_money_cost: -ownerCutMoney,
-        p_gold_cost: 0,
-        p_energy_cost: 0,
+      await economyService.safeDeductCurrencyOrThrow({
+        userId: ownerId,
+        moneyCost: -ownerCutMoney,
+        goldCost: 0,
+        energyCost: 0,
       });
-      if (error) throw error;
-      parseRpcResultOrThrow(data);
     }
 
     await addTaxSplit('INDUSTRY_TAX', taxesMoney, {}, { factoryId: factory.id, factoryType: factory.type, taxRate });
@@ -1927,13 +1759,16 @@ async function performWarDeployAction(params: {
     });
 
     if (!params.ignoreEnergyCost) {
-      const { error: deductError } = await supabase.rpc('safe_deduct_currency', {
-        p_user_id: user.id,
-        p_money_cost: 0,
-        p_gold_cost: 0,
-        p_energy_cost: energyCost,
-      });
-      if (deductError) throw createAutomationError(400, deductError.message || 'Energia insufficiente.');
+      try {
+        await economyService.safeDeductCurrencyOrThrow({
+          userId: user.id,
+          moneyCost: 0,
+          goldCost: 0,
+          energyCost,
+        });
+      } catch (err: any) {
+        throw createAutomationError(400, err?.message || 'Energia insufficiente.');
+      }
     }
 
     const scoreField = params.side === 'attacker' ? 'attackerScore' : 'defenderScore';
@@ -2368,21 +2203,11 @@ export const LawRegistry: Record<string, {
     execute: async (region, params) => {
       const amount = parseInt(params.amount);
 
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: region.id,
-        p_type: 'EXPENSE',
-        p_subtype: 'BUDGET_TRANSFER',
-        p_money_delta: -amount,
-        p_metadata: { to: params.targetRegionId }
+      await addBudgetTransaction('REGION', region.id, 'EXPENSE', 'BUDGET_TRANSFER', -amount, {}, region.ownerUserId || null, {
+        to: params.targetRegionId,
       });
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: params.targetRegionId,
-        p_type: 'INCOME',
-        p_subtype: 'BUDGET_TRANSFER',
-        p_money_delta: amount,
-        p_metadata: { from: region.id }
+      await addBudgetTransaction('REGION', params.targetRegionId, 'INCOME', 'BUDGET_TRANSFER', amount, {}, region.ownerUserId || null, {
+        from: region.id,
       });
     }
   },
@@ -2625,13 +2450,8 @@ export const LawRegistry: Record<string, {
       const cost = Math.floor(baseCost * (1 + 0.25 * (activeWars || 0)));
       const nowIso = new Date().toISOString();
 
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: region.id,
-        p_type: 'EXPENSE',
-        p_subtype: 'WAR_START',
-        p_money_delta: -cost,
-        p_metadata: { target: params.targetRegionId }
+      await addBudgetTransaction('REGION', region.id, 'EXPENSE', 'WAR_START', -cost, {}, region.ownerUserId || null, {
+        target: params.targetRegionId,
       });
 
       await supabase.from('wars').insert({
@@ -2691,22 +2511,14 @@ export const LawRegistry: Record<string, {
           if (loserBudget && loserBudget.moneyEUR > 0) {
             const stolenMoney = loserBudget.moneyEUR;
 
-            await supabase.rpc('add_budget_transaction', {
-              p_owner_type: 'REGION',
-              p_owner_id: loser,
-              p_type: 'WAR_LOOT',
-              p_subtype: 'LOOT_LOST',
-              p_money_delta: -stolenMoney,
-              p_metadata: { to: winner, warId: existingWar.id }
+            await addBudgetTransaction('REGION', loser, 'WAR_LOOT', 'LOOT_LOST', -stolenMoney, {}, null, {
+              to: winner,
+              warId: existingWar.id,
             });
 
-            await supabase.rpc('add_budget_transaction', {
-              p_owner_type: 'REGION',
-              p_owner_id: winner,
-              p_type: 'WAR_LOOT',
-              p_subtype: 'LOOT_WON',
-              p_money_delta: stolenMoney,
-              p_metadata: { from: loser, warId: existingWar.id }
+            await addBudgetTransaction('REGION', winner, 'WAR_LOOT', 'LOOT_WON', stolenMoney, {}, null, {
+              from: loser,
+              warId: existingWar.id,
             });
           }
 
@@ -2830,15 +2642,16 @@ export const LawRegistry: Record<string, {
 
         // Deduct costs from region budget
         if (preview.costEur > 0) {
-          await supabase.rpc('add_budget_transaction', {
-            p_owner_type: 'REGION',
-            p_owner_id: region.id,
-            p_type: 'EXPENSE',
-            p_subtype: 'DEEP_EXPLORATION',
-            p_money_delta: -preview.costEur,
-            p_created_by: activatorId,
-            p_metadata: { resourceType: params.resourceType, level: params.level },
-          });
+          await addBudgetTransaction(
+            'REGION',
+            region.id,
+            'EXPENSE',
+            'DEEP_EXPLORATION',
+            -preview.costEur,
+            {},
+            activatorId,
+            { resourceType: params.resourceType, level: params.level },
+          );
         }
 
         await supabase.from('deep_explorations').insert({
@@ -2917,14 +2730,16 @@ export const LawRegistry: Record<string, {
       const nowIso = new Date().toISOString();
       // Transfer remaining regional budget to state
       if (frozenBudget > 0) {
-        await supabase.rpc('add_budget_transaction', {
-          p_owner_type: 'REGION',
-          p_owner_id: region.id,
-          p_type: 'INCOME',
-          p_subtype: 'AUTONOMY_REVOKE_TRANSFER',
-          p_money_delta: frozenBudget,
-          p_metadata: { fromRegion: params.targetRegionId },
-        });
+        await addBudgetTransaction(
+          'REGION',
+          region.id,
+          'INCOME',
+          'AUTONOMY_REVOKE_TRANSFER',
+          frozenBudget,
+          {},
+          region.ownerUserId || null,
+          { fromRegion: params.targetRegionId },
+        );
       }
       await supabase.from('regions').update({
         isAutonomous: false,
@@ -3033,10 +2848,9 @@ export const LawRegistry: Record<string, {
       if (targetRegion?.isAutonomous) {
         await addRegionalBudgetTransaction(targetId, 'EXPENSE', 'BUILDING', -cost, `Costruzione ${BUILDING_LABELS[bt] || bt}`);
       } else {
-        await supabase.rpc('add_budget_transaction', {
-          p_owner_type: 'REGION', p_owner_id: region.id,
-          p_type: 'EXPENSE', p_subtype: 'BUILDING',
-          p_money_delta: -cost, p_metadata: { building: bt, targetRegion: targetId },
+        await addBudgetTransaction('REGION', region.id, 'EXPENSE', 'BUILDING', -cost, {}, region.ownerUserId || null, {
+          building: bt,
+          targetRegion: targetId,
         });
       }
       // Upsert building
@@ -3671,15 +3485,16 @@ async function executeExtractionWork(
     fail(400, "Produttività insufficiente per estrarre.", "insufficient_productivity");
   }
 
-  const { data: deductData, error: deductErr } = await supabase.rpc('safe_deduct_currency', {
-    p_user_id: workingUser.id,
-    p_money_cost: resourceType === 'gold_ore' ? -Math.round(actualMoney) : 0,
-    p_gold_cost: resourceType === 'gold_ore' ? -actualGold : 0,
-    p_energy_cost: actualEnergyCost,
-  });
-  if (deductErr) throw deductErr;
-  const parsedDeduct = typeof deductData === 'string' ? JSON.parse(deductData) : deductData;
-  if (parsedDeduct?.error) fail(400, parsedDeduct.error);
+  try {
+    await economyService.safeDeductCurrencyOrThrow({
+      userId: workingUser.id,
+      moneyCost: resourceType === 'gold_ore' ? -Math.round(actualMoney) : 0,
+      goldCost: resourceType === 'gold_ore' ? -actualGold : 0,
+      energyCost: actualEnergyCost,
+    });
+  } catch (err: any) {
+    fail(400, err?.message || 'Deduzione fallita.');
+  }
 
   if (regionRes) {
     const newDailyExtracted = Math.min(dailyMaxCap, dailyExtracted + roundedPlayer);
@@ -3729,14 +3544,11 @@ async function executeExtractionWork(
   if (Math.round(actualTax) > 0) {
     const taxMoney = Math.round(actualTax * (FACTORY_CONFIG.RESOURCE_VALUES[resourceType] || 1));
     if (taxMoney > 0) {
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: regionId,
-        p_type: 'INCOME',
-        p_subtype: 'EXTRACTION_TAX',
-        p_money_delta: taxMoney,
-        p_created_by: workingUser.id,
-        p_metadata: { resourceType, factoryId, grossAmount: actualGross, taxAmount: actualTax },
+      await addBudgetTransaction('REGION', regionId, 'INCOME', 'EXTRACTION_TAX', taxMoney, {}, workingUser.id, {
+        resourceType,
+        factoryId,
+        grossAmount: actualGross,
+        taxAmount: actualTax,
       });
     }
   }
@@ -4536,13 +4348,8 @@ async function budgetMaintenanceTick() {
 
       if (maintenanceCost > 0) {
         try {
-          await supabase.rpc('add_budget_transaction', {
-            p_owner_type: 'REGION',
-            p_owner_id: r.id,
-            p_type: 'EXPENSE',
-            p_subtype: 'BORDERS_MAINTENANCE',
-            p_money_delta: -maintenanceCost,
-            p_metadata: { reasons }
+          await addBudgetTransaction('REGION', r.id, 'EXPENSE', 'BORDERS_MAINTENANCE', -maintenanceCost, {}, null, {
+            reasons,
           });
         } catch (e) {
           // Budget insufficient, auto-open borders and free residence
@@ -4729,23 +4536,13 @@ async function checkAndResolveWars() {
             if (loserBudget && loserBudget.moneyEUR > 0) {
               lootValue = Math.floor(loserBudget.moneyEUR * effects.lootPercentage);
 
-              await supabase.rpc('add_budget_transaction', {
-                p_owner_type: 'REGION',
-                p_owner_id: war.defenderRegionId,
-                p_type: 'EXPENSE',
-                p_subtype: 'WAR_LOOT_LOST',
-                p_money_delta: -lootValue,
-                p_metadata: { warId: war.id },
+              await addBudgetTransaction('REGION', war.defenderRegionId, 'EXPENSE', 'WAR_LOOT_LOST', -lootValue, {}, null, {
+                warId: war.id,
               });
 
               if (war.attackerRegionId) {
-                await supabase.rpc('add_budget_transaction', {
-                  p_owner_type: 'REGION',
-                  p_owner_id: war.attackerRegionId,
-                  p_type: 'INCOME',
-                  p_subtype: 'WAR_LOOT_WON',
-                  p_money_delta: lootValue,
-                  p_metadata: { warId: war.id },
+                await addBudgetTransaction('REGION', war.attackerRegionId, 'INCOME', 'WAR_LOOT_WON', lootValue, {}, null, {
+                  warId: war.id,
                 });
               }
             }
@@ -4991,6 +4788,7 @@ export async function startServer() {
     GAME_CONFIG,
     isValidIso2,
     generateSecureId,
+    economyService,
     addBudgetTransaction,
     performTrainingAction,
     tryUseEnergyDrinkForUser,

@@ -7,6 +7,7 @@
  *   /api/leader/nation/branding, /api/nations/:nationId/energy
  */
 import { logger } from '../utils/logger';
+import type { EconomyService } from '../services/economy.service';
 
 // ── Dipartimenti di Stato ──────────────────────────────────
 // Lista centralizzata dei dipartimenti validi (risorse + militari)
@@ -54,6 +55,7 @@ function getDeptBonusMultiplier(rank: number): number {
 
 export function createStateHandlers(deps: {
   supabase: any;
+  economyService?: EconomyService;
   calculateStateSalaries: any;
   getUserPerks: any;
   addXP: any;
@@ -61,7 +63,7 @@ export function createStateHandlers(deps: {
   retrySupabaseOperation: any;
   GAME_CONFIG: any;
 }) {
-  const { supabase, calculateStateSalaries } = deps;
+  const { supabase, economyService, calculateStateSalaries } = deps;
 
   // GET /api/state/:id
   async function getState(req: any, res: any) {
@@ -347,136 +349,20 @@ export function createStateHandlers(deps: {
     }
 
     try {
-      // 1. Get user and verify balance
-      const { data: user, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', userId)
-        .single();
-
-      if (userError || !user) throw new Error("Utente non trovato");
-
-      // 2. Resource mapping & Check
-      const resourceMap: Record<string, string> = {
-        'petrolio': 'oil',
-        'minerali': 'minerals',
-        'uranio': 'uranium',
-        'diamanti': 'diamonds',
-        'soldi': 'money'
-      };
-      const realType = resourceMap[type] || type;
-
-      if (realType === 'money') {
-        if (BigInt(user.money || 0) < BigInt(amount)) return res.status(400).json({ error: "Saldo denaro insufficiente" });
-      } else if (realType === 'gold') {
-        if (BigInt(user.gold || 0) < BigInt(amount)) return res.status(400).json({ error: "Saldo gold insufficiente" });
-      } else {
-        const { data: inv } = await supabase.from('user_inventory').select('*').eq('userId', userId).eq('itemId', realType).single();
-        if (!inv || BigInt(inv.quantity || 0) < BigInt(amount)) {
-          return res.status(400).json({ error: `Saldo ${realType} insufficiente` });
-        }
-      }
-
-      // 3. Map to budget key (oro -> gold_ore)
-      const budgetResourceKey = realType === 'gold' ? 'gold_ore' : realType;
-
-      // 4. Update State Budget (handles auto-creation if missing)
-      let { data: budgets, error: budgetError } = await supabase
-        .from('budgets')
-        .select('*')
-        .eq('ownerType', 'STATE')
-        .eq('ownerId', nationId)
-        .maybeSingle();
-
-      if (budgetError) throw budgetError;
-
-      if (!budgets) {
-        // Auto-create missing budget
-        const { data: newBudget, error: createError } = await supabase
-          .from('budgets')
-          .insert({
-            ownerType: 'STATE',
-            ownerId: nationId,
-            moneyEUR: 0,
-            resources: {},
-            updatedAt: Date.now()
-          })
-          .select()
-          .single();
-        
-        if (createError) {
-          if (createError.code === '23505') {
-            const { data: retryBudget } = await supabase
-              .from('budgets')
-              .select('*')
-              .eq('ownerType', 'STATE')
-              .eq('ownerId', nationId)
-              .single();
-            budgets = retryBudget;
-          } else {
-            console.error("Budget creation error:", createError);
-            throw new Error("Errore nell'inizializzazione del budget statale");
-          }
-        } else {
-          budgets = newBudget;
-        }
-      }
-
-      if (!budgets) throw new Error("Errore critico: Budget non recuperabile");
-
-      // 5. Define transaction ID early
-      const txId = `don_${Date.now()}_${userId}`;
-
-      // 6. Update User (Deduct funds/resources)
-      if (realType === 'money') {
-        await supabase.from('users').update({ money: BigInt(user.money || 0) - BigInt(amount) }).eq('id', userId);
-      } else if (realType === 'gold') {
-        await supabase.from('users').update({ gold: BigInt(user.gold || 0) - BigInt(amount) }).eq('id', userId);
-      } else {
-        const { data: currentInv } = await supabase.from('user_inventory').select('quantity').eq('userId', userId).eq('itemId', realType).single();
-        await supabase.from('user_inventory').update({ quantity: BigInt(currentInv?.quantity || 0) - BigInt(amount) }).eq('userId', userId).eq('itemId', realType);
-      }
-
-      // 7. Update Budget
-      const updateData: any = { updatedAt: Date.now() };
-      if (realType === 'money') {
-        updateData.moneyEUR = BigInt(budgets.moneyEUR || 0) + BigInt(amount);
-      } else {
-        const currentRes = budgets.resources || {};
-        currentRes[budgetResourceKey] = (Number(currentRes[budgetResourceKey]) || 0) + Number(amount);
-        updateData.resources = currentRes;
-      }
-
-      const { error: budgetUpdateError } = await supabase.from('budgets').update(updateData).eq('id', budgets.id);
-      if (budgetUpdateError) throw budgetUpdateError;
-
-      // 8. Log transaction
-      await supabase.from('budget_transactions').insert({
-        id: txId,
-        budgetId: budgets.id,
-        type: 'INCOME',
-        subtype: 'DONATION',
-        moneyDelta: realType === 'money' ? amount : 0,
-        resourcesDelta: realType !== 'money' ? { [budgetResourceKey]: amount } : {},
-        createdAt: Date.now(),
-        createdByUserId: userId,
-        metadata: { donor: user.username, resourceType: realType }
+      if (!economyService) throw new Error('EconomyService not wired');
+      const result = await economyService.donateToStateBudget({
+        nationId,
+        userId,
+        type,
+        amount,
       });
-
-      // 9. Sync Nations treasury_balance
-      if (realType === 'money') {
-        const { data: nation } = await supabase.from('nations').select('treasury_balance').eq('id', nationId).single();
-        if (nation) {
-          await supabase.from('nations').update({ 
-            treasury_balance: BigInt(nation.treasury_balance || 0) + BigInt(amount) 
-          }).eq('id', nationId);
-        }
-      }
-
-      res.json({ success: true, message: "Donazione effettuata con successo!", transactionId: txId });
+      res.json(result);
     } catch (err: any) {
       console.error("Donation error:", err);
       logger.error('operation_failed', { error: err?.message, path: req?.path });
+      if (err?.statusCode) {
+        return res.status(err.statusCode).json({ error: err.message });
+      }
       res.status(500).json({ error: "An unexpected error occurred. Please try again." });
     }
   }

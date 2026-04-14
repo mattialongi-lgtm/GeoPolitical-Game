@@ -10,10 +10,12 @@
  */
 import { logger } from '../utils/logger';
 import { randomInt } from 'crypto';
+import type { EconomyService } from '../services/economy.service';
 
 export function createGovernanceHandlers(deps: {
   supabase: any;
   atomicOperations?: any;
+  economyService?: EconomyService;
   generateSecureId: (len: number) => string;
   isValidIso2: (v: string) => boolean;
   isValidUuid: (v: string) => boolean;
@@ -28,6 +30,7 @@ export function createGovernanceHandlers(deps: {
   const {
     supabase,
     atomicOperations,
+    economyService,
     generateSecureId,
     isValidIso2,
     isValidUuid,
@@ -122,27 +125,25 @@ export function createGovernanceHandlers(deps: {
     const moneyDelta = currency === 'GOLD' ? amountNum * conversionRate : amountNum;
 
     try {
-      // Atomic currency deduction to prevent race conditions
-      const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-        p_user_id: user.id,
-        p_money_cost: currency === 'EUR' ? amountNum : 0,
-        p_gold_cost: currency === 'GOLD' ? amountNum : 0,
-        p_energy_cost: 0,
-      });
-      if (deductError) throw deductError;
-      const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-      if (deductData?.error) return res.status(400).json({ error: deductData.error });
+      if (!economyService) throw new Error('EconomyService not wired');
 
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: entityId,
-        p_type: 'INCOME',
-        p_subtype: 'DONATION',
-        p_money_delta: moneyDelta,
-        p_resources_delta: {},
-        p_created_by: user.id,
-        p_metadata: { originalCurrency: currency, originalAmount: amountNum }
+      await economyService.safeDeductCurrencyOrThrow({
+        userId: user.id,
+        moneyCost: currency === 'EUR' ? amountNum : 0,
+        goldCost: currency === 'GOLD' ? amountNum : 0,
+        energyCost: 0,
       });
+
+      await addBudgetTransaction(
+        'REGION',
+        entityId,
+        'INCOME',
+        'DONATION',
+        moneyDelta,
+        {},
+        user.id,
+        { originalCurrency: currency, originalAmount: amountNum },
+      );
 
       res.json({ success: true, donated: moneyDelta });
     } catch (err: any) {
@@ -193,15 +194,7 @@ export function createGovernanceHandlers(deps: {
     const cost = 10000;
 
     try {
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: regionId,
-        p_type: 'EXPENSE',
-        p_subtype: 'RADIATION_CLEAN',
-        p_money_delta: -cost,
-        p_resources_delta: {},
-        p_created_by: user.id
-      });
+      await addBudgetTransaction('REGION', regionId, 'EXPENSE', 'RADIATION_CLEAN', -cost, {}, user.id);
 
       await supabase
         .from('regions')
@@ -230,15 +223,15 @@ export function createGovernanceHandlers(deps: {
       const foundOil = isDeep ? randomInt(100, 600) : randomInt(20, 120);
       const foundItems: Record<string, number> = { oil: foundOil };
 
-      await supabase.rpc('add_budget_transaction', {
-        p_owner_type: 'REGION',
-        p_owner_id: regionId,
-        p_type: 'EXPENSE',
-        p_subtype: isDeep ? 'EXPLORE_DEEP' : 'EXPLORE_NORMAL',
-        p_money_delta: -cost,
-        p_resources_delta: foundItems,
-        p_created_by: user.id
-      });
+      await addBudgetTransaction(
+        'REGION',
+        regionId,
+        'EXPENSE',
+        isDeep ? 'EXPLORE_DEEP' : 'EXPLORE_NORMAL',
+        -cost,
+        foundItems,
+        user.id,
+      );
 
       res.json({ success: true, message: `Esplorazione completata!` });
     } catch (err: any) {

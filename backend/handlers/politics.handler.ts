@@ -7,10 +7,12 @@
  */
 // LawRegistry is passed as a dependency to avoid circular imports with server.ts
 import { logger } from '../utils/logger';
+import type { EconomyService } from '../services/economy.service';
 
 export function createPoliticsHandlers(deps: {
   supabase: any;
   atomicOperations?: any;
+  economyService?: EconomyService;
   generateSecureId: (length?: number) => string;
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
   partyAssetsService: any;
@@ -18,7 +20,7 @@ export function createPoliticsHandlers(deps: {
   LawRegistry: any;
   GAME_CONFIG: any;
 }) {
-  const { supabase, atomicOperations, generateSecureId, getUserPerks, partyAssetsService, mapServiceResultToHttp, LawRegistry, GAME_CONFIG } = deps;
+  const { supabase, atomicOperations, economyService, generateSecureId, getUserPerks, partyAssetsService, mapServiceResultToHttp, LawRegistry, GAME_CONFIG } = deps;
 
   // Helper: primaries cycle
   const PRIMARIES_CYCLE_MS = 5 * 24 * 60 * 60 * 1000;
@@ -112,12 +114,13 @@ export function createPoliticsHandlers(deps: {
         createdAt: now
       });
       await supabase.from('party_members').insert({ userId: user.id, partyId, role: 'leader', joinedAt: now });
-      const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-        p_user_id: user.id, p_money_cost: 0, p_gold_cost: 100, p_energy_cost: 0,
+      if (!economyService) throw new Error('EconomyService not wired');
+      await economyService.safeDeductCurrencyOrThrow({
+        userId: user.id,
+        moneyCost: 0,
+        goldCost: 100,
+        energyCost: 0,
       });
-      if (deductError) throw deductError;
-      const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-      if (deductData?.error) return res.status(400).json({ error: deductData.error });
       await supabase.from('party_logs').insert({
         id: generateSecureId(9), partyId, action: 'created', details: `Partito creato da ${user.username} in ${regionId}`, timestamp: now
       });

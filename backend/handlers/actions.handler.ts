@@ -9,6 +9,7 @@
  */
 import { logger } from '../utils/logger';
 import { randomInt } from 'crypto';
+import type { EconomyService } from '../services/economy.service';
 
 // ── Travel helpers (module-level, no deps needed) ──
 
@@ -91,6 +92,7 @@ const calculateTravelTimeMs = (fromIso2: string, toIso2: string): number => {
 export function createActionsHandlers(deps: {
   supabase: any;
   atomicOperations: any;
+  economyService?: EconomyService;
   getUserPerks: (userId: string, boosterInfo?: Record<string, any>) => Promise<Record<string, number>>;
   addXP: (userId: string, amount: number) => Promise<void>;
   generateSecureId: (length: number) => string;
@@ -115,13 +117,18 @@ export function createActionsHandlers(deps: {
   incrementPlayerWorkExperience: (userId: string, resourceType: string, gain: number, istruzioneLevel: number) => Promise<any>;
 }) {
   const {
-    supabase, atomicOperations, getUserPerks, addXP, generateSecureId, addBudgetTransaction,
+    supabase, atomicOperations, economyService, getUserPerks, addXP, generateSecureId, addBudgetTransaction,
     isValidIso2, performTrainingAction, performWorkAction,
     updateMissionProgress,
     GAME_CONFIG, PERKS_DEFS, BOOSTER_CONFIG, FACTORY_CONFIG, AUTONOMY_CONFIG,
     factoryYieldMultiplier, factoryStorageLimit,
     incrementPlayerWorkExperience,
   } = deps;
+
+  const requireEconomyService = () => {
+    if (!economyService) throw new Error('EconomyService not wired');
+    return economyService;
+  };
 
   // ── Cooldown helpers ──
 
@@ -168,19 +175,12 @@ export function createActionsHandlers(deps: {
         // Fallback for environments where the migration has not been applied yet.
         // Keep business rule server-side: totalCost = quantity * 30 gold.
         if (/buy_energy_drinks|function .* does not exist/i.test(message)) {
-          const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-            p_user_id: userId,
-            p_money_cost: 0,
-            p_gold_cost: totalCost,
-            p_energy_cost: 0,
+          await requireEconomyService().safeDeductCurrencyOrThrow({
+            userId,
+            moneyCost: 0,
+            goldCost: totalCost,
+            energyCost: 0,
           });
-          if (deductError) {
-            return { ok: false as const, status: 500, error: String(deductError.message || "Errore durante la deduzione gold.") };
-          }
-          const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-          if (deductData?.error) {
-            return { ok: false as const, status: 400, error: String(deductData.error) };
-          }
 
           const { data: updatedUser, error: updateError } = await supabase
             .from('users')
@@ -356,34 +356,35 @@ export function createActionsHandlers(deps: {
   try {
     if (isGoldMine) {
       // Gold mine: deduct energy, add money and gold to worker
-      const { error: energyErr } = await supabase.rpc('safe_deduct_currency', {
-        p_user_id: user.id,
-        p_money_cost: -netEarningsMoney,  // negative cost = add money
-        p_gold_cost: netEarningsGold >= 1 ? -Math.floor(netEarningsGold) : 0,
-        p_energy_cost: energyCost,
+      await requireEconomyService().safeDeductCurrencyOrThrow({
+        userId: user.id,
+        moneyCost: -netEarningsMoney, // negative cost = add money
+        goldCost: netEarningsGold >= 1 ? -Math.floor(netEarningsGold) : 0,
+        energyCost,
       });
-      if (energyErr) throw energyErr;
 
       // Owner profit: atomically increment owner's money
       if (ownerCut > 0 && factory.ownerUserId !== user.id) {
-        await supabase.rpc('safe_deduct_currency', {
-          p_user_id: factory.ownerUserId,
-          p_money_cost: -ownerCut,  // negative cost = add money
-          p_gold_cost: 0,
-          p_energy_cost: 0,
+        await requireEconomyService().safeDeductCurrencyOrThrow({
+          userId: factory.ownerUserId,
+          moneyCost: -ownerCut, // negative cost = add money
+          goldCost: 0,
+          energyCost: 0,
         });
       }
       // Tax to region
       const moneyTax = Math.floor(FACTORY_CONFIG.GOLD_MINE_MONEY_PER_WORK * yieldMult * (1 + forzaBoost) * (taxRate / 100));
       if (moneyTax > 0) {
-        await supabase.rpc('add_budget_transaction', {
-          p_owner_type: 'REGION',
-          p_owner_id: userRegion,
-          p_type: 'INCOME',
-          p_subtype: 'INDUSTRY_TAX',
-          p_money_delta: moneyTax,
-          p_metadata: { factoryType: 'gold', factoryId }
-        });
+        await addBudgetTransaction(
+          'REGION',
+          userRegion,
+          'INCOME',
+          'INDUSTRY_TAX',
+          moneyTax,
+          {},
+          user.id,
+          { factoryType: 'gold', factoryId },
+        );
       }
     } else {
       // Perform updates via a custom RPC to ensure atomicity
@@ -416,15 +417,16 @@ export function createActionsHandlers(deps: {
 
       // State gets resource tax via budget transaction
       if (stateResourceOutput > 0) {
-        await supabase.rpc('add_budget_transaction', {
-          p_owner_type: 'REGION',
-          p_owner_id: userRegion,
-          p_type: 'INCOME',
-          p_subtype: 'RESOURCE_TAX',
-          p_money_delta: 0,
-          p_resources_delta: { [factoryType]: stateResourceOutput },
-          p_metadata: { resource: factoryType, quantity: stateResourceOutput, factoryId }
-        });
+        await addBudgetTransaction(
+          'REGION',
+          userRegion,
+          'INCOME',
+          'RESOURCE_TAX',
+          0,
+          { [factoryType]: stateResourceOutput },
+          user.id,
+          { resource: factoryType, quantity: stateResourceOutput, factoryId },
+        );
       }
     }
 
@@ -588,16 +590,12 @@ export function createActionsHandlers(deps: {
   if (user.energy < energyCost) return res.status(400).json({ error: "Not enough energy" });
 
   try {
-    // Atomic currency + energy deduction
-    const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-      p_user_id: user.id,
-      p_money_cost: moneyCost,
-      p_gold_cost: 0,
-      p_energy_cost: energyCost,
+    await requireEconomyService().safeDeductCurrencyOrThrow({
+      userId: user.id,
+      moneyCost,
+      goldCost: 0,
+      energyCost,
     });
-    if (deductError) throw deductError;
-    const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-    if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
     // Update region stats (stability, population, economy)
     await supabase.rpc('process_invest_action', {
@@ -909,17 +907,16 @@ export function createActionsHandlers(deps: {
   const perkMoneyCost = cashCost;
   const perkGoldCost = useGold ? goldCost : 0;
   
-  const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-    p_user_id: user.id,
-    p_money_cost: perkMoneyCost,
-    p_gold_cost: perkGoldCost,
-    p_energy_cost: 0,
-  });
-  if (deductError) {
-    return res.status(500).json({ error: "Errore nella deduzione: " + deductError.message });
+  try {
+    await requireEconomyService().safeDeductCurrencyOrThrow({
+      userId: user.id,
+      moneyCost: perkMoneyCost,
+      goldCost: perkGoldCost,
+      energyCost: 0,
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: String(err?.message || 'Errore nella deduzione.') });
   }
-  const deductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-  if (deductData?.error) return res.status(400).json({ error: deductData.error });
 
   await supabase.from('users').update(updateData).eq('id', user.id);
 
@@ -978,18 +975,16 @@ export function createActionsHandlers(deps: {
 
   const updateData: any = { boostersJson: JSON.stringify(activeBoosters) };
   
-  // Atomic currency deduction for booster
-  const { data: deductResult, error: deductError } = await supabase.rpc('safe_deduct_currency', {
-    p_user_id: user.id,
-    p_money_cost: useGold ? 0 : price,
-    p_gold_cost: useGold ? price : 0,
-    p_energy_cost: 0,
-  });
-  if (deductError) {
-    return res.status(500).json({ error: "Errore nella deduzione: " + deductError.message });
+  try {
+    await requireEconomyService().safeDeductCurrencyOrThrow({
+      userId: user.id,
+      moneyCost: useGold ? 0 : price,
+      goldCost: useGold ? price : 0,
+      energyCost: 0,
+    });
+  } catch (err: any) {
+    return res.status(400).json({ error: String(err?.message || 'Errore nella deduzione.') });
   }
-  const boosterDeductData = typeof deductResult === 'string' ? JSON.parse(deductResult) : deductResult;
-  if (boosterDeductData?.error) return res.status(400).json({ error: boosterDeductData.error });
 
   await supabase.from('users').update(updateData).eq('id', user.id);
 

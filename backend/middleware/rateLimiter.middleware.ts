@@ -27,7 +27,7 @@ const isLocalhost = (req: any): boolean => {
   return ip === '127.0.0.1' || ip === '::1' || ip === '::ffff:127.0.0.1';
 };
 
-const skipInDev = process.env.NODE_ENV !== 'production'
+const skipInDev = process.env.NODE_ENV === 'development'
   ? (req: any) => isLocalhost(req)
   : () => false;
 

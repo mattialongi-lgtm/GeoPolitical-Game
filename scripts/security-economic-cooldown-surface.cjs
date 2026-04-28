@@ -20,28 +20,40 @@ function mustIncludeOrdered(source, markers, label) {
   }
 }
 
-const server = fs.readFileSync('server.ts', 'utf8');
+const governanceHandler = fs.readFileSync('backend/handlers/governance.handler.ts', 'utf8');
+const actionsHandler = fs.readFileSync('backend/handlers/actions.handler.ts', 'utf8');
+const factoriesHandler = fs.readFileSync('backend/handlers/factories.handler.ts', 'utf8');
+const economyService = fs.readFileSync('backend/services/economy.service.ts', 'utf8');
+const handlerSurface = `${governanceHandler}\n${actionsHandler}\n${factoriesHandler}`;
 const schema = fs.readFileSync('supabase/schema.sql', 'utf8');
 
 // 1) Direct table touch-points in backend must stay explicit and bounded.
-assert.equal(count(server, ".from('budget_transactions')"), 1, 'budget_transactions direct access surface changed');
-assert.equal(count(server, ".from('cooldowns')"), 6, 'cooldowns direct access surface changed');
-assert.equal(count(server, ".from('user_factory_cooldowns')"), 6, 'user_factory_cooldowns direct access surface changed');
+assert.equal(count(handlerSurface, ".from('budget_transactions')"), 1, 'budget_transactions direct read surface changed');
+assert.equal(count(handlerSurface, ".from('cooldowns')"), 4, 'cooldowns direct access surface changed');
+assert.equal(count(handlerSurface, ".from('user_factory_cooldowns')"), 3, 'user_factory_cooldowns direct access surface changed');
 
 // 2) budget_transactions read must stay behind leader ownership gate in /api/budget/:ownerType/:ownerId.
-mustIncludeOrdered(server, [
-  'app.get("/api/budget/:ownerType/:ownerId", authenticate, async (req: any, res) => {',
+mustIncludeOrdered(governanceHandler, [
+  'async function getBudget(req: any, res: any) {',
   "if (normalizedOwnerType !== 'REGION')",
   ".from('regions')",
   'region.ownerUserId !== req.user.id',
   ".from('budget_transactions')",
 ], 'budget history authorization flow');
 
-// 3) budget_transactions writes must stay RPC-driven (no direct insert/update from server).
-assert.equal(count(server, ".from('budget_transactions').insert"), 0, 'direct insert into budget_transactions is not allowed in server');
-assert.equal(count(server, ".from('budget_transactions').update"), 0, 'direct update into budget_transactions is not allowed in server');
+// 3) Route handlers must not write budget_transactions directly.
+assert.equal(count(handlerSurface, ".from('budget_transactions').insert"), 0, 'direct insert into budget_transactions is not allowed in route handlers');
+assert.equal(count(handlerSurface, ".from('budget_transactions').update"), 0, 'direct update into budget_transactions is not allowed in route handlers');
 
-// 4) Schema guardrails: critical writes remain atomic in SQL functions.
+// 4) Legacy budget transaction helper must prefer the RPC path before its compatibility fallback.
+mustIncludeOrdered(economyService, [
+  'let { data, error } = await this.repo.addBudgetTransactionRpc(payload);',
+  '({ data, error } = await this.repo.addBudgetTransactionRpc(payload));',
+  'const isAmbiguousOverload =',
+  'return await addBudgetTransactionFallback();',
+], 'addBudgetTransactionLegacy rpc-first fallback flow');
+
+// 5) Schema guardrails: critical writes remain atomic in SQL functions.
 mustIncludeOrdered(schema, [
   'CREATE OR REPLACE FUNCTION add_budget_transaction(',
   'INSERT INTO budget_transactions (',

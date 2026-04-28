@@ -41,6 +41,11 @@ function createWarRepo(overrides?: Partial<any>) {
       if (state.rpcError) return { data: null, error: { message: 'rpc fail' } };
       return { data: state.rpcData ?? { success: true }, error: null };
     },
+    async safeDeductCurrency() {
+      state.fallbackWrites += 1;
+      if (state.failOnFallback === 'wallet') return { error: { message: 'wallet fail' } };
+      return { error: null };
+    },
     async updateUserEnergyAndMoney() { state.fallbackWrites += 1; if (state.failOnFallback === 'wallet') throw new Error('wallet fail'); },
     async updateWarScore() { state.fallbackWrites += 1; if (state.failOnFallback === 'score') throw new Error('score fail'); },
     async insertWarDeployment() { state.fallbackWrites += 1; },

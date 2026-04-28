@@ -73,15 +73,16 @@ async function run() {
     const service = new ProductionService(repo as any);
     const result = await service.produce({
       userId: 'u1',
-      weaponType: 'rifle',
+      weaponType: 'tank',
       qty: 2,
       maxStorage: 10000,
       generateId: () => 'p1',
       nowMs: () => Date.now(),
     });
     assert.equal(result.type, 'success');
-    assert.equal(repo.__state.money, 9800);
-    assert.equal(repo.__state.inventory.minerals, 196);
+    assert.equal(repo.__state.money, 6400);
+    assert.equal(repo.__state.inventory.oil, 30);
+    assert.equal(repo.__state.inventory.minerals, 80);
   }
 
   {
@@ -105,7 +106,7 @@ async function run() {
     const before = repo.__state.money;
     const result = await service.produce({
       userId: 'u1',
-      weaponType: 'rifle',
+      weaponType: 'tank',
       qty: 1,
       maxStorage: 10000,
       generateId: () => 'p3',
@@ -120,9 +121,10 @@ async function run() {
     const service = new ProductionService(repo as any);
     const beforeMoney = repo.__state.money;
     const beforeMinerals = repo.__state.inventory.minerals;
+    const beforeOil = repo.__state.inventory.oil;
     const result = await service.produce({
       userId: 'u1',
-      weaponType: 'rifle',
+      weaponType: 'tank',
       qty: 1,
       maxStorage: 10000,
       generateId: () => 'p4',
@@ -131,6 +133,7 @@ async function run() {
     assert.equal(result.type, 'validation_error');
     assert.equal(repo.__state.money, beforeMoney);
     assert.equal(repo.__state.inventory.minerals, beforeMinerals);
+    assert.equal(repo.__state.inventory.oil, beforeOil);
     assert.equal(repo.__state.queueDeleted, true);
   }
 
@@ -142,9 +145,10 @@ async function run() {
     });
     const service = new ProductionService(repo as any);
     const beforeMoney = repo.__state.money;
+    const beforeOil = repo.__state.inventory.oil;
     const result = await service.produce({
       userId: 'u1',
-      weaponType: 'rifle',
+      weaponType: 'tank',
       qty: 1,
       maxStorage: 10000,
       generateId: () => 'p5',
@@ -152,7 +156,8 @@ async function run() {
     });
     assert.equal(result.type, 'system_error');
     assert.equal(repo.__state.queueDeleted, false);
-    assert.equal(repo.__state.money, beforeMoney - 100);
+    assert.equal(repo.__state.money, beforeMoney - 1800);
+    assert.equal(repo.__state.inventory.oil, beforeOil);
     assert.equal(repo.__state.inventory.minerals, 200);
   }
 

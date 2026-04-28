@@ -118,5 +118,5 @@ ORDER BY count DESC;
 
 - Refactored code is **additive** — no handler behavior changed
 - Services are **stateless** — safe to deploy without session concerns
-- Error middleware is **last** — registered after all routes in `server.ts`
+- Error middleware is **last** — registered after all routes in `backend/app.ts`
 - See `backend/ARCHITECTURE.md` for full architecture documentation

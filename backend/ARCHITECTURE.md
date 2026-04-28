@@ -2,10 +2,9 @@
 
 ## Overview
 
-The backend is an **Express** server (`server.ts`) backed by **Supabase**
-(PostgreSQL + PostgREST + Auth).  The codebase is being progressively
-modularised from a monolithic `server.ts` (~500 KB) into a layered
-architecture under `backend/`.
+The backend is an **Express** server (`backend/app.ts`) backed by **Supabase**
+(PostgreSQL + PostgREST + Auth). The codebase is organized in
+a layered architecture under `backend/`.
 
 ### Request Flow
 

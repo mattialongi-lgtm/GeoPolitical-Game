@@ -7,9 +7,9 @@
 - `DEBUG` **required** — backend\utils\logger.ts
 - `DISABLE_HMR` **required** — vite.config.ts
 - `ENABLE_DEV_ENDPOINTS` **required** — backend\app.ts
-- `FIREBASE_CLIENT_EMAIL` **required** — server.ts
-- `FIREBASE_PRIVATE_KEY` **required** — server.ts
-- `FIREBASE_PROJECT_ID` **required** — server.ts
+- `FIREBASE_CLIENT_EMAIL` **required** — backend\app.ts
+- `FIREBASE_PRIVATE_KEY` **required** — backend\app.ts
+- `FIREBASE_PROJECT_ID` **required** — backend\app.ts
 - `GEMINI_API_KEY` (has default) — .env.example
 - `JWT_SECRET` (has default) — .env.example
 - `NODE_ENV` **required** — backend\app.ts

@@ -6,6 +6,7 @@ import { createDailyResourceResetJob } from './daily-reset.job';
 import { createElectionsJob } from './elections.job';
 import { createIndependentRegionsJob } from './independent-regions.job';
 import { createLawsJob } from './laws.job';
+import { createReadRollupsJob } from './read-rollups.job';
 import { createWarsResolutionJob } from './wars.job';
 
 export function startBackendJobs(deps: {
@@ -16,6 +17,7 @@ export function startBackendJobs(deps: {
   checkAndResolveWars: () => Promise<void>;
   processAutomationTick: () => Promise<void>;
   dailyResourceReset: (logicalDate: string) => Promise<void>;
+  refreshReadRollupsTick?: () => Promise<void>;
 }): JobHandle[] {
   const jobs = [
     createBudgetMaintenanceJob({ budgetMaintenanceTick: deps.budgetMaintenanceTick }),
@@ -27,6 +29,9 @@ export function startBackendJobs(deps: {
     createDailyResourceResetJob({ dailyResourceReset: deps.dailyResourceReset }),
   ];
 
+  if (deps.refreshReadRollupsTick) {
+    jobs.push(createReadRollupsJob({ refreshReadRollupsTick: deps.refreshReadRollupsTick }));
+  }
+
   return jobs.map((job) => startIntervalJob(job));
 }
-

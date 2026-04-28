@@ -43,6 +43,20 @@ export function createRegionsHandlers(deps: {
     return (now - new Date(activatedAt).getTime()) >= 24 * 60 * 60 * 1000;
   };
 
+  async function getRegionPlayerCountMap(): Promise<Record<string, number>> {
+    try {
+      const { data, error } = await supabase
+        .from('region_player_counts')
+        .select('"regionId","playerCount"');
+      if (error) throw error;
+      const map: Record<string, number> = {};
+      for (const row of (data || [])) map[row.regionId] = Number(row.playerCount || 0);
+      return map;
+    } catch {
+      return {};
+    }
+  }
+
   // ── Region Calculation Helpers (from server.ts lines 8443-8690) ──
 
   const ALL_BUILDING_TYPES: BuildingType[] = [
@@ -197,32 +211,31 @@ export function createRegionsHandlers(deps: {
   // ── Handlers ──
 
   // Cache in-memory per /api/regions — i dati cambiano raramente
-  let regionsCache: { data: any[]; fetchedAt: number } | null = null;
+  let regionsCacheFull: { data: any[]; fetchedAt: number } | null = null;
+  let regionsCacheCompact: { data: any[]; fetchedAt: number } | null = null;
   const REGIONS_CACHE_TTL = 60_000; // 60 secondi
 
   async function getRegions(_req: any, res: any) {
     try {
-      if (regionsCache && Date.now() - regionsCache.fetchedAt < REGIONS_CACHE_TTL) {
-        return res.json(regionsCache.data);
+      const view = String(_req.query.view || '').toLowerCase();
+      const compact = view === 'compact';
+
+      const activeCache = compact ? regionsCacheCompact : regionsCacheFull;
+      if (activeCache && Date.now() - activeCache.fetchedAt < REGIONS_CACHE_TTL) {
+        return res.json(activeCache.data);
       }
+
+      const countsMapPromise = getRegionPlayerCountMap();
 
       const { data: regions, error } = await supabase
         .from('regions')
-        .select(`*, owner:users!ownerUserId(username), leader:users!leaderUserId(username, level)`);
+        .select(compact
+          ? `id, name, nation_id, territoryStatus, governmentForm, population, pollution, "healthIndex", stability, "factoriesCount", "isAutonomous", "isCapital", owner:users!ownerUserId(username), leader:users!leaderUserId(username, level)`
+          : `*, owner:users!ownerUserId(username), leader:users!leaderUserId(username, level)`
+        );
       if (error) throw error;
 
-      // Conta player per regione con una sola query aggregata (solo regionId, no full scan)
-      const { data: userStats, error: userError } = await supabase
-        .from('users')
-        .select('regionId')
-        .not('regionId', 'is', null);
-      const playerRegionCounts: Record<string, number> = {};
-      if (!userError && userStats) {
-        userStats.forEach((u: any) => {
-          const rid = u.regionId;
-          if (rid) playerRegionCounts[rid] = (playerRegionCounts[rid] || 0) + 1;
-        });
-      }
+      const playerRegionCounts = await countsMapPromise;
       const formatted = (regions || []).map((r: any) => {
         const { owner, leader, ...regionFields } = r;
         return {
@@ -236,7 +249,8 @@ export function createRegionsHandlers(deps: {
         };
       });
 
-      regionsCache = { data: formatted, fetchedAt: Date.now() };
+      if (compact) regionsCacheCompact = { data: formatted, fetchedAt: Date.now() };
+      else regionsCacheFull = { data: formatted, fetchedAt: Date.now() };
       res.json(formatted);
     } catch (err: any) {
       console.error("Error fetching regions:", err);

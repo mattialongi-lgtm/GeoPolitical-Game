@@ -73,6 +73,34 @@ export function createResourcesHandlers(deps: {
     return (now - new Date(activatedAt).getTime()) >= 24 * 60 * 60 * 1000;
   };
 
+  async function getExtractionRegionResourceRollup24h(regionId: string): Promise<Record<string, any>> {
+    const analytics: Record<string, any> = {};
+    try {
+      const { data, error } = await supabase
+        .from('mv_extraction_region_resource_24h')
+        .select('"resourceType","extractionCount","totalExtracted","totalPlayerAmount","totalTaxAmount","totalStateAmount","totalAutonomyAmount","totalMoneyGenerated","totalWithdrawnPoints"')
+        .eq('regionId', regionId);
+      if (error) throw error;
+      for (const row of (data || [])) {
+        const rt = row.resourceType;
+        if (!rt) continue;
+        analytics[rt] = {
+          totalExtracted: Number(row.totalExtracted || 0),
+          totalPlayerAmount: Number(row.totalPlayerAmount || 0),
+          totalTaxAmount: Number(row.totalTaxAmount || 0),
+          totalStateAmount: Number(row.totalStateAmount || 0),
+          totalAutonomyAmount: Number(row.totalAutonomyAmount || 0),
+          totalMoneyGenerated: Number(row.totalMoneyGenerated || 0),
+          totalWithdrawnPoints: Number(row.totalWithdrawnPoints || 0),
+          extractionCount: Number(row.extractionCount || 0),
+        };
+      }
+      return analytics;
+    } catch {
+      return {};
+    }
+  }
+
   // GET /api/resources/player-state
   async function getPlayerState(req: any, res: any) {
     const user = req.user;
@@ -588,32 +616,7 @@ export function createResourcesHandlers(deps: {
         };
       }));
 
-      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-      const { data: recentLogs } = await supabase
-        .from('extraction_detailed_logs')
-        .select('resourceType, grossAmount, playerAmount, taxAmount, stateAmount, autonomyAmount, moneyGenerated, withdrawnPoints')
-        .eq('regionId', regionId)
-        .gte('createdAt', since24h);
-
-      const analytics: Record<string, any> = {};
-      for (const log of (recentLogs || [])) {
-        const rt = log.resourceType;
-        if (!analytics[rt]) {
-          analytics[rt] = {
-            totalExtracted: 0, totalPlayerAmount: 0, totalTaxAmount: 0,
-            totalStateAmount: 0, totalAutonomyAmount: 0, totalMoneyGenerated: 0,
-            totalWithdrawnPoints: 0, extractionCount: 0,
-          };
-        }
-        analytics[rt].totalExtracted += Number(log.grossAmount || 0);
-        analytics[rt].totalPlayerAmount += Number(log.playerAmount || 0);
-        analytics[rt].totalTaxAmount += Number(log.taxAmount || 0);
-        analytics[rt].totalStateAmount += Number(log.stateAmount || 0);
-        analytics[rt].totalAutonomyAmount += Number(log.autonomyAmount || 0);
-        analytics[rt].totalMoneyGenerated += Number(log.moneyGenerated || 0);
-        analytics[rt].totalWithdrawnPoints += Number(log.withdrawnPoints || 0);
-        analytics[rt].extractionCount += 1;
-      }
+      const analytics = await getExtractionRegionResourceRollup24h(regionId);
 
       const { data: deptBonuses } = await supabase
         .from('resource_department_bonuses')
@@ -640,28 +643,40 @@ export function createResourcesHandlers(deps: {
   // GET /api/extraction/leaderboard
   async function getExtractionLeaderboard(req: any, res: any) {
     try {
-      const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const regionId = req.query.regionId as string;
 
-      let query = supabase
-        .from('extraction_detailed_logs')
-        .select('playerId, playerAmount, resourceType')
-        .gte('createdAt', since24h);
+      let rows: any[] = [];
 
-      if (regionId) query = query.eq('regionId', regionId);
+      if (regionId) {
+        const { data, error } = await supabase
+          .from('mv_extraction_player_region_24h')
+          .select('"playerId","totalPlayerAmount"')
+          .eq('regionId', regionId)
+          .order('totalPlayerAmount', { ascending: false })
+          .limit(20);
+        if (error) throw error;
+        rows = data || [];
+      } else {
+        // Back-compat fallback (global leaderboard) — heavier and not used by current UI.
+        const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        const { data: logs } = await supabase
+          .from('extraction_detailed_logs')
+          .select('playerId, playerAmount')
+          .gte('createdAt', since24h);
 
-      const { data: logs } = await query;
+        const playerTotals: Record<string, number> = {};
+        for (const log of (logs || [])) {
+          if (!log?.playerId) continue;
+          playerTotals[log.playerId] = (playerTotals[log.playerId] || 0) + Number(log.playerAmount || 0);
+        }
 
-      const playerTotals: Record<string, number> = {};
-      for (const log of (logs || [])) {
-        playerTotals[log.playerId] = (playerTotals[log.playerId] || 0) + Number(log.playerAmount || 0);
+        rows = Object.entries(playerTotals)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 20)
+          .map(([playerId, totalPlayerAmount]) => ({ playerId, totalPlayerAmount }));
       }
 
-      const sorted = Object.entries(playerTotals)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 20);
-
-      const playerIds = sorted.map(([id]) => id);
+      const playerIds = (rows || []).map((r: any) => r.playerId).filter(Boolean);
       let usernameMap: Record<string, any> = {};
       if (playerIds.length > 0) {
         const { data: users } = await supabase
@@ -671,11 +686,11 @@ export function createResourcesHandlers(deps: {
         for (const u of (users || [])) usernameMap[u.id] = u;
       }
 
-      const leaderboard = sorted.map(([id, total]) => ({
-        playerId: id,
-        username: usernameMap[id]?.username || 'Unknown',
-        level: usernameMap[id]?.level || 1,
-        totalExtracted: Math.round(total),
+      const leaderboard = (rows || []).map((r: any) => ({
+        playerId: r.playerId,
+        username: usernameMap[r.playerId]?.username || 'Unknown',
+        level: usernameMap[r.playerId]?.level || 1,
+        totalExtracted: Math.round(Number(r.totalPlayerAmount || 0)),
       }));
 
       res.json({ leaderboard });

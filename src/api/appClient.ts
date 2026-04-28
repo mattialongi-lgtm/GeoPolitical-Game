@@ -33,8 +33,8 @@ const readResult = async <T>(response: Response): Promise<EndpointResult<T>> => 
 export async function fetchAppBootstrapData(): Promise<AppBootstrapApiResult> {
   const [userRes, regionsRes, nationsRes, articlesRes, warsRes, worldStatsRes] = await Promise.all([
     httpFetch('/api/me'),
-    httpFetch('/api/regions'),
-    httpFetch('/api/nations'),
+    httpFetch('/api/regions?view=compact'),
+    httpFetch('/api/nations?view=compact'),
     httpFetch('/api/articles'),
     httpFetch('/api/wars'),
     httpFetch('/api/world-stats'),
@@ -65,8 +65,8 @@ export async function fetchMyAvatarOnly(): Promise<EndpointResult<AvatarPayload>
 
 export async function fetchRegionsAndNations(): Promise<RegionsAndNationsResult> {
   const [regionsRes, nationsRes] = await Promise.all([
-    httpFetch('/api/regions'),
-    httpFetch('/api/nations'),
+    httpFetch('/api/regions?view=compact'),
+    httpFetch('/api/nations?view=compact'),
   ]);
 
   const [regions, nations] = await Promise.all([

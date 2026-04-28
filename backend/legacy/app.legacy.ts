@@ -4357,6 +4357,22 @@ async function budgetMaintenanceTick() {
   }
 }
 
+// Read-heavy rollups refresh (player counts + extraction 24h materialized views)
+let didBootstrapReadRollups = false;
+async function refreshReadRollupsTick() {
+  try {
+    if (!didBootstrapReadRollups) {
+      didBootstrapReadRollups = true;
+      await supabase.rpc('rpc_rebuild_player_counts');
+    }
+
+    await supabase.rpc('rpc_refresh_extraction_rollups_24h', { p_concurrently: true });
+  } catch (error) {
+    // Non-critical: keep serving, rollups will refresh on next tick.
+    console.error('Error in refreshReadRollupsTick:', error);
+  }
+}
+
 // War Resolution Cronjob
 async function checkAndResolveWars() {
   try {
@@ -4884,6 +4900,7 @@ export async function startServer() {
       checkAndResolveWars,
       processAutomationTick,
       dailyResourceReset,
+      refreshReadRollupsTick,
     });
   }).on('error', (err: any) => {
     if (err.code === 'EADDRINUSE') {

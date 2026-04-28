@@ -138,9 +138,11 @@ export function createWorldHandlers(deps: {
   async function getNations(_req: any, res: any) {
     try {
       const includeInactive = String(_req.query.includeInactive || '').toLowerCase() === 'true';
+      const view = String(_req.query.view || '').toLowerCase();
+      const compact = view === 'compact';
 
       // Cache solo per la richiesta standard (senza includeInactive)
-      if (!includeInactive && nationsCache && Date.now() - nationsCache.fetchedAt < NATIONS_CACHE_TTL) {
+      if (!compact && !includeInactive && nationsCache && Date.now() - nationsCache.fetchedAt < NATIONS_CACHE_TTL) {
         return res.json(nationsCache.data);
       }
 
@@ -168,44 +170,41 @@ export function createWorldHandlers(deps: {
 
       if (nationsErr) throw nationsErr;
 
-      const { data: regions } = await supabase
-        .from('regions')
-        .select('id, nation_id, population');
+      const [{ data: regions }, { data: playerRows }] = await Promise.all([
+        supabase.from('regions').select('id, nation_id, population'),
+        supabase.from('nation_player_counts').select('"nationId","playerCount"'),
+      ]);
 
       const regionCounts: Record<string, { count: number; population: number }> = {};
-      (regions || []).forEach((r: any) => {
-        if (!r.nation_id) return;
+      for (const r of (regions || [])) {
+        if (!r.nation_id) continue;
         if (!regionCounts[r.nation_id]) regionCounts[r.nation_id] = { count: 0, population: 0 };
         regionCounts[r.nation_id].count += 1;
         regionCounts[r.nation_id].population += r.population || 0;
-      });
+      }
 
-      // Count players per nation
-      const { data: userStats } = await supabase
-        .from('users')
-        .select('originalNation');
       const playerCounts: Record<string, number> = {};
-      (userStats || []).forEach((u: any) => {
-        const nid = u.originalNation;
-        if (nid) playerCounts[nid] = (playerCounts[nid] || 0) + 1;
-      });
+      for (const row of (playerRows || [])) {
+        if (!row?.nationId) continue;
+        playerCounts[row.nationId] = Number(row.playerCount || 0);
+      }
 
       const leaderIds = [...new Set((nations || []).map((n: any) => n.leaderUserId).filter(Boolean))];
       const leaderMap: Record<string, string> = {};
-      if (leaderIds.length > 0) {
+      if (!compact && leaderIds.length > 0) {
         const { data: leaders } = await supabase.from('users').select('id, username').in('id', leaderIds);
         (leaders || []).forEach((l: any) => { leaderMap[l.id] = l.username; });
       }
 
       const enriched = (nations || []).map((n: any) => ({
         ...n,
-        leaderName: n.leaderUserId ? (leaderMap[n.leaderUserId] || null) : null,
+        leaderName: compact ? undefined : (n.leaderUserId ? (leaderMap[n.leaderUserId] || null) : null),
         regionCount: regionCounts[n.id]?.count || 0,
         population: regionCounts[n.id]?.population || 0,
         playerCount: playerCounts[n.id] || 0,
       }));
 
-      if (!includeInactive) {
+      if (!compact && !includeInactive) {
         nationsCache = { data: enriched, fetchedAt: Date.now() };
       }
       res.json(enriched);

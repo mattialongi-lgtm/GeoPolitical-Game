@@ -2,12 +2,6 @@ import "dotenv/config";
 // Global fix for BigInt serialization in JSON responses
 (BigInt.prototype as any).toJSON = function() { return this.toString(); };
 
-import express from "express";
-import compression from "compression";
-import { createClient } from "@supabase/supabase-js";
-import cookieParser from "cookie-parser";
-import { randomBytes } from "crypto";
-import { hostname } from "os";
 import {
   GAME_CONFIG,
   PERKS_DEFS,
@@ -65,186 +59,75 @@ import { setupRoutes } from "../routes";
 import { createWarDomainDeps } from "../services/war-domain.helpers";
 import { DailyRewardRepository } from "../repositories/daily-reward.repository";
 import { DailyRewardService } from "../services/daily-reward.service";
-import { FactoryEconomyRepository } from "../repositories/factory-economy.repository";
-import { FactoryEconomyService } from "../services/factory-economy.service";
-import { FactoryUpgradeRepository } from "../repositories/factory-upgrade.repository";
-import { FactoryUpgradeService } from "../services/factory-upgrade.service";
-import { FactoryCreateRepository } from "../repositories/factory-create.repository";
-import { FactoryCreateService } from "../services/factory-create.service";
-import { PartyAssetsRepository } from "../repositories/party-assets.repository";
-import { PartyAssetsService } from "../services/party-assets.service";
-import { ProductionRepository } from "../repositories/production.repository";
-import { ProductionService } from "../services/production.service";
-import { createAtomicOperations } from "../services/atomic-operations";
-import { EconomyService } from "../services/economy.service";
 import { isDailyBonusClaimSuccess, isDailyMissionClaimSuccess } from "../observability/contract-guards";
 import { mapServiceResultToHttp } from "../services/http-result.mapper";
-import { errorHandler } from "../middleware/errorHandler.middleware";
-import { globalLimiter } from "../middleware/rateLimiter.middleware";
 import {
   hasEnergyDrinkCooldownExpired,
   resolveExtractionEnergyCost,
 } from "../utils/automation-energy";
 import { logger } from "../utils/logger";
 import { createAuthenticateMiddleware } from "../middleware/authenticate.middleware";
-import { startBackendJobs } from "../jobs/scheduler";
+import {
+  autoWorkIncompatibleMessage,
+  createAutomationError,
+  getAllowedWeaponsForWar,
+  isAutomationExpired,
+  isAutoAttackCompatibleWithAutoWork,
+  missingAutomationTablesWarned,
+  normalizeWarAutoType,
+  normalizeWarWeaponId,
+  parseAutomationTimestamp,
+  shouldRecurringAutomationFire,
+  shouldTreatAutoWorkAsNeverFired,
+  WAR_WEAPON_CONFIG,
+} from "./automation-helpers";
+import { createDeepLevelsCache } from "./deep-levels-cache";
+import { calculateStateSalaries } from "./government-salary";
+import { generateSecureId } from "./id-random";
+import {
+  DAILY_RESOURCE_RESET_LOCK_TIMEOUT_SECONDS,
+  DAILY_RESOURCE_RESET_OWNER,
+  ENABLE_DEV_ENDPOINTS,
+  IS_PRODUCTION,
+  PORT,
+  validateRuntimeConfig,
+} from "./runtime-config";
+import {
+  createLegacyExpressApp,
+  finalizeLegacyExpressApp,
+  listenAndStartLegacyJobs,
+} from "./server-bootstrap";
+import { createSupabaseRuntime } from "./supabase-runtime";
+import { isTransientSupabaseNetworkError, retrySupabaseOperation } from "./supabase-retry";
+import {
+  createAccessHelpers,
+  isAllowedAvatarDataUrl,
+  isValidIso2,
+  isValidUuid,
+  normalizeRegionLikeId,
+} from "./validation-access";
 
 logger.info("Starting backend/app.ts");
 
-const app = express();
-const PORT = Number(process.env.PORT || 3000);
-const IS_PRODUCTION = process.env.NODE_ENV === 'production';
-const ENABLE_DEV_ENDPOINTS = process.env.ENABLE_DEV_ENDPOINTS === 'true';
-const DAILY_RESOURCE_RESET_LOCK_TIMEOUT_SECONDS = 30 * 60;
-const DAILY_RESOURCE_RESET_OWNER = `${hostname()}:${PORT}:${process.pid}:${randomBytes(4).toString("hex")}`;
+validateRuntimeConfig();
 
-// Validate JWT_SECRET — must not be default in production
-if (IS_PRODUCTION && (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'change-me-in-production')) {
-  console.error('FATAL ERROR: JWT_SECRET must be set to a strong value in production');
-  process.exit(1);
-}
-
-const generateSecureId = (length: number = 9): string =>
-  randomBytes(Math.ceil(length / 2)).toString("hex").slice(0, length);
-
-// Seeded Random Helper
-const seededRandom = (seed: string) => {
-  let hash = 0;
-  for (let i = 0; i < seed.length; i++) {
-    hash = ((hash << 5) - hash) + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  return () => {
-    hash = (hash * 16807) % 2147483647;
-    return (hash - 1) / 2147483646;
-  };
-};
-
-const generateGameStatsForCountry = (iso2: string) => {
-  const rng = seededRandom(iso2);
-  const resourceTypes = ["Oil", "Steel", "Food", "Tech", "Uranium"];
-  const numResources = 1 + Math.floor(rng() * 3);
-  const selectedResources = [];
-  const shuffled = [...resourceTypes].sort(() => rng() - 0.5);
-
-  const getIndicator = () => 1 + Math.floor(rng() * 10); // 1-10
-
-  for (let i = 0; i < numResources; i++) {
-    selectedResources.push({
-      type: shuffled[i],
-      base: 10 + Math.floor(rng() * 90)
-    });
-  }
-
-  return {
-    indicators: {
-      health: getIndicator(),
-      education: getIndicator(),
-      industry: getIndicator(),
-      security: getIndicator(),
-      infrastructure: getIndicator(),
-      morale: getIndicator(),
-      economy: getIndicator(),
-      tech: getIndicator(),
-      resourcesQuality: getIndicator(),
-      stability: getIndicator()
-    },
-    resources: selectedResources,
-  };
-};
-
-// Initialize Supabase Client (Service Role for admin bypass)
-const supabaseUrl = (process.env.VITE_SUPABASE_URL || "").trim();
-const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Supabase URL or SUPABASE_SERVICE_ROLE_KEY missing in Environment Variables.");
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-const atomicOperations = createAtomicOperations(supabase);
-const factoryEconomyService = new FactoryEconomyService(new FactoryEconomyRepository(supabase));
-const factoryUpgradeService = new FactoryUpgradeService(new FactoryUpgradeRepository(supabase));
-const factoryCreateService = new FactoryCreateService(new FactoryCreateRepository(supabase));
-const partyAssetsService = new PartyAssetsService(new PartyAssetsRepository(supabase));
-const productionService = new ProductionService(new ProductionRepository(supabase));
-const economyService = new EconomyService(supabase);
-
-// Compressione gzip/deflate: riduce egress JSON del 60-75% su tutte le risposte
-app.use(compression());
-app.use(express.json());
-
-function isTransientSupabaseNetworkError(error: any) {
-  const message = String(error?.message || '').toLowerCase();
-  const details = String(error?.details || '').toLowerCase();
-  return (
-    message.includes('fetch failed') ||
-    message.includes('network') ||
-    details.includes('fetch failed') ||
-    details.includes('enotfound') ||
-    details.includes('eai_again') ||
-    details.includes('etimedout') ||
-    details.includes('ecconnreset')
-  );
-}
-
-async function retrySupabaseOperation<T>(
-  label: string,
-  operation: () => Promise<T>,
-  options?: { attempts?: number; delayMs?: number }
-): Promise<T> {
-  const attempts = options?.attempts ?? 3;
-  const delayMs = options?.delayMs ?? 1500;
-  let lastError: any;
-
-  for (let attempt = 1; attempt <= attempts; attempt++) {
-    try {
-      return await operation();
-    } catch (error: any) {
-      lastError = error;
-      if (!isTransientSupabaseNetworkError(error) || attempt === attempts) {
-        break;
-      }
-      console.warn(`[SupabaseRetry] ${label} failed (attempt ${attempt}/${attempts}), retrying in ${delayMs}ms...`);
-      await new Promise(resolve => setTimeout(resolve, delayMs));
-    }
-  }
-
-  throw lastError;
-}
-
-// --- Government & Salary Configuration ---
-const GOVERNMENT_SALARY_CONFIG: Record<string, { headOfState: number; minister: number }> = {
-  // Base daily gold per region
-  'PARLIAMENTARY_REPUBLIC': { headOfState: 40, minister: 25 },
-  'PRESIDENTIAL_REPUBLIC': { headOfState: 40, minister: 25 },
-  'DOMINANT_PARTY': { headOfState: 30, minister: 20 },
-  'DICTATORSHIP': { headOfState: 60, minister: 15 },
-  'ONE_PARTY_SYSTEM': { headOfState: 35, minister: 20 },
-  'EXECUTIVE_MONARCHY': { headOfState: 80, minister: 10 },
-  // Localized fallbacks
-  'REPUBBLICA': { headOfState: 40, minister: 25 },
-  'REPUBBLICA PARLAMENTARE': { headOfState: 40, minister: 25 },
-};
-
-/**
- * Calculates current salaries based on government form and region count.
- * For Republics: 40 gold/day per region for Head of State, 25 for Ministers.
- */
-function calculateStateSalaries(governmentForm: string | null, regionCount: number) {
-  const normalized = (governmentForm || '').toUpperCase();
-  const config = GOVERNMENT_SALARY_CONFIG[normalized] || GOVERNMENT_SALARY_CONFIG['PARLIAMENTARY_REPUBLIC'];
-  
-  // Salary scales with the number of regions (minimum 1 to avoid 0 for independent regions)
-  const actualCount = Math.max(1, regionCount);
-  
-  return {
-    headOfStateGold: config.headOfState * actualCount,
-    ministerGold: config.minister * actualCount,
-  };
-}
-app.use(cookieParser());
-app.use('/api', globalLimiter);
+const app = createLegacyExpressApp();
+const {
+  supabase,
+  atomicOperations,
+  factoryEconomyService,
+  factoryUpgradeService,
+  factoryCreateService,
+  partyAssetsService,
+  productionService,
+  economyService,
+} = createSupabaseRuntime();
+const {
+  canManageRegion,
+  canReadRegionScopedData,
+  assertCanManageRegion,
+} = createAccessHelpers(supabase);
+const getCachedDeepLevels = createDeepLevelsCache(supabase);
 
 // Helper to get user perks, including active boosters
 const getUserPerks = async (userId: string, boosterInfo?: Record<string, any>) => {
@@ -264,72 +147,6 @@ const getUserPerks = async (userId: string, boosterInfo?: Record<string, any>) =
   }
 
   return perkMap;
-};
-
-// Helper to validate ISO2 country codes (prevents injection in .or() queries)
-const isValidIso2 = (code: string): boolean => /^[A-Z]{2,4}$/.test(code);
-const isValidUuid = (value: string): boolean =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-const isAllowedAvatarDataUrl = (value: string): boolean =>
-  /^data:image\/(png|jpeg|jpg|webp);base64,[A-Za-z0-9+/=\r\n]+$/i.test(value);
-
-const canManageRegion = async (regionId: string, userId: string): Promise<boolean> => {
-  const normalizedRegionId = String(regionId || '').trim().toUpperCase();
-  if (!isValidIso2(normalizedRegionId) || !userId) return false;
-
-  const { data: region, error } = await supabase
-    .from('regions')
-    .select('ownerUserId, leaderUserId')
-    .eq('id', normalizedRegionId)
-    .maybeSingle();
-
-  if (error || !region) return false;
-  return region.ownerUserId === userId || region.leaderUserId === userId;
-};
-
-const normalizeRegionLikeId = (value: any): string | null => {
-  const normalized = String(value || '').trim().toUpperCase();
-  return isValidIso2(normalized) ? normalized : null;
-};
-
-const canReadRegionScopedData = async (user: any, regionId: string): Promise<boolean> => {
-  if (!user?.id || !regionId) return false;
-  const canManage = await canManageRegion(regionId, user.id);
-  if (canManage) return true;
-  return user.residenceId === regionId || user.workPermitId === regionId;
-};
-
-const normalizeNewspaperRole = (value: any): 'owner' | 'editor' | 'writer' | null => {
-  const role = String(value || '').trim().toLowerCase();
-  if (role === 'owner' || role === 'editor' || role === 'writer') return role;
-  return null;
-};
-
-const canAssignNewspaperRole = (actorRole: string, targetRole: 'owner' | 'editor' | 'writer'): boolean => {
-  if (actorRole === 'editor') return targetRole === 'writer';
-  if (actorRole === 'owner') return targetRole === 'editor' || targetRole === 'writer';
-  return false;
-};
-
-const assertCanManageRegion = async (
-  req: any,
-  res: any,
-  rawRegionId: any,
-  forbiddenMessage: string
-): Promise<string | null> => {
-  const regionId = normalizeRegionLikeId(rawRegionId);
-  if (!regionId) {
-    res.status(400).json({ error: "Regione non valida." });
-    return null;
-  }
-
-  const allowed = await canManageRegion(regionId, req.user?.id);
-  if (!allowed) {
-    res.status(403).json({ error: forbiddenMessage });
-    return null;
-  }
-
-  return regionId;
 };
 
 // Helper to calculate XP and Level Up
@@ -356,143 +173,6 @@ const addXP = async (userId: string, amount: number) => {
       console.error("Fallback XP update also failed:", fallbackErr);
     }
   }
-};
-
-// Helper to get the start of the current primaries cycle (5-day cycle)
-const PRIMARIES_CYCLE_MS = 5 * 24 * 60 * 60 * 1000;
-const getPrimariesCycleStart = () => new Date(Math.floor(Date.now() / PRIMARIES_CYCLE_MS) * PRIMARIES_CYCLE_MS).toISOString();
-
-// In-memory cache for deep_levels configuration (rarely changes, queried frequently).
-// Suitable for single-instance deployments; for multi-instance, consider a shared cache.
-let deepLevelsCache: any[] | null = null;
-let deepLevelsCacheTs = 0;
-const DEEP_LEVELS_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-async function getCachedDeepLevels() {
-  const now = Date.now();
-  if (!deepLevelsCache || now - deepLevelsCacheTs > DEEP_LEVELS_CACHE_TTL) {
-    const { data } = await supabase
-      .from('deep_levels')
-      .select('*')
-      .eq('enabled', true)
-      .order('level', { ascending: true });
-    deepLevelsCache = data || [];
-    deepLevelsCacheTs = now;
-  }
-  return deepLevelsCache;
-}
-
-const calculateMinisterWage = async (stateId: string, role: string) => {
-  const { data: region } = await supabase
-    .from('regions')
-    .select('governmentForm, economyLevel, ownerUserId, healthIndex, educationIndex, developmentIndex')
-    .eq('id', stateId)
-    .single();
-
-  if (!region) return 0;
-
-  // 1. Base from regional indices (no legacy Health/Education/Military params)
-  const devIndex =
-    ((region.developmentIndex ?? 1) +
-      (region.educationIndex ?? 1) +
-      (region.healthIndex ?? 1) +
-      (region.economyLevel ?? 1)) /
-    4;
-
-  // 2. Multiplier from Government Form
-  let govMult = 1.0;
-  if (region.governmentForm === 'PRESIDENTIAL_REPUBLIC') govMult = 1.5;
-  if (region.governmentForm === 'DICTATORSHIP') govMult = 2.0;
-  if (region.governmentForm === 'ONE_PARTY_SYSTEM') govMult = 1.8;
-
-  // 3. Multiplier from Region Count (representing state size/complexity)
-  const { count } = await supabase
-    .from('regions')
-    .select('*', { count: 'exact', head: true })
-    .eq('ownerUserId', region.ownerUserId);
-
-  const sizeMult = 1 + ((count || 1) * 0.1);
-
-  const baseWage = 10; // 10 Gold base
-  return Math.floor(baseWage * devIndex * govMult * sizeMult);
-};
-
-// --- Travel Time System: Country coordinates and distance calculation ---
-const COUNTRY_COORDS: Record<string, [number, number]> = {
-  // Europe
-  IT: [41.87, 12.57], FR: [46.60, 2.35], DE: [51.17, 10.45], ES: [40.46, -3.75],
-  GB: [55.38, -3.44], PT: [39.40, -8.22], NL: [52.13, 4.89], BE: [50.50, 4.47],
-  CH: [46.82, 8.23], AT: [47.52, 14.55], PL: [51.92, 19.15], CZ: [49.82, 15.47],
-  SK: [48.67, 19.70], HU: [47.16, 19.50], RO: [45.94, 24.97], BG: [42.73, 25.49],
-  GR: [39.07, 21.82], HR: [45.10, 15.20], RS: [44.02, 21.01], BA: [43.92, 17.68],
-  SI: [46.15, 14.99], ME: [42.71, 19.37], MK: [41.51, 21.75], AL: [41.15, 20.17],
-  XK: [42.60, 20.90], SE: [60.13, 18.64], NO: [60.47, 8.47], FI: [61.92, 25.75],
-  DK: [56.26, 9.50], IS: [64.96, -19.02], IE: [53.41, -8.24], LT: [55.17, 23.88],
-  LV: [56.88, 24.60], EE: [58.60, 25.01], LU: [49.82, 6.13], MT: [35.94, 14.38],
-  CY: [35.13, 33.43], MD: [47.41, 28.37], BY: [53.71, 27.95], UA: [48.38, 31.17],
-  // Asia
-  RU: [61.52, 105.32], TR: [38.96, 35.24], CN: [35.86, 104.20], JP: [36.20, 138.25],
-  KR: [35.91, 127.77], KP: [40.34, 127.51], IN: [20.59, 78.96], PK: [30.38, 69.35],
-  BD: [23.68, 90.36], ID: [0.79, 113.92], MY: [4.21, 101.98], TH: [15.87, 100.99],
-  VN: [14.06, 108.28], PH: [12.88, 121.77], MM: [21.92, 95.96], KH: [12.57, 104.99],
-  LA: [19.86, 102.50], SG: [1.35, 103.82], TW: [23.70, 120.96], MN: [46.86, 103.85],
-  KZ: [48.02, 66.92], UZ: [41.38, 64.59], TM: [38.97, 59.56], KG: [41.20, 74.77],
-  TJ: [38.86, 71.28], AF: [33.94, 67.71], IQ: [33.22, 43.68], IR: [32.43, 53.69],
-  SA: [23.89, 45.08], AE: [23.42, 53.85], QA: [25.35, 51.18], KW: [29.31, 47.48],
-  OM: [21.51, 55.92], YE: [15.55, 48.52], JO: [30.59, 36.24], LB: [33.85, 35.86],
-  SY: [34.80, 38.99], IL: [31.05, 34.85], PS: [31.95, 35.23], GE: [42.32, 43.36],
-  AM: [40.07, 45.04], AZ: [40.14, 47.58], NP: [28.39, 84.12], LK: [7.87, 80.77],
-  BT: [27.51, 90.43], MV: [3.20, 73.22], BN: [4.54, 114.73], TL: [8.87, 125.73],
-  // Africa
-  EG: [26.82, 30.80], MA: [31.79, -7.09], DZ: [28.03, 1.66], TN: [33.89, 9.54],
-  LY: [26.34, 17.23], SD: [12.86, 30.22], SS: [6.88, 31.31], ET: [9.15, 40.49],
-  KE: [0.02, 37.91], TZ: [-6.37, 34.89], UG: [1.37, 32.29], RW: [-1.94, 29.87],
-  BI: [-3.37, 29.92], CD: [-4.04, 21.76], CG: [-0.23, 15.83], GA: [-0.80, 11.61],
-  CM: [7.37, 12.35], NG: [9.08, 8.68], GH: [7.95, -1.02], CI: [7.54, -5.55],
-  SN: [14.50, -14.45], ML: [17.57, -4.00], NE: [17.61, 8.08], BF: [12.24, -1.56],
-  TG: [8.62, 1.21], BJ: [9.31, 2.32], GM: [13.44, -15.31], GW: [11.80, -15.18],
-  GN: [9.95, -9.70], SL: [8.46, -11.78], LR: [6.43, -9.43], MR: [21.01, -10.94],
-  ZA: [-30.56, 22.94], NA: [-22.96, 18.49], BW: [-22.33, 24.68], ZW: [-19.02, 29.15],
-  MZ: [-18.67, 35.53], MG: [-18.77, 46.87], MW: [-13.25, 34.30], ZM: [-13.13, 27.85],
-  AO: [-11.20, 17.87], SO: [5.15, 46.20], DJ: [11.83, 42.59], ER: [15.18, 39.78],
-  ST: [0.19, 6.61], SC: [-4.68, 55.49], MU: [-20.35, 57.55], KM: [-11.88, 43.87],
-  // Americas
-  US: [37.09, -95.71], CA: [56.13, -106.35], MX: [23.63, -102.55], BR: [-14.24, -51.93],
-  AR: [-38.42, -63.62], CL: [-35.68, -71.54], CO: [4.57, -74.30], VE: [6.42, -66.59],
-  PE: [-9.19, -75.02], EC: [-1.83, -78.18], BO: [-16.29, -63.59], PY: [-23.44, -58.44],
-  UY: [-32.52, -55.77], GY: [4.86, -58.93], SR: [3.92, -56.03], CU: [21.52, -77.78],
-  HT: [18.97, -72.29], DO: [18.74, -70.16], JM: [18.11, -77.30], TT: [10.69, -61.22],
-  PR: [18.22, -66.59], GT: [15.78, -90.23], HN: [15.20, -86.24], SV: [13.79, -88.90],
-  NI: [12.87, -85.21], CR: [9.75, -83.75], PA: [8.54, -80.78], BZ: [17.19, -88.50],
-  // Oceania
-  AU: [-25.27, 133.78], NZ: [-40.90, 174.89], PG: [-6.31, 143.96], FJ: [-17.71, 178.07],
-  WS: [-13.76, -172.10], TO: [-21.18, -175.20], VU: [-15.38, 166.96],
-};
-
-// Haversine formula: calculates distance in km between two lat/lng points
-const haversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 6371; // Earth's radius in km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-};
-
-// Travel time configuration
-const TRAVEL_MIN_MINUTES = 1;
-const TRAVEL_MAX_MINUTES = 60;
-const TRAVEL_KM_PER_MINUTE = 100;
-const TRAVEL_DEFAULT_MS = 2 * 60 * 1000; // 2 minutes fallback if coords unknown
-
-// Calculate travel time in milliseconds based on distance between two ISO2 regions
-const calculateTravelTimeMs = (fromIso2: string, toIso2: string): number => {
-  const from = COUNTRY_COORDS[fromIso2.toUpperCase()];
-  const to = COUNTRY_COORDS[toIso2.toUpperCase()];
-  if (!from || !to) return TRAVEL_DEFAULT_MS;
-  const distKm = haversineDistance(from[0], from[1], to[0], to[1]);
-  const minutes = Math.max(TRAVEL_MIN_MINUTES, Math.min(TRAVEL_MAX_MINUTES, Math.round(distKm / TRAVEL_KM_PER_MINUTE)));
-  return minutes * 60 * 1000;
 };
 
 const authenticate = createAuthenticateMiddleware({
@@ -670,87 +350,6 @@ async function buyEnergyDrinksForUser(userId: string, quantityInput: unknown) {
     return { ok: false as const, status: 500, error: String(err?.message || "Errore durante l'acquisto dei drink.") };
   }
 }
-
-const createAutomationError = (statusCode: number, message: string) => {
-  const err: any = new Error(message);
-  err.statusCode = statusCode;
-  return err;
-};
-
-const AUTOMATION_STANDARD_INTERVAL_MS = 10 * 60 * 1000;
-const AUTOMATION_HOURLY_INTERVAL_MS = 60 * 60 * 1000;
-const AUTOMATION_EXPIRE_MS = 24 * 60 * 60 * 1000;
-
-const WAR_WEAPON_CONFIG: Record<string, { energy: number; cash: number; damage: number }> = {
-  tank: { energy: 30, cash: 0, damage: TROOP_BASE_DAMAGE.tank },
-  aircraft: { energy: 50, cash: 0, damage: TROOP_BASE_DAMAGE.aircraft },
-  battleship: { energy: 40, cash: 0, damage: TROOP_BASE_DAMAGE.battleship },
-};
-
-const LEGACY_WAR_WEAPON_ALIASES: Record<string, string> = {
-  infantry: 'tank',
-  airstrike: 'aircraft',
-};
-
-const normalizeWarWeaponId = (weaponId: string): string => {
-  const normalized = (weaponId || '').trim().toLowerCase();
-  return LEGACY_WAR_WEAPON_ALIASES[normalized] || normalized;
-};
-
-const getAllowedWeaponsForWar = (warType: string, navalPhase: number): string[] => {
-  if (warType === 'naval' && navalPhase === 1) return ['battleship'];
-  return ['tank', 'aircraft'];
-};
-
-const isAutomationExpired = (activatedAt?: string | null, expiresAt?: string | null, now = Date.now()) => {
-  if (expiresAt) return new Date(expiresAt).getTime() <= now;
-  if (!activatedAt) return false;
-  return (now - new Date(activatedAt).getTime()) >= AUTOMATION_EXPIRE_MS;
-};
-
-const shouldRecurringAutomationFire = (
-  mode: 'standard' | 'hourly' | 'maximum',
-  lastFiredAt: string | null,
-  activatedAt: string,
-  now = Date.now()
-) => {
-  const interval = mode === 'hourly' ? AUTOMATION_HOURLY_INTERVAL_MS : AUTOMATION_STANDARD_INTERVAL_MS;
-  if (isAutomationExpired(activatedAt, null, now)) return false;
-  if (!lastFiredAt) return true;
-  return (now - new Date(lastFiredAt).getTime()) >= interval;
-};
-
-const normalizeWarAutoType = (value: any): 'hourly' | 'maximum' => {
-  return value === 'hourly' ? 'hourly' : 'maximum';
-};
-
-const isAutoAttackCompatibleWithAutoWork = (autoType: any): boolean => autoType === 'hourly';
-
-const autoWorkIncompatibleMessage = "Auto-Work è compatibile solo con il Danno Orario, non con l'Auto-War standard.";
-
-let missingAutomationTablesWarned = {
-  work: false,
-  training: false,
-} as { work: boolean; training: boolean };
-
-const parseAutomationTimestamp = (value: string | number | null | undefined, fallback: number): number => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim()) {
-    const numericValue = Number(value);
-    if (Number.isFinite(numericValue)) return numericValue;
-    const parsed = new Date(value).getTime();
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return fallback;
-};
-
-const shouldTreatAutoWorkAsNeverFired = (lastFiredAt: string | null, activatedAt: string | null): boolean => {
-  if (!lastFiredAt || !activatedAt) return false;
-  const lastFiredMs = new Date(lastFiredAt).getTime();
-  const activatedMs = new Date(activatedAt).getTime();
-  if (!Number.isFinite(lastFiredMs) || !Number.isFinite(activatedMs)) return false;
-  return Math.abs(lastFiredMs - activatedMs) <= 1000;
-};
 
 async function processAutomationTick() {
   try {
@@ -4883,32 +4482,17 @@ export async function startServer() {
       xpPerAttack: GAME_CONFIG.XP_PER_ATTACK,
     }),
   });
-  // Centralized error handler — must be registered after all routes.
-  app.use(errorHandler);
 
-  if (process.env.NODE_ENV === "production") {
-    app.use(express.static("dist"));
-  }
-
-  app.listen(PORT, "0.0.0.0", () => {
-    logger.info(`Server running on http://localhost:${PORT}`);
-    startBackendJobs({
-      budgetMaintenanceTick,
-      checkAndResolveElections,
-      checkAndAdvanceIndependentRegions,
-      checkAndResolveLaws,
-      checkAndResolveWars,
-      processAutomationTick,
-      dailyResourceReset,
-      refreshReadRollupsTick,
-    });
-  }).on('error', (err: any) => {
-    if (err.code === 'EADDRINUSE') {
-      logger.error(`FATAL ERROR: Port ${PORT} is already in use.`, { err });
-    } else {
-      logger.error("FATAL ERROR: Server failed to start.", { err });
-    }
-    process.exit(1);
+  finalizeLegacyExpressApp(app);
+  listenAndStartLegacyJobs(app, PORT, {
+    budgetMaintenanceTick,
+    checkAndResolveElections,
+    checkAndAdvanceIndependentRegions,
+    checkAndResolveLaws,
+    checkAndResolveWars,
+    processAutomationTick,
+    dailyResourceReset,
+    refreshReadRollupsTick,
   });
 }
 
